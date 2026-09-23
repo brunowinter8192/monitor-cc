@@ -237,7 +237,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### strip_pasted_content.py (43 LOC)
+### strip_pasted_content.py (47 LOC)
 
 **Purpose:** Removes the opening/closing `<pasted_content id="...">`/`</pasted_content id="...">` tag pair CC 2.1.280+ wraps around a bracketed-paste user message, keeping the enclosed text byte-for-byte.
 **Reads:** Message content (string or list of blocks).

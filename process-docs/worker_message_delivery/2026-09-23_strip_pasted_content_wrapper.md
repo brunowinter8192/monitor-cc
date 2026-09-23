@@ -93,6 +93,35 @@ checks across the 11 functions), `dev/proxy_dual_log/test_composition_invariant/
 `dev/proxy/test_sidecar_delta_chain.py` 13/13, `dev/proxy/poread_inject_tests.py` 37/37 — all
 re-ran clean, no regressions.
 
+## Review fix — ORCHESTRATOR held logic (2026-09-23)
+
+Main review after the first implementation: `_strip_pasted_content_wrapper` (the module's
+ORCHESTRATOR) held the `list` branch's block loop inline — a real `for` loop building a result
+list, not just a call to another function. The code-standard allows an ORCHESTRATOR to branch on a
+condition to decide *which* function to call next, nothing more. Checked `payload_helpers.py` for
+something to reuse first, per the review instruction: `_walk_replace_marker_blocks` /
+`_walk_tool_result_inner` don't fit — both descend into `tool_result` (which this module
+deliberately never does, see the anchoring section above) and both take a whole-text-match
+predicate plus a whole-text replace_fn, not a partial in-place substitution. Nothing else in that
+module matches this shape. Fix: pulled the loop out into a new `_strip_pasted_content_from_blocks`
+function in the module's own FUNCTIONS section, called by the ORCHESTRATOR exactly like the
+`str`-branch already called `_strip_pasted_content_from_text`. `strip_pasted_content.py` LOC
+43 → 47; `DOCS.md` LOC updated to match. Reran `dev/proxy/test_strip_fix_cases_pasted_content.py`
+(40/40, pure-function count corrected from the 39 first reported — see below) standalone and the
+full `dev/proxy/test_strip_fix.py` (304/304, unchanged before/after this refactor — a pure
+extract-function change touches no test-visible behavior), plus the same regression sweep
+(`test_composition_invariant` 12/12, `test_role_keyed_rules` 26/26, `test_sidecar_delta_chain`
+13/13, `poread_inject_tests` 37/37). Committed separately (`refactor: move pasted-content block
+walk out of orchestrator`) so the functional commit and the structural fix stay distinguishable in
+`git log`.
+
+**Note on the 39→40 check-count discrepancy:** the first completion report undercounted by hand
+(4+3+3+3+4+4+3+3+3+5+5 = 40, not 39); the actual `check()` call count in
+`test_strip_fix_cases_pasted_content.py` never changed across the two commits — confirmed by
+diffing the file's `check(` count before and after the refactor (identical). Recorded here so a
+reader diffing "39 new" against "304 total, 265 pre-existing" doesn't go looking for a phantom
+regression: the correct pre-existing count was 264, not 265.
+
 ## Not done here
 
 Live verification (proxy restart + real session, confirming the Monitor actually renders the strip
