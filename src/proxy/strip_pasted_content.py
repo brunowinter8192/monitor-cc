@@ -16,19 +16,23 @@ def _strip_pasted_content_wrapper(content):
     if isinstance(content, str):
         return _strip_pasted_content_from_text(content, removed), removed
     if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict) or block.get('type') != 'text':
-                result.append(block)
-                continue
-            text = block.get('text', '')
-            new_text = _strip_pasted_content_from_text(text, removed)
-            result.append({**block, 'text': new_text} if new_text != text else block)
-        return result, removed
+        return _strip_pasted_content_from_blocks(content, removed), removed
     return content, removed
 
 
 # FUNCTIONS
+
+def _strip_pasted_content_from_blocks(blocks, out_removed):
+    result = []
+    for block in blocks:
+        if not isinstance(block, dict) or block.get('type') != 'text':
+            result.append(block)
+            continue
+        text = block.get('text', '')
+        new_text = _strip_pasted_content_from_text(text, out_removed)
+        result.append({**block, 'text': new_text} if new_text != text else block)
+    return result
+
 
 def _strip_pasted_content_from_text(text, out_removed):
     if _PASTED_CONTENT_OPEN_MARKER not in text:
