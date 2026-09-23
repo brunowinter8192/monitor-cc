@@ -1,10 +1,10 @@
 #!/bin/bash
-# Dry-run for the full --fable/--opus/--model/config-file precedence chain in
-# src/claude_proxy_start.sh, as of the model-selector milestone 3 config tier.
-# Mirrors the exact parse loop + precedence resolution from that script — keep in sync when
-# editing either. A narrower, config-file-unaware version of this same parse loop is also
-# mirrored in dev/native-model-start/p1_arg_parse_dry_run.sh (milestone-native-model-start's
-# own dry run, predates the config tier and stays valid for the tiers it covers).
+# Dry-run for the --model/--project/config-file precedence chain in src/claude_proxy_start.sh, as
+# of the 2026-09-23 shortcut removal (--fable/--opus dropped — the menubar is now the only way to
+# steer the model). Mirrors the exact parse loop + precedence resolution from that script — keep
+# in sync when editing either. A narrower, config-file-unaware version of the pre-shortcut-removal
+# parse loop is also mirrored in dev/native-model-start/p1_arg_parse_dry_run.sh (milestone-native-
+# model-start's own dry run, predates the config tier and stays valid for the tiers it covers).
 # Pure argument-parsing simulation: never starts the proxy or claude, never touches the real
 # ~/.claude/shared-rules/model_selection.json — all config-file cases use a temp path.
 #
@@ -22,21 +22,12 @@ RESULT_ROWS=()
 _parse_args() {
     PROJECT=""
     CLAUDE_ARGS=()
-    SHORTCUT_MODEL=""
     HAS_EXPLICIT_MODEL=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --project)
                 PROJECT="$2"
                 shift 2
-                ;;
-            --fable)
-                SHORTCUT_MODEL="claude-fable-5"
-                shift
-                ;;
-            --opus)
-                SHORTCUT_MODEL="claude-opus-5"
-                shift
                 ;;
             --model)
                 HAS_EXPLICIT_MODEL=1
@@ -50,9 +41,7 @@ _parse_args() {
         esac
     done
     PROJECT="${PROJECT:-$(pwd)}"
-    if [ -z "$HAS_EXPLICIT_MODEL" ] && [ -n "$SHORTCUT_MODEL" ]; then
-        CLAUDE_ARGS+=("--model" "$SHORTCUT_MODEL")
-    elif [ -z "$HAS_EXPLICIT_MODEL" ] && [ -z "$SHORTCUT_MODEL" ] && command -v jq &>/dev/null && [ -f "$MODEL_SELECTION_FILE" ]; then
+    if [ -z "$HAS_EXPLICIT_MODEL" ] && command -v jq &>/dev/null && [ -f "$MODEL_SELECTION_FILE" ]; then
         CONFIG_MODEL="$(jq -r '.main // empty' "$MODEL_SELECTION_FILE" 2>/dev/null)"
         if [ -n "$CONFIG_MODEL" ]; then
             CLAUDE_ARGS+=("--model" "$CONFIG_MODEL")
@@ -90,7 +79,7 @@ echo
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# ---- Tier 1/2 sanity re-checks (no config file in play) ----
+# ---- Tier 1 sanity re-checks (no config file in play) ----
 
 MODEL_SELECTION_FILE="$TMP_DIR/does_not_exist.json"
 
@@ -98,44 +87,40 @@ _assert_args "no flag, no config -> byte-identical (nothing injected)" \
     "--extra|val" \
     --extra val
 
-_assert_args "--fable alone -> --model claude-fable-5 appended" \
-    "--model|claude-fable-5" \
-    --fable
-
-_assert_args "--opus alone -> --model claude-opus-5 appended" \
-    "--model|claude-opus-5" \
-    --opus
-
-_assert_args "--model X --fable (explicit before shortcut) -> explicit still wins" \
-    "--model|claude-custom" \
-    --model claude-custom --fable
-
-_assert_args "mixed: --project + --fable + other passthrough -> --project extracted, model appended" \
-    "--other-flag|val|--model|claude-fable-5" \
-    --project /some/path --fable --other-flag val
-
-# ---- Tier 3: config file (new in this milestone) ----
-
-VALID_CONFIG="$TMP_DIR/valid.json"
-echo '{"main": "claude-opus-5", "worker": "claude-sonnet-5"}' > "$VALID_CONFIG"
-MODEL_SELECTION_FILE="$VALID_CONFIG"
-
-_assert_args "no flag, no shortcut, valid config -> config's main model injected" \
-    "--extra|val|--model|claude-opus-5" \
-    --extra val
-
-_assert_args "--fable + valid config -> shortcut wins, config never consulted" \
-    "--model|claude-fable-5" \
-    --fable
-
-_assert_args "explicit --model + valid config -> explicit wins" \
+_assert_args "explicit --model, no config -> explicit passed through" \
     "--model|claude-custom" \
     --model claude-custom
 
-# ---- Tier 4: degradation cases (config present but unusable, or absent) -> nothing injected ----
+_assert_args "--project alone, no config -> --project extracted, nothing injected" \
+    "" \
+    --project /some/path
+
+# ---- Tier 2: config file (main key) ----
+
+VALID_CONFIG="$TMP_DIR/valid.json"
+echo '{"main": "claude-opus-5-5", "worker": "claude-sonnet-5"}' > "$VALID_CONFIG"
+MODEL_SELECTION_FILE="$VALID_CONFIG"
+
+_assert_args "no flag, valid config -> config's main model injected" \
+    "--extra|val|--model|claude-opus-5-5" \
+    --extra val
+
+_assert_args "--project + no other flags, valid config -> --project extracted, config's main model injected (the actual real-world invocation)" \
+    "--model|claude-opus-5-5" \
+    --project /some/path
+
+_assert_args "--project + other passthrough, valid config -> --project extracted, other flag kept, model appended" \
+    "--other-flag|val|--model|claude-opus-5-5" \
+    --project /some/path --other-flag val
+
+_assert_args "explicit --model + valid config -> explicit wins, config never consulted" \
+    "--model|claude-custom" \
+    --model claude-custom
+
+# ---- Tier 3: degradation cases (config present but unusable, or absent) -> nothing injected ----
 
 MODEL_SELECTION_FILE="$TMP_DIR/missing.json"
-_assert_args "missing config file -> nothing injected (falls through to case 4)" \
+_assert_args "missing config file -> nothing injected (falls through to no-injection case)" \
     "--extra|val" \
     --extra val
 
@@ -181,8 +166,9 @@ OUT_PATH="$MD_DIR/verify_launcher_model_precedence_${STAMP}.md"
     echo "**Result: $PASS/$total checks passed**"
     echo
     echo "Pure argument-parsing simulation of src/claude_proxy_start.sh's full precedence chain"
-    echo "(--model > --fable/--opus > config file 'main' key > nothing) — never starts the proxy"
-    echo "or claude, never touches the real ~/.claude/shared-rules/model_selection.json."
+    echo "(--model > config file 'main' key > nothing injected, no CLI shortcuts since 2026-09-23)"
+    echo "— never starts the proxy or claude, never touches the real"
+    echo "~/.claude/shared-rules/model_selection.json."
     echo
     echo "| Case | Resulting CLAUDE_ARGS | Result |"
     echo "|---|---|---|"

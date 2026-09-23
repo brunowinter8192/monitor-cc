@@ -76,17 +76,17 @@ def _load_model_selection_module():
     return importlib.import_module(module_name)
 
 def _verify_model_cycle(ms, lines) -> None:
-    lines.append("## 1. Model cycle logic (4 values)")
+    lines.append("## 1. Model cycle logic (5 values)")
     choices = ms._MODEL_CHOICES
-    assert len(choices) == 4, f"expected 4 model choices, got {len(choices)}: {choices}"
+    assert len(choices) == 5, f"expected 5 model choices, got {len(choices)}: {choices}"
     for start in choices:
         nxt = ms._next_model(start)
         expected = choices[(choices.index(start) + 1) % len(choices)]
         assert nxt == expected, f"{start} -> {nxt}, expected {expected}"
         lines.append(f"{start} -> {nxt}")
-    fourth_wraps = ms._next_model(choices[-1]) == choices[0]
-    assert fourth_wraps
-    lines.append(f"Fourth value wraps to first: {fourth_wraps}")
+    last_wraps = ms._next_model(choices[-1]) == choices[0]
+    assert last_wraps
+    lines.append(f"Last value wraps to first: {last_wraps}")
     unknown_next = ms._next_model("some-unrecognized-id")
     assert unknown_next == choices[0]
     lines.append(f"Unrecognized current value starts cycle at first choice: {unknown_next!r}")

@@ -53,10 +53,10 @@ not run. Re-run after any ring-wiring change in `panel_lifecycle.py`.
 
 ---
 
-### verify_launcher_model_precedence.sh (200 LOC)
+### verify_launcher_model_precedence.sh (186 LOC)
 
 **Purpose:** Full precedence-chain dry run for the launcher's model selection — explicit
-`--model` > shortcut flag > config-file `main` key > nothing injected.
+`--model` > config-file `main` key > nothing injected (no CLI shortcuts since 2026-09-23).
 **Reads:** nothing persistent outside its own tempdir.
 **Writes:** `md/verify_launcher_model_precedence_<timestamp>.md`.
 **Called by:** none — run manually; re-run after any change to the launcher's precedence logic.

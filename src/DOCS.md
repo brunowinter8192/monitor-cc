@@ -138,7 +138,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### claude_proxy_start.sh (416 LOC, project root)
+### claude_proxy_start.sh (402 LOC, project root)
 
 **Purpose:** shell entry point that launches mitmproxy + Claude Code with the proxy env — handles per-project log rotation/purge, a per-project marker with a liveness guard, model-flag precedence, and fires the background janitors (`monitor_janitor.py` and the worker-cli janitor from the iterative-dev project) on every session start.
 **Reads:** `~/.claude/shared-rules/model_selection.json` (model precedence); existing log files (rotation/purge decisions); per-project marker files.

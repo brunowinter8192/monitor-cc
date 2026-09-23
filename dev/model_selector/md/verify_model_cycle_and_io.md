@@ -1,11 +1,12 @@
-# Models tab — cycle + I/O verification — 2026-09-13T16:06:08
+# Models tab — cycle + I/O verification — 2026-09-23T11:37:03
 
-## 1. Model cycle logic (4 values)
-claude-opus-5 -> claude-fable-5
+## 1. Model cycle logic (5 values)
+claude-opus-5 -> claude-opus-5-5
+claude-opus-5-5 -> claude-fable-5
 claude-fable-5 -> claude-fable-5-1
 claude-fable-5-1 -> claude-sonnet-5
 claude-sonnet-5 -> claude-opus-5
-Fourth value wraps to first: True
+Last value wraps to first: True
 Unrecognized current value starts cycle at first choice: 'claude-opus-5'
 
 ## 2. Effort cycle logic
@@ -34,8 +35,8 @@ No leftover .tmp file: True
 
 ## 6. model_selection.json read-back + fallback
 Valid file -> ('claude-fable-5', 'claude-opus-5')
-Missing file -> ('claude-opus-5', 'claude-sonnet-5') (expected default pair, no raise)
-Malformed file -> ('claude-opus-5', 'claude-sonnet-5') (expected default pair, no raise)
+Missing file -> ('claude-opus-5-5', 'claude-sonnet-5') (expected default pair, no raise)
+Malformed file -> ('claude-opus-5-5', 'claude-sonnet-5') (expected default pair, no raise)
 Unrecognized-but-valid value file -> ('claude-hand-edited-9000', 'claude-opus-5') (expected preserved verbatim)
 Apply without cycling round-trips unchanged -> ('claude-hand-edited-9000', 'claude-opus-5')
 

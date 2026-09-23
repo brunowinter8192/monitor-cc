@@ -4,9 +4,9 @@ import os
 
 from .paths import MODEL_SELECTION_FILE, PROXY_RULES_FILE
 
-_MODEL_CHOICES = ("claude-opus-5", "claude-fable-5", "claude-fable-5-1", "claude-sonnet-5")
-_DEFAULT_MAIN   = _MODEL_CHOICES[0]
-_DEFAULT_WORKER = _MODEL_CHOICES[3]
+_MODEL_CHOICES = ("claude-opus-5", "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1", "claude-sonnet-5")
+_DEFAULT_MAIN   = _MODEL_CHOICES[1]
+_DEFAULT_WORKER = _MODEL_CHOICES[4]
 
 _EFFORT_CHOICES = ("low", "medium", "high")
 _MAXTOK_CHOICES = (32000, 64000, 128000)
