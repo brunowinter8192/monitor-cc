@@ -123,6 +123,29 @@ def request_boundaries(forwarded_path: Path, family: str) -> list:
     return boundaries
 
 
+def _is_continue(counts: dict, entry: dict) -> bool:
+    if not _is_sidecar(counts):
+        return False
+    return bool((entry.get("diagnostics") or {}).get("previous_message_id"))
+
+
+def continue_requests(forwarded_path: Path, family: str) -> list:
+    continues = []
+    for entry in iter_jsonl(forwarded_path):
+        if entry.get("type") != "forwarded_delta":
+            continue
+        if infer_family(entry.get("model", "")) != family:
+            continue
+        if not _is_continue(entry.get("counts", {}) or {}, entry):
+            continue
+        continues.append({
+            "flow_id": entry.get("flow_id", ""),
+            "timestamp": entry.get("timestamp", ""),
+            "model": entry.get("model", ""),
+        })
+    return continues
+
+
 def build_turn_times(boundaries: list) -> dict:
     chain = boundaries
     covered = 0

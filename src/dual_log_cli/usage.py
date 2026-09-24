@@ -99,7 +99,7 @@ def _transcript_usage(transcript_path: Path) -> dict:
     return usage
 
 
-def _resolve_session_transcript(session: dict, boundaries: list, projects_root: Path = None) -> tuple:
+def resolve_transcript(session: dict, boundaries: list, projects_root: Path = None) -> tuple:
     if not boundaries:
         return None, {}
     response_path = session.get("streams", {}).get("response")
@@ -128,7 +128,11 @@ def _resolve_session_transcript(session: dict, boundaries: list, projects_root: 
 
 
 def build_usage_by_flow(session: dict, boundaries: list, projects_root: Path = None) -> dict:
-    transcript_path, flow_status = _resolve_session_transcript(session, boundaries, projects_root)
+    transcript_path, flow_status = resolve_transcript(session, boundaries, projects_root)
+    return usage_from_transcript(transcript_path, flow_status)
+
+
+def usage_from_transcript(transcript_path: Path, flow_status: dict) -> dict:
     if transcript_path is None:
         return {}
     usage_by_request_id = _transcript_usage(transcript_path)

@@ -14,6 +14,7 @@ from .discovery import (
     list_sessions,
     resolve_stem,
 )
+from .numbering import build_session_numbering
 from .overlay import build_overlay, build_sys_tool_overlay
 from .project_map import build_project_index
 from .render_expand import render_expand_full
@@ -25,7 +26,6 @@ from .search import find_matches
 from .timeline import load_timeline
 from .timeline_markers import AmbiguousRequestNumberError, UnknownRequestNumberError, resolve_req_range
 from .timeline_turns import full_turn
-from .usage import build_usage_by_flow
 
 # FUNCTIONS
 
@@ -118,6 +118,7 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
     sessions = filter_by_family(sessions, main=args.main, worker=args.worker)
     results, skipped = [], 0
     turns_by_stem = {}
+    continues_by_stem = {}
     for session in sessions:
         try:
             data = load_timeline(session)
@@ -126,17 +127,28 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
             continue
         results.append((session, data["boundaries"]))
         turns_by_stem[session["stem"]] = data["turns"]
-    usage_by_stem = {
-        session["stem"]: build_usage_by_flow(session, boundaries)
+        continues_by_stem[session["stem"]] = data["continues"]
+    numbering_by_stem = {
+        session["stem"]: build_session_numbering(session, boundaries, continues_by_stem[session["stem"]])
         for session, boundaries in results
     }
-    if args.merged:
-        sys.stdout.write(render_reqs_merged(
-            results, skipped, args.turn, args.gap, usage_by_stem, args.rebuild, args.drop, turns_by_stem))
-    else:
-        sys.stdout.write(render_reqs(
-            results, skipped, args.turn, args.gap, usage_by_stem, args.rebuild, args.drop, turns_by_stem))
+    usage_by_stem = {stem: numbering["usage"] for stem, numbering in numbering_by_stem.items()}
+    pane_turns_by_stem = {stem: numbering["pane_turns"] for stem, numbering in numbering_by_stem.items()}
+    _report_numbering_paths(numbering_by_stem)
+    render = render_reqs_merged if args.merged else render_reqs
+    sys.stdout.write(render(
+        results, skipped, args.turn, args.gap, usage_by_stem, args.rebuild, args.drop, turns_by_stem,
+        continues_by_stem, pane_turns_by_stem))
     return 0
+
+
+def _report_numbering_paths(numbering_by_stem: dict) -> None:
+    fallback = [stem for stem, numbering in numbering_by_stem.items() if numbering["path"] != "transcript"]
+    transcript = len(numbering_by_stem) - len(fallback)
+    line = f"numbering: {transcript} session(s) via transcript (pane REQ numbers, response-end times)"
+    if fallback:
+        line += f"; {len(fallback)} via boundaries fallback, transcript unresolved (create requests only, own numbers, send times): {', '.join(fallback)}"
+    print(line, file=sys.stderr)
 
 
 def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
@@ -147,6 +159,8 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
     if last < 0:
         print("session carries no msgs", file=sys.stderr)
         return 2
+    numbering = build_session_numbering(data["session"], data["boundaries"], data["continues"])
+    _report_numbering_paths({data["session"]["stem"]: numbering})
     if args.req is not None:
         if args.from_msg is not None or args.to_msg is not None:
             print("--req cannot be combined with FROM/TO", file=sys.stderr)
@@ -159,7 +173,7 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
         try:
             start, end = resolve_req_range(data["boundaries"], req_from, req_to, last)
         except (UnknownRequestNumberError, AmbiguousRequestNumberError) as exc:
-            print(str(exc), file=sys.stderr)
+            print(_req_error_text(exc, data, (req_from, req_to)), file=sys.stderr)
             return 2
         if end < start:
             print(f"REQ {req_to} ends before REQ {req_from} begins (msg {end} < msg {start})", file=sys.stderr)
@@ -174,11 +188,19 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
         if end < start:
             print(f"TO {end} is before FROM {start}", file=sys.stderr)
             return 2
-    usage_by_flow = build_usage_by_flow(data["session"], data["boundaries"])
+    usage_by_flow = numbering["usage"]
     overlay = build_overlay(data["session"], data["family"], data["boundaries"])
     sys_tool_overlay = build_sys_tool_overlay(data["session"], data["family"], data["boundaries"])
     sys.stdout.write(render_msgs(data, start, end, usage_by_flow, overlay, sys_tool_overlay))
     return 0
+
+
+def _req_error_text(exc: Exception, data: dict, requested: tuple) -> str:
+    continue_numbers = {request.get("pane_number") for request in data["continues"]} - {None}
+    hit = [number for number in requested if number in continue_numbers]
+    if isinstance(exc, UnknownRequestNumberError) and hit:
+        return f"REQ {hit[0]} is a continue request: it owns no msgs (msgs belong to create requests only)"
+    return str(exc)
 
 
 def _run_expand(dual_log_dir, args: argparse.Namespace) -> int:
