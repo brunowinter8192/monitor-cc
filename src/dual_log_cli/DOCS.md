@@ -31,7 +31,7 @@ the hardcoded repo root and execs the same module, so `duallog <command>` works 
 symlinked into PATH.
 
 The log directory is resolved from `MONITOR_CC_ROOT`, else the repo root, else the main checkout
-when running inside `.claude/worktrees/<name>/` — the log directory is gitignored and exists only
+when running inside `.claude/worktrees/<name>/`; stderr states the root (`monitor root: ...`) and the branch taken (`dual_log dir: ... (...)`) — the log directory is gitignored and exists only
 in the main checkout.
 
 ## Flow
@@ -73,11 +73,11 @@ helper per command.
 
 ---
 
-### commands.py (275 LOC)
+### commands.py (278 LOC)
 
 **Purpose:** The five `_run_*` command implementations (`_run_sessions`, `_run_search`,
 `_run_reqs`, `_run_msgs`, `_run_expand`) plus their shared validators (`_valid_day`,
-`_reject_bad_days`, `_load_for`, `_window`), the stderr line naming the numbering path used (`_report_numbering_paths`), `_numbered_view` (numbering + `data["requests"]` for `msgs`/`expand`), `--req` range routing (`_resolve_range`, `_req_output_window`) and the continue-request `--req` error text.
+`_reject_bad_days`, `_load_for`, `_window`), the stderr line naming the numbering path used and, for a fallback stem, its reason (`_report_numbering_paths`); `search`/`reqs` skip a session only on `FileNotFoundError`/`ValueError` and print its stem and cause to stderr, `_numbered_view` (numbering + `data["requests"]` for `msgs`/`expand`), `--req` range routing (`_resolve_range`, `_req_output_window`) and the continue-request `--req` error text.
 **Reads:** the resolved dual_log directory and the parsed `argparse.Namespace`, both passed in by `__main__.main()`.
 **Writes:** stdout (rendered text, via `sys.stdout.write`), stderr (resolution, range and empty-term errors).
 **Called by:** `__main__.py` (`main()`, one `_run_*` per `args.command` branch).
@@ -85,7 +85,7 @@ helper per command.
 
 ---
 
-### project_map.py (66 LOC)
+### project_map.py (70 LOC)
 
 **Purpose:** Resolves the proxy's `md5(project_path)[:8]` session id — the only trace of a
 worker's project in its stem — to that project's real cwd, by scanning CC's own transcript store.
@@ -94,7 +94,7 @@ stem's label match) and `sid_to_cwd` (a worker stem's sid8 lookup, keeping the r
 hashed via `src/proxy_display/forwarded_parser.py`'s `_proxy_session_id_for_project` — the single
 source shared with `addon.py`'s own session-id derivation.
 **Reads:** `~/.claude/projects/<encoded>/<uuid>.jsonl` (first ~40 lines of up to 3 newest transcripts per project dir).
-**Writes:** Nothing — returns `{"cwd_to_dir": ..., "sid_to_cwd": ...}`; degrades to an empty structure on any failure rather than erroring.
+**Writes:** Nothing — returns `{"cwd_to_dir": ..., "sid_to_cwd": ...}`; an unreadable directory or transcript (`OSError`/`ValueError`) is reported once on stderr and skipped.
 **Called by:** `discovery.py`, `commands.py`, `usage.py`.
 **Calls out:** —
 
@@ -113,20 +113,20 @@ against ANY of a msg's block types.
 
 ---
 
-### discovery.py (204 LOC)
+### discovery.py (213 LOC)
 
 **Purpose:** Log-directory resolution, stem grouping, stem parsing (`stem_identity` — the one
 place every stem-derived value starts from), the session inventory (`build_session`), all session
 selection (`filter_sessions` for context/scope/date, `filter_by_family` for `--main`/`--worker`),
 and stem/substring resolution with explicit ambiguity and unknown errors.
-**Reads:** `MONITOR_CC_ROOT`; the dual_log directory listing; each stem's `_forwarded.jsonl` in full; `stat().st_size` of all six streams.
+**Reads:** `MONITOR_CC_ROOT` (via `monitor_root`); the dual_log directory listing; each stem's `_forwarded.jsonl` in full; `stat().st_size` of all six streams.
 **Writes:** Nothing — returns dicts.
 **Called by:** `__main__.py`, `commands.py`, `usage.py` (`stem_identity`), `render_reqs.py` (`stem_identity`); `dev/dual_log_cli/tests/test_local_time.py`, `test_project_display.py`, `test_reqs.py`, `test_sidecar_exclusion.py`.
 **Calls out:** —
 
 ---
 
-### reader.py (98 LOC)
+### reader.py (90 LOC)
 
 **Purpose:** The read-only file primitives — reverse chunked line-offset scanner, cheap model
 sniff, last-conversation-request loader, small-file JSONL iterator, `infer_family` (imported from
@@ -137,6 +137,16 @@ timestamp gets parsed and converted to this machine's local time.
 **Writes:** Nothing.
 **Called by:** `discovery.py`, `timeline.py`, `timeline_boundaries.py`, `render_format.py`, `usage.py`; `dev/dual_log_cli/tests/test_local_time.py`, `test_msgs_blocks.py`, `test_msgs_sys_delta.py`, `test_msgs_usage.py`, `test_reqs.py`, `test_turns.py`, `test_sidecar_exclusion.py`.
 **Calls out:** `proxy.message_summary` (`_infer_model_family`)
+
+---
+
+### diagnostics.py (14 LOC)
+
+**Purpose:** `report_skip(source, target, reason)` prints one skip or fallback cause to stderr, once per identical line per process.
+**Reads:** nothing.
+**Writes:** stderr.
+**Called by:** `commands.py`, `project_map.py`, `reader.py`, `usage.py`.
+**Calls out:** —
 
 ---
 
@@ -220,24 +230,24 @@ for the equivalent per-system-index and per-tool-name shape, both by running the
 
 ---
 
-### numbering.py (100 LOC)
+### numbering.py (101 LOC)
 
 **Purpose:** `build_session_numbering` resolves a session's transcript once and annotates every create and continue request with the token pane's own REQ number, turn and response-end time (`pane_number`/`pane_turn`/`pane_time`, `None` when unmapped); returns usage, the transcript turns and which path was used.
 **Reads:** the payload messages passed in by `commands`, `src/panes/cache_turns.build_cache_turns` over the resolved transcript, `src/format/token_format.call_numbers`, `usage.resolve_transcript`/`usage_from_transcript`.
-**Writes:** mutates the passed boundary/continue dicts in place (`pane_*`, `http_status` from the `_response` stream for every main-thread request in either path, plus `msg_start` for every located request); returns `{usage, pane_turns, path, requests}` (`path` is `transcript` or `boundaries`, `requests` the annotated creates plus continues).
+**Writes:** mutates the passed boundary/continue dicts in place (`pane_*`, `http_status` from the `_response` stream for every main-thread request in either path, plus `msg_start` for every located request); returns `{usage, pane_turns, path, requests}` (`path` is `transcript` or `boundaries`, `requests` the annotated creates plus continues; the `boundaries` path also carries `reason`, why the transcript did not resolve).
 **Also:** `_locate_msgs` finds each request's msg group start in the last full payload — a create at the last assistant msg before its last sent msg, a continue at the last assistant msg before its tool_result (matched by `tool_use_id`); openers, unmapped and newer-than-payload continues stay unlocated.
 **Called by:** `commands.py` (`_run_reqs`, `_numbered_view`); `dev/dual_log_cli/tests/test_reqs_pane_numbering.py`.
 **Calls out:** `panes.cache_turns`, `format.token_format` (absolute imports).
 
 ---
 
-### usage.py (148 LOC)
+### usage.py (154 LOC)
 
 **Purpose:** Builds `msgs`' and `reqs`' `{flow_id: (cache_read_input_tokens,
 cache_creation_input_tokens)}` map by joining the session's `_response` stream, a stem-scoped
 subset of CC's transcript store, and that transcript's own assistant-message usage records.
 **Reads:** The session's `_response.jsonl`; a small, stem-derived subset of `~/.claude/projects/*/*.jsonl`.
-**Writes:** Nothing — returns one `{flow_id: (cr, cc)}` dict; `{}` on any missing stream, unresolved anchor, a stem that resolves to no known project directory, no candidate file matching, or an unreadable transcript.
+**Writes:** Nothing — returns one `{flow_id: (cr, cc)}` dict; `{}` on any missing stream, unresolved anchor, a stem that resolves to no known project directory, no candidate file matching, or an unreadable transcript (`OSError`, reported on stderr). `resolve_transcript` returns `(path, flow_status, reason)`; `reason` is `None` when it resolved.
 **Called by:** `commands.py` (`_run_msgs`, `_run_reqs`); `dev/dual_log_cli/tests/test_local_time.py`, `test_msgs_usage.py`.
 **Calls out:** —
 
@@ -301,7 +311,7 @@ tail when the proxy transformed it.
 
 ---
 
-### render_reqs.py (276 LOC)
+### render_reqs.py (281 LOC)
 
 **Purpose:** `reqs`' turn-grouped, CR/CC-annotated REQ listing — `render_reqs`/`render_reqs_merged`
 share one pipeline (`_session_entries_and_separators`, `_apply_filters`, `_grouped_lines`) that
@@ -394,9 +404,9 @@ right-alignment keeps it readable but not aligned to its neighbors.
 
 **`search.find_matches` returns `[]` for an empty term rather than matching everything** — `str.count("")` counts positions, so a blank needle would otherwise report every block as a hit.
 
-**`reader.local_datetime` returns `None` for an empty/unparseable timestamp rather than raising.**
-Every caller has its own fallback: `"?"` in a renderer, silent drop from an active date filter in
-`discovery.filter_sessions`.
+**`reader.local_datetime` returns `None` for an empty timestamp and raises `ValueError` for a non-empty unparseable one.**
+Callers handle the empty case: `"?"` in a renderer, drop from an active date filter in
+`discovery.filter_sessions`; a REQ marker without a timestamp raises in `render_reqs`.
 
 **`__main__.py`'s `BrokenPipeError` guard has two parts, both required.** It flushes stdout inside
 the `try`, and on failure `dup2`s stdout to `os.devnull` so the interpreter's own shutdown flush has

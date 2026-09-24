@@ -1,14 +1,16 @@
 # INFRASTRUCTURE
 from datetime import datetime, timedelta
+from itertools import islice
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from .modes import MODE_ALL, MODE_WARNINGS, MODE_TOKENS, MODE_WORKER_TOKENS, MODE_PROXY, MODE_WORKER_PROXY
 
 from ..session_finder import find_active_sessions
-from ..jsonl import parse_jsonl_lines, read_new_lines
+from src.jsonl.jsonl_reader import JsonlReader
 
-file_positions: Dict[Path, int] = {}
+_SESSION_START_SCAN_RECORDS = 5
+
 active_project_filter: Optional[str] = None
 active_mode: str = MODE_ALL
 
@@ -17,8 +19,6 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> N
     global active_project_filter, active_mode
     active_project_filter = project_filter
     active_mode = mode
-
-    initialize_file_positions()
 
     if mode == MODE_WORKER_TOKENS:
         from ..workers import run_worker_tokens_loop
@@ -40,47 +40,6 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> N
 
 # FUNCTIONS
 
-def initialize_file_positions() -> int:
-    global file_positions, active_project_filter
-
-    sessions = find_active_sessions(active_project_filter)
-
-    for session_file in sessions:
-        if session_file not in file_positions:
-            file_positions[session_file] = get_file_end_position(session_file)
-
-    return len(sessions)
-
-def monitor_sessions() -> None:
-    global active_project_filter
-    sessions = find_active_sessions(active_project_filter)
-    update_session_tracking(sessions)
-
-def update_session_tracking(sessions: list) -> None:
-    global file_positions
-
-    current_files = set(sessions)
-    tracked_files = set(file_positions.keys())
-
-    new_files = current_files - tracked_files
-    removed_files = tracked_files - current_files
-
-    for new_file in new_files:
-        file_positions[new_file] = get_initial_position(new_file)
-
-    for removed_file in removed_files:
-        del file_positions[removed_file]
-
-def get_file_end_position(filepath: Path) -> int:
-    if not filepath.exists():
-        return 0
-    return filepath.stat().st_size
-
-def get_initial_position(filepath: Path) -> int:
-    if is_agent_file(filepath):
-        return 0
-    return get_file_end_position(filepath)
-
 def is_agent_file(filepath: Path) -> bool:
     return filepath.name.startswith('agent-')
 
@@ -92,9 +51,7 @@ def _get_session_start_ts() -> Optional[str]:
     session = _get_newest_main_session()
     if not session:
         return None
-    lines = read_new_lines(session, 0)
-    messages, _ = parse_jsonl_lines(lines[:5])
-    for msg in messages:
+    for msg in islice(JsonlReader(session), _SESSION_START_SCAN_RECORDS):
         ts = msg.get('timestamp')
         if ts:
             dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))

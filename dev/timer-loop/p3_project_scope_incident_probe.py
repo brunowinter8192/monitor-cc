@@ -10,6 +10,7 @@ from unittest import mock
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src' / 'hooks'))
 
 HOOK_PATH = str(WORKTREE_ROOT / "src" / "hooks" / "block_timer_pending_bg.py")

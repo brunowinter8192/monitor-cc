@@ -42,7 +42,7 @@ two test-group modules in order and writes the report.
 
 ---
 
-### model_params_test_infra.py (23 LOC)
+### model_params_test_infra.py (24 LOC)
 
 **Purpose:** Shared raising `check()` assertion infra and the `_with_config` helper
 used by every test group in this probe.
@@ -54,10 +54,9 @@ used by every test group in this probe.
 
 ---
 
-### model_override_injection_tests.py (237 LOC)
+### model_override_injection_tests.py (220 LOC)
 
-**Purpose:** Tests 1-12 — `_inject_model_override`'s per-model `model_params` lookup vs. the
-legacy family-bucketed fallback, plus the cross-call fixation mechanism.
+**Purpose:** Tests 1-12 — `_inject_model_override`'s per-model `model_params` lookup (a config without `model_params` is ignored), plus the cross-call fixation mechanism.
 **Reads:** nothing persistent — builds all fixtures in-process.
 **Writes:** nothing — results recorded via `model_params_test_infra.check`.
 **Called by:** `p2_model_params_probe.py`.
@@ -65,7 +64,7 @@ legacy family-bucketed fallback, plus the cross-call fixation mechanism.
 
 ---
 
-### thinking_context_management_tests.py (157 LOC)
+### thinking_context_management_tests.py (158 LOC)
 
 **Purpose:** Tests 13-15 — `_strip_clear_thinking_edit`'s thinking/context_management
 self-consistency, the forwarded `thinking` field, and strip-side field attribution.
@@ -77,7 +76,7 @@ self-consistency, the forwarded `thinking` field, and strip-side field attributi
 
 ---
 
-### p3_cache_breakpoints_probe.py (280 LOC)
+### p3_cache_breakpoints_probe.py (282 LOC)
 
 **Purpose:** Replays two 223-era recorded sessions through a real `ProxyAddon()` and checks cache
 breakpoint positional stability plus shared-index content diffs.
@@ -90,7 +89,7 @@ are absent; the tracked file is a historical snapshot.
 
 ---
 
-### p4_dual_log_integrity_probe.py (240 LOC)
+### p4_dual_log_integrity_probe.py (241 LOC)
 
 **Purpose:** Verifies the composition invariant against `compose_block` and top-level payload/
 schema stability, on the same two 223-era sessions as `p3_`.
@@ -102,7 +101,7 @@ absent; the script raises before writing its report.
 
 ---
 
-### p5_strip_wordings_probe.py (202 LOC)
+### p5_strip_wordings_probe.py (203 LOC)
 
 **Purpose:** Checks bg-launch-ack/bg-completed/task-notification strip coverage on 223-era
 wordings via a dual-log fn_map census plus a current-code replay sweep.

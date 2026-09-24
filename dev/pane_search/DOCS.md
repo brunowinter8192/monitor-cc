@@ -16,7 +16,9 @@ invoked directly as a script: `./venv/bin/python dev/pane_search/pN_..._test.py`
 Each parity script seeds a pane module's state (synthetic entries/turns, or a real dual-log/JSONL
 fixture) directly, drives the pane's real search/mouse handler functions, and asserts on the
 resulting query/match state and rendered output — no live tmux session involved. Output is
-PASS/FAIL to stdout plus a timestamped report in `md/`.
+one verdict line per strand to stdout plus a fixed-name report in `md/`.
+
+Each `pN_*_test.py` runs its `test_*` functions as parallel strands: one subprocess per function (`--strand <name>`), launched by `dev/refactoring/strand_runner.py`, each fail-fast (`check()` raises on the first failing check), siblings run to completion and the parent names the aborted strands. The fixtures assign `MONITOR_CC_ROOT` to the worktree (never `setdefault`) and pin `os.get_terminal_size` to 220x50, so no suite needs a tty. `p7_` derives its project filter from the process id so parallel strands do not share the worker-selection file.
 
 Each `pN_*` suite splits into an entry script (kept runnable at its original path/name) plus sibling
 `_fixtures.py` (module loads, state resets, `check()`) and `_cases*.py` (the `test_*` functions)
@@ -60,11 +62,11 @@ per-entry lazy-load and one-sweep strategies) plus their wall-time/RAM measureme
 
 ---
 
-### p2_search_feature_regression_test.py (62 LOC)
+### p2_search_feature_regression_test.py (46 LOC)
 
 **Purpose:** Runs the M2 proxy-pane search-bar regression suite and writes the PASS/FAIL report.
 **Reads:** nothing external.
-**Writes:** `md/p2_search_feature_regression_test_<timestamp>.md`; exits 1 if any check fails.
+**Writes:** `md/p2_search_feature_regression_test.md` (fixed name, overwritten each run); exits 1 if any strand aborts.
 **Called by:** none — manual regression guard, re-run after changing `pane.py`'s search
 state/handlers, `format.py`'s row-background/render functions, `render_turn.py`'s search-marker
 embedding, `search.py`, `forwarded_parser.py`'s reconstruction functions, or
@@ -73,9 +75,9 @@ embedding, `search.py`, `forwarded_parser.py`'s reconstruction functions, or
 
 ---
 
-### p2_search_feature_regression_fixtures.py (106 LOC)
+### p2_search_feature_regression_fixtures.py (104 LOC)
 
-**Purpose:** Loads the `src` modules under test, holds the shared `check()`/results list, and
+**Purpose:** Loads the `src` modules under test, imports the shared fail-fast `check()`, and
 builds synthetic proxy entries and pane-state resets for the M2 suite's test cases.
 **Reads:** nothing external.
 **Writes:** nothing — mutates in-process `src.proxy_display.pane` module state on demand.
@@ -97,11 +99,11 @@ input behavior.
 
 ---
 
-### p3_drag_select_regression_test.py (72 LOC)
+### p3_drag_select_regression_test.py (56 LOC)
 
 **Purpose:** Runs the proxy pane's drag-to-select regression suite and writes the PASS/FAIL report.
 **Reads:** nothing external.
-**Writes:** `md/p3_drag_select_regression_test_<timestamp>.md`; exits 1 if any check fails.
+**Writes:** `md/p3_drag_select_regression_test.md` (fixed name, overwritten each run); exits 1 if any strand aborts.
 **Called by:** none — manual regression guard, re-run after changing `pane.py`'s
 `_search_col_to_query_index`, `_handle_proxy_mouse`, `_handle_proxy_search_release`,
 `_clear_proxy_search_selection`, or `_render_proxy_search_bar`.
@@ -109,7 +111,7 @@ input behavior.
 
 ---
 
-### p3_drag_select_regression_fixtures.py (45 LOC)
+### p3_drag_select_regression_fixtures.py (42 LOC)
 
 **Purpose:** Loads `src.proxy_display.pane`, holds `check()`/results, and resets pane/search state
 between drag-select test cases.
@@ -131,11 +133,11 @@ mechanics, and selection-clearing.
 
 ---
 
-### p5_worker_proxy_pane_parity_test.py (82 LOC)
+### p5_worker_proxy_pane_parity_test.py (66 LOC)
 
 **Purpose:** Runs the worker-proxy pane's search-bar parity suite and writes the PASS/FAIL report.
 **Reads:** nothing external.
-**Writes:** `md/p5_worker_proxy_pane_parity_test_<timestamp>.md`; exits 1 if any check fails.
+**Writes:** `md/p5_worker_proxy_pane_parity_test.md` (fixed name, overwritten each run); exits 1 if any strand aborts.
 **Called by:** none — manual regression guard, re-run after changing `worker_proxy_pane.py`'s
 search/mouse handlers, `_build_worker_proxy_output`'s header composition,
 `workers/worker_switch_header.py` (imported here under the alias `_format_worker_proxy_header`),
@@ -145,7 +147,7 @@ or `src/search_bar.py`.
 
 ---
 
-### p5_worker_proxy_pane_parity_fixtures.py (115 LOC)
+### p5_worker_proxy_pane_parity_fixtures.py (112 LOC)
 
 **Purpose:** Loads `src.proxy_display.worker_proxy_pane`/`src.search_bar`, holds `check()`/results,
 and builds synthetic worker-proxy entries, state resets, and clipboard/output-building helpers.
@@ -179,11 +181,11 @@ the worker-switch reset half of the p5 suite.
 
 ---
 
-### p6_tokens_pane_parity_test.py (86 LOC)
+### p6_tokens_pane_parity_test.py (70 LOC)
 
 **Purpose:** Runs the tokens pane's search-bar parity suite and writes the PASS/FAIL report.
 **Reads:** nothing external.
-**Writes:** `md/p6_tokens_pane_parity_test_<timestamp>.md`; exits 1 if any check fails.
+**Writes:** `md/p6_tokens_pane_parity_test.md` (fixed name, overwritten each run); exits 1 if any strand aborts.
 **Called by:** none — manual regression guard, re-run after changing `token_pane.py`'s search/mouse
 handlers, `token_format.py`'s `format_cache_tracker`/`_compute_cache_viewport`, `token_search.py`,
 or `src/search_bar.py`.
@@ -192,7 +194,7 @@ or `src/search_bar.py`.
 
 ---
 
-### p6_tokens_pane_parity_fixtures.py (68 LOC)
+### p6_tokens_pane_parity_fixtures.py (65 LOC)
 
 **Purpose:** Loads the `src` token-pane modules, holds `check()`/results, and builds synthetic
 turns and pane-state resets for the p6 suite's test cases.
@@ -227,12 +229,12 @@ nav, jump-to-match, and session-change-reset half of the p6 suite.
 
 ---
 
-### p7_workers_pane_parity_test.py (86 LOC)
+### p7_workers_pane_parity_test.py (70 LOC)
 
 **Purpose:** Runs the worker-tokens pane's search-bar + worker-switch-header parity suite and
 writes the PASS/FAIL report.
 **Reads:** nothing external.
-**Writes:** `md/p7_workers_pane_parity_test_<timestamp>.md`; exits 1 if any check fails.
+**Writes:** `md/p7_workers_pane_parity_test.md` (fixed name, overwritten each run); exits 1 if any strand aborts.
 **Called by:** none — manual regression guard, re-run after changing `worker_tokens_pane.py`'s
 search/mouse/header handlers, `worker_switch_header.py`, `panes/token_search.py`, or
 `src/search_bar.py`.
@@ -241,7 +243,7 @@ search/mouse/header handlers, `worker_switch_header.py`, `panes/token_search.py`
 
 ---
 
-### p7_workers_pane_parity_fixtures.py (115 LOC)
+### p7_workers_pane_parity_fixtures.py (116 LOC)
 
 **Purpose:** Loads `src.workers.worker_tokens_pane`/`src.search_bar`/`src.colors`, holds
 `check()`/results, and builds real throwaway worker-JSONL fixtures plus state resets.
@@ -277,12 +279,12 @@ nav, jump-to-match, and the worker-switch reset half of the p7 suite.
 
 ---
 
-### p8_warnings_gpu_news_parity_test.py (91 LOC)
+### p8_warnings_gpu_news_parity_test.py (72 LOC)
 
 **Purpose:** Runs the warnings/gpu/news panes' bundled search-bar parity suite and writes the
 PASS/FAIL report.
 **Reads:** nothing external.
-**Writes:** `md/p8_warnings_gpu_news_parity_test_<timestamp>.md`; exits 1 if any check fails.
+**Writes:** `md/p8_warnings_gpu_news_parity_test.md` (fixed name, overwritten each run); exits 1 if any strand aborts.
 **Called by:** none — manual regression guard, re-run after changing `warnings_pane.py`/
 `warnings_render.py`'s search handling, `gpu_pane/pane.py`'s or `news_pane/pane.py`'s
 `_render_pane`/inline mouse dispatch, or `src/search_bar.py`.
@@ -291,7 +293,7 @@ PASS/FAIL report.
 
 ---
 
-### p8_warnings_gpu_news_parity_fixtures.py (107 LOC)
+### p8_warnings_gpu_news_parity_fixtures.py (104 LOC)
 
 **Purpose:** Loads the warnings/gpu/news `src` modules, holds `check()`/results, and builds
 synthetic tool-errors/presets plus per-pane state resets and the inline gpu-click dispatcher.
@@ -337,7 +339,7 @@ button-region behavior.
 ---
 
 ## State
-Every `pN_*_fixtures.py` module owns the `_RESULTS` list and `check()` helper for its suite;
+Every `pN_*_fixtures.py` module imports `check()` from `dev/refactoring/strand_runner.py`;
 `pN_*_cases*.py` modules mutate the imported real `src` pane module's globals (e.g.
 `src.proxy_display.pane.proxy_entries`, `src.panes.token_pane._tokens_search`) directly on each
 test call, and the matching `_reset_state`/`_reset_*_state` fixture function clears them between

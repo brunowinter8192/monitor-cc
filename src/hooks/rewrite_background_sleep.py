@@ -36,7 +36,8 @@ def rewrite_background_sleep_workflow() -> None:
 def _in_worktree() -> bool:
     try:
         return _WORKTREE_FRAGMENT in os.getcwd()
-    except Exception:
+    except Exception as e:
+        log_fire("rewrite_background_sleep", "trace", "Bash", "", reason=f"getcwd failed, hook skipped: {type(e).__name__}: {e}")
         return True
 
 def _parse_input():
@@ -48,7 +49,8 @@ def _parse_input():
         cmd = cmd if isinstance(cmd, str) else None
         bg = bg if isinstance(bg, bool) else False
         return cmd, bg, payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("rewrite_background_sleep", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, False, None
 
 def _emit_rewrite() -> dict:

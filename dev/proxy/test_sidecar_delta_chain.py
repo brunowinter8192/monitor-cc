@@ -5,6 +5,8 @@ import tempfile
 from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+sys.path.insert(0, str(WORKTREE_ROOT))
 
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 from proxy.addon_dual_log import _is_sidecar_payload, _write_request_dual_logs

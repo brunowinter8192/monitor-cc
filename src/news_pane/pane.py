@@ -17,17 +17,16 @@ from ..input.click_handler import (
 from ..utils import compute_header_rule_len, highlight_query_in_line
 from .log_parser import (
     TARGET_COLLECTION, WEBSEARCH_ROOT, read_last_run_ts,
-    find_log_file, RUN_START_MARKER, RUN_END_MARKER,
 )
-from ..pane_error_log import log_pane_error
+from ..pane_error_log import log_pane_error, log_pane_note
 from .. import search_bar
 
 NEWS_POLL_INTERVAL      = 2.0
-LOG_RUNNING_RECENT_SECS = 60
 
 _ANSI_RE        = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')
 _button_regions: dict                      = {}
 _pipeline_proc: subprocess.Popen | None   = None
+_fetch_states: dict                        = {}
 
 _NEWS_SEARCH_BAR_LINES = 1
 _NEWS_SEARCH_BAR_LABEL = 'search: '
@@ -158,17 +157,28 @@ def _fetch_news_status() -> dict:
     }
 
 
+def _note_fetch_state(kind: str, cause: str | None) -> None:
+    if _fetch_states.get(kind) == cause:
+        return
+    _fetch_states[kind] = cause
+    if cause is not None:
+        log_pane_note('news', f'{kind} unavailable: {cause}')
+
+
 def _fetch_doc_count() -> int | None:
     try:
         r = subprocess.run(
             ['rag-cli', 'list_documents', TARGET_COLLECTION],
             capture_output=True, text=True, timeout=5,
         )
-        if r.returncode == 0:
-            return sum(1 for ln in r.stdout.splitlines() if re.search(r'\.md \(\d+ chunks\)', ln))
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    return None
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        _note_fetch_state('doc_count', type(exc).__name__)
+        return None
+    if r.returncode != 0:
+        _note_fetch_state('doc_count', f'rc={r.returncode}')
+        return None
+    _note_fetch_state('doc_count', None)
+    return sum(1 for ln in r.stdout.splitlines() if re.search(r'\.md \(\d+ chunks\)', ln))
 
 
 def _fetch_chunk_count() -> int | None:
@@ -177,12 +187,18 @@ def _fetch_chunk_count() -> int | None:
             ['rag-cli', 'list_collections', '--json'],
             capture_output=True, text=True, timeout=5,
         )
-        if r.returncode == 0:
-            for entry in json.loads(r.stdout):
-                if entry.get('collection') == TARGET_COLLECTION:
-                    return entry.get('chunks')
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
-        pass
+        entries = json.loads(r.stdout) if r.returncode == 0 else None
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        _note_fetch_state('chunk_count', type(exc).__name__)
+        return None
+    if entries is None:
+        _note_fetch_state('chunk_count', f'rc={r.returncode}')
+        return None
+    for entry in entries:
+        if entry.get('collection') == TARGET_COLLECTION:
+            _note_fetch_state('chunk_count', None)
+            return entry.get('chunks')
+    _note_fetch_state('chunk_count', 'collection not listed')
     return None
 
 
@@ -197,25 +213,7 @@ def _fire_pipeline() -> None:
 
 
 def _is_running() -> bool:
-    if _pipeline_proc is not None and _pipeline_proc.poll() is None:
-        return True
-    return _is_running_via_log()
-
-
-def _is_running_via_log() -> bool:
-    lf = find_log_file()
-    if lf is None:
-        return False
-    try:
-        if time.time() - lf.stat().st_mtime > LOG_RUNNING_RECENT_SECS:
-            return False
-        text       = lf.read_text(errors='replace')
-        last_start = text.rfind(RUN_START_MARKER)
-        if last_start < 0:
-            return False
-        return text.find(RUN_END_MARKER, last_start) < 0
-    except OSError:
-        return False
+    return _pipeline_proc is not None and _pipeline_proc.poll() is None
 
 
 def _strip_ansi(s: str) -> str:

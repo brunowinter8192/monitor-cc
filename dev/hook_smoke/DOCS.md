@@ -4,11 +4,13 @@
 Smoke-test suite for `src/hooks/` — one test script per hook, verifying block/rewrite/pass-through
 behavior via a JSON stdin payload or a direct function call. Touch this suite when adding a new
 hook or changing existing hook logic. It is not itself a source of production behavior.
+`test_header_capture.py` fails 9 of 13 checks against the current `src/proxy/addon.py` and is
+excluded from `run_all.py`.
 
 ## Public Interface
 No `__init__.py` in this directory. Each script is its own entry point, run directly, e.g.
-`python3 dev/hook_smoke/<script>.py` (a few must run from the project root since their `HOOK` path
-is relative).
+`python3 dev/hook_smoke/<script>.py` from any directory; `python3 dev/hook_smoke/run_all.py` runs
+all test modules as parallel strands.
 
 ## Flow
 A JSON PreToolUse-shaped payload (or a direct function call for the stub-based scripts) goes in.
@@ -18,6 +20,28 @@ a real corpus (`dev/cache/jsonl/`, the main checkout's `hook_firing.jsonl`) and 
 `md/`.
 
 ## Modules
+
+### hook_runner.py (38 LOC)
+
+**Purpose:** Shared helper that runs one hook script from the repo root with an isolated fire log
+and offers the fail-fast abort used by the table tests.
+**Reads:** the hook script under `src/hooks/`.
+**Writes:** a per-call temp fire log, removed after the call.
+**Called by:** every `test_*.py` in this directory.
+**Calls out:** none.
+
+---
+
+### run_all.py (69 LOC)
+
+**Purpose:** Runs every `test_*.py` module of this directory as one parallel fail-fast strand and
+writes `md/run_all.md`.
+**Reads:** the `test_*.py` modules of this directory (executed via `runpy`).
+**Writes:** `md/run_all.md` (fixed name, overwritten per run).
+**Called by:** manual CLI.
+**Calls out:** `dev.refactoring.strand_runner`.
+
+---
 
 ### probe_bg_task_live.py (198 LOC)
 
@@ -42,18 +66,18 @@ reporting still-blocks vs. now-passes per old hook.
 
 ---
 
-### test_bg_task_detection.py (136 LOC)
+### test_bg_task_detection.py (152 LOC)
 
 **Purpose:** 6-case smoke for `_has_active_bg` — match/no-match/prefix-boundary units, a real
 subprocess integration case, a fail-open case, and a TTL-gate case.
-**Reads:** nothing external.
-**Writes:** a scratch dir under the real `_TASKS_BASE`, cleaned up in a `finally`.
+**Reads:** nothing external; `_TASKS_BASE` is redirected to a scratch dir for every case.
+**Writes:** a scratch dir under the system temp dir, removed on exit.
 **Called by:** none — manual CLI.
 **Calls out:** `menubar.proc_cache`.
 
 ---
 
-### test_block_broad_find.py (91 LOC)
+### test_block_broad_find.py (82 LOC)
 
 **Purpose:** 19-case smoke for `block_broad_find.py` — blocked broad-root `find` calls, allowed
 narrower/targeted cases.
@@ -63,7 +87,7 @@ narrower/targeted cases.
 
 ---
 
-### test_block_broad_grep.py (79 LOC)
+### test_block_broad_grep.py (70 LOC)
 
 **Purpose:** 16-case smoke for `block_broad_grep.py` — blocked recursive-piped-to-non-head cases,
 head-bounded and other exemptions.
@@ -73,7 +97,7 @@ head-bounded and other exemptions.
 
 ---
 
-### test_block_chained_sleep.py (60 LOC)
+### test_block_chained_sleep.py (51 LOC)
 
 **Purpose:** 13-case smoke for the retired `block_chained_sleep.py.disabled` — canonical vs.
 chained sleep placements, quoting/heredoc stripping.
@@ -83,7 +107,7 @@ chained sleep placements, quoting/heredoc stripping.
 
 ---
 
-### test_block_cli_chained.py (174 LOC)
+### test_block_cli_chained.py (166 LOC)
 
 **Purpose:** 45-case smoke for `block_cli_chained.py` — pipe/redirect/readback chain-abuse rules
 across 8 wrapper CLIs, plus interpreter-path and cwd-resolved bypass forms.
@@ -93,7 +117,7 @@ across 8 wrapper CLIs, plus interpreter-path and cwd-resolved bypass forms.
 
 ---
 
-### test_block_dangerous_kill.py (83 LOC)
+### test_block_dangerous_kill.py (74 LOC)
 
 **Purpose:** 18-case smoke for `block_dangerous_kill.py` — `pkill -f` patterns, pipe-kill chains,
 quoting exemptions, allowlist cases.
@@ -103,7 +127,7 @@ quoting exemptions, allowlist cases.
 
 ---
 
-### test_block_gh_cli_local_path.py (77 LOC)
+### test_block_gh_cli_local_path.py (68 LOC)
 
 **Purpose:** 15-case smoke for `block_gh_cli_local_path.py` — blocked local-path arguments to two
 `gh-cli` subcommands, pass and shell-strip cases.
@@ -113,7 +137,7 @@ quoting exemptions, allowlist cases.
 
 ---
 
-### test_block_git_destructive.py (97 LOC)
+### test_block_git_destructive.py (88 LOC)
 
 **Purpose:** 21-case smoke for `block_git_destructive.py` — force-push/amend/no-verify/
 allow-empty/config-write blocks, safe-op and FP-regression allow cases.
@@ -123,7 +147,7 @@ allow-empty/config-write blocks, safe-op and FP-regression allow cases.
 
 ---
 
-### test_block_manual_worker_cleanup.py (89 LOC)
+### test_block_manual_worker_cleanup.py (80 LOC)
 
 **Purpose:** 21-case smoke for `block_manual_worker_cleanup.py` — blocked `tmux kill-session`/
 `git worktree remove` on worker targets, allowed non-worker forms.
@@ -133,7 +157,7 @@ allow-empty/config-write blocks, safe-op and FP-regression allow cases.
 
 ---
 
-### test_block_non_canonical_edit.py (131 LOC)
+### test_block_non_canonical_edit.py (123 LOC)
 
 **Purpose:** 18-case smoke for the retired `block_non_canonical_edit.py.disabled` — always-block
 edit forms, always-allow forms, the canonical `LINEEDIT` form, fail-open.
@@ -144,7 +168,7 @@ edit forms, always-allow forms, the canonical `LINEEDIT` form, fail-open.
 
 ---
 
-### test_block_po_read.py (117 LOC)
+### test_block_po_read.py (109 LOC)
 
 **Purpose:** 19-case smoke for `block_po_read.py` — blocked readers on a persisted-output path,
 allow cases, and 3 real-file size-boundary cases.
@@ -155,7 +179,7 @@ allow cases, and 3 real-file size-boundary cases.
 
 ---
 
-### test_block_rag_cli_document_repeat.py (184 LOC)
+### test_block_rag_cli_document_repeat.py (167 LOC)
 
 **Purpose:** 7-case smoke for `block_rag_cli_document_repeat.py` — single/repeat/collection-wide/
 cross-session/`delete`-subcommand and fail-open cases.
@@ -165,7 +189,7 @@ cross-session/`delete`-subcommand and fail-open cases.
 
 ---
 
-### test_block_rag_cli_index_isolated.py (126 LOC)
+### test_block_rag_cli_index_isolated.py (117 LOC)
 
 **Purpose:** 37-case smoke for `block_rag_cli_index_isolated.py` — blocked poll-then-index chain
 shapes incl. substitution smuggling, allowed bare/cd-guarded/quoted cases.
@@ -175,7 +199,7 @@ shapes incl. substitution smuggling, allowed bare/cd-guarded/quoted cases.
 
 ---
 
-### test_block_rag_corpus_read.py (135 LOC)
+### test_block_rag_corpus_read.py (126 LOC)
 
 **Purpose:** Smoke for `block_rag_corpus_read.py` — blocked raw-read commands over the rag-cli
 corpus tree, allowed management ops and unrelated reads.
@@ -185,7 +209,7 @@ corpus tree, allowed management ops and unrelated reads.
 
 ---
 
-### test_block_rag_docs_layer.py (69 LOC)
+### test_block_rag_docs_layer.py (60 LOC)
 
 **Purpose:** 11-case smoke for `block_rag_docs_layer.py` — `rag-cli search` against a `*-docs`
 collection blocks without a `process-docs/%` filter, allows with it.
@@ -195,18 +219,7 @@ collection blocks without a `process-docs/%` filter, allows with it.
 
 ---
 
-### test_block_read_worktree.py (64 LOC)
-
-**Purpose:** Smoke for `block_read_worktree.py` — foreign-worktree reads blocked, own-worktree and
-plain-path reads allowed.
-**Reads:** its own `os.getcwd()` to detect whether it runs inside a worktree.
-**Writes:** PASS/FAIL to stdout.
-**Called by:** none — manual CLI.
-**Calls out:** none — drives the hook via `subprocess`.
-
----
-
-### test_block_unauthorized_background.py (93 LOC)
+### test_block_unauthorized_background.py (84 LOC)
 
 **Purpose:** 16-case smoke for `block_unauthorized_background.py` — `sleep` kept exempt, any
 `worker-cli wait` mention (canonical or not) excluded from this hook's opinion entirely (a quoted
@@ -217,7 +230,7 @@ mention does not exempt an unrelated command), other backgrounded commands force
 
 ---
 
-### test_block_worker_kill_while_working.py (111 LOC)
+### test_block_worker_kill_while_working.py (130 LOC)
 
 **Purpose:** Smoke for `decide()` in `block_worker_kill_while_working.py`, using the real
 `_strip_non_shell_active` and a stub `status_fn`.
@@ -227,7 +240,7 @@ mention does not exempt an unrelated command), other backgrounded commands force
 
 ---
 
-### test_block_worker_send_while_working.py (121 LOC)
+### test_block_worker_send_while_working.py (155 LOC)
 
 **Purpose:** Smoke for `decide()` in `block_worker_send_while_working.py` via the same stub
 pattern, plus one real `subprocess` call for the malformed-stdin fail-open case.
@@ -237,18 +250,19 @@ pattern, plus one real `subprocess` call for the malformed-stdin fail-open case.
 
 ---
 
-### test_fire_log.py (209 LOC)
+### test_fire_log.py (163 LOC)
 
 **Purpose:** Regression for the shared hook fire-logging helper — block/rewrite decisions append
-the expected record, an env-var log-path override is honored, tool-error writer works.
+the expected record and an env-var log-path override is honored (checked against a scratch copy of
+`src/hooks/` with a control run).
 **Reads:** nothing external.
-**Writes:** its own tempfiles, cleaned up per case.
-**Called by:** none — manual CLI.
-**Calls out:** `src.panes.warnings_persist` (`append_tool_errors`).
+**Writes:** its own tempdirs, removed per case.
+**Called by:** `run_all.py`; manual CLI.
+**Calls out:** none.
 
 ---
 
-### test_header_capture.py (170 LOC)
+### test_header_capture.py (173 LOC)
 
 **Purpose:** 13-case smoke for proxy header-capture logic — `anthropic-beta` extraction and
 `_filter_response_headers()` exact-name/prefix filtering.
@@ -259,7 +273,7 @@ the expected record, an env-var log-path override is honored, tool-error writer 
 
 ---
 
-### test_hook_setup_main_branch_gate.py (122 LOC)
+### test_hook_setup_main_branch_gate.py (139 LOC)
 
 **Purpose:** 10-case smoke for the two-condition install gate in `hook_setup.py`'s
 `decide_entries()` — committed-on-main AND present-in-tree, either failing skips.
@@ -270,7 +284,16 @@ the expected record, an env-var log-path override is honored, tool-error writer 
 
 ---
 
-### test_log_janitor.py (68 LOC)
+### test_hook_trace_lines.py (250 LOC)
+
+**Purpose:** Provokes each observed hook degradation (parse error, log-dir/write failure, raw-text strip fallback, unterminated quote, shlex exemption, unknown-size po block, rag state failures, worker-status degradation, getcwd failure, stale sweep) and asserts the `trace` line while exit semantics stay unchanged.
+**Reads:** nothing. **Writes:** PASS/FAIL to stdout; all hook logs go to temp paths.
+**Called by:** none — manual CLI; cases run in parallel threads.
+**Calls out:** none — drives the hooks via `subprocess` and direct module loads.
+
+---
+
+### test_log_janitor.py (65 LOC)
 
 **Purpose:** 4-case smoke for `cleanup_old_jsonl` — old record dropped, recent/empty/naive-ts
 records kept (fail-safe).
@@ -281,7 +304,7 @@ records kept (fail-safe).
 
 ---
 
-### test_rewrite_background_sleep.py (166 LOC)
+### test_rewrite_background_sleep.py (156 LOC)
 
 **Purpose:** 14-case smoke for `rewrite_background_sleep.py` — sleep-shape rewrites to
 `worker-cli wait`, no-op cases, and the worktree-cwd orchestrator-only guard.
@@ -291,7 +314,7 @@ records kept (fail-safe).
 
 ---
 
-### test_rewrite_chained_sleep.py (211 LOC)
+### test_rewrite_chained_sleep.py (202 LOC)
 
 **Purpose:** 8-case (28-tuple) smoke for `rewrite_chained_sleep.py` — trivial `cmd_before` strips
 the sleep, load-bearing `cmd_before`/loop-body/sleep-first shapes are no-ops.
@@ -301,7 +324,7 @@ the sleep, load-bearing `cmd_before`/loop-body/sleep-first shapes are no-ops.
 
 ---
 
-### test_rewrite_worker_wait.py (124 LOC)
+### test_rewrite_worker_wait.py (115 LOC)
 
 **Purpose:** 22-case smoke for `rewrite_worker_wait.py` — already-correct forms are a no-op,
 missing/false `run_in_background` is forced true, an unambiguous leading `cd` is collapsed into
@@ -349,7 +372,7 @@ regenerated (its caller can no longer run).
 
 ## State
 No persistent state lives in this directory. Every script builds its own synthetic state locally
-(tempfiles/tempdirs, stub maps, or its own scratch dir under `_TASKS_BASE`) and discards it before
+(tempfiles/tempdirs, stub maps, or its own scratch dir) and discards it before
 exit. `probe_replay_cli_chained.py` and `verify_block_non_canonical_edit_report.py` are the two
 exceptions: they write into the tracked `md/` reports in this directory, which are historical
 snapshots — re-running them regenerates the report against whatever corpus is live at run time,

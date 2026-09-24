@@ -65,7 +65,7 @@ spans as equal/stripped/injected via `difflib`.
 
 ---
 
-### proxy_176_agent_types_tests.py (146 LOC)
+### proxy_176_agent_types_tests.py (148 LOC)
 
 **Purpose:** Unit tests for the CC 2.1.176 agent-types system-reminder strip and its attribution
 code.
@@ -78,7 +78,7 @@ location).
 
 ---
 
-### proxy_176_strip_tests.py (169 LOC)
+### proxy_176_strip_tests.py (171 LOC)
 
 **Purpose:** Unit tests for two CC 2.1.176 proxy drift fixes — the Workflow tool blocklist entry
 and the role=system message strip.

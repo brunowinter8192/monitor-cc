@@ -97,8 +97,13 @@ def test_epoch_from_iso_matches_true_utc_epoch() -> None:
     offset_shape = "2026-09-04T20:16:02.582+00:00Z"
     check("_epoch_from_iso matches the true UTC epoch (+00:00Z shape)",
           _epoch_from_iso(offset_shape) == true_epoch, (_epoch_from_iso(offset_shape), true_epoch))
-    check("_epoch_from_iso returns None for empty/unparseable input",
-          _epoch_from_iso("") is None and _epoch_from_iso("garbage") is None)
+    check("_epoch_from_iso returns None for empty input", _epoch_from_iso("") is None)
+    try:
+        _epoch_from_iso("garbage")
+        raised = False
+    except ValueError:
+        raised = True
+    check("_epoch_from_iso raises ValueError for unparseable input", raised)
 
 if __name__ == '__main__':
     sys.exit(test_local_time_workflow())

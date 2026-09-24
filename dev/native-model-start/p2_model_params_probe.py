@@ -6,7 +6,7 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 from model_override_injection_tests import (
-    test_legacy_only_unchanged,
+    test_legacy_only_is_ignored,
     test_model_params_hit,
     test_model_params_miss,
     test_suffixed_model_id_is_deliberate_miss,
@@ -15,7 +15,7 @@ from model_override_injection_tests import (
     test_config_load_failure_fails_open,
     test_fixation_pins_model_params_snapshot,
     test_fixation_fresh_instance_picks_up_new_config,
-    test_fixation_legacy_path_pinned_and_unchanged,
+    test_fixation_legacy_only_config_pins_no_op,
     test_fixation_miss_is_pinned_too,
     test_fixation_load_failure_does_not_pin,
 )
@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dev.refactoring.strand_runner import strand_workflow
 
 _STRANDS = [
-    'test_legacy_only_unchanged',
+    'test_legacy_only_is_ignored',
     'test_model_params_hit',
     'test_model_params_miss',
     'test_suffixed_model_id_is_deliberate_miss',
@@ -37,7 +37,7 @@ _STRANDS = [
     'test_config_load_failure_fails_open',
     'test_fixation_pins_model_params_snapshot',
     'test_fixation_fresh_instance_picks_up_new_config',
-    'test_fixation_legacy_path_pinned_and_unchanged',
+    'test_fixation_legacy_only_config_pins_no_op',
     'test_fixation_miss_is_pinned_too',
     'test_fixation_load_failure_does_not_pin',
     'test_clear_thinking_edit_stripped_when_thinking_disabled',

@@ -7,11 +7,21 @@ from pathlib import Path
 from typing import Optional
 
 from ..constants import PROXY_MESSAGES_KEEP_LAST
-from ..pane_error_log import log_pane_error
+from ..monitor_root import resolve_monitor_cc_root
+from ..pane_error_log import log_pane_error, log_pane_note
+from src.jsonl.jsonl_reader import JsonlReader
 from ..proxy.message_summary import _infer_model_family, _summarize_message
 from ..proxy.logging import _compute_diff
 
+_missing_marker_noted: set = set()
+
 # FUNCTIONS
+
+def _monitor_root() -> Path:
+    return resolve_monitor_cc_root(_report_root)
+
+def _report_root(root: Path, source: str) -> None:
+    log_pane_note('monitor_root', f'source={source} root={root}')
 
 def _proxy_session_id_for_project(project_path: str) -> str:
     normalized_path = os.path.normpath(os.path.expanduser(project_path))
@@ -19,12 +29,19 @@ def _proxy_session_id_for_project(project_path: str) -> str:
 
 def _resolve_log_id(root: str, session_id: str) -> str:
     marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
-    log_id = session_id
-    if marker_file.exists():
-        lines = marker_file.read_text(encoding='utf-8').splitlines()
-        if len(lines) >= 2 and lines[1].strip():
-            log_id = lines[1].strip()
+    if not marker_file.exists():
+        _note_missing_marker(session_id)
+        return session_id
+    log_id = marker_file.read_text(encoding='utf-8').splitlines()[1].strip()
+    if not log_id:
+        raise ValueError(f'empty log id on line 2 of {marker_file}')
     return log_id
+
+def _note_missing_marker(session_id: str) -> None:
+    if session_id in _missing_marker_noted:
+        return
+    _missing_marker_noted.add(session_id)
+    log_pane_note('forwarded_parser', f'no proxy session marker for {session_id}; using the session id as log id')
 
 def _summarize_fwd_message(msg: dict) -> dict:
     s = _summarize_message(msg)
@@ -119,10 +136,11 @@ def _reconstruct_first_request(fwd_e: dict, sys_cnt: int, tools_cnt: int, msg_cn
     return new_system, new_tools, new_summaries, new_summaries
 
 def _reconstruct_delta_request(prev_acc: Optional[dict], fwd_e: dict, sys_cnt: int, tools_cnt: int, msg_cnt: int) -> tuple:
-    prev = prev_acc if prev_acc else {'system': [], 'tools': [], 'messages': []}
-    new_system = _apply_delta_to_list(prev['system'], fwd_e.get('system_delta') or {}, sys_cnt)
-    new_tools = _apply_delta_to_list(prev['tools'], fwd_e.get('tools_delta') or {}, tools_cnt)
-    new_summaries, delta_summaries = _apply_messages_delta(prev['messages'], fwd_e.get('messages_delta') or {}, msg_cnt)
+    if not prev_acc:
+        raise LookupError(f'delta request without earlier state: flow_id={fwd_e.get("flow_id")!r}')
+    new_system = _apply_delta_to_list(prev_acc['system'], fwd_e.get('system_delta') or {}, sys_cnt)
+    new_tools = _apply_delta_to_list(prev_acc['tools'], fwd_e.get('tools_delta') or {}, tools_cnt)
+    new_summaries, delta_summaries = _apply_messages_delta(prev_acc['messages'], fwd_e.get('messages_delta') or {}, msg_cnt)
     return new_system, new_tools, new_summaries, delta_summaries
 
 def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, message_summaries: list, delta_messages: list) -> dict:
@@ -153,7 +171,6 @@ def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, messag
     entry['deferred_tools_names'] = []
     entry['stripped_msg_indices'] = []
     entry['cache_breakpoints'] = []
-    entry['messages'] = None
 
     return entry
 
@@ -204,97 +221,70 @@ def _process_forwarded_entry(fwd_e: dict, req_idx: int, acc_by_family: dict) -> 
 def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict, keep_last: int = PROXY_MESSAGES_KEEP_LAST) -> tuple:
     entries: list = []
     recent_window: deque = deque()
+    reader = JsonlReader(fwd_path, last_pos)
     try:
-        with open(fwd_path, 'r', encoding='utf-8') as f:
-            f.seek(last_pos)
-            req_idx = 0
-            while True:
-                raw_line = f.readline()
-                if not raw_line:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    fwd_e = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if fwd_e.get('type') != 'forwarded_delta':
-                    continue
-                entry, new_summaries = _process_forwarded_entry(fwd_e, req_idx, acc_by_family)
-                entries.append(entry)
-                recent_window.append((entry, new_summaries))
-                if keep_last is not None and len(recent_window) > keep_last:
-                    recent_window.popleft()
-                req_idx += 1
-            new_pos = f.tell()
+        req_idx = 0
+        for fwd_e in reader:
+            if fwd_e.get('type') != 'forwarded_delta':
+                continue
+            entry, new_summaries = _process_forwarded_entry(fwd_e, req_idx, acc_by_family)
+            entries.append(entry)
+            recent_window.append((entry, new_summaries))
+            if keep_last is not None and len(recent_window) > keep_last:
+                recent_window.popleft()
+            req_idx += 1
     except OSError:
         log_pane_error('forwarded_parser')
         return [], last_pos
     for win_entry, summaries in recent_window:
         win_entry['messages'] = list(summaries)
         win_entry['messages_total_chars'] = sum(s.get('chars', 0) for s in summaries)
-    return entries, new_pos
+    return entries, reader.position
 
-def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> bool:
+def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> None:
     target_flow_id = entry.get('flow_id')
     if not target_flow_id or fwd_path is None or not fwd_path.exists():
-        return False
+        raise LookupError(f'cannot lazy load messages: flow_id={target_flow_id!r} path={fwd_path}')
     family = _infer_model_family(entry.get('model', ''))
     temp_acc: dict = {}
-    try:
-        with open(fwd_path, 'r', encoding='utf-8') as f:
-            while True:
-                raw_line = f.readline()
-                if not raw_line:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    fwd_e = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if fwd_e.get('type') != 'forwarded_delta':
-                    continue
-                e_family = _infer_model_family(fwd_e.get('model', ''))
-                is_first = fwd_e.get('is_first', False)
-                counts = fwd_e.get('counts', {})
-                msg_cnt = counts.get('messages', 0)
-                if _is_continue_entry(fwd_e):
-                    if fwd_e.get('flow_id') == target_flow_id:
-                        own = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
-                        entry['messages'] = own
-                        entry['messages_total_chars'] = sum(x.get('chars', 0) for x in own)
-                        return True
-                    continue
-                if is_first:
-                    summaries = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
-                else:
-                    prev_summaries = temp_acc.get(e_family, [])
-                    summaries, _ = _apply_messages_delta(prev_summaries, fwd_e.get('messages_delta') or {}, msg_cnt)
-                temp_acc[e_family] = summaries
-                if fwd_e.get('flow_id') == target_flow_id:
-                    reconstructed = temp_acc.get(family, [])
-                    entry['messages'] = list(reconstructed)
-                    entry['messages_total_chars'] = sum(s.get('chars', 0) for s in reconstructed)
-                    return True
-    except OSError:
-        log_pane_error('forwarded_parser')
-        return False
-    return False
+    for fwd_e in JsonlReader(fwd_path):
+        if fwd_e.get('type') != 'forwarded_delta':
+            continue
+        e_family = _infer_model_family(fwd_e.get('model', ''))
+        is_first = fwd_e.get('is_first', False)
+        counts = fwd_e.get('counts', {})
+        msg_cnt = counts.get('messages', 0)
+        if _is_continue_entry(fwd_e):
+            if fwd_e.get('flow_id') == target_flow_id:
+                own = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
+                entry['messages'] = own
+                entry['messages_total_chars'] = sum(x.get('chars', 0) for x in own)
+                return
+            continue
+        if is_first:
+            summaries = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
+        else:
+            prev_summaries = temp_acc.get(e_family, [])
+            summaries, _ = _apply_messages_delta(prev_summaries, fwd_e.get('messages_delta') or {}, msg_cnt)
+        temp_acc[e_family] = summaries
+        if fwd_e.get('flow_id') == target_flow_id:
+            reconstructed = temp_acc.get(family, [])
+            entry['messages'] = list(reconstructed)
+            entry['messages_total_chars'] = sum(s.get('chars', 0) for s in reconstructed)
+            return
+    raise LookupError(f'flow_id={target_flow_id!r} not found in {fwd_path}')
 
 def reconstruct_all_messages(fwd_path: Path) -> dict:
     entries, _ = _parse_forwarded_log(fwd_path, 0, {}, keep_last=None)
     return {e['flow_id']: e['messages'] for e in entries if e.get('flow_id')}
 
 def parse_proxy_log_forwarded(project_filter: Optional[str], last_pos: int, acc_by_family: dict) -> tuple:
-    root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
+    root = _monitor_root()
     if not project_filter:
         return [], last_pos
     session_id = _proxy_session_id_for_project(project_filter)
     log_id = _resolve_log_id(root, session_id)
-    fwd_path = Path(root) / 'src' / 'logs' / 'dual_log' / f'api_requests_{log_id}_forwarded.jsonl'
+    fwd_path = root / 'src' / 'logs' / 'dual_log' / f'api_requests_{log_id}_forwarded.jsonl'
     entries, new_pos = _parse_forwarded_log(fwd_path, last_pos, acc_by_family)
     for entry in entries:
         entry['_source_file'] = fwd_path.name

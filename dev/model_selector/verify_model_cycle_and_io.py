@@ -3,11 +3,12 @@ import importlib
 import json
 import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
+
+from dev.refactoring.strand_runner import strand_workflow
 
 REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_model_cycle_and_io.md"
 
@@ -36,40 +37,72 @@ _FIXTURE_RAW = '''{
 }
 '''
 
+_STRAND_NAMES = [
+    '_strand_model_cycle',
+    '_strand_effort_cycle',
+    '_strand_max_tokens_cycle',
+    '_strand_thinking_cycle',
+    '_strand_model_selection_io',
+    '_strand_proxy_rules_format_fidelity',
+    '_strand_proxy_rules_read_modify_write',
+    '_strand_proxy_rules_malformed_fallback',
+]
+_TITLE = 'Models tab: cycle and I/O verification'
+
 # ORCHESTRATOR
 
 def verify_model_cycle_and_io_workflow() -> None:
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, REPORT_PATH, _TITLE))
+
+# FUNCTIONS
+
+def _emit(lines) -> None:
+    print("\n".join(lines))
+
+def _strand_model_cycle() -> None:
+    lines = []
+    _verify_model_cycle(_load_model_selection_module(), lines)
+    _emit(lines)
+
+def _strand_effort_cycle() -> None:
+    lines = []
+    _verify_effort_cycle(_load_model_selection_module(), lines)
+    _emit(lines)
+
+def _strand_max_tokens_cycle() -> None:
+    lines = []
+    _verify_max_tokens_cycle(_load_model_selection_module(), lines)
+    _emit(lines)
+
+def _strand_thinking_cycle() -> None:
+    lines = []
+    _verify_thinking_cycle(_load_model_selection_module(), lines)
+    _emit(lines)
+
+def _strand_model_selection_io() -> None:
+    lines = []
     ms = _load_model_selection_module()
-    lines = [f"# Models tab — cycle + I/O verification — {datetime.now().isoformat(timespec='seconds')}", ""]
-
-    _verify_model_cycle(ms, lines)
-    _verify_effort_cycle(ms, lines)
-    _verify_max_tokens_cycle(ms, lines)
-    _verify_thinking_cycle(ms, lines)
-
     with tempfile.TemporaryDirectory() as tmp:
         _verify_model_selection_write(ms, lines, tmp)
         _verify_model_selection_readback(ms, lines, tmp)
-        _verify_proxy_rules_format_fidelity(ms, lines)
-        _verify_proxy_rules_read_modify_write(ms, lines, tmp)
-        _verify_proxy_rules_malformed_fallback(ms, lines, tmp)
+    _emit(lines)
 
-    lines.append("")
-    lines.append("RESULT: PASS — model/effort/max_tokens cycles step + wrap correctly; the "
-                "thinking toggle flips between exactly the on (adaptive/summarized) and off "
-                "(disabled) states; model_selection.json write is atomic with exact 2-key schema, "
-                "read-back correct for valid/missing/malformed files, unrecognized values preserved "
-                "verbatim; proxy_rules.json serializer reproduces the real on-disk convention "
-                "byte-for-byte, Apply's read-modify-write touches only the two selected models' "
-                "effort/max_tokens/thinking (foreign sections/keys/models byte-identical, missing "
-                "entries created with the established thinking-block shape, malformed file degrades "
-                "to a fresh minimal file without raising).")
+def _strand_proxy_rules_format_fidelity() -> None:
+    lines = []
+    _verify_proxy_rules_format_fidelity(_load_model_selection_module(), lines)
+    _emit(lines)
 
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("\n".join(lines))
+def _strand_proxy_rules_read_modify_write() -> None:
+    lines = []
+    with tempfile.TemporaryDirectory() as tmp:
+        _verify_proxy_rules_read_modify_write(_load_model_selection_module(), lines, tmp)
+    _emit(lines)
 
-# FUNCTIONS
+def _strand_proxy_rules_malformed_fallback() -> None:
+    lines = []
+    with tempfile.TemporaryDirectory() as tmp:
+        _verify_proxy_rules_malformed_fallback(_load_model_selection_module(), lines, tmp)
+    _emit(lines)
 
 def _load_model_selection_module():
     module_name = '.'.join(['src', 'menubar', 'model_selection'])
@@ -256,22 +289,26 @@ def _check_proxy_rules_touched_and_created(written, lines) -> None:
 
 def _verify_proxy_rules_malformed_fallback(ms, lines, tmp) -> None:
     lines.append("")
-    lines.append("## 9. proxy_rules.json malformed-file fallback")
+    lines.append("## 9. proxy_rules.json malformed file is never overwritten")
     path = Path(tmp) / "proxy_rules_malformed.json"
-    path.write_text("{not valid json", encoding="utf-8")
+    malformed = "{not valid json"
+    path.write_text(malformed, encoding="utf-8")
 
-    ms._write_proxy_rules_model_params(
-        "claude-opus-5", "high", 64000, ms._THINKING_OFF,
-        "claude-sonnet-5", "high", 64000, ms._DEFAULT_THINKING,
-        path=path)
-
-    written = json.loads(path.read_text(encoding="utf-8"))
-    lines.append(f"Write from malformed file did not raise; result parses as valid JSON: True")
-    assert written["model_params"]["claude-opus-5"]["effort"] == "high"
-    assert written["model_params"]["claude-opus-5"]["thinking"] == {"type": "disabled"}
-    assert written["model_params"]["claude-sonnet-5"]["max_tokens"] == 64000
-    lines.append(f"Fresh model_params created for both selected models, thinking states applied: "
-                f"{list(written['model_params'].keys())}")
+    raised = False
+    try:
+        ms._write_proxy_rules_model_params(
+            "claude-opus-5", "high", 64000, ms._THINKING_OFF,
+            "claude-sonnet-5", "high", 64000, ms._DEFAULT_THINKING,
+            path=path)
+    except json.JSONDecodeError:
+        raised = True
+    assert raised, "write over an unreadable proxy_rules.json must raise, not persist defaults"
+    lines.append("Write from malformed file raised JSONDecodeError: True")
+    assert path.read_text(encoding="utf-8") == malformed
+    lines.append("Malformed file left byte-identical on disk: True")
+    tmp_leftover = path.with_name(path.name + ".tmp")
+    assert not tmp_leftover.exists()
+    lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
 
 
 if __name__ == "__main__":

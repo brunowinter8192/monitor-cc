@@ -9,12 +9,16 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 os.environ.setdefault('MONITOR_CC_ROOT', str(_ROOT))
 
-_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
+_FIXTURE_JSONL = Path(__file__).resolve().parent / 'fixtures' / 'session_prefix_300.jsonl'
 _PREFIX_LINES = 300
 _CHUNK_SIZE = 40
 
 # ORCHESTRATOR
 
+
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
 
 def main():
     build_cache_turns, format_warnings_pane, format_cache_tracker = _import_panes()
@@ -38,10 +42,7 @@ def _session_jsonl() -> Path:
     override = os.environ.get('PANES_BYTE_IDENTITY_JSONL')
     if override:
         return Path(override)
-    files = sorted(_PROJECTS_DIR.glob('*/*.jsonl'), key=lambda p: p.stat().st_mtime)
-    if not files:
-        raise SystemExit(f'no *.jsonl session logs found under {_PROJECTS_DIR}')
-    return files[-1]
+    return _FIXTURE_JSONL
 
 
 def _frozen_prefix_lines(source: Path) -> list:
@@ -162,7 +163,7 @@ def _hash_format_cache_tracker(digest, format_cache_tracker) -> None:
             turns, expand_states=expand_states, pane_height=30, pane_width=pane_width,
             scroll_offset=0, response_rid_map=response_rid_map, copy_feedback=copy_feedback,
             search_match_set={(0, 0), ('turn', 0)}, search_current_key=(0, 0),
-            search_query='rate limit', nav_out=nav_out,
+            search_query='rate limit', nav_out=nav_out, turn_cache=_token_turn_cache()
         )
         digest.update(f'cache_tracker|{pane_width}|'.encode())
         digest.update(json.dumps(result, default=str, sort_keys=True).encode())

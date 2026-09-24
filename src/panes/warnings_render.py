@@ -9,7 +9,7 @@ from ..colors import (
     DIM_YELLOW_BG,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..constants import WARNINGS_POLL_INTERVAL
+from ..constants import NO_TIME_PLACEHOLDER, WARNINGS_POLL_INTERVAL
 from ..utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
 from ..format.strip_marker import highlight_stripped
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
@@ -35,15 +35,16 @@ def build_warnings_search_matches(query: str, tool_errors: list) -> List[int]:
     q = query.lower()
     return [i for i, err in enumerate(tool_errors) if _error_matches_query(err, q)]
 
-def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, regions_out: Optional[dict] = None) -> str:
+def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, regions_out: Optional[dict] = None, notice: str = '') -> str:
     if regions_out is not None:
         regions_out.clear()
     if last_refresh_ts:
         last_dt = datetime.datetime.fromtimestamp(last_refresh_ts)
         last_str = last_dt.strftime('%H:%M:%S')
     else:
-        last_str = '--:--:--'
-    text = f"{DIM}[r]efresh · last: {last_str} · polling: {int(WARNINGS_POLL_INTERVAL)}s{RESET}"
+        last_str = NO_TIME_PLACEHOLDER
+    notice_part = f" · {notice}" if notice else ''
+    text = f"{DIM}[r]efresh · last: {last_str} · polling: {int(WARNINGS_POLL_INTERVAL)}s{notice_part}{RESET}"
     if regions_out is None:
         return text
     label = '[refresh]'

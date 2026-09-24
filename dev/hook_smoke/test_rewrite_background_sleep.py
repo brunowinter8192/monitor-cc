@@ -1,9 +1,8 @@
 # INFRASTRUCTURE
 import json
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
+from hook_runner import abort_if_failed, run_hook
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 HOOK = str(WORKTREE_ROOT / "src" / "hooks" / "rewrite_background_sleep.py")
@@ -130,12 +129,8 @@ def test_rewrite_background_sleep_workflow() -> None:
                 print(f"           want: {want}")
                 print(f"           got:  {got} (exit={exit_code})")
                 failures.append(desc)
+                abort_if_failed(failures)
         print()
-        if failures:
-            print(f"FAILED: {len(failures)} case(s):")
-            for f in failures:
-                print(f"  - {f}")
-            sys.exit(1)
         print(f"All {len(CASES)} tests passed.")
 
 
@@ -146,12 +141,7 @@ def _run_hook(command: str, run_in_background: bool, cwd: str):
         "tool_name": "Bash",
         "tool_input": {"command": command, "run_in_background": run_in_background},
     })
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-        cwd=cwd,
-    )
+    result = run_hook(HOOK, payload.encode(), cwd=cwd)
     rewrite = None
     if result.returncode == 0 and result.stdout.strip():
         try:

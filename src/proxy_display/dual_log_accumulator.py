@@ -1,9 +1,9 @@
 # INFRASTRUCTURE
-import json
 from pathlib import Path
 from typing import Optional
 
 from ..pane_error_log import log_pane_error
+from src.jsonl.jsonl_reader import JsonlReader
 from .forwarded_parser import _infer_model_family
 from .proxy_badge import _is_total_tokens_nuke, _msgs_delta_is_substantial
 
@@ -21,31 +21,20 @@ def _bump_overlay_epoch() -> None:
 def accumulate_original_tools(path: Optional[Path], last_pos: int, acc_by_family: dict) -> int:
     if path is None or not path.exists():
         return last_pos
+    reader = JsonlReader(path, last_pos)
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            f.seek(last_pos)
-            while True:
-                raw_line = f.readline()
-                if not raw_line:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                tools = (entry.get('payload') or {}).get('tools')
-                if not tools:
-                    continue
-                family = _infer_model_family(entry.get('model', ''))
-                _bump_overlay_epoch()
-                fam_map = acc_by_family.setdefault(family, {})
-                fam_map.clear()
-                for t in tools:
-                    if isinstance(t, dict) and t.get('name'):
-                        fam_map[t['name']] = t
-            return f.tell()
+        for entry in reader:
+            tools = (entry.get('payload') or {}).get('tools')
+            if not tools:
+                continue
+            family = _infer_model_family(entry.get('model', ''))
+            _bump_overlay_epoch()
+            fam_map = acc_by_family.setdefault(family, {})
+            fam_map.clear()
+            for t in tools:
+                if isinstance(t, dict) and t.get('name'):
+                    fam_map[t['name']] = t
+        return reader.position
     except OSError:
         log_pane_error('dual_log_accumulator')
         return last_pos
@@ -101,34 +90,23 @@ def _apply_lag_correction(acc: dict, entry: dict, msgs_delta: dict) -> None:
 def accumulate_dual_log(path: Optional[Path], last_pos: int, acc_by_family: dict) -> int:
     if path is None or not path.exists():
         return last_pos
+    reader = JsonlReader(path, last_pos)
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            f.seek(last_pos)
-            while True:
-                raw_line = f.readline()
-                if not raw_line:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                family = _infer_model_family(entry.get('model', ''))
-                acc = acc_by_family.setdefault(
-                    family,
-                    {
-                        'system': {}, 'tools': {}, 'messages': {}, 'fields': {},
-                        '_has_content_by_flow_id': {}, '_msg_idx_by_flow_id': {},
-                    }
-                )
-                _bump_overlay_epoch()
-                _reset_family_acc_if_first(acc, entry)
-                msgs_delta = _merge_dual_log_entry(acc, entry)
-                _record_flow_lookups(acc, entry, msgs_delta)
-                _apply_lag_correction(acc, entry, msgs_delta)
-            return f.tell()
+        for entry in reader:
+            family = _infer_model_family(entry.get('model', ''))
+            acc = acc_by_family.setdefault(
+                family,
+                {
+                    'system': {}, 'tools': {}, 'messages': {}, 'fields': {},
+                    '_has_content_by_flow_id': {}, '_msg_idx_by_flow_id': {},
+                }
+            )
+            _bump_overlay_epoch()
+            _reset_family_acc_if_first(acc, entry)
+            msgs_delta = _merge_dual_log_entry(acc, entry)
+            _record_flow_lookups(acc, entry, msgs_delta)
+            _apply_lag_correction(acc, entry, msgs_delta)
+        return reader.position
     except OSError:
         log_pane_error('dual_log_accumulator')
         return last_pos

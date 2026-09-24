@@ -1,8 +1,9 @@
 # INFRASTRUCTURE
-import os
 import re
+import sys
 from pathlib import Path
 
+from ..monitor_root import resolve_monitor_cc_root, root_source
 from .project_map import build_project_index, project_label
 from .reader import infer_family, iter_jsonl, local_datetime
 
@@ -26,19 +27,27 @@ class UnknownSessionError(Exception):
 
 
 def resolve_dual_log_dir() -> Path:
-    env_root = os.environ.get("MONITOR_CC_ROOT")
-    if env_root:
-        return Path(env_root) / "src" / "logs" / "dual_log"
-    here = Path(__file__).resolve()
-    repo_root = here.parents[2]
-    direct = repo_root / "src" / "logs" / "dual_log"
+    root = resolve_monitor_cc_root(_report_root)
+    direct = root / "src" / "logs" / "dual_log"
+    if root_source() == "env":
+        return _report_dir(direct, "env root")
     if direct.exists():
-        return direct
+        return _report_dir(direct, "repo root")
+    here = Path(__file__).resolve()
     if len(here.parents) > 5:
         from_worktree = here.parents[5] / "src" / "logs" / "dual_log"
         if from_worktree.exists():
-            return from_worktree
-    return direct
+            return _report_dir(from_worktree, "main checkout")
+    return _report_dir(direct, "unvalidated repo root")
+
+
+def _report_root(root: Path, source: str) -> None:
+    print(f"monitor root: {root} ({source})", file=sys.stderr)
+
+
+def _report_dir(directory: Path, branch: str) -> Path:
+    print(f"dual_log dir: {directory} ({branch})", file=sys.stderr)
+    return directory
 
 
 def stem_identity(stem: str):

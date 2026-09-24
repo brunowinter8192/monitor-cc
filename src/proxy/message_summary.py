@@ -9,7 +9,9 @@ def _infer_model_family(model: str) -> str:
         return "haiku"
     if "sonnet" in m:
         return "sonnet"
-    return "opus"
+    if "opus" in m:
+        return "opus"
+    return "unknown"
 
 
 def _summarize_block(block: dict) -> dict:

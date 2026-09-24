@@ -22,9 +22,9 @@ module-state sections → writes one `.txt` file per dump.
 
 ## Modules
 
-### instrument.py (103 LOC)
+### instrument.py (106 LOC)
 
-**Purpose:** Shared RAM-dump helper — tracemalloc start, PID file write, SIGUSR1 handler registration, dump-file writer. `register_ram_dump` composes the report from `_rss_line()`, `_gc_top_lines()`, `_tracemalloc_lines()`, and `_module_state_lines(provider)`; `_resolve_dump_path` resolves the dump directory under `MONITOR_CC_ROOT` (or two directories above this file) plus `dev/ram_audit/dumps/`.
+**Purpose:** Shared RAM-dump helper — tracemalloc start, PID file write, SIGUSR1 handler registration, dump-file writer. `register_ram_dump` composes the report from `_rss_line()`, `_gc_top_lines()`, `_tracemalloc_lines()`, and `_module_state_lines(provider)`; `_resolve_dump_path` resolves the dump directory under the root from `monitor_root.resolve_monitor_cc_root` plus `dev/ram_audit/dumps/`.
 **Reads:** `module_state_provider()` callback for pane globals; `/proc/<pid>` or macOS `resource.getrusage` for RSS.
 **Writes:** `/tmp/.monitor_cc_pid_<pane_name>` (PID file on entry, removed on exit); `dev/ram_audit/dumps/<YYYYmmdd_HHMMSS>_<pane_name>.txt` (dump on SIGUSR1).
 **Called by:** `core/monitor.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `workers/worker_pane.py`.
@@ -44,4 +44,4 @@ Each dump contains four sections:
 ## Gotchas
 
 - `tracemalloc` only starts when `MONITOR_CC_RAM_AUDIT=1` is set in the environment at process start — a SIGUSR1 dump taken without that env var still writes the RSS/gc/module-state sections, but the tracemalloc section reports "not active".
-- The dump directory resolves via `MONITOR_CC_ROOT` if set, else two directories above `instrument.py`'s own `__file__` — same worktree-vs-main-checkout caveat as `monitor_janitor.py`.
+- The dump directory follows `monitor_root.resolve_monitor_cc_root` (env var if set, else the checkout the module sits in) — same worktree-vs-main-checkout caveat as `monitor_janitor.py`; the chosen source is noted once in `/tmp/monitor_cc_error.log` (`[monitor_root]`).

@@ -1,12 +1,7 @@
 # INFRASTRUCTURE
-import os
 import re
-import sys
-from pathlib import Path
 
-_src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
-sys.path.insert(0, _src_dir)
-from constants import TOOL_BLOCKLIST
+from src.constants import TOOL_BLOCKLIST
 
 _DEFERRED_IDENTIFIER = "The following deferred tools are now available via ToolSearch"
 _DEFERRED_SR_RE = re.compile(r'(?m)^<system-reminder>(.*?)</system-reminder>', re.DOTALL)

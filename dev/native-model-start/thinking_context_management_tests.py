@@ -5,6 +5,7 @@ from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+sys.path.insert(0, str(WORKTREE_ROOT))
 
 from proxy.inject_helpers import _inject_model_override, _strip_clear_thinking_edit
 from proxy.logging import _build_forwarded_delta
@@ -84,7 +85,7 @@ def _test_clear_thinking_end_to_end():
             "thinking": {"type": "adaptive", "display": "summarized"},
             "output_config": {"effort": "low"},
             "context_management": {"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]},
-        }, "sonnet"))
+        }))
     check("(f) model_params injection (thinking toggle OFF) set thinking to disabled",
           injected is True and observed_payload["thinking"] == {"type": "disabled"})
     fixed_payload, fixed = _strip_clear_thinking_edit(observed_payload)

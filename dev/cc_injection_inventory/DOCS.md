@@ -53,7 +53,7 @@ classification, and resolves recurring user-text templates in a second pass.
 
 ---
 
-### cc_injection_classification.py (215 LOC)
+### cc_injection_classification.py (216 LOC)
 
 **Purpose:** Classifies one segment into one of 5 origin labels (`COVERED`, `INJECTED`, `KEEP`,
 `OURS`, `UNCLASSIFIED`) by running the real `src/proxy` strip pipeline against a synthetic message.

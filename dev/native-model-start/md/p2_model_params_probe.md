@@ -2,18 +2,13 @@
 
 15/15 strands passed
 
-## PASS test_legacy_only_unchanged
+## PASS test_legacy_only_is_ignored
 
 
-[Test 1] Legacy-only config -> byte-identical legacy behavior
-  PASS  opus family: injected=True
-  PASS  opus family: model REWRITTEN to claude-fable-5 (legacy behavior)
-  PASS  opus family: thinking applied
-  PASS  opus family: effort applied via output_config
-  PASS  opus family: max_tokens applied
-  PASS  sonnet family: injected=True
-  PASS  sonnet family: model REWRITTEN to claude-sonnet-5 (legacy behavior)
-  PASS  haiku family: no legacy section -> untouched, injected=False
+[Test 1] Legacy-only config (no model_params) -> ignored, payload untouched
+  PASS  claude-opus-4-8: injected=False, payload untouched
+  PASS  claude-sonnet-4-5: injected=False, payload untouched
+  PASS  claude-haiku-4: injected=False, payload untouched
 
 ## PASS test_model_params_hit
 
@@ -87,18 +82,13 @@
   PASS  (c) fresh dict applies config2 (effort=high)
   PASS  (c) fresh dict applies config2 (max_tokens=128000)
 
-## PASS test_fixation_legacy_path_pinned_and_unchanged
+## PASS test_fixation_legacy_only_config_pins_no_op
 
 
-[Test 10] Fixation: legacy path pinned too, byte-identical on first call
-  PASS  (d) legacy first call: injected=True
-  PASS  (d) legacy first call: model REWRITTEN (byte-identical to unfixated Test 1)
-  PASS  (d) legacy first call: thinking applied
-  PASS  (d) legacy first call: effort applied
-  PASS  (d) legacy first call: max_tokens applied
-  PASS  (d) fixated dict now holds an entry for claude-opus-4-8
-  PASS  (d) SAME fixated dict: still injected despite config now disabled
-  PASS  (d) SAME fixated dict: model still rewritten to claude-fable-5
+[Test 10] Fixation: legacy-only config pins a no-op snapshot
+  PASS  (d) legacy-only first call: injected=False, payload untouched
+  PASS  (d) fixated dict holds the empty snapshot for claude-opus-4-8
+  PASS  (d) SAME fixated dict: pinned no-op stays, still injected=False
 
 ## PASS test_fixation_miss_is_pinned_too
 

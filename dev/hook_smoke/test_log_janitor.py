@@ -5,8 +5,9 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src' / 'panes'))
-from log_janitor import cleanup_old_jsonl
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from hook_runner import abort_if_failed
+from src.panes.log_janitor import cleanup_old_jsonl
 
 _now = datetime.now(timezone.utc)
 
@@ -38,12 +39,8 @@ def test_log_janitor_workflow() -> None:
             print(f"           want: {expected}")
             print(f"           got:  {result}")
             failures.append(desc)
+            abort_if_failed(failures)
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for desc in failures:
-            print(f"  - {desc}")
-        sys.exit(1)
     print(f"All {len(CASES)} tests passed.")
 
 

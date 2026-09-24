@@ -2,26 +2,35 @@
 import sys
 from pathlib import Path
 
-_here = Path(__file__).resolve().parent
-_stem = Path(__file__).stem
-_src_dir = None
+_LIVE_MARKER = '_live_'
 
-if '_live_' in _stem:
-    _session_id = _stem.split('_live_', 1)[-1]
-    _live_dir = _here / f'.proxy_live_{_session_id}'
-    if (_live_dir / 'proxy').is_dir():
-        _src_dir = str(_live_dir)
+# ORCHESTRATOR
 
-if _src_dir is None:
-    for _candidate in [_here, _here.parent, _here.parent.parent]:
-        if (_candidate / 'proxy').is_dir():
-            _src_dir = str(_candidate)
-            break
-    else:
-        _src_dir = str(_here)
+def bootstrap_paths() -> None:
+    package_dir, repo_root = _resolve_layout(Path(__file__))
+    _require_package(package_dir)
+    _prepend_paths(package_dir, repo_root)
 
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
+# FUNCTIONS
+
+def _resolve_layout(shim_path: Path) -> tuple:
+    here = shim_path.resolve().parent
+    stem = shim_path.stem
+    if _LIVE_MARKER in stem:
+        session_id = stem.split(_LIVE_MARKER, 1)[-1]
+        return here / f'.proxy_live_{session_id}', here.parent.parent
+    return here, here.parent
+
+def _require_package(package_dir: Path) -> None:
+    if not (package_dir / 'proxy').is_dir():
+        raise FileNotFoundError(f'proxy package not found under {package_dir}')
+
+def _prepend_paths(package_dir: Path, repo_root: Path) -> None:
+    for entry in (str(repo_root), str(package_dir)):
+        if entry not in sys.path:
+            sys.path.insert(0, entry)
+
+bootstrap_paths()
 
 from proxy.addon import ProxyAddon, addons
 from proxy.rules import apply_modification_rules

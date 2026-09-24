@@ -2,6 +2,8 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from proxy.message_passes import _apply_first_pass
 from proxy.strip_bg_completed import _WAKEUP_TEXT
 from pathlib import Path

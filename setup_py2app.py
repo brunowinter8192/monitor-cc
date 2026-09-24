@@ -20,7 +20,7 @@ OPTIONS = {
     'argv_emulation': False,
     'semi_standalone': False,
     'packages': ['src.menubar', 'rumps'],
-    'includes': ['src.session_finder', 'src.colors', 'src.constants', 'src.tmux_launcher', 'src.monitor_janitor'],
+    'includes': ['src.session_finder', 'src.colors', 'src.constants', 'src.tmux_launcher', 'src.monitor_janitor', 'src.monitor_root'],
     'excludes': [
         'mitmproxy', 'flask', 'tornado', 'httpx', 'httpcore',
         'aioquic', 'werkzeug', 'jinja2', 'cryptography', 'brotli',
@@ -47,14 +47,15 @@ OPTIONS = {
 
 
 _BUNDLE_SRC_KEEP = {'menubar', 'session_finder.py', 'colors.py', 'constants.py', 'tmux_launcher.py',
-                    'monitor_janitor.py', '__init__.py', '__pycache__'}
+                    'monitor_janitor.py', 'monitor_root.py', '__init__.py', '__pycache__'}
 
 
 def _prune_bundle_bloat() -> None:
     src_lib = (Path('dist/monitor-cc-menubar.app/Contents/Resources')
                / f'lib/python{_PYTHON_VER}/src')
     if not src_lib.exists():
-        return
+        print(f'  prune failed: bundle src lib missing: {src_lib}')
+        sys.exit(1)
     removed = []
     for entry in src_lib.iterdir():
         if entry.name not in _BUNDLE_SRC_KEEP:
@@ -96,7 +97,8 @@ def _install_bundle() -> None:
     if r.returncode == 0:
         print('  codesign: ok')
     else:
-        print(f'  codesign WARN (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
+        print(f'  codesign failed (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
+        sys.exit(1)
     print(f'  {status}')
     content = tmpl.read_text(encoding='utf-8')
     content = content.replace('<PROJECT_ROOT>', str(root))
@@ -117,6 +119,7 @@ def _install_bundle() -> None:
         print(f'  bootstrap {label}: ok')
     else:
         print(f'  bootstrap failed (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
+        sys.exit(1)
 
 
 setup(

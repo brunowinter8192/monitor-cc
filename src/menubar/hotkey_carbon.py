@@ -59,7 +59,14 @@ def _log_queue_delay(carbon, event, handler_entry_t: float, hotkey_name: str) ->
 
 def _get_hkid(carbon, event) -> _EventHotKeyID:
     hkid = _EventHotKeyID()
-    carbon.GetEventParameter(
+    status = carbon.GetEventParameter(
         event, _kEventParamDirect, _typeEventHotKeyID, None, 8, None,
         ctypes.byref(hkid))
+    _check_status('GetEventParameter', status, '')
     return hkid
+
+def _check_status(call: str, status: int, detail: str) -> bool:
+    if status == 0:
+        return True
+    log_menubar('hotkey', f'{call} failed status={status} {detail}'.rstrip())
+    return False

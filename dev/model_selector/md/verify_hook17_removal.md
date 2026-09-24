@@ -1,12 +1,12 @@
-# Hook 17 (block_worker_spawn_opus.py) removal verification — 2026-08-28T20:35:08
+# Hook 17 (block_worker_spawn_opus.py) removal verification
 
-1. File deleted: True (/Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/model-selector/src/hooks/block_worker_spawn_opus.py)
-2. No longer in hook_setup.py's _HOOK_SCRIPTS: True (38 scripts total)
+1. File deleted: True (/Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/mcfix-tests3/src/hooks/block_worker_spawn_opus.py)
+2. No longer in hook_setup.py's _HOOK_SCRIPTS: True (36 scripts total)
 
 3. _sweep_stale_hooks() — the real pure function that heals settings.json —
    exercised on a synthetic in-memory dict (never the real ~/.claude/settings.json):
    swept_count=1 (expected 1 — the dead path)
-   remaining_commands=['python3 /Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/model-selector/src/hooks/hook_setup.py'] (expected only the alive path)
+   remaining_commands=['python3 /Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/mcfix-tests3/src/hooks/hook_setup.py'] (expected only the alive path)
 
 4. Registration mechanism (read, not invoked — hook_setup.py refuses to run from a
    worktree via _guard_not_worktree()): .githooks/post-merge greps

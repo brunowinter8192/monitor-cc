@@ -11,7 +11,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ## Modules
 
-### m1_frame_e2e_driver.py (141 LOC)
+### m1_frame_e2e_driver.py (143 LOC)
 
 **Purpose:** Runs one real pane loop against seeded synthetic state with refresh patched out, inside the caller's tmux pane.
 **Reads:** argv (source root, pane name, project filter).
@@ -21,13 +21,23 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m1_frame_e2e_test.py (296 LOC)
+### m1_frame_e2e_test.py (342 LOC)
 
 **Purpose:** Old-vs-new end-to-end check of the frame write path for all four panes, plus raw-byte assertions (no 2J/3J, sync pairs) and cursor-hide checks (`#{cursor_flag}` per step, during a hover burst, after `respawn-pane`, after Ctrl+C).
 **Reads:** `git archive 0ce370df`; tmux capture output.
-**Writes:** `md/m1_frame_e2e_test.md`.
+**Writes:** `md/m1_frame_e2e_test.md` (fixed name, no wall clock in the body). Waits are deadline polls (`wait_quiet`: raw output and screen unchanged for 0.6 s; `start_pane`: first frame marker; `wait_flag`), never fixed sleeps. Each strand kills its tmux server in a `finally`, the temp directory is a `TemporaryDirectory`, and a strand that raises is reported as an aborted strand while its siblings finish.
 **Called by:** none, manual.
 **Calls out:** `tmux` (private sockets), `git`, `m1_frame_e2e_driver.py`.
+
+---
+
+### m1_strand_abort_test.py (43 LOC)
+
+**Purpose:** Shows that a strand of `m1_frame_e2e_test.py` which cannot start is recorded as aborted, its tmux server is killed, and the verdict fails instead of the run crashing.
+**Reads:** nothing; provokes the condition with a nonexistent tree root and a 2 s deadline.
+**Writes:** stdout only.
+**Called by:** none, manual.
+**Calls out:** `m1_frame_e2e_test.py`, `tmux` (private socket `flk_m1_tokens_new`).
 
 ---
 
@@ -41,11 +51,11 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m2_byte_identity_test.py (96 LOC)
+### m2_byte_identity_test.py (97 LOC)
 
 **Purpose:** Runs the sequence driver against old and new trees for two real sessions and both panes; asserts identical output and that hover steps recompute zero turns.
-**Reads:** `git archive 0ce370df`; the two session JSONLs under `~/.claude/projects`.
-**Writes:** `md/m2_byte_identity_test.md`.
+**Reads:** `git archive 0ce370df`; the two frozen session excerpts `fixtures/many_calls.jsonl` and `fixtures/many_turns.jsonl` (each cut at a line boundary to about 2 MB from a real session; the excerpt of the many-turns session keeps 7 turns, the many-calls excerpt keeps a 91-call turn).
+**Writes:** `md/m2_byte_identity_test.md` (fixed name, no wall clock in the body).
 **Called by:** none, manual.
 **Calls out:** `git`, `m2_state_sequence_driver.py`.
 
@@ -91,7 +101,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### bench_hover_render.py (81 LOC)
+### bench_hover_render.py (82 LOC)
 
 **Purpose:** Times hover renders (`--mode block` for `format_proxy_block`, `--mode pane` for `_build_proxy_output`, needs a tty), optional `--scale` replicates entries.
 **Reads:** argv; the real log via `scenario_lib.py`.

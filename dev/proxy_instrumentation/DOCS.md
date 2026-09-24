@@ -47,7 +47,7 @@ main-session recording, asserting the post-strip tool set is the expected core s
 
 ---
 
-### p5_mid_turn_user_msg_preserve_probe.py (111 LOC)
+### p5_mid_turn_user_msg_preserve_probe.py (112 LOC)
 
 **Purpose:** Verifies the CC 2.1.223 mid-turn-user-message preserve guard in
 `_apply_role_system_strip` against a recorded incident plus a noise-still-strips regression case.
@@ -92,7 +92,7 @@ drives `blast_radius_engine`/`blast_radius_report` over it.
 **Called by:** none — manual, one-off measurement.
 **Calls out:** `blast_radius_engine`, `blast_radius_report`.
 
-### blast_radius_engine.py (190 LOC)
+### blast_radius_engine.py (191 LOC)
 
 **Purpose:** Drives recorded message deltas through the real `message_passes.py` pass order and
 classifies each resulting op as FULL/PARTIAL/STRUCTURAL.
@@ -122,23 +122,23 @@ render comparison for one classified record.
 
 ---
 
-### p8_answering_model_probe_test.py (97 LOC)
+### p8_answering_model_probe_test.py (103 LOC)
 
 **Purpose:** Unit-level regression guard for `response_model_probe.make_answering_model_probe`'s
 SSE model-name extraction and pass-through fidelity.
 **Reads:** no on-disk data — synthetic SSE byte fixtures defined in the module.
-**Writes:** stdout (pass/fail via assert).
+**Writes:** stdout verdict per strand; `md/p8_answering_model_probe_test.md` (fixed name). Each `_test_*` function runs as a parallel fail-fast strand via `dev/refactoring/strand_runner.py`.
 **Called by:** none — manual regression guard, re-run after any `response_model_probe.py` change.
 **Calls out:** `proxy.response_model_probe`.
 
 ---
 
-### p9_response_entry_abort_survival_test.py (128 LOC)
+### p9_response_entry_abort_survival_test.py (143 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._write_response_entry` and the
 `response()`/`error()` dual-hook wiring across abort/duplicate/override scenarios.
 **Reads:** no on-disk data — fake flow/response/metadata objects defined in the module.
-**Writes:** stdout (pass/fail via assert); temp files under the system temp dir.
+**Writes:** stdout verdict per strand; `md/p9_response_entry_abort_survival_test.md` (fixed name). Each `_test_*` function runs as a parallel fail-fast strand via `dev/refactoring/strand_runner.py`. Temp files live in a `TemporaryDirectory` per test and are removed.
 **Called by:** none — manual regression guard, re-run after any change to `addon.py`'s
 `response`/`error`/`_write_response_entry`.
 **Calls out:** `proxy.addon`.
@@ -158,13 +158,13 @@ the new fields.
 
 ---
 
-### p10_model_mismatch_warning_test.py (196 LOC)
+### p10_model_mismatch_warning_test.py (204 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._write_model_mismatch_entry`/
 `_write_response_and_mismatch` covering exactly-one-sentence, dedup, and real pane rendering.
 **Reads:** no on-disk data — fake flow/response/paths/identity objects and a synthetic payload
 defined in the module.
-**Writes:** stdout (pass/fail via assert); temp files under the system temp dir.
+**Writes:** stdout verdict per strand; `md/p10_model_mismatch_warning_test.md` (fixed name). Each `_test_*` function runs as a parallel fail-fast strand via `dev/refactoring/strand_runner.py`. Temp files live in a `TemporaryDirectory` per test and are removed.
 **Called by:** none — manual regression guard, re-run after any change to `addon.py`'s
 mismatch-writing or `warnings_pane`.
 **Calls out:** `proxy.addon`, `proxy.logging`, `src.panes.warnings_pane`, `src.panes.warnings_render`,
@@ -172,12 +172,12 @@ mismatch-writing or `warnings_pane`.
 
 ---
 
-### p11_request_identity_encoding_test.py (51 LOC)
+### p11_request_identity_encoding_test.py (59 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._request_identity_encoding` — verifies it sets
 and overwrites `accept-encoding: identity` on the outbound request.
 **Reads:** no on-disk data — a fake flow/request/headers object defined in the module.
-**Writes:** stdout (pass/fail via assert).
+**Writes:** stdout verdict per strand; `md/p11_request_identity_encoding_test.md` (fixed name). Each `_test_*` function runs as a parallel fail-fast strand via `dev/refactoring/strand_runner.py`.
 **Called by:** none — manual regression guard, re-run after any change to `addon.py`'s
 `request()`/`_request_identity_encoding`.
 **Calls out:** `proxy.addon`.

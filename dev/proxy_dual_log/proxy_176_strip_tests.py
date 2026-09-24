@@ -2,6 +2,8 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from proxy.tools import _strip_unused_tools
 from proxy.message_passes import _apply_role_system_strip
 from proxy.strip_inject_delta import _process_messages_section, _MSG_CODE_TO_FN

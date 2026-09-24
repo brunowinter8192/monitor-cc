@@ -13,16 +13,15 @@ dev/pane_error_log/p1_pane_loop_survives_exception_probe.py`.
 ## Flow
 Each of the 8 pane-loop functions is imported directly, driven through a few ticks with a marker
 exception injected on its first I/O call, and asserted to survive, log the marker via
-`pane_error_log`, and still run its cleanup path — output goes to a timestamped report in `md/`.
+`pane_error_log`, and still run its cleanup path — each test function is one parallel fail-fast strand (subprocess, `dev/refactoring/strand_runner.py`), and the output is a fixed-name report in `md/`. The probe log lives in a per-process temp directory, so strands share no file; `os.get_terminal_size` is pinned to 220x50 because `news_log` calls it before the injected read.
 
 ## Modules
 
-### p1_pane_loop_survives_exception_probe.py (66 LOC)
+### p1_pane_loop_survives_exception_probe.py (38 LOC)
 
-**Purpose:** Entry point — runs the 9 test functions covering all 8 pane loops plus the
-guard-does-not-swallow-termination case, tallies `_RESULTS`, writes the timestamped report.
+**Purpose:** Entry point — launches the 11 test functions (8 pane loops, the guard-does-not-swallow-termination case, 2 sink tests) as parallel strands and writes the fixed-name report.
 **Reads:** nothing directly; delegates to `p1_pane_tests.py`/`p1_sink_tests.py`.
-**Writes:** `md/p1_pane_loop_survives_exception_probe_<timestamp>.md`.
+**Writes:** `md/p1_pane_loop_survives_exception_probe.md`.
 **Called by:** none — manual regression guard, re-run after changing a pane loop's `while True:`
 shape or `pane_error_log.py`.
 **Calls out:** none directly — imports `p1_shared.py`, `p1_pane_modules.py`, `p1_pane_tests.py`,
@@ -30,17 +29,17 @@ shape or `pane_error_log.py`.
 
 ---
 
-### p1_shared.py (33 LOC)
+### p1_shared.py (35 LOC)
 
-**Purpose:** Shared probe primitives: `check()` (records + prints one PASS/FAIL), `_RESULTS`, the
-`_ProbeInjectedError`/`_ProbeStop` marker exceptions, the scratch log path, and `_read_probe_log()`.
+**Purpose:** Shared probe primitives: the fail-fast `check()` (re-exported from the strand runner), the
+`_ProbeInjectedError`/`_ProbeStop` marker exceptions, the per-process scratch log paths, and `_read_probe_log()`.
 **Reads:** the scratch log at `_PROBE_LOG_PATH` (via `_read_probe_log`).
-**Writes:** appends to `_RESULTS` (via `check`).
+**Writes:** a `mkdtemp` directory removed at exit.
 **Called by:** every other module in this directory.
 
 ---
 
-### p1_pane_modules.py (25 LOC)
+### p1_pane_modules.py (28 LOC)
 
 **Purpose:** Resolves `WORKTREE_ROOT`, loads `src.pane_error_log` and the 8 real pane modules under
 test via `importlib.import_module` (package-qualified, since these modules use double-dot relative
@@ -74,7 +73,7 @@ imports), and redirects `pane_error_log.PANE_ERROR_LOG_PATH` to the scratch file
 `test_news_log_pane`) plus `test_keyboard_interrupt_and_system_exit_not_swallowed` (verifies the
 guard does not swallow deliberate termination).
 **Reads:** nothing directly.
-**Writes:** appends to `_RESULTS` (via `check`, from the harness's assertion helpers).
+**Writes:** nothing directly.
 **Called by:** `p1_pane_loop_survives_exception_probe.py`.
 
 ---
@@ -84,13 +83,10 @@ guard does not swallow deliberate termination).
 **Purpose:** `test_failing_log_write_does_not_raise` and `test_log_size_capping` — test
 `src/pane_error_log.py`'s own internals directly (no pane loop involved).
 **Reads:** nothing directly.
-**Writes:** creates/removes its own scratch files under `/tmp/`; appends to `_RESULTS`.
+**Writes:** creates/removes its own scratch files inside the per-process probe directory.
 **Called by:** `p1_pane_loop_survives_exception_probe.py`.
 
 ---
 
 ## State
-`p1_shared.py` owns `_RESULTS` (mutated by `check()`, read by
-`p1_pane_loop_survives_exception_probe.py` to tally and report) and the scratch log path constant;
-`p1_pane_modules.py` owns the one-time redirect of `pel.PANE_ERROR_LOG_PATH` to that scratch path,
-read by every test module. No other module-level mutable state exists in this directory.
+No module-level mutable results state. Each strand is its own process: `p1_shared.py` creates that process's scratch directory, `p1_pane_modules.py` redirects `pel.PANE_ERROR_LOG_PATH` into it and pins the terminal size; both are read by every test module.

@@ -1,8 +1,7 @@
 # INFRASTRUCTURE
-import sys
-
 from Foundation import NSOperationQueue
 
+from .menubar_log import log_menubar
 from .panel import _reposition_panel, _reposition_tab_panel
 from .panel_tabs import TAB_KEYS
 
@@ -53,7 +52,7 @@ def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) ->
         _open_panel(app, to_panel)
         _panel_of(app, to_panel).setFrame_display_(from_frame, True)
     except Exception as e:
-        print(f'[menubar] cycling {from_panel}→{to_panel} error: {e}', file=sys.stderr)
+        log_menubar('panel', f'cycling {from_panel}->{to_panel} error: {e!r}')
 
 def _background_panel(app: 'CCMenuBarApp') -> None:
     try:
@@ -70,7 +69,7 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
             panel.orderBack_(None)
             app.panel._panel_backgrounded = True
     except Exception as e:
-        print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
+        log_menubar('panel', f'Cmd+K deferred-block error: {e!r}')
 
 def _open_main_panel(app: 'CCMenuBarApp') -> None:
     sessions = app.sessions.refresh()

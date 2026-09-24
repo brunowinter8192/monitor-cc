@@ -25,5 +25,15 @@ baseline.
 
 ---
 
+### test_jsonl_reader.py (     100 LOC)
+
+**Purpose:** Five parallel strands proving the shared JSONL reader: partial tail kept for the next read, interior corruption raises, `build_cache_turns` and the gpu errors reader follow it, `get_message_content` shape.
+**Reads:** Temp files only; `MCFIX_TREE` selects the source tree so the same file runs against an extracted older tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.jsonl`, `src.panes.cache_turns`, `src.gpu_pane.errors`.
+
+---
+
 ## State
 No persistent state owned by this directory beyond the baseline JSON files it writes under its own `_REPORTS` directory (which is not the tracked `json/` folder — see the committed baseline's actual location for the pre-existing path drift).

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from .ghostty import get_ghostty_terminal_id, get_ghostty_terminal_id_for_tty, _reprobe_single_tty
+from .menubar_log import log_menubar, log_menubar_change
 from .paths import PID_FILE as _LOCK_PATH, MONITOR_CC_ROOT
 from ..tmux_launcher import generate_session_name, check_session_exists, kill_session
 
@@ -34,7 +35,7 @@ def _acquire_singleton_lock():
     fh = open(_LOCK_PATH, 'w')
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    except BlockingIOError:
         fh.close()
         return None
     fcntl.fcntl(fh, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
@@ -45,7 +46,6 @@ def _acquire_singleton_lock():
 def _focus_session(cwd: str) -> None:
     import datetime
     import time
-    from .menubar_log import log_menubar
     _t0 = time.monotonic()
     term_id = get_ghostty_terminal_id(cwd)
     lookup_ms = (time.monotonic() - _t0) * 1000
@@ -96,8 +96,10 @@ def _find_worker_viewer_tty(tmux_session_name: str) -> Optional[str]:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,tty=,args='],
                             capture_output=True, text=True,
                             encoding='utf-8', errors='replace', timeout=3)
-    except Exception:
+    except Exception as exc:
+        log_menubar_change('focus', 'ps_viewer_tty', f'ps failed err={exc!r}')
         return None
+    log_menubar_change('focus', 'ps_viewer_tty', None)
     for line in r.stdout.splitlines():
         parts = line.split(None, 2)
         if len(parts) != 3:
@@ -117,7 +119,6 @@ def _find_worker_viewer_tty(tmux_session_name: str) -> Optional[str]:
 
 def _focus_worker(tmux_session_name: str) -> None:
     import time
-    from .menubar_log import log_menubar
     _t0 = time.monotonic()
     tty = _find_worker_viewer_tty(tmux_session_name)
     lookup_ms = (time.monotonic() - _t0) * 1000
@@ -138,7 +139,6 @@ def _focus_worker(tmux_session_name: str) -> None:
 
 def _retry_focus_worker_after_reprobe(tmux_session_name: str, tty: str) -> None:
     import time
-    from .menubar_log import log_menubar
     _t0 = time.monotonic()
     fresh_id = _reprobe_single_tty(tty)
     reprobe_ms = (time.monotonic() - _t0) * 1000
@@ -176,15 +176,22 @@ _PLIST_PATH_KEY_RE = re.compile(
     r'<key>\s*PATH\s*</key>\s*<string>([^<]*)</string>', re.DOTALL)
 
 def _resolve_launch_python3() -> str:
+    path_value, route = _launch_path_value()
+    python3 = shutil.which('python3', path=path_value)
+    if python3 is None:
+        raise RuntimeError(f'python3 not found route={route} path={path_value!r}')
+    log_menubar_change('monitor', 'python3_route', f'python3={python3} route={route}')
+    return python3
+
+def _launch_path_value() -> tuple:
     try:
         content = _PLIST_PATH.read_text(encoding='utf-8')
-        m = _PLIST_PATH_KEY_RE.search(content)
-        path_value = m.group(1).strip() if m else None
-    except Exception:
-        path_value = None
-    if not path_value:
-        path_value = os.environ.get('PATH', '')
-    return shutil.which('python3', path=path_value) or 'python3'
+    except OSError as exc:
+        return os.environ.get('PATH', ''), f'env (plist unreadable: {exc!r})'
+    m = _PLIST_PATH_KEY_RE.search(content)
+    if m and m.group(1).strip():
+        return m.group(1).strip(), 'plist'
+    return os.environ.get('PATH', ''), 'env (plist has no PATH)'
 
 def _build_monitor_launch_cmd(root: Path, python3_path: str, cwd: str) -> str:
     return (f'cd {shlex.quote(str(root))} && '
@@ -207,8 +214,11 @@ def _launch_monitor_ghostty_native(shell_cmd: str):
                           encoding='utf-8', errors='replace', timeout=10)
 
 def _launch_monitor(cwd: str) -> None:
-    from .menubar_log import log_menubar
-    python3_path = _resolve_launch_python3()
+    try:
+        python3_path = _resolve_launch_python3()
+    except RuntimeError as exc:
+        log_menubar('monitor', f'launch FAILED cwd={cwd} err={exc}')
+        return
     shell_cmd = _build_monitor_launch_cmd(MONITOR_CC_ROOT, python3_path, cwd)
     r = _launch_monitor_ghostty_native(shell_cmd)
     if r.returncode != 0:
@@ -218,8 +228,6 @@ def _launch_monitor(cwd: str) -> None:
         log_menubar('monitor', f'launch OK cwd={cwd}')
 
 def _open_or_focus_monitor(cwd: str) -> None:
-    if not cwd:
-        return
     session_name = generate_session_name(cwd)
     if check_session_exists(session_name):
         kill_session(session_name)

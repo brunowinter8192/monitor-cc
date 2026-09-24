@@ -7,6 +7,7 @@ sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
 from proxy.response_model_probe import make_answering_model_probe, _MODEL_PROBE_BYTE_BUDGET
+from dev.refactoring.strand_runner import strand_workflow
 
 _SSE_MESSAGE_START = (
     b'event: message_start\n'
@@ -17,15 +18,20 @@ _SSE_MESSAGE_START = (
 )
 _SSE_PING = b'event: ping\ndata: {"type":"ping"}\n\n'
 
+_STRAND_NAMES = [
+    '_test_single_chunk_finds_model',
+    '_test_split_across_two_chunks_finds_model',
+    '_test_pass_through_is_always_identity',
+    '_test_budget_exceeded_stops_inspection',
+    '_test_gzip_body_defeats_parsing',
+]
+_TITLE = 'p8_answering_model_probe_test'
+_REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'p8_answering_model_probe_test.md'
+
 # ORCHESTRATOR
 
 def run_probe_tests_workflow() -> None:
-    _test_single_chunk_finds_model()
-    _test_split_across_two_chunks_finds_model()
-    _test_pass_through_is_always_identity()
-    _test_budget_exceeded_stops_inspection()
-    _test_gzip_body_defeats_parsing()
-    print("[p8_answering_model_probe_test] all checks passed")
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, _REPORT_PATH, _TITLE))
 
 # FUNCTIONS
 

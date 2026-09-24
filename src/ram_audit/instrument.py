@@ -11,6 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from ..monitor_root import resolve_monitor_cc_root
+from ..pane_error_log import log_pane_note
+
 
 # FUNCTIONS
 
@@ -60,11 +63,11 @@ def _module_state_lines(module_state_provider: Callable[[], list]) -> list:
             lines.append(f'{name:<40}  {val}')
     return lines
 
+def _report_root(root: Path, source: str) -> None:
+    log_pane_note('monitor_root', f'source={source} root={root}')
+
 def _resolve_dump_path(pane_name: str, ts: str) -> Path:
-    root = os.environ.get('MONITOR_CC_ROOT', '')
-    if not root:
-        root = str(Path(__file__).resolve().parent.parent.parent)
-    dump_dir = Path(root) / 'dev' / 'ram_audit' / 'dumps'
+    dump_dir = resolve_monitor_cc_root(_report_root) / 'dev' / 'ram_audit' / 'dumps'
     dump_dir.mkdir(parents=True, exist_ok=True)
     return dump_dir / f'{ts}_{pane_name}.txt'
 

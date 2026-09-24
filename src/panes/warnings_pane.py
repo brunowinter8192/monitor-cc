@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 from pathlib import Path
 from typing import Dict, Optional, Set, Tuple
-import json
 import os
 import time
 
@@ -9,6 +8,7 @@ from ..constants import INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL
 from ..utils import format_timestamp
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
+from src.jsonl.jsonl_reader import read_json_records
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
@@ -32,7 +32,7 @@ _warnings_header_regions: Dict[Tuple[int, int, int], str] = {}
 _last_project_filter: Optional[str] = None
 _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
-_monitor_start_ts: float = 0.0
+_monitor_start_ts: Optional[float] = None
 _errors_log_pos: int = 0
 _errors_log_path: Optional[Path] = None
 _worker_errors_positions: Dict[str, int] = {}
@@ -51,8 +51,6 @@ def run_warnings_loop() -> None:
     global _monitor_start_ts, _errors_log_pos, _errors_log_path, _worker_errors_positions
 
     register_ram_dump('warnings', _warnings_ram_state)
-    _monitor_start_ts = time.time()
-    load_historical_warnings()
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()
@@ -120,10 +118,6 @@ def _poll_warnings_input() -> bool:
             if _handle_warnings_key(char):
                 input_changed = True
     return input_changed
-
-def load_historical_warnings() -> None:
-    from ..core import monitor as _monitor
-    _monitor.monitor_sessions()
 
 def _warnings_ram_state() -> list:
     return [
@@ -220,7 +214,7 @@ def _errors_record_to_display(rec: dict) -> dict:
     ts_raw = rec.get('ts', '')
     error_full = rec.get('error_full', '') or ''
     return {
-        'timestamp': format_timestamp(ts_raw) if ts_raw else '??:??:??',
+        'timestamp': format_timestamp(ts_raw),
         'tool_name': rec.get('tool_name', ''),
         'summary': error_full[:80],
         'full_text': error_full,
@@ -233,25 +227,11 @@ def _errors_record_to_display(rec: dict) -> dict:
     }
 
 def _read_errors_log(path: Path, last_pos: int) -> tuple:
-    records: list = []
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            f.seek(last_pos)
-            while True:
-                raw_line = f.readline()
-                if not raw_line:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    records.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-            return records, f.tell()
+        return read_json_records(path, last_pos)
     except OSError:
         log_pane_error('warnings')
-        return records, last_pos
+        return [], last_pos
 
 def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
     from ..core import monitor as _monitor
@@ -267,7 +247,6 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
     if not (_force_refresh or now - last_data_refresh >= WARNINGS_POLL_INTERVAL):
         return input_changed, last_data_refresh
     _force_refresh = False
-    _monitor.monitor_sessions()
 
     project_filter = _monitor.active_project_filter
     errors_path = find_errors_log_path(project_filter)
@@ -276,7 +255,7 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
         _errors_log_pos = 0
         _errors_log_path = errors_path
         _worker_errors_positions.clear()
-        _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else time.time()
+        _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else None
         tool_errors = []
         error_expand_states.clear()
         error_scroll_offset = 0
@@ -288,15 +267,22 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
         raw_recs, _errors_log_pos = _read_errors_log(errors_path, _errors_log_pos)
         new_errors.extend(_errors_record_to_display(r) for r in raw_recs)
 
-    _worker_sid = proxy_session_id_for_project(project_filter) if project_filter else ''
-    worker_recs, _worker_errors_positions = scan_worker_errors_logs(
-        _worker_errors_positions, _worker_sid, min_mtime=_monitor_start_ts,
-    )
-    new_errors.extend(_errors_record_to_display(r) for r in worker_recs)
+    if project_filter and _monitor_start_ts is not None:
+        worker_recs, _worker_errors_positions = scan_worker_errors_logs(
+            _worker_errors_positions, proxy_session_id_for_project(project_filter), _monitor_start_ts,
+        )
+        new_errors.extend(_errors_record_to_display(r) for r in worker_recs)
 
     tool_errors.extend(new_errors)
     _last_refresh_ts = now
     return True, now
+
+def _worker_errors_notice() -> str:
+    if _last_project_filter is None:
+        return 'worker errors: no project'
+    if _monitor_start_ts is None:
+        return 'worker errors: no proxy session marker'
+    return ''
 
 def _build_warnings_output() -> tuple:
     global error_line_map, error_copy_rows, _error_pane_width, _warnings_header_regions
@@ -304,7 +290,7 @@ def _build_warnings_output() -> tuple:
     pane_height = term.lines - 1
     pane_width = term.columns
     _error_pane_width = pane_width
-    refresh_header = _format_warnings_header(_last_refresh_ts, pane_width, _warnings_header_regions)
+    refresh_header = _format_warnings_header(_last_refresh_ts, pane_width, _warnings_header_regions, _worker_errors_notice())
     if _warnings_header_regions:
         shifted = {
             (sc, ec, er + _WARNINGS_SEARCH_BAR_LINES): action

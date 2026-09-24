@@ -1,12 +1,11 @@
 # INFRASTRUCTURE
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 
 AREA_DIR = Path(__file__).resolve().parent
@@ -17,26 +16,36 @@ OLD_REF = '0ce370df'
 PANES = ['tokens', 'worker_tokens', 'proxy', 'worker_proxy']
 TREES = ['old', 'new']
 WIDTH, HEIGHT = 100, 30
-STEP_SETTLE = 0.6
-BOOT_SETTLE = 2.5
+QUIET_SECONDS = 0.6
+POLL_SECONDS = 0.05
+DEADLINE_SECONDS = 30
+FRAME_MARKERS = (b'\033[?2026h', b'\033[2J')
 _SGR_OR_CHAR_RE = re.compile(r'\x1b\[([0-9;]*)m|(.)', re.S)
 
 # ORCHESTRATOR
 
 def test_workflow() -> int:
-    work_dir = Path(tempfile.mkdtemp(prefix='flicker_m1_'))
-    old_root = extract_old_tree(work_dir)
-    roots = {'old': old_root, 'new': WORKTREE_ROOT}
-    strands = [(pane, tree) for pane in PANES for tree in TREES]
-    with ThreadPoolExecutor(max_workers=len(strands)) as pool:
-        futures = {s: pool.submit(run_strand, s[0], s[1], roots[s[1]], work_dir) for s in strands}
-        results = {s: f.result() for s, f in futures.items()}
+    with tempfile.TemporaryDirectory(prefix='flicker_m1_') as tmp:
+        work_dir = Path(tmp)
+        old_root = extract_old_tree(work_dir)
+        results = run_all_strands({'old': old_root, 'new': WORKTREE_ROOT}, work_dir)
     verdicts = evaluate(results)
-    write_report(verdicts, results, old_root, work_dir)
-    shutil.rmtree(work_dir, ignore_errors=True)
+    write_report(verdicts, results)
     return 0 if all(ok for _, ok, _ in verdicts) else 1
 
 # FUNCTIONS
+
+def run_all_strands(roots: dict, work_dir: Path) -> dict:
+    strands = [(pane, tree) for pane in PANES for tree in TREES]
+    with ThreadPoolExecutor(max_workers=len(strands)) as pool:
+        futures = {s: pool.submit(run_strand_guarded, s[0], s[1], roots[s[1]], work_dir) for s in strands}
+        return {s: f.result() for s, f in futures.items()}
+
+def run_strand_guarded(pane: str, tree: str, root: Path, work_dir: Path) -> dict:
+    try:
+        return run_strand(pane, tree, root, work_dir)
+    except Exception:
+        return {'aborted': traceback.format_exc()[-800:]}
 
 def extract_old_tree(work_dir: Path) -> Path:
     old_root = work_dir / 'old_tree'
@@ -80,19 +89,21 @@ def send(sock: str, kind: str, payload: str) -> None:
         tmux(sock, 'send-keys', '-t', 'flk', '-l', payload)
     else:
         tmux(sock, 'send-keys', '-t', 'flk', payload)
-    time.sleep(0.05)
 
 def run_strand(pane: str, tree: str, root: Path, work_dir: Path) -> dict:
     sock = f'flk_m1_{pane}_{tree}'
-    raw_path = work_dir / f'{pane}_{tree}.raw'
+    try:
+        return drive_strand(sock, pane, root, work_dir / f'{pane}_{tree}.raw', f'/tmp/flk_m1_proj_{pane}_{tree}')
+    finally:
+        tmux(sock, 'kill-server')
+
+def drive_strand(sock: str, pane: str, root: Path, raw_path: Path, project: str) -> dict:
     tmux(sock, 'kill-server')
     tmux(sock, 'new-session', '-d', '-s', 'flk', '-x', str(WIDTH), '-y', str(HEIGHT))
     tmux(sock, 'pipe-pane', '-t', 'flk', f'cat >> {raw_path}')
-    project = f'/tmp/flk_m1_proj_{pane}_{tree}'
     cmd = f"cd {root} && {sys.executable} {DRIVER} {root} {pane} {project}"
     shell_flag = cursor_flag(sock)
-    tmux(sock, 'send-keys', '-t', 'flk', cmd, 'Enter')
-    time.sleep(BOOT_SETTLE)
+    start_pane(sock, cmd, raw_path)
     boot_flag = cursor_flag(sock)
     screens = []
     step_flags = []
@@ -100,31 +111,64 @@ def run_strand(pane: str, tree: str, root: Path, work_dir: Path) -> dict:
     for name, actions in build_steps(pane):
         for kind, payload in actions:
             send(sock, kind, payload)
-        time.sleep(STEP_SETTLE)
+        wait_quiet(sock, raw_path)
         screens.append((name, tmux(sock, 'capture-pane', '-p', '-e', '-N', '-t', 'flk').stdout))
         step_flags.append(cursor_flag(sock))
         raw_marks.append(raw_path.stat().st_size if raw_path.exists() else 0)
     raw_main = read_raw(raw_path)
     burst_flags = burst_hover_flags(sock)
     tmux(sock, 'respawn-pane', '-k', '-t', 'flk')
-    time.sleep(1.0)
-    respawn_flag = cursor_flag(sock)
-    tmux(sock, 'send-keys', '-t', 'flk', cmd, 'Enter')
-    time.sleep(BOOT_SETTLE)
+    respawn_flag = wait_flag(sock, '1')
+    start_pane(sock, cmd, raw_path)
     rerun_flag = cursor_flag(sock)
     tmux(sock, 'send-keys', '-t', 'flk', 'C-c')
-    time.sleep(1.0)
-    exit_flag = cursor_flag(sock)
+    exit_flag = wait_flag(sock, '1')
+    wait_quiet(sock, raw_path)
     raw_full = read_raw(raw_path)
-    tmux(sock, 'kill-server')
     return {
         'screens': screens, 'raw': raw_main, 'raw_full': raw_full, 'raw_marks': raw_marks,
         'flags': {'shell': shell_flag, 'boot': boot_flag, 'steps': step_flags, 'burst': burst_flags,
                   'respawn': respawn_flag, 'rerun': rerun_flag, 'exit': exit_flag},
     }
 
+def start_pane(sock: str, cmd: str, raw_path: Path) -> None:
+    offset = raw_path.stat().st_size if raw_path.exists() else 0
+    tmux(sock, 'send-keys', '-t', 'flk', cmd, 'Enter')
+    deadline = time.monotonic() + DEADLINE_SECONDS
+    while not any(m in read_raw_bytes(raw_path)[offset:] for m in FRAME_MARKERS):
+        if time.monotonic() > deadline:
+            raise TimeoutError(f'{sock}: no frame within {DEADLINE_SECONDS}s after start')
+        time.sleep(POLL_SECONDS)
+    wait_quiet(sock, raw_path)
+
+def wait_quiet(sock: str, raw_path: Path) -> None:
+    deadline = time.monotonic() + DEADLINE_SECONDS
+    last_state = None
+    last_change = time.monotonic()
+    while True:
+        state = (raw_path.stat().st_size if raw_path.exists() else 0, tmux(sock, 'capture-pane', '-p', '-e', '-N', '-t', 'flk').stdout)
+        now = time.monotonic()
+        if state != last_state:
+            last_state, last_change = state, now
+        elif now - last_change >= QUIET_SECONDS:
+            return
+        if now > deadline:
+            raise TimeoutError(f'{sock}: output never settled within {DEADLINE_SECONDS}s')
+        time.sleep(POLL_SECONDS)
+
+def wait_flag(sock: str, expected: str) -> str:
+    deadline = time.monotonic() + DEADLINE_SECONDS
+    flag = cursor_flag(sock)
+    while flag != expected and time.monotonic() < deadline:
+        time.sleep(POLL_SECONDS)
+        flag = cursor_flag(sock)
+    return flag
+
 def cursor_flag(sock: str) -> str:
     return tmux(sock, 'display-message', '-p', '-t', 'flk', '#{cursor_flag}').stdout.strip()
+
+def read_raw_bytes(raw_path: Path) -> bytes:
+    return raw_path.read_bytes() if raw_path.exists() else b''
 
 def read_raw(raw_path: Path) -> str:
     return raw_path.read_bytes().decode('utf-8', errors='replace') if raw_path.exists() else ''
@@ -140,6 +184,9 @@ def evaluate(results: dict) -> list:
     verdicts = []
     for pane in PANES:
         old, new = results[(pane, 'old')], results[(pane, 'new')]
+        if 'aborted' in old or 'aborted' in new:
+            verdicts.append((f'{pane}: strands ran', False, (old.get('aborted') or new.get('aborted'))))
+            continue
         verdicts.append((f'{pane}: harness sanity, old tree emits clear-screen', '\033[2J' in old['raw'], ''))
         verdicts.extend(cursor_verdicts(pane, old, new))
         verdicts.append((f'{pane}: new tree emits no 2J', '\033[2J' not in new['raw'], ''))
@@ -274,17 +321,16 @@ def diff_hint(old_norm: str, new_norm: str) -> str:
             return f'row {i + 1} length old={len(old_cells)} new={len(new_cells)} tailold={" ".join(old_cells[-9:])!r} tailnew={" ".join(new_cells[-9:])!r}'
     return f'line count old={len(old_lines)} new={len(new_lines)}'
 
-def write_report(verdicts: list, results: dict, old_root: Path, work_dir: Path) -> None:
+def write_report(verdicts: list, results: dict) -> None:
     REPORT_DIR.mkdir(exist_ok=True)
     ref = subprocess.run(['git', '-C', str(WORKTREE_ROOT), 'rev-parse', '--short', OLD_REF], capture_output=True, text=True).stdout.strip()
     passed = sum(1 for _, ok, _ in verdicts if ok)
-    lines = [f'# m1_frame_e2e_test report', '', f'Run: {datetime.now().isoformat(timespec="seconds")}',
-             f'Old tree: git archive {OLD_REF} ({ref}); new tree: {WORKTREE_ROOT}',
+    lines = [f'# m1_frame_e2e_test report', '', f'Old tree: git archive {OLD_REF} ({ref}); new tree: working tree',
              f'Terminal: {WIDTH}x{HEIGHT} private tmux sockets flk_m1_<pane>_<tree>', '',
              f'Result: {passed}/{len(verdicts)} checks passed', '']
     for label, ok, hint in verdicts:
         lines.append(f"- {'PASS' if ok else 'FAIL'}  {label}" + (f'  ({hint})' if hint else ''))
-    frames = {p: results[(p, 'new')]['raw'].count('\033[?2026h') for p in PANES}
+    frames = {p: results[(p, 'new')].get('raw', '').count('\033[?2026h') for p in PANES}
     lines += ['', 'Frames written by new tree per pane: ' + ', '.join(f'{p}={n}' for p, n in frames.items())]
     (REPORT_DIR / 'm1_frame_e2e_test.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     for label, ok, hint in verdicts:

@@ -8,24 +8,40 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
+from dev.refactoring.strand_runner import check, strand_workflow
+
 _LAUNCH_PROJECT = '/tmp/example project'
 _RESTART_PROJECT = '/tmp/example-project'
 _SCRIPT_PATH = 'workflow.py'
 _RESTART_SESSION = 'monitor_cc_fake'
+_STRAND_NAMES = [
+    '_strand_launch',
+    '_strand_restart_all_present',
+    '_strand_restart_self_heal',
+]
+_TITLE = 'tmux_launcher layout regression checks'
+_REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'layout_regression_checks.md'
 
 # ORCHESTRATOR
 
 
 def main():
-    tmux_launcher = _import_tmux_launcher()
-    checks = []
-    checks += _run_launch_scenario(tmux_launcher)
-    checks += _run_restart_all_present_scenario(tmux_launcher)
-    checks += _run_restart_self_heal_scenario(tmux_launcher)
-    _report(checks)
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, _REPORT_PATH, _TITLE))
 
 
 # FUNCTIONS
+
+def _strand_launch():
+    _assert_checks(_run_launch_scenario(_import_tmux_launcher()))
+
+
+def _strand_restart_all_present():
+    _assert_checks(_run_restart_all_present_scenario(_import_tmux_launcher()))
+
+
+def _strand_restart_self_heal():
+    _assert_checks(_run_restart_self_heal_scenario(_import_tmux_launcher()))
+
 
 def _import_tmux_launcher():
     return importlib.import_module('src.tmux_launcher')
@@ -262,14 +278,9 @@ def _run_restart_self_heal_scenario(tmux_launcher) -> list:
     ]
 
 
-def _report(checks: list) -> None:
-    failed = [name for name, passed in checks if not passed]
+def _assert_checks(checks: list) -> None:
     for name, passed in checks:
-        print(f"{'PASS' if passed else 'FAIL'}: {name}")
-    if failed:
-        print(f"\n{len(failed)} of {len(checks)} checks FAILED")
-        sys.exit(1)
-    print(f"\nall {len(checks)} checks PASSED")
+        check(name, passed)
 
 
 if __name__ == '__main__':

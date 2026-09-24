@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-from p1_shared import check
+from p1_shared import _PROBE_CAP_LOG_PATH, _PROBE_TINY_LOG_PATH, check
 from p1_pane_modules import pel
 
 
@@ -24,7 +24,7 @@ def test_failing_log_write_does_not_raise():
     check("open() failure (nonexistent parent dir) does not raise out of log_pane_error", not raised)
 
     orig_path, orig_max, orig_keep = pel.PANE_ERROR_LOG_PATH, pel.PANE_ERROR_LOG_MAX_BYTES, pel.PANE_ERROR_LOG_KEEP_BYTES
-    tiny_log = '/tmp/_pane_error_log_probe_tiny.log'
+    tiny_log = _PROBE_TINY_LOG_PATH
     Path(tiny_log).write_text('short')
     pel.PANE_ERROR_LOG_PATH = tiny_log
     pel.PANE_ERROR_LOG_MAX_BYTES = 0
@@ -44,7 +44,7 @@ def test_failing_log_write_does_not_raise():
 def test_log_size_capping():
     print("\n[Test] sink truncates to its tail once it exceeds the size cap")
     orig_path, orig_max, orig_keep = pel.PANE_ERROR_LOG_PATH, pel.PANE_ERROR_LOG_MAX_BYTES, pel.PANE_ERROR_LOG_KEEP_BYTES
-    cap_log = '/tmp/_pane_error_log_probe_cap.log'
+    cap_log = _PROBE_CAP_LOG_PATH
     Path(cap_log).write_text('X' * 1000 + 'TAIL_MARKER')
     pel.PANE_ERROR_LOG_PATH = cap_log
     pel.PANE_ERROR_LOG_MAX_BYTES = 500

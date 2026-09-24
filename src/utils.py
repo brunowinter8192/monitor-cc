@@ -4,7 +4,7 @@ import re
 import unicodedata
 
 from .colors import RESET, YELLOW, SOFT_RESET
-from .constants import WORKER_COL_WIDTH
+from .constants import NO_TIME_PLACEHOLDER, WORKER_COL_WIDTH
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 _TIME_RIGHT_RESERVE_CELLS = 3
@@ -21,12 +21,9 @@ def _cell_width(ch: str) -> int:
 
 def format_timestamp(iso_timestamp: str) -> str:
     if not iso_timestamp:
-        return '00:00:00'
-    try:
-        dt = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
-        return dt.astimezone().strftime('%H:%M:%S')
-    except ValueError:
-        return '00:00:00'
+        return NO_TIME_PLACEHOLDER
+    dt = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
+    return dt.astimezone().strftime('%H:%M:%S')
 
 def first_word_of_call(tool_name: str, tool_call_input: dict) -> str:
     if not tool_call_input:

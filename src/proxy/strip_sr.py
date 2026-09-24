@@ -151,7 +151,7 @@ def _strip_system_reminder(content, marker: str):
     for fragment, tid in _MARKER_TO_TEMPLATE.items():
         if fragment in marker or marker in fragment:
             return _strip_system_reminders(content, {tid})
-    return _strip_system_reminders(content)
+    raise ValueError(f"no system-reminder template mapped for marker {marker!r}")
 
 
 def _strip_user_interrupt_sr(content, marker: str):

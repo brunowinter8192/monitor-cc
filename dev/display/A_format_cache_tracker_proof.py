@@ -16,6 +16,10 @@ _TEST_WIDTHS = [60, 80, 100]
 
 # ORCHESTRATOR
 
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
+
 def main():
     args = _parse_args()
     sessions = _find_sessions()
@@ -58,7 +62,7 @@ def _load_turns(jsonl_path):
 
 def _run_one_case(turns, pane_height, pane_width):
     from src.format.token_format import format_cache_tracker
-    result = format_cache_tracker(turns, pane_height=pane_height, pane_width=pane_width)
+    result = format_cache_tracker(turns, pane_height=pane_height, pane_width=pane_width, turn_cache=_token_turn_cache())
     return json.dumps(result, sort_keys=True, default=str)
 
 def _run_capture(sessions, output_path):
