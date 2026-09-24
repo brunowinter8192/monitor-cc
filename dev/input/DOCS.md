@@ -1,23 +1,23 @@
 # dev/input/
 
 ## Role
-Regression checks for `src/input/click_handler.py` failure paths. Touch when changing raw stdin, mouse parsing or clipboard handling.
+Regression checks for the failure paths of `src/input/click_handler.py`. Touch when changing raw stdin, mouse parsing or clipboard handling.
 
 ## Public Interface
-No `__init__.py` in this directory. Entry path: `./venv/bin/python dev/input/tripwire_checks.py`.
+No `__init__.py`. Entry path: `./venv/bin/python dev/input/tripwire_checks.py`.
 
 ## Flow
-Child processes with a null or pty stdin, a pipe as fake stdin fd, and a fake `pbcopy` on PATH drive `set_raw_stdin`, `read_mouse_event`, `copy_to_clipboard` and `restore_terminal`.
+Child processes with a null or pty stdin, a pipe as fake stdin and a fake `pbcopy` on PATH drive the raw-mode setup, mouse parsing, clipboard copy and terminal restore paths.
 
 ## Modules
 
 ### tripwire_checks.py (123 LOC)
 
-**Purpose:** Proves a non-tty stdin, a malformed SGR field and a failing `pbcopy` raise, valid sequences still parse, and a failing terminal restore is logged.
+**Purpose:** Proves a non-tty stdin, a malformed SGR field and a failing `pbcopy` raise, valid sequences still parse and a failing terminal restore is logged.
 **Reads:** nothing external; fake `pbcopy` and log in a temp dir.
-**Writes:** temp dir only; stdout PASS/FAIL lines, exit 1 on failure.
-**Called by:** none — run manually.
-**Calls out:** `src.input.click_handler`, `src.pane_error_log` (via `importlib`).
+**Writes:** temp dir only; stdout pass/fail lines, exit 1 on failure.
+**Called by:** none; run manually.
+**Calls out:** `src.input.click_handler`, `src.pane_error_log` via `importlib`.
 
 ---
 

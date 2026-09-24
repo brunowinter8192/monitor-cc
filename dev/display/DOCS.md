@@ -4,8 +4,8 @@
 
 Tests and differential-proof harnesses for the display layer: tmux pane layout, session-JSONL
 rule scanning, pane screenshots, cache-tracker formatting, hover-map correctness, and the
-strip-marker pipeline. Touch when changing tmux pane geometry, `token_format.py`,
-`proxy_display`/`workers` line-map logic, or `strip_marker.py`. `jsonl_exploration/` is a separate
+strip-marker pipeline. Touch when changing tmux pane geometry, the token formatter,
+proxy and worker line-map logic, or the strip marker. `jsonl_exploration/` is a separate
 sub-suite (own DOCS.md).
 
 ## Public Interface
@@ -17,7 +17,7 @@ No `__init__.py` in this directory. Entry path: run each script directly, e.g.
 
 A script reads either live tmux pane state, a session/proxy-log JSONL (positional or
 auto-discovered), or synthetic in-script fixtures. It exercises one specific piece of the display
-pipeline (pane geometry, cache-tracker formatting, hover-map `line_map`, strip-marker highlighting)
+pipeline (pane geometry, cache-tracker formatting, hover-map line map, strip-marker highlighting)
 via the real production function under test. It writes a PASS/FAIL summary, a PNG, or a
 Markdown/JSON report to stdout or a file under this directory.
 
@@ -58,8 +58,7 @@ PNG for visual review.
 
 ### A_format_cache_tracker_proof.py (117 LOC)
 
-**Purpose:** Verification (not a self-contained test): differential proof that `format_cache_tracker`'s serialized
-5-tuple return is byte-identical against a captured baseline. It reads live session JSONLs, so its result depends on the machine and on the date.
+**Purpose:** Verification, not a test: differential proof the cache tracker's serialized return is byte-identical to a captured baseline. Reads live JSONLs.
 **Reads:** real session JSONLs under `~/.claude/projects/`.
 **Writes:** `A_format_cache_tracker_proof_reports/baseline_<timestamp>.json` (capture mode).
 **Called by:** none — run manually (`--mode capture` then `--mode verify [--baseline PATH]`).
@@ -70,7 +69,7 @@ PNG for visual review.
 
 ### test_hover_map.py (274 LOC)
 
-**Purpose:** Synthetic and frozen-fixture assertion suite for expand-model `line_map` correctness and the stripped-span dual-color overlay pairing.
+**Purpose:** Synthetic and frozen-fixture assertion suite for expand-model line-map correctness and the stripped-span dual-color overlay pairing.
 **Reads:** `fixtures/api_requests_fixture_forwarded.jsonl` and its sibling `_stripped.jsonl`, a frozen dual-log pair; the pairing test asserts the fixture yields exactly 5 entries so it cannot pass vacuously.
 **Writes:** stdout verdict per strand; `md/test_hover_map.md` (fixed name); exits 1 if any strand aborts.
 **Called by:** none, run manually.
@@ -80,7 +79,7 @@ PNG for visual review.
 
 ### test_strip_markers.py (89 LOC)
 
-**Purpose:** Visual and assertion test for `highlight_stripped` (basic cases, multi-line chunk coverage); two parallel strands.
+**Purpose:** Visual and assertion test for the strip-marker highlighter (basic and multi-line cases); two parallel strands.
 **Reads:** nothing external, synthetic strings built in-script.
 **Writes:** stdout (ANSI-colored) per strand; `md/test_strip_markers.md` (fixed name).
 **Called by:** none, run manually.

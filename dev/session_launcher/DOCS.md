@@ -15,7 +15,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 **Purpose:** Shared ctypes helpers for the experiments — space queries, Ghostty window lists, event posting (hotkey, swipe), return-to-home switching, report writer.
 **Reads:** CGS/CoreGraphics state (active space, space list, window list, TCC preflight).
-**Writes:** synthetic key and gesture events; `md/<script>.md` via `write_report`.
+**Writes:** synthetic key and gesture events; a report under `md/`.
 **Called by:** `s0_preflight.py`, `s1_switch_probe.py`, `s2_ghostty_window_probe.py`, `t1_autojump_removal.py`, `t2_launch_tab.py`.
 **Calls out:** `ctypes`, `subprocess` (osascript, ps).
 
@@ -63,7 +63,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ### t1_autojump_removal.py (131 LOC)
 
-**Purpose:** Regression guard (with isolated HOME) that no Auto-Jump identifier remains in `src/` or `dev/`, that an old settings file still loads, and that save/`FocusController`/`PanelSettings` carry no Auto-Jump remnants.
+**Purpose:** Regression guard that no Auto-Jump identifier remains in `src/` or `dev/`, an old settings file still loads and save paths carry no remnants.
 **Reads:** all `.py` under `src/` and `dev/`; tempdir settings files.
 **Writes:** `md/t1_autojump_removal.md`.
 **Called by:** none — run manually after menubar changes; does not move the screen.
@@ -113,7 +113,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ### t2_space_switch_cases.py (77 LOC)
 
-**Purpose:** The `space_switch` unit case, composed of five check functions (PostEvent access, desktop to space id, hotkey key codes, wait until active).
+**Purpose:** The space-switch unit case, composed of five checks: PostEvent access, desktop to space id, hotkey key codes, wait until active.
 **Reads:** real `src/menubar/space_switch.py` with a mocked CoreGraphics layer.
 **Writes:** nothing.
 **Called by:** `t2_launch_tab.py`.
@@ -123,7 +123,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ### t3_tab_click.py (292 LOC)
 
-**Purpose:** Six parallel subprocess cases for the clickable tab header — header pieces and ring keys, header structure, pixel equivalence with the old single-button header, wiring, click routing via `performClick_`, and re-centering on panel resize.
+**Purpose:** Six parallel subprocess cases for the clickable tab header: pieces, structure, pixel equivalence with the old header, wiring, click routing and re-centering.
 **Reads:** real `src/menubar` panel controllers built with a fake app; nothing is shown on screen and no real mouse event is sent.
 **Writes:** `md/t3_tab_click.md`.
 **Called by:** none — run manually after header or ring changes; does not move the screen.
