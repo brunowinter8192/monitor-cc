@@ -16,7 +16,9 @@ def request_markers(boundaries: list) -> dict:
     numbers = _boundary_numbers(boundaries)
     grouped: dict = {}
     for position, boundary in enumerate(boundaries):
-        grouped.setdefault(boundary["start_index"], []).append(position)
+        start = boundary["msg_start"] if "msg_start" in boundary else boundary.get("start_index")
+        if start is not None:
+            grouped.setdefault(start, []).append(position)
     markers = {}
     for index, positions in grouped.items():
         owner = _group_owner(boundaries, positions)
@@ -45,6 +47,8 @@ def _running_request_numbers(boundaries: list) -> list:
 
 
 def _boundary_numbers(boundaries: list) -> list:
+    if boundaries and all("pane_number" in boundary for boundary in boundaries):
+        return [boundary["pane_number"] for boundary in boundaries]
     running = _running_request_numbers(boundaries)
     return [
         boundary["pane_number"] if "pane_number" in boundary else running[position]
@@ -89,6 +93,22 @@ def request_msg_range(markers: dict, req_from: int, req_to: int, last_msg_index:
     later_starts = sorted(idx for idx in markers if idx > to_start)
     end = later_starts[0] - 1 if later_starts else last_msg_index
     return start, end
+
+
+def resolve_req_range_with_next(requests: list, req_from: int, req_to: int, last_msg_index: int) -> tuple:
+    markers = request_markers(requests or [])
+    starts_by_number = {marker["number"]: index for index, marker in markers.items() if marker["number"] is not None}
+    chain = sorted({request["pane_number"] for request in requests if request.get("pane_number") is not None})
+    if req_from not in chain or req_to not in chain:
+        missing = req_from if req_from not in chain else req_to
+        raise UnknownRequestNumberError(f"REQ {missing} not found")
+    wanted = [n for n in chain if req_from <= n <= req_to] + [n for n in chain if n > req_to][:1]
+    starts = [starts_by_number[n] for n in wanted if n in starts_by_number]
+    if not starts:
+        raise UnknownRequestNumberError(f"REQ {req_from} owns no located msgs")
+    later_starts = sorted(idx for idx in markers if idx > max(starts))
+    end = later_starts[0] - 1 if later_starts else last_msg_index
+    return min(starts), end
 
 
 def resolve_req_range(boundaries: list, req_from: int, req_to: int, last_msg_index: int) -> tuple:

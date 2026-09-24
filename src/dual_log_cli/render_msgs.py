@@ -15,7 +15,7 @@ _BLOCK_LABEL_WIDTH = _MSG_PREFIX_WIDTH + _MSG_LABEL_WIDTH - len(_BLOCK_INDENT)
 
 def render_msgs(data: dict, start: int, end: int, usage_by_flow: dict = None,
                 overlay: dict = None, sys_tool_overlay: tuple = None) -> str:
-    markers = request_markers(data.get("boundaries") or [])
+    markers = request_markers(data.get("requests") or data.get("boundaries") or [])
     payload = data.get("payload") or {}
     orig_system = payload.get("system", []) or []
     orig_tools = payload.get("tools", []) or []

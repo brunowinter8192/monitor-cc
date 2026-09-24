@@ -142,8 +142,20 @@ def continue_requests(forwarded_path: Path, family: str) -> list:
             "flow_id": entry.get("flow_id", ""),
             "timestamp": entry.get("timestamp", ""),
             "model": entry.get("model", ""),
+            "tool_use_ids": _tool_use_ids(entry),
         })
     return continues
+
+
+def _tool_use_ids(entry: dict) -> list:
+    first = (entry.get("messages_delta") or {}).get("0")
+    content = first.get("content") if isinstance(first, dict) else None
+    if not isinstance(content, list):
+        return []
+    return [
+        block["tool_use_id"] for block in content
+        if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("tool_use_id")
+    ]
 
 
 def build_turn_times(boundaries: list) -> dict:

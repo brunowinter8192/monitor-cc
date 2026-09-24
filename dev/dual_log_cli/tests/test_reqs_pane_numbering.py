@@ -10,13 +10,15 @@ from pathlib import Path
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
-from src.dual_log_cli.commands import _report_numbering_paths, _req_error_text
+from src.dual_log_cli.commands import _report_numbering_paths, _req_error_text, _resolve_range
 from src.dual_log_cli.numbering import build_session_numbering
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_msgs import render_msgs
 from src.dual_log_cli.render_reqs import render_reqs, render_reqs_merged
 from src.dual_log_cli.timeline_boundaries import continue_requests, request_boundaries
-from src.dual_log_cli.timeline_markers import UnknownRequestNumberError, request_markers, resolve_req_range
+from src.dual_log_cli.timeline_markers import (
+    UnknownRequestNumberError, request_markers, resolve_req_range, resolve_req_range_with_next,
+)
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
 
 PASS_LIST = []
@@ -41,6 +43,10 @@ def test_reqs_pane_numbering_workflow() -> None:
     test_create_sharing_a_start_index_is_its_own_req()
     test_sessions_without_output_are_hidden()
     test_no_output_at_all_prints_one_line()
+    test_msg_start_of_creates_and_continues()
+    test_req_range_covers_own_group_and_next()
+    test_unlocated_continues_own_no_msgs()
+    test_msgs_prints_continue_separators()
 
     total = len(PASS_LIST) + len(FAIL_LIST)
     print(f"{len(PASS_LIST)}/{total} checks passed")
@@ -344,6 +350,124 @@ def test_no_output_at_all_prints_one_line() -> None:
     with_skipped = render_reqs(*((args[0], 1) + args[2:]))
     check("the skipped-sessions note still follows", with_skipped.startswith("no REQs to show\n") and "1 session skipped" in with_skipped, with_skipped)
     check("an empty scope still says 'no sessions found'", render_reqs([]) == "no sessions found\n", render_reqs([]))
+
+
+def _use(tool_id: str) -> dict:
+    return {"role": "assistant", "content": [{"type": "tool_use", "id": tool_id, "name": "Bash", "input": {}}]}
+
+
+def _result(tool_id: str) -> dict:
+    return {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "ok"}]}
+
+
+def _reminder() -> dict:
+    return {"role": "system", "content": "reminder"}
+
+
+def _ownership_payload() -> list:
+    return [
+        {"role": "user", "content": "go"},
+        _use("t1"), _result("t1"), _reminder(),
+        _use("t2"), _result("t2"), _reminder(),
+        _use("t3"), _result("t3"), _reminder(),
+        _use("t4"), _result("t4"), _reminder(),
+    ]
+
+
+def _continue_with(flow_id: str, timestamp: str, previous: str, first_msg) -> dict:
+    entry = _continue(flow_id, timestamp, previous)
+    entry["messages_delta"] = {"0": first_msg}
+    return entry
+
+
+def _ownership_view() -> tuple:
+    entries = [
+        _create("c1", "2026-09-04T10:00:00Z", 1, True),
+        _continue_with("k1", "2026-09-04T10:01:00Z", "m1", _result("t1")),
+        _continue_with("k2", "2026-09-04T10:02:00Z", "m2", _result("t2")),
+        _create("c2", "2026-09-04T10:03:00Z", 9),
+        _continue_with("k3", "2026-09-04T10:04:00Z", "m3", _result("t4")),
+        _continue_with("k4", "2026-09-04T10:05:00Z", "m4", {"role": "user", "content": "next prompt"}),
+        _continue_with("k5", "2026-09-04T10:06:00Z", "m5", _result("t99")),
+    ]
+    transcript = [
+        _prompt("go", "2026-09-04T09:59:59Z"),
+        _assistant("r1", "2026-09-04T10:00:05Z"),
+        _assistant("r2", "2026-09-04T10:01:05Z"),
+        _assistant("r3", "2026-09-04T10:02:05Z"),
+        _assistant("r4", "2026-09-04T10:03:05Z"),
+        _assistant("r5", "2026-09-04T10:04:05Z"),
+        _assistant("r6", "2026-09-04T10:05:05Z"),
+    ]
+    flows = [("c1", "r1", 200), ("k1", "r2", 200), ("k2", "r3", 200), ("c2", "r4", 200),
+             ("k3", "r5", 200), ("k4", "r6", 200), ("k5", "r7", 404)]
+    responses = [{"flow_id": f, "request_id": r, "status_code": c} for f, r, c in flows]
+    boundaries, continues = _timeline(entries)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        projects_root = tmp_path / "projects"
+        _write_projects(projects_root, transcript)
+        session = _session(tmp_path, responses)
+        numbering = build_session_numbering(session, boundaries, continues, projects_root, messages=_ownership_payload())
+    return session, boundaries, continues, numbering
+
+
+def test_msg_start_of_creates_and_continues() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    starts = {r["flow_id"]: r.get("msg_start") for r in numbering["requests"]}
+    check("each located request starts at the assistant reply it answers: c1 0, k1 1, k2 4, c2 7, k3 10",
+          starts == {"c1": 0, "k1": 1, "k2": 4, "c2": 7, "k3": 10, "k4": None, "k5": None}, starts)
+    markers = request_markers(numbering["requests"])
+    check("markers carry the pane numbers 1..5 at those starts",
+          {index: m["number"] for index, m in markers.items()} == {0: 1, 1: 2, 4: 3, 7: 4, 10: 5}, markers)
+
+
+def test_req_range_covers_own_group_and_next() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    requests = numbering["requests"]
+    check("--req 2 (a continue) = its own group [1..3] plus the next request's group [4..6], the tool_use it caused sits at msg 4",
+          resolve_req_range_with_next(requests, 2, 2, 12) == (1, 6), resolve_req_range_with_next(requests, 2, 2, 12))
+    check("--req 3 reaches the create's group that follows: msgs 4..9",
+          resolve_req_range_with_next(requests, 3, 3, 12) == (4, 9))
+    check("--req 4 (a create) = its group [7..9] plus the next continue's group [10..12]",
+          resolve_req_range_with_next(requests, 4, 4, 12) == (7, 12))
+    check("--req 5 whose successor owns nothing = its own group only", resolve_req_range_with_next(requests, 5, 5, 12) == (10, 12))
+    check("--req 2 3 spans both groups plus the group after: msgs 1..9", resolve_req_range_with_next(requests, 2, 3, 12) == (1, 9))
+    data = {"boundaries": boundaries, "continues": continues, "requests": requests}
+    check("the command layer routes transcript numbering to the with-next rule",
+          _resolve_range(data, numbering, 2, 2, 12) == (1, 6))
+
+
+def test_unlocated_continues_own_no_msgs() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    requests = numbering["requests"]
+    raised = False
+    try:
+        resolve_req_range_with_next(requests, 6, 6, 12)
+    except UnknownRequestNumberError:
+        raised = True
+    check("the opener continue (REQ 6, no tool_result to locate) owns no msgs", raised)
+    data = {"boundaries": boundaries, "continues": continues, "requests": requests}
+    text = _req_error_text(UnknownRequestNumberError("x"), data, (6, 6))
+    check("the message names it a continue whose msgs could not be located", "could not be located" in text and "REQ 6" in text, text)
+    unknown = False
+    try:
+        resolve_req_range_with_next(requests, 99, 99, 12)
+    except UnknownRequestNumberError:
+        unknown = True
+    check("a number outside the recorded requests stays 'not found'", unknown)
+
+
+def test_msgs_prints_continue_separators() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    turns = [{"index": i, "role": m["role"], "type": "text", "chars": 4,
+              "blocks": [{"label": "text", "type": "text", "chars": 4, "sig_chars": 0, "preview": ""}]}
+             for i, m in enumerate(_ownership_payload())]
+    out = render_msgs({"boundaries": boundaries, "requests": numbering["requests"], "turns": turns}, 1, 6, numbering["usage"])
+    seps = [line for line in out.split("\n") if line.startswith("── REQ")]
+    check("msgs 1..6 print the continue separators REQ 2 and REQ 3 with their response-end times",
+          [x.split()[2] for x in seps] == ["2", "3"] and _clock("2026-09-04T10:01:05Z") in seps[0] and _clock("2026-09-04T10:02:05Z") in seps[1], seps)
+    check("the tool_use msg 4 sits under REQ 3's separator", out.index("── REQ 3") < out.index("[  4]"), out)
 
 
 if __name__ == "__main__":

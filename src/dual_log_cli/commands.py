@@ -24,7 +24,9 @@ from .render_search import render_search
 from .render_sessions import render_sessions
 from .search import find_matches
 from .timeline import load_timeline
-from .timeline_markers import AmbiguousRequestNumberError, UnknownRequestNumberError, resolve_req_range
+from .timeline_markers import (
+    AmbiguousRequestNumberError, UnknownRequestNumberError, resolve_req_range, resolve_req_range_with_next,
+)
 from .timeline_turns import full_turn
 
 # FUNCTIONS
@@ -159,8 +161,7 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
     if last < 0:
         print("session carries no msgs", file=sys.stderr)
         return 2
-    numbering = build_session_numbering(data["session"], data["boundaries"], data["continues"])
-    _report_numbering_paths({data["session"]["stem"]: numbering})
+    numbering = _numbered_view(data)
     if args.req is not None:
         if args.from_msg is not None or args.to_msg is not None:
             print("--req cannot be combined with FROM/TO", file=sys.stderr)
@@ -171,7 +172,7 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
         req_from = args.req[0]
         req_to = args.req[1] if len(args.req) > 1 else req_from
         try:
-            start, end = resolve_req_range(data["boundaries"], req_from, req_to, last)
+            start, end = _resolve_range(data, numbering, req_from, req_to, last)
         except (UnknownRequestNumberError, AmbiguousRequestNumberError) as exc:
             print(_req_error_text(exc, data, (req_from, req_to)), file=sys.stderr)
             return 2
@@ -189,17 +190,33 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
             print(f"TO {end} is before FROM {start}", file=sys.stderr)
             return 2
     usage_by_flow = numbering["usage"]
-    overlay = build_overlay(data["session"], data["family"], data["boundaries"])
-    sys_tool_overlay = build_sys_tool_overlay(data["session"], data["family"], data["boundaries"])
+    overlay = build_overlay(data["session"], data["family"], data["requests"])
+    sys_tool_overlay = build_sys_tool_overlay(data["session"], data["family"], data["requests"])
     sys.stdout.write(render_msgs(data, start, end, usage_by_flow, overlay, sys_tool_overlay))
     return 0
 
 
+def _numbered_view(data: dict) -> dict:
+    messages = (data.get("payload") or {}).get("messages") or []
+    numbering = build_session_numbering(
+        data["session"], data["boundaries"], data["continues"], messages=messages)
+    _report_numbering_paths({data["session"]["stem"]: numbering})
+    data["requests"] = numbering.get("requests") or data["boundaries"]
+    return numbering
+
+
+def _resolve_range(data: dict, numbering: dict, req_from: int, req_to: int, last: int) -> tuple:
+    if numbering["path"] == "transcript":
+        return resolve_req_range_with_next(data["requests"], req_from, req_to, last)
+    return resolve_req_range(data["boundaries"], req_from, req_to, last)
+
+
 def _req_error_text(exc: Exception, data: dict, requested: tuple) -> str:
-    continue_numbers = {request.get("pane_number") for request in data["continues"]} - {None}
-    hit = [number for number in requested if number in continue_numbers]
+    unlocated = {request.get("pane_number") for request in data["continues"] if "msg_start" not in request} - {None}
+    hit = [number for number in requested if number in unlocated]
     if isinstance(exc, UnknownRequestNumberError) and hit:
-        return f"REQ {hit[0]} is a continue request: it owns no msgs (msgs belong to create requests only)"
+        return (f"REQ {hit[0]} is a continue request whose msgs could not be located "
+                f"(a turn opener, or newer than the last recorded payload); it owns no msgs")
     return str(exc)
 
 
@@ -225,7 +242,8 @@ def _run_expand(dual_log_dir, args: argparse.Namespace) -> int:
         for msg in msgs[start:end + 1]
         if matches_only(msg["role"], [b["type"] for b in msg["blocks"]], wanted)
     ]
-    overlay = build_overlay(data["session"], data["family"], data["boundaries"])
+    _numbered_view(data)
+    overlay = build_overlay(data["session"], data["family"], data["requests"])
     sys.stdout.write(render_expand_full(data, args.msg, start, end, args.only, dumped, overlay))
     return 0
 
