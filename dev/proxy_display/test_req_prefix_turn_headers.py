@@ -33,6 +33,7 @@ def run_workflow():
     test_time_survives_truncation()
     test_same_time_for_same_req_in_both_panes()
     test_transcript_parser_records_last_entry_time()
+    test_http_status_marker_and_line()
     total = len(_RESULTS)
     passed = sum(1 for _, ok in _RESULTS if ok)
     print("\n" + "=" * 70)
@@ -318,6 +319,63 @@ def test_transcript_parser_records_last_entry_time():
     ]
     turns = extract_cache_turns(messages)
     check("one call, timestamp of the later entry", len(turns[0]["api_calls"]) == 1 and turns[0]["api_calls"][0]["timestamp"] == "2026-09-24T10:00:09.000Z", turns)
+
+
+def _status_entries() -> list:
+    entries = _parsed_entries()
+    statuses = {"f1": 200, "f2": 200, "f3": 200, "f4": 200, "f5": 404}
+    for entry in entries:
+        entry["http_status"] = statuses.get(entry["flow_id"])
+    return entries
+
+
+def test_http_status_marker_and_line() -> None:
+    from src.proxy_display.format import format_proxy_block
+    from src.proxy_display.proxy_pane_shared import _accumulate_request_ids, _attach_http_status
+    print("\n[Test 10] HTTP status: marker on the header row, status line in the expanded section")
+    handle = tempfile.NamedTemporaryFile(mode="w", suffix="_response.jsonl", delete=False)
+    with handle:
+        handle.write(json.dumps({"flow_id": "f4", "request_id": "r4", "status_code": 200, "timestamp": "t"}) + "\n")
+        handle.write(json.dumps({"flow_id": "f5", "request_id": "r7", "status_code": 404, "timestamp": "t"}) + "\n")
+    path = Path(handle.name)
+    by_flow, status = {}, {}
+    try:
+        _accumulate_request_ids(path, 0, by_flow, status)
+    finally:
+        path.unlink()
+    check("_accumulate_request_ids keeps flow -> request_id and flow -> status_code",
+          by_flow == {"f4": "r4", "f5": "r7"} and status == {"f4": 200, "f5": 404}, (by_flow, status))
+    entries = _parsed_entries()
+    _attach_http_status(entries, status)
+    check("entries with a response line carry their status, the others stay pending (None)",
+          [e["http_status"] for e in entries] == [None, None, None, None, 200, 404], [e.get("http_status") for e in entries])
+    entries = _status_entries()
+    rejected_idx = next(i for i, e in enumerate(entries) if e["flow_id"] == "f5")
+    ansi, _ = format_proxy_block(entries, {("req", rejected_idx): True}, None, None, 200, 120, 0, _turns(),
+                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={})
+    lines = [line for line in _plain_lines(ansi) if line.strip()]
+    rejected = next(l for l in lines if l.strip().startswith("▼"))
+    ok_rows = [l for l in lines if "REQ #" in l and "REQ #?" not in l and "▶" in l]
+    check("the rejected row shows [404] on its header row without expanding", "REQ #?" in rejected and "[404]" in rejected, rejected)
+    check("200 rows show no marker", ok_rows and all("[200]" not in l and "[pending]" not in l for l in ok_rows), ok_rows)
+    check("the expanded section starts with 'status: 404'", any(l.strip() == "status: 404" for l in lines), lines)
+    ansi, _ = format_proxy_block(entries, {("req", 3): True}, None, None, 200, 120, 0, _turns(),
+                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={})
+    check("a finished 200 request shows 'status: 200' when expanded", any(l.strip() == "status: 200" for l in _plain_lines(ansi)))
+    pending = _parsed_entries()
+    for entry in pending:
+        entry["http_status"] = None
+    ansi, _ = format_proxy_block(pending, {("req", 1): True}, None, None, 200, 120, 0, _turns(),
+                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={})
+    plain = _plain_lines(ansi)
+    check("a request without a _response line is marked [pending], distinct from finished ones",
+          any("[pending]" in l for l in plain) and any("status: pending" in l for l in plain), plain)
+    bare = _plain_lines(format_proxy_block(_parsed_entries(), {}, None, None, 200, 120, 0, _turns(),
+                                           request_id_by_flow=_request_id_by_flow(), copy_feedback={})[0])
+    check("without any response info (no http_status key) nothing changes: no marker at all",
+          not any("[" in l and "]" in l and "REQ" in l for l in bare), bare)
+    check("REQ numbers and times stay the parity ones from Test 8 (same rows, numbers 1..4)",
+          [int(m.group(1)) for l in lines for m in [re.search(r"REQ #(\d+)\b", l)] if m] == [1, 2, 3, 4])
 
 
 if __name__ == "__main__":

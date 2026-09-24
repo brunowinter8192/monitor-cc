@@ -2,7 +2,7 @@
 import bisect
 from pathlib import Path
 
-from src.dual_log_cli.usage import resolve_transcript, usage_from_transcript
+from src.dual_log_cli.usage import flow_status_ids, resolve_transcript, usage_from_transcript
 from src.format.token_format import call_numbers
 from src.panes.cache_turns import build_cache_turns
 
@@ -16,6 +16,7 @@ _PATH_BOUNDARIES = "boundaries"
 def build_session_numbering(session: dict, boundaries: list, continues: list, projects_root: Path = None,
                             messages: list = None) -> dict:
     main_thread = sorted(boundaries + continues, key=lambda request: request["timestamp"])
+    _annotate_status(main_thread, session)
     transcript_path, flow_status = resolve_transcript(session, main_thread, projects_root)
     usage = usage_from_transcript(transcript_path, flow_status)
     turns = _transcript_turns(transcript_path)
@@ -27,6 +28,13 @@ def build_session_numbering(session: dict, boundaries: list, continues: list, pr
 
 
 # FUNCTIONS
+
+
+def _annotate_status(main_thread: list, session: dict) -> None:
+    response_path = (session.get("streams") or {}).get("response")
+    statuses = flow_status_ids(response_path) if response_path is not None else {}
+    for request in main_thread:
+        request["http_status"] = statuses.get(request.get("flow_id", ""), ("", None))[1]
 
 
 def _transcript_turns(transcript_path: Path) -> list:

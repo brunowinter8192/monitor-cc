@@ -56,9 +56,9 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 
 ---
 
-### test_req_prefix_turn_headers.py (324 LOC)
+### test_req_prefix_turn_headers.py (382 LOC)
 
-**Purpose:** Regression test for the `REQ #n` row prefix, `Turn` header rows, right-aligned times (one column, truncation, same time in both panes), continue-safe forwarded parsing and REQ-number/turn-header parity with `format_cache_tracker`, on synthetic forwarded lines and turns.
+**Purpose:** Regression test for the `REQ #n` row prefix, `Turn` header rows, right-aligned times (one column, truncation, same time in both panes), the HTTP status marker and `status:` line, continue-safe forwarded parsing and REQ-number/turn-header parity with `format_cache_tracker`, on synthetic forwarded lines and turns.
 **Reads:** nothing external — a temp forwarded JSONL and in-process turns.
 **Writes:** PASS/FAIL lines to stdout.
 **Called by:** none — manual regression test.

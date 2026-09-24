@@ -179,10 +179,10 @@ proxy itself uses, so a read-side "changed" decision matches the proxy's own.
 
 ---
 
-### timeline_markers.py (135 LOC)
+### timeline_markers.py (136 LOC)
 
 **Purpose:** Request markers and numbering. `request_markers` folds boundaries into
-`{msg_index: {number, timestamp, clock_timestamp, pane_turn, refires, flow_id, sys_lines, tool_lines, message_count}}`, what
+`{msg_index: {number, timestamp, clock_timestamp, pane_turn, http_status, refires, flow_id, sys_lines, tool_lines, message_count}}`, what
 `msgs` draws its REQ separators from (grouped by `msg_start` once annotated, else `start_index`). `resolve_req_range_with_next` (`msgs --req`: the REQs' groups plus the next request's group) and `resolve_req_output_range` (`expand --req`: the next request's group, i.e. the reply plus the returned result). `request_numbers_by_flow` is what `overlay` uses to name the
 request behind a strip. `resolve_req_range`/`request_msg_range` translate a REQ number range into
 the equivalent msg-index range for `msgs --req`.
@@ -220,11 +220,11 @@ for the equivalent per-system-index and per-tool-name shape, both by running the
 
 ---
 
-### numbering.py (92 LOC)
+### numbering.py (100 LOC)
 
 **Purpose:** `build_session_numbering` resolves a session's transcript once and annotates every create and continue request with the token pane's own REQ number, turn and response-end time (`pane_number`/`pane_turn`/`pane_time`, `None` when unmapped); returns usage, the transcript turns and which path was used.
 **Reads:** the payload messages passed in by `commands`, `src/panes/cache_turns.build_cache_turns` over the resolved transcript, `src/format/token_format.call_numbers`, `usage.resolve_transcript`/`usage_from_transcript`.
-**Writes:** mutates the passed boundary/continue dicts in place (`pane_*`, plus `msg_start` for every located request); returns `{usage, pane_turns, path, requests}` (`path` is `transcript` or `boundaries`, `requests` the annotated creates plus continues).
+**Writes:** mutates the passed boundary/continue dicts in place (`pane_*`, `http_status` from the `_response` stream for every main-thread request in either path, plus `msg_start` for every located request); returns `{usage, pane_turns, path, requests}` (`path` is `transcript` or `boundaries`, `requests` the annotated creates plus continues).
 **Also:** `_locate_msgs` finds each request's msg group start in the last full payload — a create at the last assistant msg before its last sent msg, a continue at the last assistant msg before its tool_result (matched by `tool_use_id`); openers, unmapped and newer-than-payload continues stay unlocated.
 **Called by:** `commands.py` (`_run_reqs`, `_numbered_view`); `dev/dual_log_cli/tests/test_reqs_pane_numbering.py`.
 **Calls out:** `panes.cache_turns`, `format.token_format` (absolute imports).
@@ -301,12 +301,12 @@ tail when the proxy transformed it.
 
 ---
 
-### render_reqs.py (272 LOC)
+### render_reqs.py (276 LOC)
 
 **Purpose:** `reqs`' turn-grouped, CR/CC-annotated REQ listing — `render_reqs`/`render_reqs_merged`
 share one pipeline (`_session_entries_and_separators`, `_apply_filters`, `_grouped_lines`) that
 turns-groups every session's REQs, then applies `--turn`/`--gap`/`--rebuild`/`--drop` as pure
-filters over that one fixed line form; `--merged` flattens every session into one
+filters over that one fixed line form (a non-200 response status prints after the time, e.g. `REQ ?   11:40:02  404  CR ?  CC ?`; 200 rows are unchanged); `--merged` flattens every session into one
 chronologically-sorted, session-tagged chain instead of one listing per session. In the transcript path a REQ without a transcript match takes its turn from its send time via `proxy_display.format._assign_turns_to_entries`, and the turn separator shows the turn's prompt time.
 **Reads:** `(session, boundaries)` pairs, `turns_by_stem`, `usage_by_stem`, `continues_by_stem`, `pane_turns_by_stem` (all from `commands._run_reqs`) — parameters only.
 **Writes:** Nothing — returns a string; `commands.py` does the `sys.stdout.write`.
@@ -430,3 +430,6 @@ session with no surviving REQ line;** when nothing prints at all, the single lin
 **A REQ without a transcript match (`REQ ?`) sits in the turn its send time falls in and never forms a `--gap` pair.**
 Its turn comes from the same rule as the proxy pane; a pair member must be a numbered REQ so the chain can
 continue with `expand --req N`. See `process-docs/dual_log_cli/`.
+
+**`numbering._annotate_status` reads `_response` with no fallback:** a broken `_response` log fails the command
+loudly instead of printing rows without status.
