@@ -34,7 +34,10 @@ def _is_sweep_due(last_ts: float, now: float) -> bool:
 def _read_last_sweep_ts() -> float:
     try:
         return float(json.loads(MONITOR_SWEEP_STATE_FILE.read_text(encoding='utf-8'))['last_run_ts'])
-    except Exception:
+    except FileNotFoundError:
+        return 0.0
+    except Exception as e:
+        log_menubar('monitor_sweep', f'state-read FAILED {e!r}, treating as never swept')
         return 0.0
 
 def _write_last_sweep_ts(ts: float) -> None:

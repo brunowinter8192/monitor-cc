@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from .menubar_log import log_menubar_change
 from .paths import HOOKS_FILE as _HOOK_STATE_FILE
 
 _PROC_REFRESH_INTERVAL = 10.0
@@ -179,6 +180,11 @@ def _read_hook_state(now: float) -> Dict[str, dict]:
     _hook_state_last_read = now
     try:
         _hook_state_cache = json.loads(_HOOK_STATE_FILE.read_text(encoding='utf-8'))
-    except Exception:
+        log_menubar_change('hook_state', 'hook_state_read', None)
+    except FileNotFoundError:
         _hook_state_cache = {}
+        log_menubar_change('hook_state', 'hook_state_read', None)
+    except Exception as exc:
+        _hook_state_cache = {}
+        log_menubar_change('hook_state', 'hook_state_read', f'read failed path={_HOOK_STATE_FILE} err={exc!r}')
     return _hook_state_cache

@@ -37,3 +37,13 @@ def check(name: str, ok: bool, detail: str = '') -> None:
     print(f'{name}: {"PASS" if ok else "FAIL"} {detail}'.rstrip())
     if not ok:
         sys.exit(1)
+
+def point_log(tmp: Path):
+    mlog = load('menubar_log')
+    mlog.MENUBAR_LOG = tmp / 'menubar.log'
+    if hasattr(mlog, '_last_by_key'):
+        mlog._last_by_key.clear()
+    return mlog
+
+def log_text(mlog) -> str:
+    return mlog.MENUBAR_LOG.read_text() if mlog.MENUBAR_LOG.exists() else ''
