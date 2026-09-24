@@ -29,12 +29,12 @@ root) — this package only consumes those.
 
 ## Modules
 
-### panel.py (365 LOC)
+### panel.py (412 LOC)
 
-**Purpose:** NSPanel/NSView/NSButton/NSTextField factory helpers, cursor-tracking view subclasses, pure layout-computation helpers for the main sessions panel, and the clickable tab-header factory shared by all four panels.
+**Purpose:** NSPanel/NSView/NSButton/NSTextField factory helpers, cursor-tracking view subclasses, pure layout-computation helpers for the main sessions panel, the clickable tab-header factory shared by all four panels, and the shared side-panel scaffolding (`_make_tab_nspanel`, `_reposition_tab_panel`) plus the top-preserving `_resize_panel_keep_top` used by all four panel controllers.
 **Reads:** function parameters only (sessions, bg_by_project, panel_width passed by callers).
 **Writes:** NSPanel frame (`_reposition_panel`); constructs NSView/NSButton/NSTextField UI objects returned to callers.
-**Called by:** `panel_lifecycle.py`, `panel_manager.py`, `rag_controller.py`, `model_controller.py`, `model_panel_ui.py`, `launch_panel_ui.py`, `launch_controller.py`, `app.py` (`_wire_header_buttons`).
+**Called by:** `panel_lifecycle.py` (`_reposition_panel`, `_reposition_tab_panel`), `panel_manager.py` (`_make_nspanel`, `_resize_panel_keep_top`), `rag_controller.py`, `model_controller.py`, `launch_controller.py` (`_make_tab_nspanel`, `_resize_panel_keep_top`), `model_panel_ui.py`, `launch_panel_ui.py`, `app.py` (`_wire_header_buttons`).
 **Calls out:** `AppKit`, `Foundation`, `itertools`, `objc`; `.menubar_log` (`log_menubar`); `.panel_dims` (`PANEL_*`); `.panel_tabs` (`TAB_SEPARATOR`, `header_pieces`).
 
 ---
@@ -63,33 +63,33 @@ root) — this package only consumes those.
 
 ---
 
-### panel_manager.py (218 LOC)
+### panel_manager.py (212 LOC)
 
 **Purpose:** Per-concern controller owning the main sessions panel's NSPanel/lookup state and the full-rebuild / in-place-update rendering logic; main rows get a `skill` button after `mon`, worker rows do not.
 **Reads:** `app.settings.panel_width`/`.panel_min_height`; `sessions` and `bg_by_project` from callers.
 **Writes:** `self._lookups` (a fresh `_PanelLookups` per rebuild — `cwd_map`, `worker_tag_map`, `desktop_to_cwd`, abort maps, `displayed_items`); `self._widgets.panel` frame.
 **Called by:** `app.py` (construction, `_tick`, all `_PanelController` click handlers), `panel_lifecycle.py` (open/close/background/cycle).
-**Calls out:** `AppKit`, `Foundation`, `itertools.groupby`, `collections.Counter`; `.panel` (factories + non-cluster constants); `.panel_grid` (`_GRID_*` constants).
+**Calls out:** `AppKit`, `Foundation`, `itertools.groupby`, `collections.Counter`; `.panel` (factories + non-cluster constants + `_resize_panel_keep_top`); `.panel_grid` (`_GRID_*` constants).
 
 ---
 
-### rag_controller.py (157 LOC)
+### rag_controller.py (101 LOC)
 
 **Purpose:** Per-concern controller for the RAG status side panel — reads the RAG indexing lock file and renders a single status label.
 **Reads:** `~/.rag-locks/rag.lock`; `app.settings.panel_width`/`.panel_min_height`.
 **Writes:** `self._rag_status_label` text (in-place, every tick); `self._rag_panel` frame.
 **Called by:** `app.py` (construction, `_tick`, resize), `panel_lifecycle.py` (open/close/cycle).
-**Calls out:** `AppKit`, `Foundation`, `json`, `os`, `errno`, `datetime`, `pathlib`; `.panel` (constants + helpers); `.panel_dims` (`PANEL_*`).
+**Calls out:** `AppKit`, `Foundation`, `json`, `os`, `errno`, `datetime`, `pathlib`; `.panel` (constants + helpers + `_make_tab_nspanel`, `_resize_panel_keep_top`).
 
 ---
 
-### model_controller.py (214 LOC)
+### model_controller.py (208 LOC)
 
 **Purpose:** Per-concern controller for the Models side panel — main/worker model plus effort plus max_tokens plus thinking cycle rows, and the Apply action.
 **Reads:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (via `model_selection.py`, on open and after each cycle click); `app.settings.panel_width`/`.panel_min_height`.
 **Writes:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (atomic, only on an explicit Apply click); `self._pending`'s 8 fields (in-memory, on cycle clicks); `self._models_panel` frame.
 **Called by:** `app.py` (construction, all cycle/apply `_PanelController` delegates, resize), `panel_lifecycle.py` (open/close/cycle).
-**Calls out:** `AppKit`, `Foundation`, `sys`, `threading`; `.panel` (constants + `_make_line_separator`); `.model_selection` (`_PendingSelection`, `_thinking_is_enabled`); `.model_panel_ui` (factories + `_APPLY_*` constants).
+**Calls out:** `AppKit`, `Foundation`, `sys`, `threading`; `.panel` (constants + `_make_line_separator`, `_make_tab_nspanel`, `_resize_panel_keep_top`); `.model_selection` (`_PendingSelection`, `_thinking_is_enabled`); `.model_panel_ui` (factories + `_APPLY_*` constants).
 
 ---
 
@@ -103,13 +103,13 @@ root) — this package only consumes those.
 
 ---
 
-### model_panel_ui.py (72 LOC)
+### model_panel_ui.py (24 LOC)
 
-**Purpose:** NSPanel/NSButton construction factories for the Models panel.
+**Purpose:** Row and Apply button construction factories for the Models panel.
 **Reads:** nothing — pure AppKit object factories.
 **Writes:** nothing — returns constructed NSPanel/NSStackView/NSButton objects to callers.
-**Called by:** `model_controller.py`, `panel_lifecycle.py`.
-**Calls out:** `AppKit`, `Foundation`; `.panel_dims` (`PANEL_*`); `.panel` (`_TOP_BAR_H`, `_ROW_H`, `_CursorlessButton`, `_KeyablePanel`).
+**Called by:** `model_controller.py`.
+**Calls out:** `Foundation`; `.panel` (`_ROW_H`, `_CursorlessButton`).
 
 ---
 
@@ -143,13 +143,13 @@ root) — this package only consumes those.
 
 ---
 
-### panel_lifecycle.py (140 LOC)
+### panel_lifecycle.py (137 LOC)
 
 **Purpose:** Four-panel (Sessions/RAG/Models/Launch) open/close/background/cycle lifecycle driven by one ring order — reposition, show/hide, hotkey (re)registration.
 **Reads:** `app.panel`/`.rag`/`.models`/`.launch`/`.hotkey`/`.sessions` state; `app._nsapp.nsstatusitem`.
 **Writes:** NSPanel frame/order via each controller's panel ref; hotkey registration/unregistration via `app.hotkey`; `app.panel._panel_backgrounded`.
 **Called by:** `app.py` (`togglePanel_`, Cmd+K, Cmd+→/← lambdas); `launch_controller.py` (`_close_launch_panel`).
-**Calls out:** `sys`, `Foundation.NSOperationQueue`; `.panel` (`_reposition_panel`); `.rag_controller` (`_reposition_rag_panel`); `.model_panel_ui` (`_reposition_models_panel`); `.launch_panel_ui` (`_reposition_launch_panel`); `.panel_tabs` (`TAB_KEYS`).
+**Calls out:** `sys`, `Foundation.NSOperationQueue`; `.panel` (`_reposition_panel`, `_reposition_tab_panel`); `.panel_tabs` (`TAB_KEYS`).
 
 ---
 
@@ -269,23 +269,23 @@ root) — this package only consumes those.
 
 ---
 
-### launch_panel_ui.py (106 LOC)
+### launch_panel_ui.py (59 LOC)
 
-**Purpose:** NSPanel factory, reposition helper and button/row factories for the Launch tab (a row of the five desktop buttons without a label, project rows labeled by their last path component).
+**Purpose:** Button/row factories for the Launch tab (a row of the five desktop buttons without a label, project rows labeled by their last path component).
 **Reads:** nothing — pure AppKit object factories.
 **Writes:** nothing — returns constructed NSPanel/NSView/NSButton objects to callers.
-**Called by:** `launch_controller.py`, `panel_lifecycle.py`.
-**Calls out:** `AppKit`, `Foundation`; `.panel_dims` (`PANEL_*`); `.panel` (`_TOP_BAR_H`, `_ROW_H`, `_MENLO`, `_CursorlessButton`, `_CursorlessLabel`, `_KeyablePanel`).
+**Called by:** `launch_controller.py`.
+**Calls out:** `AppKit`, `Foundation`; `.panel` (`_ROW_H`, `_MENLO`, `_CursorlessButton`).
 
 ---
 
-### launch_controller.py (104 LOC)
+### launch_controller.py (96 LOC)
 
 **Purpose:** Per-concern controller for the Launch tab — desktop selection (occupied desktops are only marked, never refused), the PostEvent access request on tab open, and starting a launch on a background thread.
 **Reads:** `app.sessions.refresh()` (main sessions' `desktop_no`); `app.settings.panel_width`/`.panel_min_height`.
 **Writes:** its panel stack and header; `menubar.log` (`[launch]` category, ignored/refused clicks); closes the Launch panel on a launch click.
 **Called by:** `app.py` (construction, `_tick`, `selectDesktop_`/`launchProject_` actions, resize), `panel_lifecycle.py` (open/close/cycle).
-**Calls out:** `AppKit`, `Foundation`, `threading`; `.launch_config`; `.launch_panel_ui`; `.panel` (constants + `_make_line_separator`); `.panel_lifecycle` (`_close_launch_panel`); `.panel_tabs`; `.session_launch` (`launch_workflow`); `.space_switch` (`request_post_event_access_if_missing`); `.menubar_log`.
+**Calls out:** `AppKit`, `Foundation`, `threading`; `.launch_config`; `.launch_panel_ui`; `.panel` (constants + `_make_line_separator`, `_make_tab_nspanel`, `_resize_panel_keep_top`); `.panel_lifecycle` (`_close_launch_panel`); `.panel_tabs`; `.session_launch` (`launch_workflow`); `.space_switch` (`request_post_event_access_if_missing`); `.menubar_log`.
 
 ---
 
@@ -513,3 +513,4 @@ root) — this package only consumes those.
 - Sessions grid has 7 columns; the seventh holds the `skill` button (main rows only). `mergeCellsInHorizontalRange` for the project separator rows and every `addRowWithViews_` list in `panel_manager.py` must keep 7 entries, or NSGridView raises.
 - Skill picker (`skill_*.py`): plugin skills come ONLY from the manifest's `skills` array; full name is `<manifest name>:<frontmatter name or directory name>`. Project and personal skills use the directory name (frontmatter `name` is a label only). An enabled plugin with neither manifest nor `skills/` directory is skipped silently; a missing manifest with a `skills/` directory, a manifest without a `skills` array, or a missing skill file logs `[skill] FAILED` and is skipped. The inserted text `Aktiviere den Skill <full name>.` is typed with `input text` and never submitted (no `send key`, no `activate`).
 - Tab header (`panel.py:_make_tab_header`): each panel has four real tab buttons (tag = ring index, action `selectTab:`) plus three separator labels inside a strip; the header is static per panel because the active tab is fixed by the panel, so controllers no longer set a title on rebuild. `_ensure_wired` must call `_wire_header_buttons` for every panel's header, or its clicks do nothing.
+- Side-panel scaffolding (RAG/Models/Launch) lives once in `panel.py` (`_make_tab_nspanel(active)`, `_reposition_tab_panel`); the four panel controllers resize through `_resize_panel_keep_top`. The Sessions panel keeps its own `_make_nspanel` and `_reposition_panel` on purpose (footer, own content view class, no status-window `None` guard).

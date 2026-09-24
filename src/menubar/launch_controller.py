@@ -1,12 +1,11 @@
 # INFRASTRUCTURE
 import threading
 
-from Foundation import NSMakeRect
-
 from .launch_config import LAUNCH_DESKTOPS, LAUNCH_PROJECTS
-from .launch_panel_ui import (_make_launch_nspanel, _make_desktop_row, _make_project_button)
+from .launch_panel_ui import (_make_desktop_row, _make_project_button)
 from .menubar_log import log_menubar
-from .panel import _TOP_BAR_H, _ROW_H, _LABEL_H, _make_line_separator
+from .panel import (_TOP_BAR_H, _ROW_H, _LABEL_H, _make_line_separator,
+                    _make_tab_nspanel, _resize_panel_keep_top)
 from .panel_lifecycle import _close_launch_panel
 from .session_launch import launch_workflow
 from .space_switch import request_post_event_access_if_missing
@@ -21,7 +20,7 @@ class LaunchController:
     def __init__(self, app) -> None:
         self.app = app
         self._launch_open: bool = False
-        self._launch_panel, self._launch_sv, self._launch_header = _make_launch_nspanel()
+        self._launch_panel, self._launch_sv, self._launch_header = _make_tab_nspanel('Launch')
         self._selected_desktop = None
         self._occupied = frozenset()
         self._desktop_btns = {}
@@ -53,7 +52,7 @@ class LaunchController:
         self._occupied = occupied_desktops(sessions)
         pw = app.settings.panel_width
         required_h = _TOP_BAR_H + _LABEL_H + _ROW_H + _LABEL_H + len(LAUNCH_PROJECTS) * _ROW_H
-        self._resize_launch_panel(max(app.settings.panel_min_height, required_h))
+        _resize_panel_keep_top(self._launch_panel, app.settings.panel_width, max(app.settings.panel_min_height, required_h))
         self._launch_sv.addView_inGravity_(_make_line_separator(pw), 1)
         row, self._desktop_btns = _make_desktop_row(
             pw, LAUNCH_DESKTOPS, self._occupied, self._selected_desktop, app._panel_controller)
@@ -95,10 +94,3 @@ class LaunchController:
             launch_workflow(desktop, project)
         finally:
             self._launch_in_progress = False
-
-    def _resize_launch_panel(self, new_h: float) -> None:
-        w     = self.app.settings.panel_width
-        frame = self._launch_panel.frame()
-        top_y = frame.origin.y + frame.size.height
-        self._launch_panel.setFrame_display_(
-            NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
