@@ -2,7 +2,7 @@
 
 ## Role
 
-Global Claude Code safety hooks: standalone scripts that intercept Bash, Edit, Read and Write tool calls and either block a destructive or context-flooding pattern or silently rewrite a correctable input. Registered machine-wide, so a change affects every session. Touch for mechanical, unconditionally true command-safety rules; judgment-based or advisory rules belong in skills or rule files.
+Global Claude Code safety hooks: standalone scripts that intercept Bash, Edit, Read and Write tool calls and either block a destructive or context-flooding pattern or silently rewrite a correctable input. Registered machine-wide: changes affect every session. Touch for mechanical, unconditionally true command-safety rules; advisory rules belong in skills.
 
 ## Public Interface
 
@@ -42,7 +42,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 **Purpose:** appends one JSON line per hook decision to the fire log; a write failure never breaks a hook.
 **Reads:** optional log-path override environment variable (test isolation).
-**Writes:** `src/logs/hook_firing.jsonl` (append).
+**Writes:** the hook fire log under the gitignored logs directory (append).
 **Called by:** every active hook script in this directory except `hook_setup.py`.
 **Calls out:** none.
 
@@ -341,7 +341,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 ### block_rag_cli_document_repeat.py (173 LOC)
 
 **Purpose:** PreToolUse Stateful Bash hook blocking repeated single-document rag-cli index or delete calls within a rolling window.
-**Reads:** stdin (PreToolUse JSON payload). Its own state file under `src/logs/`.
+**Reads:** stdin (PreToolUse JSON payload). Its own state file under the gitignored logs directory.
 **Writes:** stderr block message; rewrites its state file.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.
 **Calls out:** none.
@@ -371,5 +371,5 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 ## State
 
 - `_fire_log.py` owns the hook fire log; append-only, written by every active hook, read by nothing in this directory.
-- `block_rag_cli_document_repeat.py` owns its own repeat-state file under `src/logs/`.
+- `block_rag_cli_document_repeat.py` owns its own repeat-state file under the gitignored logs directory.
 - `hook_setup.py` is the only writer of the user-level settings file.

@@ -2,7 +2,7 @@
 
 ## Role
 
-Root-level modules of the Monitor_CC terminal monitor shared by two or more pane packages (colors, constants, session discovery, search bar, error log, render utils), plus the tmux launcher, janitor and entry scripts. Touch for cross-package shared code or startup; not for a single pane's rendering or input, which lives in that pane's package.
+Root-level modules of the Monitor_CC terminal monitor shared by two or more pane packages (colors, constants, session discovery, search bar, error log, utils), plus the tmux launcher, janitor and entry scripts. Touch for cross-package shared code or startup; not for a single pane's rendering or input.
 
 ## Public Interface
 

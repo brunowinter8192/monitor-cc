@@ -90,3 +90,57 @@ Design and incidents worth keeping:
 - block_cli_chained covers 8 CLIs (gh-cli, rag-cli, worker-cli, reddit-cli, websearch, linkedin, penny-cli, duallog), resolves the bare interpreter form by a known project directory in the command, falling back to the session cwd; three rules: no piping a CLI segment, no redirecting a protected subcommand to a file, no same-call readback of a redirected file. Other chaining is unrestricted.
 - Disabled scripts (`*.disabled` in the directory) are not registered and not documented.
 - Registration state of block_po_read lives in the machine-local user settings file, which this repo does not track; do not assert it in docs.
+
+## menubar/ (Gotchas and State detail removed from DOCS.md)
+Process and lifecycle:
+- The singleton lock must exit 0 on failure: launchd KeepAlive=true only respawns on a non-zero exit.
+- The installed menubar is a FROZEN py2app bundle in ~/Applications. Restart or kill re-launches the same bundle and does NOT pick up edited src/menubar/*.py; any code change needs `./venv/bin/python setup_py2app.py py2app` to reach production. The bundle MUST be built from the main checkout: the repo root comes from the plist's PROJECT_ROOT, which the build script fills with the build directory.
+- The kill action runs `launchctl bootout`, which removes the plist from the launchd domain; KeepAlive no longer respawns until a manual `launchctl bootstrap` or login (RunAtLoad=true).
+- LSUIElement=1 must be set (environ setdefault) before app.run(), otherwise the Dock icon appears.
+- launchd default PATH lacks Homebrew: the plist's EnvironmentVariables/PATH must prepend /opt/homebrew/bin or tmux/lsof lookups in proc_cache fail silently.
+- launchd runs under the ascii locale: every subprocess.run(text=True) in this package must carry encoding='utf-8', errors='replace', else non-ASCII CC output (emoji, umlauts) raises UnicodeDecodeError.
+- hook_setup in menubar refuses to run from a worktree path; hooks must be installed from the main checkout or the registered path dies when the worktree is removed.
+- Code signing: the desktop detection needs Screen Recording (TCC) permission for window-name visibility, and Launch needs PostEvent permission; both grants survive rebuilds only while the bundle stays signed with the `monitor-cc Code Signing` identity (not the ad-hoc fallback).
+
+Threading and caches:
+- Discovery runs exclusively on the discovery-worker thread because the module caches in proc_cache, ghostty and desktop_detection are single-writer. The one cross-thread read (ghostty cwd-to-tty lookup from the focus path on the main thread) MUST go through proc_cache's snapshot accessor; direct iteration raises "dictionary changed size during iteration".
+- ghostty's batch refresh early-return branch (no new ttys) must still set the last-refresh timestamp, or the 10s TTL guard never re-arms and two `ps -A` calls run every discovery cycle.
+- proc_cache's bg-task open-paths and holder-pids dicts are REASSIGNED on every refresh, unlike the CC process cache (mutated in place). A `from .proc_cache import <dict>` in another module binds the import-time object and goes stale after the first refresh; bg_task_orphans reads through the snapshot accessor for this reason; any new consumer must do the same.
+- The active-background check is handle-based (lsof open-write-handle), not file-size-based: a task output file can be non-zero seconds after start while the task runs for minutes.
+- The abort action must resolve each killed PID's own .output file (lsof on fds 1 and 2) BEFORE sending SIGTERM: the handle disappears when the process exits.
+- Orphan reaper: bg_task_orphans self-throttles to once per 10s independent of the 1.5s discovery cadence, reconfirms each candidate with a fresh lsof immediately before a kill (the 10s-old cache is not trusted), walks ancestry up to 5 hops, dedups orphan_detected log lines per pid.
+- Tick architecture: main-thread 1.5s tick; panel full rebuild triggers on exactly two events (session-set change, or abort-button None-to-Some transition while open). A bare working/idle flip never rebuilds (open: in-place update; closed: bar icon blinks only).
+
+AppKit/Carbon:
+- Carbon hotkey CFUNCTYPE/handler refs (hotkey_carbon, digits, arrows, controller global handles) and desktop_detection's module-level CFUNCTYPE refs must stay referenced for the app lifetime: GC corrupts the IMP pointer table and crashes (SIGSEGV/SIGABRT) on the next hotkey event.
+- NSGridView disables translatesAutoresizingMaskIntoConstraints on every cell content view: any NSView in a grid cell needs explicit height and width anchor constraints or it renders at zero size / bleeds out of its row.
+- The keyable panel overrides canBecomeKeyWindow to True because NSWindowStyleMaskNonactivatingPanel blocks key-window status by default, which would break keyboard routing to any editable field.
+- Sessions grid has 7 columns; the seventh holds the skill button (main rows only). Horizontal merges for project separator rows and every addRowWithViews list in panel_manager must keep 7 entries or NSGridView raises.
+- Tab header: four real tab buttons per panel (tag = ring index, action selectTab:) plus three separator labels in a strip; static per panel. The wiring step must run for every panel's header or clicks do nothing. panel_lifecycle derives ring neighbours from a ring tuple; adding a tab means one entry in the ring, one in panel_tabs, plus the panel open/close cases.
+- Side-panel scaffolding (RAG, Models, Launch) lives once in panel.py; all four controllers resize through the keep-top resize helper. The Sessions panel keeps its own panel factory and reposition function on purpose (footer, own content view class, no status-window None guard).
+
+Ghostty:
+- Ghostty exposes no tty or pid via AppleScript. tty-to-UUID mapping and the desktop detection per-window resolution both bootstrap via an OSC 2 title-marker write plus an AppleScript name query. The marker only works when the target tab is the FOCUSED tab of its window (background tabs do not propagate OSC-2 to kCGSWindowTitle).
+- The monitor-open action always kills an existing monitor_cc_* tmux session before relaunching; no focus-only branch, since that session commonly outlives its Ghostty window and a focus-only click would silently no-op.
+- Focus AppleScripts (both session routes, the shared terminal-id focus used by both worker attempts) call app-level `activate` AFTER the terminal-level focus command in the SAME osascript invocation (since 2026-09-20). This reverses part of the 2026-06 process-docs in area ghostty_foreground (which removed activate because it brought Ghostty forward on every desktop); the user retracted that (area menubar_worker_focus, 2026-09-20) in favor of one narrower constraint: a Ghostty window must never change its own desktop. activate is only reached after a successful focus and is naturally unreached on the id route if `focus terminal id` throws. Do not reintroduce activate as standalone/first command and do not split it into a second osascript call (order matters, one round trip).
+- Worker-viewer focus self-heals one stale-id failure: on a non-OK first attempt it reprobes that single tty and retries once. Log lines: focus_worker with status OK / ERR rc stderr / TIMEOUT plus attempt=1; on failure a focus_worker_reprobe line (tty, cost, fresh id or miss) and, if a fresh id was found, a second attempt=2 line. The reprobe path is the only added cost and never runs on first-attempt success.
+- The single-tty reprobe deliberately has NO fixed sleep after the OSC2 write, unlike the batch refresh (120ms). Measured live (60 trials, area menubar_worker_focus): immediate query finds the marker about 88% of the time; on a miss one immediate retry found it 100% (0 double-misses), average total about 92ms vs about 210ms with the fixed sleep. This applies ONLY to the single-tty path; the batch refresh sleep was not re-measured (different shape: N markers before one shared query). Do not assume the conclusion carries over.
+- Path oddities: proc_cache's proxy-log directory is a hardcoded absolute path (breaks if the checkout moves). ghostty writes the cwd-to-UUID map through its own inline path, not through the paths constant; that constant and the orchestrator-signals constant have no reader inside this package (the signals file is written by the iterative-dev plugin's worker-cli send).
+
+Launch tab:
+- Needs PostEvent permission for the bundle. The request runs on the MAIN thread when the tab opens; the launch thread never requests. Without the grant a click only logs `[launch] FAILED ... postevent_not_granted` and nothing switches; there is no fallback, by design.
+- The launch workflow blocks about 1.5s (switch plus 1s settle), so it runs on a daemon thread; a busy flag drops clicks while it runs (cleared in a finally). Occupied desktops are only marked, never refused.
+
+Skill picker:
+- Plugin skills come ONLY from the manifest's skills array; full name is `<manifest name>:<frontmatter name or directory name>`. Project and personal skills use the directory name (frontmatter name is a label only). An enabled plugin with neither manifest nor skills/ directory is skipped silently; a missing manifest with a skills/ directory, a manifest without a skills array, or a missing skill file logs `[skill] FAILED` and is skipped. Inserted text `Aktiviere den Skill <full name>.` is typed with `input text` and never submitted (no send key, no activate).
+
+State ownership (per controller on the app object):
+- settings (panel width, min height): app.py, read by the panel, rag, model and launch controllers.
+- panel controller: open/backgrounded/initialized/rebuild flags, lookup state (displayed items, cwd map, worker tag map, desktop-to-cwd, abort button maps), widgets.
+- rag, models (pending selection incl. per-side thinking, row buttons), launch (selected desktop, occupied set, desktop buttons, in-progress flag), skills (the row whose menu is open), sessions (last sessions and bg map), focus (last statuses), hotkey (digit/arrow GC refs plus global handles for Cmd-L/Cmd-K).
+- Caches: CC process cache (pid to tty,cwd; written only from discovery thread; cross-thread read via snapshot), tmux session set (3s refresh), hook state (session_id to status,cwd,updated_ts; 1s TTL), Ghostty tty-to-id map, desktop result cache (10s TTL) plus previous result for transition logging.
+
+## Notes on tool behavior (2026-09-25)
+- docs-drift-check flags a `### <module>.py` heading whose file is not in the documented directory. setup_py2app.py sits at the project root and was therefore dropped from src/menubar/DOCS.md. It is the py2app build/install/bootstrap script (reads menubar_main.py entry and the plist template, writes dist bundle, ~/Applications copy and the LaunchAgent plist; run manually once and after a Python upgrade; uses py2app and setuptools). It was 200 LOC on 2026-09-25.
+- docs-drift-check also flags a `src/logs` path mention as NOT FOUND (the directory is gitignored, absent in worktrees). DOCS.md refers to "the gitignored logs directory" instead.
+- Size after rewrite: src/menubar/DOCS.md is above 400 lines (about 455) because of the mandatory per-module template with 45 modules; hooks/DOCS.md about 375.
