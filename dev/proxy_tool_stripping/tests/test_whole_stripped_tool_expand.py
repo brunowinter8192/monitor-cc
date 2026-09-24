@@ -153,11 +153,11 @@ def t10_accumulate_original_tools_latest_snapshot_per_family():
         path = Path(td) / 'x_original.jsonl'
         lines = [
             {'model': 'claude-haiku-4-5', 'payload': {'messages': []}},
-            {'model': 'claude-fable-5-1', 'payload': {'tools': [
+            {'model': 'claude-opus-5-5', 'payload': {'tools': [
                 {'name': 'Bash', 'description': 'run bash v1'},
                 {'name': 'Agent', 'description': 'agent v1'},
             ]}},
-            {'model': 'claude-fable-5-1', 'payload': {'tools': [
+            {'model': 'claude-opus-5-5', 'payload': {'tools': [
                 {'name': 'Bash', 'description': 'run bash v2'},
             ]}},
         ]
@@ -171,7 +171,7 @@ def t10_accumulate_original_tools_latest_snapshot_per_family():
 
         opus_dict_ref = acc['opus']
         with open(path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps({'model': 'claude-fable-5-1', 'payload': {'tools': [
+            f.write(json.dumps({'model': 'claude-opus-5-5', 'payload': {'tools': [
                 {'name': 'Write', 'description': 'write v1'},
             ]}}) + '\n')
         pos2 = accumulate_original_tools(path, pos, acc)
