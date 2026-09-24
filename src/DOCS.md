@@ -118,9 +118,9 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### utils.py (160 LOC)
+### utils.py (172 LOC)
 
-**Purpose:** shared formatting/rendering primitives with no I/O — timestamp formatting, cell-width-aware truncation/wrapping, ANSI-safe substring highlighting, copy-symbol placement, header-rule sizing.
+**Purpose:** shared formatting/rendering primitives with no I/O — timestamp formatting, cell-width-aware truncation/wrapping, ANSI-safe substring highlighting, copy-symbol placement, `right_align_time` (cuts a row to a cell budget, keeps a right-aligned `HH:MM:SS` in a fixed column, 3 cells from the right edge), header-rule sizing.
 **Reads:** nothing (pure functions on passed-in strings/values).
 **Writes:** nothing.
 **Called by:** `format/token_format.py`, `gpu_pane/gpu_render.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/token_search.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy_display/format.py`, `proxy_display/render_messages.py`, `proxy_display/render_turn.py`, `proxy_display/search.py`, `proxy_display/worker_proxy_pane.py`, `search_bar.py`, `workers/worker_switch_header.py`, `workers/worker_tokens_pane.py`.

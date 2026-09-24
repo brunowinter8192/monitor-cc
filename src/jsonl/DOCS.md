@@ -35,9 +35,9 @@ callers: `panes/cache_turns.py`, `workers/worker_pane.py`, `workers/worker_forma
 
 ---
 
-### jsonl_cache_turns.py (154 LOC)
+### jsonl_cache_turns.py (156 LOC)
 
-**Purpose:** `extract_cache_turns(messages)` groups messages into turns (one per external user prompt) and merges each turn's assistant responses into `api_calls`, each carrying CR/CC/D/output token counts plus rate-limit/service-tier usage extras. Implements streaming-snapshot dedup: CC sometimes writes multiple assistant messages for the same request as incremental snapshots (partial thinking + final output) sharing one `requestId`; `_absorb_assistant_call`/`_merge_duplicate_call` use a `seen_types` set of `(type, identifier)` tuples to skip content blocks already counted in an earlier snapshot of the same response.
+**Purpose:** `extract_cache_turns(messages)` groups messages into turns (one per external user prompt) and merges each turn's assistant responses into `api_calls`, each carrying CR/CC/D/output token counts, the `timestamp` of the request's LAST assistant entry (response end), plus rate-limit/service-tier usage extras. Implements streaming-snapshot dedup: CC sometimes writes multiple assistant messages for the same request as incremental snapshots (partial thinking + final output) sharing one `requestId`; `_absorb_assistant_call`/`_merge_duplicate_call` use a `seen_types` set of `(type, identifier)` tuples to skip content blocks already counted in an earlier snapshot of the same response.
 **Reads:** List of message dicts (parameter only).
 **Writes:** nothing — returns a list of cache-turn dicts.
 **Called by:** `panes/cache_turns.py`, `workers/worker_pane.py`.

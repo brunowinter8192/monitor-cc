@@ -40,9 +40,9 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### cache_turns.py (57 LOC)
+### cache_turns.py (58 LOC)
 
-**Purpose:** `build_cache_turns(filepath, last_position, existing_turns) -> (turns, new_position)` — incrementally reads new lines from a session JSONL since `last_position`, parses them, and merges the resulting cache turns into `existing_turns` (including the case where the last existing turn was left incomplete by a previous poll).
+**Purpose:** `build_cache_turns(filepath, last_position, existing_turns) -> (turns, new_position)` — incrementally reads new lines from a session JSONL since `last_position`, parses them, and merges the resulting cache turns into `existing_turns` (including the case where the last existing turn was left incomplete by a previous poll; a call re-seen in a later poll keeps the later `timestamp`).
 **Reads:** session JSONL file at `filepath` (via `jsonl.read_new_lines`/`jsonl.get_current_position`) — parameters only.
 **Writes:** nothing — returns `(turns, new_position)`; does not mutate `existing_turns`.
 **Called by:** `panes/token_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`.

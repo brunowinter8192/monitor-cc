@@ -76,13 +76,13 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### format.py (191 LOC)
+### format.py (196 LOC)
 
-**Purpose:** `format_proxy_block` — groups proxy entries by turn, emits one token-pane-style `Turn n [..]` header row per group (`token_format._format_turn_header_line`), applies scroll/viewport windowing, delegates row rendering to `render_turn`, applies the row-background priority chain, returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
+**Purpose:** `format_proxy_block` — groups proxy entries by turn, emits one token-pane-style `Turn n (..)` header row (time right-aligned) per group (`token_format._format_turn_header_line`), applies scroll/viewport windowing, delegates row rendering to `render_turn`, applies the row-background priority chain, returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
 **Writes:** Nothing — returns `(ansi_string, total_lines)` tuple; mutates the `line_map`/`copy_rows_out`/`item_positions_out` arguments when given.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/render_turn.py` (`_is_standalone_entry`, `_shorten_model`, `_format_k`, `_fmt_thinking_budget`, `_fmt_effort`), `src/proxy_display/search.py` (`_is_standalone_entry`), `src/proxy_display/proxy_pane_shared.py` (`_is_standalone_entry`), `src/proxy_display/render_sections.py` (`_format_k`), `src/proxy_display/render_sections_system.py` (`_format_k`), `src/proxy_display/__init__.py`
-**Calls out:** `format.token_format` (`_format_k`, `_format_turn_header_line`, `request_numbers_by_id`), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`)
+**Calls out:** `format.token_format` (`_format_k`, `_format_turn_header_line`, `request_numbers_by_id`, `request_times_by_id`), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`)
 
 ---
 

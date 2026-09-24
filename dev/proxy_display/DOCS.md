@@ -56,9 +56,9 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 
 ---
 
-### test_req_prefix_turn_headers.py (213 LOC)
+### test_req_prefix_turn_headers.py (324 LOC)
 
-**Purpose:** Regression test for the `REQ #n` row prefix, `Turn` header rows, continue-safe forwarded parsing and REQ-number/turn-header parity with `format_cache_tracker`, on synthetic forwarded lines and turns.
+**Purpose:** Regression test for the `REQ #n` row prefix, `Turn` header rows, right-aligned times (one column, truncation, same time in both panes), continue-safe forwarded parsing and REQ-number/turn-header parity with `format_cache_tracker`, on synthetic forwarded lines and turns.
 **Reads:** nothing external — a temp forwarded JSONL and in-process turns.
 **Writes:** PASS/FAIL lines to stdout.
 **Called by:** none — manual regression test.
@@ -66,9 +66,9 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 
 ---
 
-### verify_req_numbering.py (132 LOC)
+### verify_req_numbering.py (137 LOC)
 
-**Purpose:** Side-by-side check of one turn: proxy pane rows versus token pane rows for a real dual-log session, plus a pairwise (number, turn) equality verdict.
+**Purpose:** Side-by-side check of one turn: proxy pane rows versus token pane rows for a real dual-log session, plus a pairwise (number, turn, time) equality verdict, rendered at width 62.
 **Reads:** `_forwarded`/`_response` under the main checkout's `src/logs/dual_log`, the matching transcript under `~/.claude/projects` (found by request_id).
 **Writes:** `dev/proxy_display/md/verify_req_numbering_<stem>_turn<N>.md` and stdout.
 **Called by:** none — run manually: `python dev/proxy_display/verify_req_numbering.py <stem> <turn>`.
