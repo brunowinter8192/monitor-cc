@@ -117,7 +117,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### paths.py (19 LOC)
+### paths.py (20 LOC)
 
 **Purpose:** Single source of truth for on-disk path values (app-support directory, shared-rules files, repo root).
 **Reads:** the project-root environment variable via the shared root resolver.
@@ -127,13 +127,13 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### root_report.py (5 LOC)
+### root_report.py (14 LOC)
 
-**Purpose:** Reporter handed to the shared root resolver; logs the resolved root and its source.
-**Reads:** nothing.
-**Writes:** one line in `menubar.log` (lazy import to avoid a cycle with the log module).
+**Purpose:** Reporter handed (bound to the log path) to `monitor_root.resolve_monitor_cc_root` by `paths.py` — appends the resolved root and its source to `menubar.log`.
+**Reads:** —
+**Writes:** one `[paths]` line in `menubar.log`, same line format as `log_menubar`; written directly because `menubar_log` imports `paths`, so calling `log_menubar` from the import-time resolution is a cycle.
 **Called by:** `paths.py`.
-**Calls out:** none.
+**Calls out:** —
 
 ---
 
