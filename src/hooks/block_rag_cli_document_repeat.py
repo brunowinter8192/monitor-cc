@@ -118,7 +118,8 @@ def _record_and_count(session_id: str, target: str) -> int:
             1 for e in entries
             if e.get('session_id') == session_id and e.get('target') == target
         )
-    except Exception:
+    except Exception as e:
+        log_fire("block_rag_cli_document_repeat", "trace", "Bash", target, reason=f"count reset to 0: {type(e).__name__}: {e}", session_id=session_id)
         return 0
 
 
@@ -126,6 +127,7 @@ def _read_recent_entries(cutoff: datetime.datetime) -> list:
     if not os.path.exists(_STATE_FILE):
         return []
     entries = []
+    skipped = 0
     try:
         with open(_STATE_FILE, 'r', encoding='utf-8') as f:
             for line in f:
@@ -138,9 +140,13 @@ def _read_recent_entries(cutoff: datetime.datetime) -> list:
                     if ts >= cutoff:
                         entries.append(entry)
                 except Exception:
+                    skipped += 1
                     continue
-    except Exception:
+    except Exception as e:
+        log_fire("block_rag_cli_document_repeat", "trace", "Bash", _STATE_FILE, reason=f"state read failed, entries dropped: {type(e).__name__}: {e}")
         return []
+    if skipped:
+        log_fire("block_rag_cli_document_repeat", "trace", "Bash", _STATE_FILE, reason=f"state read skipped {skipped} corrupt lines")
     return entries
 
 
@@ -150,8 +156,8 @@ def _write_entries(entries: list) -> None:
         with open(_STATE_FILE, 'w', encoding='utf-8') as f:
             for entry in entries:
                 f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-    except Exception:
-        return
+    except Exception as e:
+        log_fire("block_rag_cli_document_repeat", "trace", "Bash", _STATE_FILE, reason=f"state write failed: {type(e).__name__}: {e}")
 
 
 def _block(command: str, session_id: str, target: str) -> None:
