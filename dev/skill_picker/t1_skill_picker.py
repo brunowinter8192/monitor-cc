@@ -150,9 +150,29 @@ def _case_discovery_plugins() -> str:
     assert full == sorted(_REAL_SHAPED_FULL), f'full names {full}'
     assert all(s.source == 'plugin' for s in skills)
     assert not any('off-plugin' in s.full for s in skills), 'disabled plugin listed'
-    assert logs == [('skill', 'FAILED plugin=pyright-lsp@m reason=manifest_missing')], f'logs {logs}'
+    assert logs == [], f'a plugin with neither manifest nor skills/ directory must be skipped silently, logs {logs}'
     shutil.rmtree(root)
-    return f'8 plugin skills, disabled plugin absent, pyright-like plugin without manifest logged: {logs[0][1]}'
+    return '8 plugin skills, disabled plugin absent, pyright-like plugin (no manifest, no skills/ directory) skipped without a log line'
+
+def _case_discovery_manifest_missing() -> str:
+    sd = _imp('skill_discovery')
+    root = Path(tempfile.mkdtemp(prefix='skillpicker_'))
+    claude = root / 'dotclaude'
+    with_dir = claude / 'plugins' / 'cache' / 'withdir'
+    _skill_md(with_dir / 'skills' / 'some-skill' / 'SKILL.md', 'some-skill')
+    bare = claude / 'plugins' / 'cache' / 'bare'
+    (bare).mkdir(parents=True)
+    _write(bare / 'README.md', 'no manifest, no skills')
+    _write(claude / 'settings.json', json.dumps({'enabledPlugins': {'withdir@m': True, 'bare@m': True}}))
+    ent = lambda p: [{'scope': 'user', 'installPath': str(p)}]
+    _write(claude / 'plugins' / 'installed_plugins.json', json.dumps({'plugins': {
+        'withdir@m': ent(with_dir), 'bare@m': ent(bare)}}))
+    with _Logs(sd) as logs:
+        skills = sd.discover_skills_workflow('', claude)
+    assert skills == [], f'skills {skills}'
+    assert logs == [('skill', 'FAILED plugin=withdir@m reason=manifest_missing')], f'logs {logs}'
+    shutil.rmtree(root)
+    return f'no manifest + skills/ directory -> {logs[0][1]}; no manifest + no skills/ directory -> skipped silently'
 
 def _case_discovery_tripwires() -> str:
     sd = _imp('skill_discovery')
@@ -396,6 +416,7 @@ def _case_isolation() -> str:
 
 _CASES = {
     'discovery_plugins': _case_discovery_plugins,
+    'discovery_manifest_missing': _case_discovery_manifest_missing,
     'discovery_tripwires': _case_discovery_tripwires,
     'discovery_names': _case_discovery_names,
     'discovery_project_personal': _case_discovery_project_personal,

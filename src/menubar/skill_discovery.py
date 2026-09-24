@@ -88,7 +88,9 @@ def _skills_of_plugin(key: str, installed: dict) -> List[Skill]:
     install_path = _install_path(key, installed)
     manifest_file = install_path / _MANIFEST_PATH
     if not manifest_file.is_file():
-        raise PluginProblem('manifest_missing')
+        if (install_path / 'skills').is_dir():
+            raise PluginProblem('manifest_missing')
+        return []
     manifest = _read_json(manifest_file)
     plugin_name = manifest.get('name')
     if not plugin_name:

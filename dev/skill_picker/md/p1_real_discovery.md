@@ -1,6 +1,6 @@
 # p1_real_discovery report
 
-- time: 2026-09-24 21:14:36
+- time: 2026-09-24 21:15:38
 - read-only against /Users/brunowinter2000/.claude; HOME is isolated so log lines go to a temp file, nothing is typed anywhere
 
 ### cwd /Users/brunowinter2000/Documents/general
@@ -34,6 +34,5 @@
 ## Log lines the picker wrote during these discoveries (temp log)
 
 ```
-2026-09-24T21:14:36 [skill] FAILED plugin=pyright-lsp@claude-plugins-official reason=manifest_missing
-2026-09-24T21:14:36 [skill] FAILED plugin=pyright-lsp@claude-plugins-official reason=manifest_missing
+(no log lines)
 ```
