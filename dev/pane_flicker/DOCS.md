@@ -4,7 +4,7 @@
 Tests and measurements for the flicker fix on the tokens, worker-tokens, proxy and worker-proxy panes: the in-place synchronized frame write (M1) and the frozen-turn cache for the tokens panes (M2). Touch when changing `src/frame_writer.py`, `src/format/turn_cache.py`, or the frame-write / turn-cache wiring in the four panes.
 
 ## Public Interface
-No `__init__.py`. Each `*_test.py` and `m2_hover_timing.py` is run directly: `python3 dev/pane_flicker/<script>.py`. They compare the working tree against a `git archive` of a reference ref extracted to a temp directory. `m1_frame_e2e_test.py` pins the pre-M1 commit `0ce370df`; the M2 scripts still use `integration`, which now contains M1 and M2.
+No `__init__.py`. Each `*_test.py` and `m2_hover_timing.py` is run directly: `python3 dev/pane_flicker/<script>.py`. They compare the working tree against a `git archive` of a reference ref extracted to a temp directory. all `m1_*`/`m2_*` test and timing scripts pin the pre-fix commit `0ce370df` as the old tree.
 
 ## Flow
 M1: the driver runs a real pane loop with seeded state inside a private tmux server (`tmux -L flk_m1_<pane>_<tree>`), the test sends hover/click/scroll/search keys, records raw bytes with `pipe-pane` and `capture-pane` after every step, and compares old against new. M2: the driver replays a scripted state sequence against `_build_*_output()` with a real session JSONL and dumps every step; the test diffs old against new; the timing script measures hover builds.
