@@ -119,7 +119,8 @@ def _prune_bundle_bloat() -> None:
     src_lib = (Path('dist/monitor-cc-menubar.app/Contents/Resources')
                / f'lib/python{_PYTHON_VER}/src')
     if not src_lib.exists():
-        return
+        print(f'  prune failed: bundle src lib missing: {src_lib}')
+        sys.exit(1)
     removed = []
     for entry in src_lib.iterdir():
         if entry.name not in _BUNDLE_SRC_KEEP:
@@ -164,7 +165,8 @@ def _install_bundle() -> None:
     if r.returncode == 0:
         print('  codesign: ok')
     else:
-        print(f'  codesign WARN (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
+        print(f'  codesign failed (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
+        sys.exit(1)
     print(f'  {status}')
     content = tmpl.read_text(encoding='utf-8')
     content = content.replace('<PROJECT_ROOT>', str(root))
@@ -185,6 +187,7 @@ def _install_bundle() -> None:
         print(f'  bootstrap {label}: ok')
     else:
         print(f'  bootstrap failed (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
+        sys.exit(1)
 
 
 setup(
