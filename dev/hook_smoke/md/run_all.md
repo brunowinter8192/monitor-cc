@@ -8,400 +8,382 @@
 
 ## PASS _strand_test_block_broad_find
 
-  [OK  ] real incident: ~/.claude tree BLOCK: exit=2 (expected 2)
-  [OK  ] home dir tilde BLOCK: exit=2 (expected 2)
-  [OK  ] home dir trailing slash BLOCK: exit=2 (expected 2)
-  [OK  ] home via $HOME BLOCK: exit=2 (expected 2)
-  [OK  ] filesystem root BLOCK: exit=2 (expected 2)
-  [OK  ] claude subtree: projects subdir BLOCK: exit=2 (expected 2)
-  [OK  ] multiple roots: one broad BLOCK: exit=2 (expected 2)
-  [OK  ] $HOME subpath: $HOME/.claude BLOCK: exit=2 (expected 2)
-  [OK  ] real incident + head PASS: exit=0 (expected 0)
-  [OK  ] home + head PASS: exit=0 (expected 0)
-  [OK  ] root + head PASS: exit=0 (expected 0)
-  [OK  ] home with maxdepth PASS: exit=0 (expected 0)
-  [OK  ] claude root with maxdepth PASS: exit=0 (expected 0)
-  [OK  ] relative src/ dir PASS: exit=0 (expected 0)
-  [OK  ] dot root PASS: exit=0 (expected 0)
-  [OK  ] specific project path PASS: exit=0 (expected 0)
-  [OK  ] find in double-quoted echo PASS: exit=0 (expected 0)
-  [OK  ] find in worker-cli send quoted arg PASS: exit=0 (expected 0)
-  [OK  ] mdfind not matched PASS: exit=0 (expected 0)
-
-All 19 tests passed.
+PASS  case_00_real_incident_claude_tree_BLOCK
+PASS  case_01_home_dir_tilde_BLOCK
+PASS  case_02_home_dir_trailing_slash_BLOCK
+PASS  case_03_home_via_HOME_BLOCK
+PASS  case_04_filesystem_root_BLOCK
+PASS  case_05_claude_subtree_projects_subdir_BLOCK
+PASS  case_06_multiple_roots_one_broad_BLOCK
+PASS  case_07_HOME_subpath_HOME_claude_BLOCK
+PASS  case_08_real_incident_head_PASS
+PASS  case_09_home_head_PASS
+PASS  case_10_root_head_PASS
+PASS  case_11_home_with_maxdepth_PASS
+PASS  case_12_claude_root_with_maxdepth_PASS
+PASS  case_13_relative_src_dir_PASS
+PASS  case_14_dot_root_PASS
+PASS  case_15_specific_project_path_PASS
+PASS  case_16_find_in_double_quoted_echo_PASS
+PASS  case_17_find_in_worker_cli_send_quoted_arg_PASS
+PASS  case_18_mdfind_not_matched_PASS
+19/19 strands passed
 
 ## PASS _strand_test_block_broad_grep
 
-  [OK  ] bare recursive no scope BLOCK: exit=2 (expected 2)
-  [OK  ] recursive dot no scope BLOCK: exit=2 (expected 2)
-  [OK  ] recursive tilde dir BLOCK: exit=2 (expected 2)
-  [OK  ] piped to tee not head BLOCK: exit=2 (expected 2)
-  [OK  ] piped to wc not head BLOCK: exit=2 (expected 2)
-  [OK  ] recursive piped to head PASS: exit=0 (expected 0)
-  [OK  ] recursive piped to head bare PASS: exit=0 (expected 0)
-  [OK  ] recursive piped to head -N PASS: exit=0 (expected 0)
-  [OK  ] recursive with redirect then head PASS: exit=0 (expected 0)
-  [OK  ] head then further pipe PASS: exit=0 (expected 0)
-  [OK  ] has --include scope PASS: exit=0 (expected 0)
-  [OK  ] file-targeted extension PASS: exit=0 (expected 0)
-  [OK  ] non-recursive PASS: exit=0 (expected 0)
-  [OK  ] git grep exempt PASS: exit=0 (expected 0)
-  [OK  ] grep in single-quoted string PASS: exit=0 (expected 0)
-  [OK  ] grep in heredoc body PASS: exit=0 (expected 0)
-
-All 16 tests passed.
+PASS  case_00_bare_recursive_no_scope_BLOCK
+PASS  case_01_recursive_dot_no_scope_BLOCK
+PASS  case_02_recursive_tilde_dir_BLOCK
+PASS  case_03_piped_to_tee_not_head_BLOCK
+PASS  case_04_piped_to_wc_not_head_BLOCK
+PASS  case_05_recursive_piped_to_head_PASS
+PASS  case_06_recursive_piped_to_head_bare_PASS
+PASS  case_07_recursive_piped_to_head_N_PASS
+PASS  case_08_recursive_with_redirect_then_head_PASS
+PASS  case_09_head_then_further_pipe_PASS
+PASS  case_10_has_include_scope_PASS
+PASS  case_11_file_targeted_extension_PASS
+PASS  case_12_non_recursive_PASS
+PASS  case_13_git_grep_exempt_PASS
+PASS  case_14_grep_in_single_quoted_string_PASS
+PASS  case_15_grep_in_heredoc_body_PASS
+16/16 strands passed
 
 ## PASS _strand_test_block_cli_chained
 
-  [OK  ] rag-cli search piped to head BLOCK: exit=2 (expected 2)
-  [OK  ] gh-cli get_file_content (unprotected subcommand) piped BLOCK — rule 1 is universal: exit=2 (expected 2)
-  [OK  ] worker-cli kill (unprotected subcommand) piped BLOCK: exit=2 (expected 2)
-  [OK  ] linkedin piped to head BLOCK: exit=2 (expected 2)
-  [OK  ] penny-cli piped BLOCK: exit=2 (expected 2)
-  [OK  ] duallog expand piped to head BLOCK: exit=2 (expected 2)
-  [OK  ] reddit-cli search_subreddits piped BLOCK: exit=2 (expected 2)
-  [OK  ] for-loop over get_issue, one iteration piped BLOCK: exit=2 (expected 2)
-  [OK  ] rag-cli search redirect to file BLOCK: exit=2 (expected 2)
-  [OK  ] gh-cli get_issue redirect BLOCK: exit=2 (expected 2)
-  [OK  ] gh-cli list_issues 2>&1 alone (no pipe) BLOCK: exit=2 (expected 2)
-  [OK  ] worker-cli capture redirect BLOCK: exit=2 (expected 2)
-  [OK  ] websearch scrape_url_chromium redirect BLOCK (2026-09-06: table used to name a stale, non-existent subcommand `scrape_url` — this exact subcommand text is the real one, cli.py has carried it for a while): exit=2 (expected 2)
-  [OK  ] websearch search_web redirect PASS (deliberately unprotected, real subcommand): exit=0 (expected 0)
-  [OK  ] duallog sessions redirect BLOCK (every subcommand protected): exit=2 (expected 2)
-  [OK  ] linkedin get_messages redirect BLOCK (every subcommand protected): exit=2 (expected 2)
-  [OK  ] penny-cli redirect BLOCK (no subcommand, whole invocation protected): exit=2 (expected 2)
-  [OK  ] reddit-cli search_subreddits redirect BLOCK: exit=2 (expected 2)
-  [OK  ] bare 2> on protected subcommand does NOT count as a redirect PASS: exit=0 (expected 0)
-  [OK  ] unprotected rag-cli index redirect stays allowed PASS (no readback): exit=0 (expected 0)
-  [OK  ] unprotected worker-cli status redirect stays allowed PASS: exit=0 (expected 0)
-  [OK  ] unprotected reddit-cli index_subreddits redirect stays allowed PASS: exit=0 (expected 0)
-  [OK  ] the milestone's canonical incident BLOCK: exit=2 (expected 2)
-  [OK  ] readback via head BLOCK: exit=2 (expected 2)
-  [OK  ] readback via cat BLOCK: exit=2 (expected 2)
-  [OK  ] readback of a DIFFERENT file PASS (no target match): exit=0 (expected 0)
-  [OK  ] redirect with no same-call readback stays allowed PASS: exit=0 (expected 0)
-  [OK  ] interpreter-path websearch scrape_url_chromium redirect BLOCK (the real incident, verbatim shape): exit=2 (expected 2)
-  [OK  ] interpreter-path websearch scrape_url_chromium piped BLOCK (rule 1 applies to the interpreter form too): exit=2 (expected 2)
-  [OK  ] interpreter-path gh-cli get_issue redirect BLOCK (mechanism generalizes beyond websearch — different tool, `.venv` not `venv`, absolute path, no leading cd): exit=2 (expected 2)
-  [OK  ] interpreter-path websearch search_web (unprotected subcommand) redirect PASS: exit=0 (expected 0)
-  [OK  ] interpreter-path with NO known project-dir marker PASS (a random project's own cli.py is not mistaken for one of the 5 policed CLIs): exit=0 (expected 0)
-  [OK  ] mkdir before rag-cli index PASS (no allowlist of chain segments): exit=0 (expected 0)
-  [OK  ] ls/echo before gh-cli get_issue PASS: exit=0 (expected 0)
-  [OK  ] penny-cli chained with && PASS (isolation retired): exit=0 (expected 0)
-  [OK  ] cd guard before rag-cli search PASS (no redirect, no pipe): exit=0 (expected 0)
-  [OK  ] cross-CLI chain, both protected, no pipe/redirect PASS: exit=0 (expected 0)
-  [OK  ] for-loop over get_issue with no pipe/redirect PASS: exit=0 (expected 0)
-  [OK  ] duallog path-substring FP PASS (not a real duallog invocation): exit=0 (expected 0)
-  [OK  ] worker-cli status/name substring PASS (not a real duallog invocation): exit=0 (expected 0)
-  [OK  ] no known CLI at all PASS: exit=0 (expected 0)
-  [OK  ] cwd-resolved interpreter redirect BLOCK (measured bypass 1: no dir name in the command, cwd is a websearch worktree): exit=2 (expected 2)
-  [OK  ] cwd-resolved interpreter piped BLOCK (measured bypass 2: no dir name in the command, cwd is the rag-cli directory itself): exit=2 (expected 2)
-  [OK  ] cwd-resolved: another project's own cli.py PASS (cwd matches none of the 5 known CLI directories, exactly like the 259 chore-tracker calls this must keep passing): exit=0 (expected 0)
-  [OK  ] malformed stdin payload fails open: exit=0 (expected 0)
-
-All 45 tests passed.
+PASS  case_00_rag_cli_search_piped_to_head_BLOCK
+PASS  case_01_gh_cli_get_file_content_unprotected_subcommand_piped_BLOCK_r
+PASS  case_02_worker_cli_kill_unprotected_subcommand_piped_BLOCK
+PASS  case_03_linkedin_piped_to_head_BLOCK
+PASS  case_04_penny_cli_piped_BLOCK
+PASS  case_05_duallog_expand_piped_to_head_BLOCK
+PASS  case_06_reddit_cli_search_subreddits_piped_BLOCK
+PASS  case_07_for_loop_over_get_issue_one_iteration_piped_BLOCK
+PASS  case_08_rag_cli_search_redirect_to_file_BLOCK
+PASS  case_09_gh_cli_get_issue_redirect_BLOCK
+PASS  case_10_gh_cli_list_issues_2_1_alone_no_pipe_BLOCK
+PASS  case_11_worker_cli_capture_redirect_BLOCK
+PASS  case_12_websearch_scrape_url_chromium_redirect_BLOCK_2026_09_06_tabl
+PASS  case_13_websearch_search_web_redirect_PASS_deliberately_unprotected_
+PASS  case_14_duallog_sessions_redirect_BLOCK_every_subcommand_protected
+PASS  case_15_linkedin_get_messages_redirect_BLOCK_every_subcommand_protec
+PASS  case_16_penny_cli_redirect_BLOCK_no_subcommand_whole_invocation_prot
+PASS  case_17_reddit_cli_search_subreddits_redirect_BLOCK
+PASS  case_18_bare_2_on_protected_subcommand_does_NOT_count_as_a_redirect_
+PASS  case_19_unprotected_rag_cli_index_redirect_stays_allowed_PASS_no_rea
+PASS  case_20_unprotected_worker_cli_status_redirect_stays_allowed_PASS
+PASS  case_21_unprotected_reddit_cli_index_subreddits_redirect_stays_allow
+PASS  case_22_the_milestone_s_canonical_incident_BLOCK
+PASS  case_23_readback_via_head_BLOCK
+PASS  case_24_readback_via_cat_BLOCK
+PASS  case_25_readback_of_a_DIFFERENT_file_PASS_no_target_match
+PASS  case_26_redirect_with_no_same_call_readback_stays_allowed_PASS
+PASS  case_27_interpreter_path_websearch_scrape_url_chromium_redirect_BLOC
+PASS  case_28_interpreter_path_websearch_scrape_url_chromium_piped_BLOCK_r
+PASS  case_29_interpreter_path_gh_cli_get_issue_redirect_BLOCK_mechanism_g
+PASS  case_30_interpreter_path_websearch_search_web_unprotected_subcommand
+PASS  case_31_interpreter_path_with_NO_known_project_dir_marker_PASS_a_ran
+PASS  case_32_mkdir_before_rag_cli_index_PASS_no_allowlist_of_chain_segmen
+PASS  case_33_ls_echo_before_gh_cli_get_issue_PASS
+PASS  case_34_penny_cli_chained_with_PASS_isolation_retired
+PASS  case_35_cd_guard_before_rag_cli_search_PASS_no_redirect_no_pipe
+PASS  case_36_cross_CLI_chain_both_protected_no_pipe_redirect_PASS
+PASS  case_37_for_loop_over_get_issue_with_no_pipe_redirect_PASS
+PASS  case_38_duallog_path_substring_FP_PASS_not_a_real_duallog_invocation
+PASS  case_39_worker_cli_status_name_substring_PASS_not_a_real_duallog_inv
+PASS  case_40_no_known_CLI_at_all_PASS
+PASS  case_41_cwd_resolved_interpreter_redirect_BLOCK_measured_bypass_1_no
+PASS  case_42_cwd_resolved_interpreter_piped_BLOCK_measured_bypass_2_no_di
+PASS  case_43_cwd_resolved_another_project_s_own_cli_py_PASS_cwd_matches_n
+PASS  case_99_malformed_stdin_payload_fails_open
+45/45 strands passed
 
 ## PASS _strand_test_block_dangerous_kill
 
-  [OK  ] pkill -f pattern BLOCK: exit=2 (expected 2)
-  [OK  ] pkill -f at start BLOCK: exit=2 (expected 2)
-  [OK  ] pgrep -f pipe kill BLOCK: exit=2 (expected 2)
-  [OK  ] kill $(pgrep -f X) BLOCK: exit=2 (expected 2)
-  [OK  ] ps grep kill chain BLOCK: exit=2 (expected 2)
-  [OK  ] pkill -f in single-quoted string PASS: exit=0 (expected 0)
-  [OK  ] pkill -f in double-quoted string PASS: exit=0 (expected 0)
-  [OK  ] pkill -f in heredoc body PASS: exit=0 (expected 0)
-  [OK  ] pkill -f in heredoc unquoted PASS: exit=0 (expected 0)
-  [OK  ] pkill -x exact name PASS: exit=0 (expected 0)
-  [OK  ] pkill no -f PASS: exit=0 (expected 0)
-  [OK  ] kill numeric pid PASS: exit=0 (expected 0)
-  [OK  ] kill signal pid PASS: exit=0 (expected 0)
-  [OK  ] worker-cli kill PASS: exit=0 (expected 0)
-  [OK  ] no kill at all PASS: exit=0 (expected 0)
-  [OK  ] pkill -9 -f dolt sql-server double-quoted PASS: exit=0 (expected 0)
-  [OK  ] pkill -f dolt sql-server single-quoted PASS: exit=0 (expected 0)
-  [OK  ] mixed allowlisted + generic pkill -f BLOCK: exit=2 (expected 2)
-
-All 18 tests passed.
+PASS  case_00_pkill_f_pattern_BLOCK
+PASS  case_01_pkill_f_at_start_BLOCK
+PASS  case_02_pgrep_f_pipe_kill_BLOCK
+PASS  case_03_kill_pgrep_f_X_BLOCK
+PASS  case_04_ps_grep_kill_chain_BLOCK
+PASS  case_05_pkill_f_in_single_quoted_string_PASS
+PASS  case_06_pkill_f_in_double_quoted_string_PASS
+PASS  case_07_pkill_f_in_heredoc_body_PASS
+PASS  case_08_pkill_f_in_heredoc_unquoted_PASS
+PASS  case_09_pkill_x_exact_name_PASS
+PASS  case_10_pkill_no_f_PASS
+PASS  case_11_kill_numeric_pid_PASS
+PASS  case_12_kill_signal_pid_PASS
+PASS  case_13_worker_cli_kill_PASS
+PASS  case_14_no_kill_at_all_PASS
+PASS  case_15_pkill_9_f_dolt_sql_server_double_quoted_PASS
+PASS  case_16_pkill_f_dolt_sql_server_single_quoted_PASS
+PASS  case_17_mixed_allowlisted_generic_pkill_f_BLOCK
+18/18 strands passed
 
 ## PASS _strand_test_block_gh_cli_local_path
 
-  [OK  ] get_file_content with /Users/... path BLOCK: exit=2 (expected 2)
-  [OK  ] get_file_content with ~/... path BLOCK: exit=2 (expected 2)
-  [OK  ] download_files with an absolute repo-path positional BLOCK: exit=2 (expected 2)
-  [OK  ] download_files with a ~/... path among multiple positionals BLOCK: exit=2 (expected 2)
-  [OK  ] get_file_content local path with --limit flag before it BLOCK: exit=2 (expected 2)
-  [OK  ] get_file_content with repo-relative path PASS: exit=0 (expected 0)
-  [OK  ] download_files with repo paths + --dest /tmp/x PASS (the trap case): exit=0 (expected 0)
-  [OK  ] download_files with --dest before the paths PASS (dest not treated as a path positional): exit=0 (expected 0)
-  [OK  ] get_file_content with --metadata-only flag, repo-relative path PASS: exit=0 (expected 0)
-  [OK  ] get_repo_tree untouched PASS: exit=0 (expected 0)
-  [OK  ] index_issues untouched PASS: exit=0 (expected 0)
-  [OK  ] repo_freshness untouched PASS: exit=0 (expected 0)
-  [OK  ] non-gh-cli command untouched PASS: exit=0 (expected 0)
-  [OK  ] pattern inside single-quotes PASS shell-stripped: exit=0 (expected 0)
-  [OK  ] pattern inside heredoc body PASS shell-stripped: exit=0 (expected 0)
-
-All 15 tests passed.
+PASS  case_00_get_file_content_with_Users_path_BLOCK
+PASS  case_01_get_file_content_with_path_BLOCK
+PASS  case_02_download_files_with_an_absolute_repo_path_positional_BLOCK
+PASS  case_03_download_files_with_a_path_among_multiple_positionals_BLOCK
+PASS  case_04_get_file_content_local_path_with_limit_flag_before_it_BLOCK
+PASS  case_05_get_file_content_with_repo_relative_path_PASS
+PASS  case_06_download_files_with_repo_paths_dest_tmp_x_PASS_the_trap_case
+PASS  case_07_download_files_with_dest_before_the_paths_PASS_dest_not_trea
+PASS  case_08_get_file_content_with_metadata_only_flag_repo_relative_path_
+PASS  case_09_get_repo_tree_untouched_PASS
+PASS  case_10_index_issues_untouched_PASS
+PASS  case_11_repo_freshness_untouched_PASS
+PASS  case_12_non_gh_cli_command_untouched_PASS
+PASS  case_13_pattern_inside_single_quotes_PASS_shell_stripped
+PASS  case_14_pattern_inside_heredoc_body_PASS_shell_stripped
+15/15 strands passed
 
 ## PASS _strand_test_block_git_destructive
 
-  [OK  ] FP minimal: git push -u + newline + [ -f file ] PASS: exit=0 (expected 0)
-  [OK  ] FP actual recap: push + echo + file-test across lines PASS: exit=0 (expected 0)
-  [OK  ] git push --force single-line BLOCK: exit=2 (expected 2)
-  [OK  ] git push --force-with-lease BLOCK: exit=2 (expected 2)
-  [OK  ] git push -f single-line BLOCK: exit=2 (expected 2)
-  [OK  ] git push origin main --force BLOCK: exit=2 (expected 2)
-  [OK  ] git -C /repo push -f BLOCK: exit=2 (expected 2)
-  [OK  ] git commit --amend BLOCK: exit=2 (expected 2)
-  [OK  ] git commit --amend --no-edit BLOCK: exit=2 (expected 2)
-  [OK  ] git commit --no-verify BLOCK: exit=2 (expected 2)
-  [OK  ] git push --no-verify BLOCK: exit=2 (expected 2)
-  [OK  ] git commit --allow-empty BLOCK: exit=2 (expected 2)
-  [OK  ] git config write user.email BLOCK: exit=2 (expected 2)
-  [OK  ] git -C /repo config write BLOCK: exit=2 (expected 2)
-  [OK  ] git push plain PASS: exit=0 (expected 0)
-  [OK  ] git push -u origin main single-line PASS: exit=0 (expected 0)
-  [OK  ] git commit -m normal PASS: exit=0 (expected 0)
-  [OK  ] git config --list read-only PASS: exit=0 (expected 0)
-  [OK  ] git config --get read-only PASS: exit=0 (expected 0)
-  [OK  ] git config --show-origin read-only PASS: exit=0 (expected 0)
-  [OK  ] push --force in quoted commit message PASS: exit=0 (expected 0)
-
-All 21 tests passed.
+PASS  case_00_FP_minimal_git_push_u_newline_f_file_PASS
+PASS  case_01_FP_actual_recap_push_echo_file_test_across_lines_PASS
+PASS  case_02_git_push_force_single_line_BLOCK
+PASS  case_03_git_push_force_with_lease_BLOCK
+PASS  case_04_git_push_f_single_line_BLOCK
+PASS  case_05_git_push_origin_main_force_BLOCK
+PASS  case_06_git_C_repo_push_f_BLOCK
+PASS  case_07_git_commit_amend_BLOCK
+PASS  case_08_git_commit_amend_no_edit_BLOCK
+PASS  case_09_git_commit_no_verify_BLOCK
+PASS  case_10_git_push_no_verify_BLOCK
+PASS  case_11_git_commit_allow_empty_BLOCK
+PASS  case_12_git_config_write_user_email_BLOCK
+PASS  case_13_git_C_repo_config_write_BLOCK
+PASS  case_14_git_push_plain_PASS
+PASS  case_15_git_push_u_origin_main_single_line_PASS
+PASS  case_16_git_commit_m_normal_PASS
+PASS  case_17_git_config_list_read_only_PASS
+PASS  case_18_git_config_get_read_only_PASS
+PASS  case_19_git_config_show_origin_read_only_PASS
+PASS  case_20_push_force_in_quoted_commit_message_PASS
+21/21 strands passed
 
 ## PASS _strand_test_block_manual_worker_cleanup
 
-  [OK  ] tmux kill-session full worker session name BLOCK: exit=2 (expected 2)
-  [OK  ] tmux kill-session short worker name BLOCK: exit=2 (expected 2)
-  [OK  ] tmux kill-session extra flag before -t BLOCK: exit=2 (expected 2)
-  [OK  ] tmux kill-session no space after -t BLOCK: exit=2 (expected 2)
-  [OK  ] git worktree remove relative path BLOCK: exit=2 (expected 2)
-  [OK  ] git worktree remove absolute path BLOCK: exit=2 (expected 2)
-  [OK  ] git -C worktree remove worker path BLOCK: exit=2 (expected 2)
-  [OK  ] git worktree remove --force BLOCK: exit=2 (expected 2)
-  [OK  ] worker-cli kill is allowed PASS: exit=0 (expected 0)
-  [OK  ] tmux kill-session non-worker session PASS: exit=0 (expected 0)
-  [OK  ] tmux kill-session regular session name PASS: exit=0 (expected 0)
-  [OK  ] tmux kill-session no -t arg PASS: exit=0 (expected 0)
-  [OK  ] git worktree remove non-claude path PASS: exit=0 (expected 0)
-  [OK  ] git worktree list PASS: exit=0 (expected 0)
-  [OK  ] git worktree add PASS: exit=0 (expected 0)
-  [OK  ] git branch -D allowed PASS: exit=0 (expected 0)
-  [OK  ] tmux kill-session worker in single-quoted message PASS: exit=0 (expected 0)
-  [OK  ] git worktree remove in double-quoted message PASS: exit=0 (expected 0)
-  [OK  ] tmux kill-session separator blocks bridge PASS: exit=0 (expected 0)
-  [OK  ] git worktree remove separator blocks bridge PASS: exit=0 (expected 0)
-  [OK  ] tmux kill-session worker in comment PASS: exit=0 (expected 0)
-
-All 21 tests passed.
+PASS  case_00_tmux_kill_session_full_worker_session_name_BLOCK
+PASS  case_01_tmux_kill_session_short_worker_name_BLOCK
+PASS  case_02_tmux_kill_session_extra_flag_before_t_BLOCK
+PASS  case_03_tmux_kill_session_no_space_after_t_BLOCK
+PASS  case_04_git_worktree_remove_relative_path_BLOCK
+PASS  case_05_git_worktree_remove_absolute_path_BLOCK
+PASS  case_06_git_C_worktree_remove_worker_path_BLOCK
+PASS  case_07_git_worktree_remove_force_BLOCK
+PASS  case_08_worker_cli_kill_is_allowed_PASS
+PASS  case_09_tmux_kill_session_non_worker_session_PASS
+PASS  case_10_tmux_kill_session_regular_session_name_PASS
+PASS  case_11_tmux_kill_session_no_t_arg_PASS
+PASS  case_12_git_worktree_remove_non_claude_path_PASS
+PASS  case_13_git_worktree_list_PASS
+PASS  case_14_git_worktree_add_PASS
+PASS  case_15_git_branch_D_allowed_PASS
+PASS  case_16_tmux_kill_session_worker_in_single_quoted_message_PASS
+PASS  case_17_git_worktree_remove_in_double_quoted_message_PASS
+PASS  case_18_tmux_kill_session_separator_blocks_bridge_PASS
+PASS  case_19_git_worktree_remove_separator_blocks_bridge_PASS
+PASS  case_20_tmux_kill_session_worker_in_comment_PASS
+21/21 strands passed
 
 ## PASS _strand_test_block_po_read
 
-  [OK  ] head on PO export BLOCK: exit=2 (expected 2)
-  [OK  ] tail on PO export BLOCK: exit=2 (expected 2)
-  [OK  ] grep on PO export BLOCK: exit=2 (expected 2)
-  [OK  ] cat on PO export BLOCK: exit=2 (expected 2)
-  [OK  ] sed on PO export BLOCK: exit=2 (expected 2)
-  [OK  ] rg on PO export BLOCK: exit=2 (expected 2)
-  [OK  ] piped cat-to-head BLOCK: exit=2 (expected 2)
-  [OK  ] split on PO export BLOCK: exit=2 (expected 2)
-  [OK  ] dd on PO export BLOCK: exit=2 (expected 2)
-  [OK  ] head on normal file PASS: exit=0 (expected 0)
-  [OK  ] grep on .log file PASS: exit=0 (expected 0)
-  [OK  ] cat on /tmp/foo.txt not under .claude PASS: exit=0 (expected 0)
-  [OK  ] cat on .claude path not ending .txt PASS: exit=0 (expected 0)
-  [OK  ] redirect-write to PO path not a read PASS: exit=0 (expected 0)
-  [OK  ] PO path only in quoted string PASS: exit=0 (expected 0)
-  [OK  ] real PO export AT boundary (50,000B) BLOCK: exit=2 (expected 2)
-  [OK  ] real PO export ONE BYTE OVER boundary (50,001B) PASS: exit=0 (expected 0)
-  [OK  ] dd if= on real PO export over boundary PASS (proves if= prefix is stripped before stat): exit=0 (expected 0)
-  [OK  ] parse-error fail-open PASS: exit=0 (expected 0)
-
-All 19 tests passed.
+PASS  case_00_head_on_PO_export_BLOCK
+PASS  case_01_tail_on_PO_export_BLOCK
+PASS  case_02_grep_on_PO_export_BLOCK
+PASS  case_03_cat_on_PO_export_BLOCK
+PASS  case_04_sed_on_PO_export_BLOCK
+PASS  case_05_rg_on_PO_export_BLOCK
+PASS  case_06_piped_cat_to_head_BLOCK
+PASS  case_07_split_on_PO_export_BLOCK
+PASS  case_08_dd_on_PO_export_BLOCK
+PASS  case_09_head_on_normal_file_PASS
+PASS  case_10_grep_on_log_file_PASS
+PASS  case_11_cat_on_tmp_foo_txt_not_under_claude_PASS
+PASS  case_12_cat_on_claude_path_not_ending_txt_PASS
+PASS  case_13_redirect_write_to_PO_path_not_a_read_PASS
+PASS  case_14_PO_path_only_in_quoted_string_PASS
+PASS  case_15_real_PO_export_AT_boundary_50_000B_BLOCK
+PASS  case_16_real_PO_export_ONE_BYTE_OVER_boundary_50_001B_PASS
+PASS  case_17_dd_if_on_real_PO_export_over_boundary_PASS_proves_if_prefix_
+PASS  case_99_parse_error_fail_open_PASS
+19/19 strands passed
 
 ## PASS _strand_test_block_rag_cli_document_repeat
 
-  [OK  ] single --document call ALLOW: exit=0 (expected 0)
-  [OK  ] 1st --document call ALLOW: exit=0 (expected 0)
-  [OK  ] 2nd --document call (same collection) BLOCK: exit=2 (expected 2)
-  [OK  ] 3x collection-wide index call ALLOW: exits=[0, 0, 0] (expected all 0)
-  [OK  ] cross-session independence: sess-A#1=0, sess-B#1=0, sess-A#2=2 (expected 0, 0, 2)
-  [OK  ] delete subcommand 2nd call BLOCK: exits=0,2 (expected 0,2)
-  [OK  ] malformed stdin fail-open: exit=0 (expected 0)
-
-All rag-cli document-repeat tests passed.
+PASS  test_collection_wide_always_allowed
+PASS  test_delete_subcommand_also_counts
+PASS  test_different_session_independent
+PASS  test_malformed_stdin_fail_open
+PASS  test_second_call_blocks
+PASS  test_single_document_call_allowed
+6/6 strands passed
 
 ## PASS _strand_test_block_rag_cli_index_isolated
 
-  [OK  ] observed tail+echo+cd+index BLOCK: exit=2 (expected 2)
-  [OK  ] tail before index && BLOCK: exit=2 (expected 2)
-  [OK  ] index then echo && BLOCK: exit=2 (expected 2)
-  [OK  ] index then tail ; BLOCK: exit=2 (expected 2)
-  [OK  ] second rag-cli command alongside index BLOCK: exit=2 (expected 2)
-  [OK  ] index piped to tee BLOCK: exit=2 (expected 2)
-  [OK  ] tail before env-prefixed index BLOCK: exit=2 (expected 2)
-  [OK  ] env-prefixed index then echo BLOCK: exit=2 (expected 2)
-  [OK  ] multi-env-prefixed index piped to tee BLOCK: exit=2 (expected 2)
-  [OK  ] assignment line + tail + cd + env-prefixed index BLOCK: exit=2 (expected 2)
-  [OK  ] cmd subst in assignment value BLOCK: exit=2 (expected 2)
-  [OK  ] backtick subst in assignment value BLOCK: exit=2 (expected 2)
-  [OK  ] cmd subst in --collection argument BLOCK: exit=2 (expected 2)
-  [OK  ] process substitution on redirect target BLOCK: exit=2 (expected 2)
-  [OK  ] process substitution as input BLOCK: exit=2 (expected 2)
-  [OK  ] arithmetic expansion in assignment value BLOCK: exit=2 (expected 2)
-  [OK  ] cmd subst inside double-quoted cd target BLOCK: exit=2 (expected 2)
-  [OK  ] backtick inside redirect filename BLOCK: exit=2 (expected 2)
-  [OK  ] bare & no trailing space smuggling BLOCK: exit=2 (expected 2)
-  [OK  ] bare & no spaces at all smuggling BLOCK: exit=2 (expected 2)
-  [OK  ] bare index ALLOW: exit=0 (expected 0)
-  [OK  ] index redirected to log ALLOW: exit=0 (expected 0)
-  [OK  ] cd before index ALLOW: exit=0 (expected 0)
-  [OK  ] cd before index with redirect ALLOW: exit=0 (expected 0)
-  [OK  ] env-prefixed bare index ALLOW: exit=0 (expected 0)
-  [OK  ] assignment line + cd + env-prefixed index + line-continued redirect ALLOW: exit=0 (expected 0)
-  [OK  ] assignment line + cd + bare index + redirect ALLOW: exit=0 (expected 0)
-  [OK  ] bare index with backslash line-continued redirect ALLOW: exit=0 (expected 0)
-  [OK  ] quoted semicolon in assignment value ALLOW: exit=0 (expected 0)
-  [OK  ] plain $VAR expansion in cd target is not command substitution ALLOW: exit=0 (expected 0)
-  [OK  ] &> redirect not mistaken for background-& separator ALLOW: exit=0 (expected 0)
-  [OK  ] rag-cli search out of scope ALLOW: exit=0 (expected 0)
-  [OK  ] rag-cli list_documents out of scope ALLOW: exit=0 (expected 0)
-  [OK  ] rag-cli delete out of scope ALLOW: exit=0 (expected 0)
-  [OK  ] no rag-cli ALLOW: exit=0 (expected 0)
-  [OK  ] rag-cli index inside single-quotes ALLOW: exit=0 (expected 0)
-  [OK  ] rag-cli index inside heredoc body ALLOW: exit=0 (expected 0)
-
-All 37 tests passed.
+PASS  case_00_observed_tail_echo_cd_index_BLOCK
+PASS  case_01_tail_before_index_BLOCK
+PASS  case_02_index_then_echo_BLOCK
+PASS  case_03_index_then_tail_BLOCK
+PASS  case_04_second_rag_cli_command_alongside_index_BLOCK
+PASS  case_05_index_piped_to_tee_BLOCK
+PASS  case_06_tail_before_env_prefixed_index_BLOCK
+PASS  case_07_env_prefixed_index_then_echo_BLOCK
+PASS  case_08_multi_env_prefixed_index_piped_to_tee_BLOCK
+PASS  case_09_assignment_line_tail_cd_env_prefixed_index_BLOCK
+PASS  case_10_cmd_subst_in_assignment_value_BLOCK
+PASS  case_11_backtick_subst_in_assignment_value_BLOCK
+PASS  case_12_cmd_subst_in_collection_argument_BLOCK
+PASS  case_13_process_substitution_on_redirect_target_BLOCK
+PASS  case_14_process_substitution_as_input_BLOCK
+PASS  case_15_arithmetic_expansion_in_assignment_value_BLOCK
+PASS  case_16_cmd_subst_inside_double_quoted_cd_target_BLOCK
+PASS  case_17_backtick_inside_redirect_filename_BLOCK
+PASS  case_18_bare_no_trailing_space_smuggling_BLOCK
+PASS  case_19_bare_no_spaces_at_all_smuggling_BLOCK
+PASS  case_20_bare_index_ALLOW
+PASS  case_21_index_redirected_to_log_ALLOW
+PASS  case_22_cd_before_index_ALLOW
+PASS  case_23_cd_before_index_with_redirect_ALLOW
+PASS  case_24_env_prefixed_bare_index_ALLOW
+PASS  case_25_assignment_line_cd_env_prefixed_index_line_continued_redirec
+PASS  case_26_assignment_line_cd_bare_index_redirect_ALLOW
+PASS  case_27_bare_index_with_backslash_line_continued_redirect_ALLOW
+PASS  case_28_quoted_semicolon_in_assignment_value_ALLOW
+PASS  case_29_plain_VAR_expansion_in_cd_target_is_not_command_substitution
+PASS  case_30_redirect_not_mistaken_for_background_separator_ALLOW
+PASS  case_31_rag_cli_search_out_of_scope_ALLOW
+PASS  case_32_rag_cli_list_documents_out_of_scope_ALLOW
+PASS  case_33_rag_cli_delete_out_of_scope_ALLOW
+PASS  case_34_no_rag_cli_ALLOW
+PASS  case_35_rag_cli_index_inside_single_quotes_ALLOW
+PASS  case_36_rag_cli_index_inside_heredoc_body_ALLOW
+37/37 strands passed
 
 ## PASS _strand_test_block_rag_corpus_read
 
-  [OK  ] cat over a corpus document BLOCK: exit=2 (expected 2)
-  [OK  ] grep -r over the corpus tree BLOCK: exit=2 (expected 2)
-  [OK  ] head over a quoted corpus path BLOCK: exit=2 (expected 2)
-  [OK  ] tail over a corpus document BLOCK: exit=2 (expected 2)
-  [OK  ] sed over a corpus document BLOCK: exit=2 (expected 2)
-  [OK  ] awk over a corpus document BLOCK: exit=2 (expected 2)
-  [OK  ] rg over the corpus tree BLOCK: exit=2 (expected 2)
-  [OK  ] less over a corpus document BLOCK: exit=2 (expected 2)
-  [OK  ] more over a corpus document BLOCK: exit=2 (expected 2)
-  [OK  ] cat with the corpus path as a non-first argument BLOCK: exit=2 (expected 2)
-  [OK  ] only a quoted corpus path argument BLOCK: exit=2 (expected 2)
-  [OK  ] real rag-cli invocation chained with a corpus-read segment BLOCK (the corpus-read segment blocks regardless of what else is chained): exit=2 (expected 2)
-  [OK  ] renamed checkout (rag-cli-eval) still blocks BLOCK (glob dodge): exit=2 (expected 2)
-  [OK  ] renamed worktree (rag-cli-convert) still blocks BLOCK (glob dodge): exit=2 (expected 2)
-  [OK  ] ls over the corpus tree ALLOW (management, not a content read): exit=0 (expected 0)
-  [OK  ] rm over a corpus document ALLOW (deletion is sanctioned): exit=0 (expected 0)
-  [OK  ] mv within the corpus tree ALLOW: exit=0 (expected 0)
-  [OK  ] mkdir under the corpus tree ALLOW: exit=0 (expected 0)
-  [OK  ] cat on an unrelated file ALLOW: exit=0 (expected 0)
-  [OK  ] grep on an unrelated file ALLOW: exit=0 (expected 0)
-  [OK  ] rag-cli search standalone ALLOW: exit=0 (expected 0)
-  [OK  ] rag-cli read_document standalone ALLOW: exit=0 (expected 0)
-  [OK  ] quoted mention inside echo ALLOW (not an actual read): exit=0 (expected 0)
-  [OK  ] corpus-path text inside a heredoc body ALLOW (shell-strip blanks it before matching): exit=0 (expected 0)
-  [OK  ] relative corpus path with no rag-* prefix in the text ALLOW (text-only limitation): exit=0 (expected 0)
-  [OK  ] malformed stdin payload fails open: exit=0 (expected 0)
-  [OK  ] block message: names rag-cli search as the allowed form
-  [OK  ] block message: names rag-cli read_document as the allowed form
-  [OK  ] block message: states file management stays allowed
-
-All 29 tests passed.
+PASS  case_00_cat_over_a_corpus_document_BLOCK
+PASS  case_01_grep_r_over_the_corpus_tree_BLOCK
+PASS  case_02_head_over_a_quoted_corpus_path_BLOCK
+PASS  case_03_tail_over_a_corpus_document_BLOCK
+PASS  case_04_sed_over_a_corpus_document_BLOCK
+PASS  case_05_awk_over_a_corpus_document_BLOCK
+PASS  case_06_rg_over_the_corpus_tree_BLOCK
+PASS  case_07_less_over_a_corpus_document_BLOCK
+PASS  case_08_more_over_a_corpus_document_BLOCK
+PASS  case_09_cat_with_the_corpus_path_as_a_non_first_argument_BLOCK
+PASS  case_10_only_a_quoted_corpus_path_argument_BLOCK
+PASS  case_11_real_rag_cli_invocation_chained_with_a_corpus_read_segment_B
+PASS  case_12_renamed_checkout_rag_cli_eval_still_blocks_BLOCK_glob_dodge
+PASS  case_13_renamed_worktree_rag_cli_convert_still_blocks_BLOCK_glob_dod
+PASS  case_14_ls_over_the_corpus_tree_ALLOW_management_not_a_content_read
+PASS  case_15_rm_over_a_corpus_document_ALLOW_deletion_is_sanctioned
+PASS  case_16_mv_within_the_corpus_tree_ALLOW
+PASS  case_17_mkdir_under_the_corpus_tree_ALLOW
+PASS  case_18_cat_on_an_unrelated_file_ALLOW
+PASS  case_19_grep_on_an_unrelated_file_ALLOW
+PASS  case_20_rag_cli_search_standalone_ALLOW
+PASS  case_21_rag_cli_read_document_standalone_ALLOW
+PASS  case_22_quoted_mention_inside_echo_ALLOW_not_an_actual_read
+PASS  case_23_corpus_path_text_inside_a_heredoc_body_ALLOW_shell_strip_bla
+PASS  case_24_relative_corpus_path_with_no_rag_prefix_in_the_text_ALLOW_te
+PASS  case_98_names_rag_cli_read_document_as_the_allowed_form
+PASS  case_98_names_rag_cli_search_as_the_allowed_form
+PASS  case_98_states_file_management_stays_allowed
+PASS  case_99_malformed_stdin_payload_fails_open
+29/29 strands passed
 
 ## PASS _strand_test_block_rag_docs_layer
 
-  [OK  ] docs collection no filter BLOCK: exit=2 (expected 2)
-  [OK  ] docs collection after cd BLOCK: exit=2 (expected 2)
-  [OK  ] docs collection with unrelated code subpath filter BLOCK: exit=2 (expected 2)
-  [OK  ] docs collection --document process-docs ALLOW: exit=0 (expected 0)
-  [OK  ] docs collection --exclude process-docs ALLOW: exit=0 (expected 0)
-  [OK  ] docs collection --document= equals form ALLOW: exit=0 (expected 0)
-  [OK  ] docs collection --document specific area ALLOW: exit=0 (expected 0)
-  [OK  ] reference collection ALLOW: exit=0 (expected 0)
-  [OK  ] list_documents ALLOW: exit=0 (expected 0)
-  [OK  ] no rag-cli ALLOW: exit=0 (expected 0)
-  [OK  ] rag-cli inside single-quotes ALLOW: exit=0 (expected 0)
-
-All 11 tests passed.
+PASS  case_00_docs_collection_no_filter_BLOCK
+PASS  case_01_docs_collection_after_cd_BLOCK
+PASS  case_02_docs_collection_with_unrelated_code_subpath_filter_BLOCK
+PASS  case_03_docs_collection_document_process_docs_ALLOW
+PASS  case_04_docs_collection_exclude_process_docs_ALLOW
+PASS  case_05_docs_collection_document_equals_form_ALLOW
+PASS  case_06_docs_collection_document_specific_area_ALLOW
+PASS  case_07_reference_collection_ALLOW
+PASS  case_08_list_documents_ALLOW
+PASS  case_09_no_rag_cli_ALLOW
+PASS  case_10_rag_cli_inside_single_quotes_ALLOW
+11/11 strands passed
 
 ## PASS _strand_test_block_unauthorized_background
 
-  [OK  ] sleep N && echo done — sleep-only form ALLOW: rewritten_bg=None (expected None)
-  [OK  ] sleep N bare — sleep-only form ALLOW: rewritten_bg=None (expected None)
-  [OK  ] sleep N with custom echo text (fire-log actual) ALLOW: rewritten_bg=None (expected None)
-  [OK  ] worker-cli wait bare ALLOW: rewritten_bg=None (expected None)
-  [OK  ] worker-cli wait with project_path ALLOW: rewritten_bg=None (expected None)
-  [OK  ] worker-cli wait with --timeout ALLOW: rewritten_bg=None (expected None)
-  [OK  ] worker-cli wait with project_path + --timeout ALLOW: rewritten_bg=None (expected None)
-  [OK  ] reddit-cli index_subreddits — foreground-forced FORCE: rewritten_bg=False (expected False)
-  [OK  ] workflow.py index-dir — foreground-forced FORCE: rewritten_bg=False (expected False)
-  [OK  ] ./venv/bin/python script.py — non-canonical background FORCE: rewritten_bg=False (expected False)
-  [OK  ] rag-cli update_docs — original triggering incident FORCE: rewritten_bg=False (expected False)
-  [OK  ] worker-cli waitfoo — not a word-boundary match on 'wait' FORCE: rewritten_bg=False (expected False)
-  [OK  ] worker-cli wait && rag-cli index — mentions wait, this hook has no opinion (rewrite_worker_wait.py decides instead) NO-OP: rewritten_bg=None (expected None)
-  [OK  ] cd /tmp; worker-cli wait — mentions wait, this hook has no opinion NO-OP: rewritten_bg=None (expected None)
-  [OK  ] worker-cli wait mentioned only inside a quoted echo argument does NOT exempt an unrelated non-canonical command FORCE: rewritten_bg=False (expected False)
-  [OK  ] ./venv/bin/python script.py foreground — no output PASS: rewritten_bg=None (expected None)
-
-All 16 tests passed.
+PASS  case_00_sleep_N_echo_done_sleep_only_form_ALLOW
+PASS  case_01_sleep_N_bare_sleep_only_form_ALLOW
+PASS  case_02_sleep_N_with_custom_echo_text_fire_log_actual_ALLOW
+PASS  case_03_worker_cli_wait_bare_ALLOW
+PASS  case_04_worker_cli_wait_with_project_path_ALLOW
+PASS  case_05_worker_cli_wait_with_timeout_ALLOW
+PASS  case_06_worker_cli_wait_with_project_path_timeout_ALLOW
+PASS  case_07_reddit_cli_index_subreddits_foreground_forced_FORCE
+PASS  case_08_workflow_py_index_dir_foreground_forced_FORCE
+PASS  case_09_venv_bin_python_script_py_non_canonical_background_FORCE
+PASS  case_10_rag_cli_update_docs_original_triggering_incident_FORCE
+PASS  case_11_worker_cli_waitfoo_not_a_word_boundary_match_on_wait_FORCE
+PASS  case_12_worker_cli_wait_rag_cli_index_mentions_wait_this_hook_has_no
+PASS  case_13_cd_tmp_worker_cli_wait_mentions_wait_this_hook_has_no_opinio
+PASS  case_14_worker_cli_wait_mentioned_only_inside_a_quoted_echo_argument
+PASS  case_15_venv_bin_python_script_py_foreground_no_output_PASS
+16/16 strands passed
 
 ## PASS _strand_test_block_worker_kill_while_working
 
-[PASS] kill working → block (blocking: foo)
-[PASS] kill idle → allow
-[PASS] kill force-stopped idle (no pct) → allow
-[PASS] kill exited → allow
-[PASS] kill unknown → allow
-[PASS] kill nonexistent (empty status) → allow
-[PASS] quoted kill inside send-message → allow (double-quoted region stripped)
-[PASS] heredoc kill inside send-message → allow (heredoc body stripped)
-[PASS] non-kill command → allow
-[PASS] multi-kill one working → block (bar) (blocking: bar)
-[PASS] status_fn raises → allow (exception treated as empty status)
-[PASS] kill working 100% → block (blocking: foo)
-[PASS] known accepted residual: comment carrying kill+working-name → block (blocking: foo)
-
-13/13 passed
+PASS  case_00_kill_working_block
+PASS  case_01_kill_idle_allow
+PASS  case_02_kill_force_stopped_idle_no_pct_allow
+PASS  case_03_kill_exited_allow
+PASS  case_04_kill_unknown_allow
+PASS  case_05_kill_nonexistent_empty_status_allow
+PASS  case_06_quoted_kill_inside_send_message_allow_double_quoted_region_s
+PASS  case_07_heredoc_kill_inside_send_message_allow_heredoc_body_stripped
+PASS  case_08_non_kill_command_allow
+PASS  case_09_multi_kill_one_working_block_bar
+PASS  case_10_status_fn_raises_allow_exception_treated_as_empty_status
+PASS  case_11_kill_working_100_block
+PASS  case_12_known_accepted_residual_comment_carrying_kill_working_name_b
+13/13 strands passed
 
 ## PASS _strand_test_block_worker_send_while_working
 
-[PASS] send working → block (blocking: foo)
-[PASS] send idle → allow
-[PASS] send dead → allow
-[PASS] send unknown worker name (empty status) → allow
-[PASS] quoted send inside another send-message → allow (double-quoted region stripped)
-[PASS] heredoc send inside send-message → allow (heredoc body stripped)
-[PASS] non-send command → allow
-[PASS] multi-send one working → block (bar) (blocking: bar)
-[PASS] status_fn raises → allow (exception treated as empty status)
-[PASS] send working 100% → block (blocking: foo)
-[PASS] malformed stdin payload fails open: exit=0 (expected 0)
-[PASS] real entrypoint, no resolvable worker status: exit=0 (expected 0)
-
-12/12 passed
+PASS  case_00_send_working_block
+PASS  case_01_send_idle_allow
+PASS  case_02_send_dead_allow
+PASS  case_03_send_unknown_worker_name_empty_status_allow
+PASS  case_04_quoted_send_inside_another_send_message_allow_double_quoted_
+PASS  case_05_heredoc_send_inside_send_message_allow_heredoc_body_stripped
+PASS  case_06_non_send_command_allow
+PASS  case_07_multi_send_one_working_block_bar
+PASS  case_08_status_fn_raises_allow_exception_treated_as_empty_status
+PASS  case_09_send_working_100_block
+PASS  check_malformed_fails_open
+PASS  check_no_resolvable_worker
+12/12 strands passed
 
 ## PASS _strand_test_fire_log
 
-  [OK  ] block fire: decision=block, hook=block_noop_edit, tool=Edit
-  [OK  ] rewrite fire: decision=rewrite, command+rewritten both present
-  [OK  ] env-var override: log written to custom path, canonical untouched, control run reaches canonical
-
-All fire-log tests passed.
+PASS  test_block_fire
+PASS  test_env_var_override
+PASS  test_rewrite_fire
+3/3 strands passed
 
 ## PASS _strand_test_hook_setup_main_branch_gate
 
-[PASS] all on main + all in tree -> all installed, none skipped
-[PASS] one absent from main -> skipped, rest installed
-[PASS] git query fails (None) -> fail-safe skip, rest installed
-[PASS] mixed: present + absent + query-error in one set
-[PASS] same script, multiple matchers, absent from main -> ALL its entries skipped
-[PASS] on main but missing from the working tree -> skipped, rest installed
-[PASS] on main AND present in tree -> installed (mirror-image positive)
-[PASS] missing from BOTH main and the working tree -> skipped (main-branch reason primary)
-[PASS] absent script skips EVERY matcher entry, not just the first
-[PASS] skip reason text distinguishes not-on-main vs missing-from-tree
-
-10/10 passed
+PASS  case_00_all_on_main_all_in_tree_all_installed_none_skipped
+PASS  case_01_one_absent_from_main_skipped_rest_installed
+PASS  case_02_git_query_fails_None_fail_safe_skip_rest_installed
+PASS  case_03_mixed_present_absent_query_error_in_one_set
+PASS  case_04_same_script_multiple_matchers_absent_from_main_ALL_its_entri
+PASS  case_05_on_main_but_missing_from_the_working_tree_skipped_rest_insta
+PASS  case_06_on_main_AND_present_in_tree_installed_mirror_image_positive
+PASS  case_07_missing_from_BOTH_main_and_the_working_tree_skipped_main_bra
+PASS  check_multi_matcher_case
+PASS  check_reason_text_case
+10/10 strands passed
 
 ## PASS _strand_test_hook_trace_lines
 
@@ -427,91 +409,87 @@ All fire-log tests passed.
 
 ## PASS _strand_test_log_janitor
 
-  [OK  ] old record >7 days → dropped
-  [OK  ] recent record <7 days → kept
-  [OK  ] empty ts → kept (fail-safe)
-  [OK  ] naive ts no TZ → kept (fail-safe)
-
-All 4 tests passed.
+PASS  case_00_old_record_7_days_dropped
+PASS  case_01_recent_record_7_days_kept
+PASS  case_02_empty_ts_kept_fail_safe
+PASS  case_03_naive_ts_no_TZ_kept_fail_safe
+4/4 strands passed
 
 ## PASS _strand_test_rewrite_background_sleep
 
-  [OK  ] sleep 300 background timer → rewrite to worker-cli wait
-  [OK  ] sleep 5 background timer → rewrite to worker-cli wait
-  [OK  ] sleep 1200 background timer → rewrite to worker-cli wait
-  [OK  ] old canonical sleep 3300 && echo done — also a stale habit now, rewrite
-  [OK  ] bare sleep 300 — bare sleep, rewrite to worker-cli wait
-  [OK  ] sleep 45 with custom echo text (fire-log actual incident) → rewrite
-  [OK  ] foreground sleep 300 — no background flag, no rewrite
-  [OK  ] worker-cli wait bare — already canonical, no rewrite
-  [OK  ] worker-cli wait with project_path + --timeout — already canonical, no rewrite
-  [OK  ] rag-cli background — not canonical form, no rewrite
-  [OK  ] sleep 300 && rag-cli — not echo done form, no rewrite
-  [OK  ] bare sleep 300 from a WORKTREE cwd — orchestrator-only guard, no rewrite
-  [OK  ] sleep 3300 && echo done from a WORKTREE cwd — old canonical form, still no rewrite
-  [OK  ] foreground sleep from a WORKTREE cwd — no rewrite (already a no-op via the bg-flag gate)
-
-All 14 tests passed.
+PASS  case_00_sleep_300_background_timer_rewrite_to_worker_cli_wait
+PASS  case_01_sleep_5_background_timer_rewrite_to_worker_cli_wait
+PASS  case_02_sleep_1200_background_timer_rewrite_to_worker_cli_wait
+PASS  case_03_old_canonical_sleep_3300_echo_done_also_a_stale_habit_now_re
+PASS  case_04_bare_sleep_300_bare_sleep_rewrite_to_worker_cli_wait
+PASS  case_05_sleep_45_with_custom_echo_text_fire_log_actual_incident_rewr
+PASS  case_06_foreground_sleep_300_no_background_flag_no_rewrite
+PASS  case_07_worker_cli_wait_bare_already_canonical_no_rewrite
+PASS  case_08_worker_cli_wait_with_project_path_timeout_already_canonical_
+PASS  case_09_rag_cli_background_not_canonical_form_no_rewrite
+PASS  case_10_sleep_300_rag_cli_not_echo_done_form_no_rewrite
+PASS  case_11_bare_sleep_300_from_a_WORKTREE_cwd_orchestrator_only_guard_n
+PASS  case_12_sleep_3300_echo_done_from_a_WORKTREE_cwd_old_canonical_form_
+PASS  case_13_foreground_sleep_from_a_WORKTREE_cwd_no_rewrite_already_a_no
+14/14 strands passed
 
 ## PASS _strand_test_rewrite_chained_sleep
 
-  [OK  ] echo marker then sleep then tmux — strip sleep
-  [OK  ] echo X && sleep then bd — strip sleep
-  [OK  ] true guard before sleep then bd — strip sleep
-  [OK  ] kill before sleep — load-bearing, no strip
-  [OK  ] launchctl before sleep — load-bearing, no strip
-  [OK  ] sleep inside for...done loop — no strip
-  [OK  ] canonical sleep N && echo done — no strip
-  [OK  ] sleep-first leading timer intent — no strip
-  [OK  ] grep before sleep — strip
-  [OK  ] cat before sleep — strip
-  [OK  ] ls before sleep — strip
-  [OK  ] wc before sleep — strip
-  [OK  ] head before sleep — strip
-  [OK  ] tail before sleep — strip
-  [OK  ] find before sleep — strip
-  [OK  ] git status before sleep — strip
-  [OK  ] git log before sleep — strip
-  [OK  ] git diff before sleep — strip
-  [OK  ] git show before sleep — strip
-  [OK  ] rag-cli search before sleep — strip
-  [OK  ] worker-cli status before sleep — strip
-  [OK  ] worker-cli list before sleep — strip
-  [OK  ] worker-cli response before sleep — strip
-  [OK  ] git push before sleep — load-bearing, no strip
-  [OK  ] git pull before sleep — load-bearing, no strip
-  [OK  ] rag-cli index before sleep — load-bearing, no strip
-  [OK  ] rag-cli update_docs before sleep — load-bearing, no strip
-  [OK  ] worker-cli send before sleep — load-bearing, no strip
-  [OK  ] worker-cli kill before sleep — load-bearing, no strip
-  [OK  ] tail -f log backgrounded & sleep — not a chain op, no strip
-  [OK  ] git -C <path> status — flag between cmd and subcmd, conservatively no strip
-
-All 31 tests passed.
+PASS  case_00_echo_marker_then_sleep_then_tmux_strip_sleep
+PASS  case_01_echo_X_sleep_then_bd_strip_sleep
+PASS  case_02_true_guard_before_sleep_then_bd_strip_sleep
+PASS  case_03_kill_before_sleep_load_bearing_no_strip
+PASS  case_04_launchctl_before_sleep_load_bearing_no_strip
+PASS  case_05_sleep_inside_for_done_loop_no_strip
+PASS  case_06_canonical_sleep_N_echo_done_no_strip
+PASS  case_07_sleep_first_leading_timer_intent_no_strip
+PASS  case_08_grep_before_sleep_strip
+PASS  case_09_cat_before_sleep_strip
+PASS  case_10_ls_before_sleep_strip
+PASS  case_11_wc_before_sleep_strip
+PASS  case_12_head_before_sleep_strip
+PASS  case_13_tail_before_sleep_strip
+PASS  case_14_find_before_sleep_strip
+PASS  case_15_git_status_before_sleep_strip
+PASS  case_16_git_log_before_sleep_strip
+PASS  case_17_git_diff_before_sleep_strip
+PASS  case_18_git_show_before_sleep_strip
+PASS  case_19_rag_cli_search_before_sleep_strip
+PASS  case_20_worker_cli_status_before_sleep_strip
+PASS  case_21_worker_cli_list_before_sleep_strip
+PASS  case_22_worker_cli_response_before_sleep_strip
+PASS  case_23_git_push_before_sleep_load_bearing_no_strip
+PASS  case_24_git_pull_before_sleep_load_bearing_no_strip
+PASS  case_25_rag_cli_index_before_sleep_load_bearing_no_strip
+PASS  case_26_rag_cli_update_docs_before_sleep_load_bearing_no_strip
+PASS  case_27_worker_cli_send_before_sleep_load_bearing_no_strip
+PASS  case_28_worker_cli_kill_before_sleep_load_bearing_no_strip
+PASS  case_29_tail_f_log_backgrounded_sleep_not_a_chain_op_no_strip
+PASS  case_30_git_C_path_status_flag_between_cmd_and_subcmd_conservatively
+31/31 strands passed
 
 ## PASS _strand_test_rewrite_worker_wait
 
-  [OK  ] bare worker-cli wait, run_in_background true — already correct NO-OP
-  [OK  ] bare with --timeout, run_in_background true — already correct NO-OP
-  [OK  ] bare with project_path, run_in_background true — already correct NO-OP
-  [OK  ] bare with project_path + --timeout, run_in_background true — already correct NO-OP
-  [OK  ] rewrite_background_sleep.py's own output — already correct NO-OP
-  [OK  ] bare worker-cli wait, run_in_background false — flag forced REWRITE
-  [OK  ] bare worker-cli wait, run_in_background omitted — flag forced REWRITE
-  [OK  ] bare with --timeout, run_in_background false — flag forced, command unchanged REWRITE
-  [OK  ] cd ; worker-cli wait, no path of its own — path injected, flag forced REWRITE (the actual incident shape)
-  [OK  ] cd && worker-cli wait, no path of its own — path injected REWRITE
-  [OK  ] cd ; worker-cli wait, run_in_background false too — both forced in one payload REWRITE
-  [OK  ] cd ; worker-cli wait --timeout 600, no path of its own — path injected before the flag REWRITE
-  [OK  ] cd ; worker-cli wait already has its own path — cd dropped as redundant REWRITE
-  [OK  ] cd \n worker-cli wait (newline separator, real spawn-cd-prefix shape) REWRITE
-  [OK  ] worker-cli wait && rag-cli index docs — trailing chain, unfixable BLOCK
-  [OK  ] worker-cli wait ; echo done — trailing chain, unfixable BLOCK
-  [OK  ] worker-cli wait piped — unfixable BLOCK
-  [OK  ] cd /tmp && worker-cli wait && echo done — cd AND trailing chain, unfixable BLOCK
-  [OK  ] worker-cli waitfoo — not a word-boundary match NO-OP
-  [OK  ] unrelated command NO-OP
-  [OK  ] worker-cli wait mentioned only inside a quoted send message NO-OP
-  [OK  ] worker-cli wait mentioned only inside a heredoc body NO-OP
-
-All 22 tests passed.
+PASS  case_00_bare_worker_cli_wait_run_in_background_true_already_correct_
+PASS  case_01_bare_with_timeout_run_in_background_true_already_correct_NO_
+PASS  case_02_bare_with_project_path_run_in_background_true_already_correc
+PASS  case_03_bare_with_project_path_timeout_run_in_background_true_alread
+PASS  case_04_rewrite_background_sleep_py_s_own_output_already_correct_NO_
+PASS  case_05_bare_worker_cli_wait_run_in_background_false_flag_forced_REW
+PASS  case_06_bare_worker_cli_wait_run_in_background_omitted_flag_forced_R
+PASS  case_07_bare_with_timeout_run_in_background_false_flag_forced_comman
+PASS  case_08_cd_worker_cli_wait_no_path_of_its_own_path_injected_flag_for
+PASS  case_09_cd_worker_cli_wait_no_path_of_its_own_path_injected_REWRITE
+PASS  case_10_cd_worker_cli_wait_run_in_background_false_too_both_forced_i
+PASS  case_11_cd_worker_cli_wait_timeout_600_no_path_of_its_own_path_injec
+PASS  case_12_cd_worker_cli_wait_already_has_its_own_path_cd_dropped_as_re
+PASS  case_13_cd_n_worker_cli_wait_newline_separator_real_spawn_cd_prefix_
+PASS  case_14_worker_cli_wait_rag_cli_index_docs_trailing_chain_unfixable_
+PASS  case_15_worker_cli_wait_echo_done_trailing_chain_unfixable_BLOCK
+PASS  case_16_worker_cli_wait_piped_unfixable_BLOCK
+PASS  case_17_cd_tmp_worker_cli_wait_echo_done_cd_AND_trailing_chain_unfix
+PASS  case_18_worker_cli_waitfoo_not_a_word_boundary_match_NO_OP
+PASS  case_19_unrelated_command_NO_OP
+PASS  case_20_worker_cli_wait_mentioned_only_inside_a_quoted_send_message_
+PASS  case_21_worker_cli_wait_mentioned_only_inside_a_heredoc_body_NO_OP
+22/22 strands passed

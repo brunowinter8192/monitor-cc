@@ -7,7 +7,7 @@ Smoke-test suite for `src/hooks/`: one test script per hook, verifying block, re
 No `__init__.py`. Each script is its own entry point, run directly from any directory; `python3 dev/hook_smoke/run_all.py` runs all test modules as parallel strands.
 
 ## Flow
-A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes in, the hook under test decides allow, block or rewrite, and exit code, stdout JSON or stderr text is compared against an expected table and printed as pass/fail lines. Two scripts read a real corpus and write a report to `md/`.
+A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes in, the hook under test decides allow, block or rewrite, and exit code, stdout JSON or stderr text is compared against an expected table and printed as pass/fail lines; every case of a table test runs as its own strand.
 
 ## Modules
 
@@ -21,7 +21,17 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### run_all.py (67 LOC)
+### case_strands.py (57 LOC)
+
+**Purpose:** Turns the table cases and standalone check functions of a test file into named strands run in parallel through the shared strand runner.
+**Reads:** nothing.
+**Writes:** stdout only (case lines); strand verdicts come from the runner.
+**Called by:** the table-driven `test_*.py` in this directory.
+**Calls out:** the strand runner in `dev/refactoring/`.
+
+---
+
+### run_all.py (70 LOC)
 
 **Purpose:** Runs every test module of this directory as one parallel fail-fast strand and writes a fixed-name report.
 **Reads:** the `test_*.py` modules (executed via `runpy`).
@@ -61,7 +71,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_broad_find.py (82 LOC)
+### test_block_broad_find.py (75 LOC)
 
 **Purpose:** Smoke for the broad-find hook: blocked broad-root calls, allowed narrower cases.
 **Reads:** nothing.
@@ -71,7 +81,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_broad_grep.py (70 LOC)
+### test_block_broad_grep.py (63 LOC)
 
 **Purpose:** Smoke for the broad-grep hook: blocked recursive piped cases, head-bounded and other exemptions.
 **Reads:** nothing.
@@ -81,7 +91,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_cli_chained.py (166 LOC)
+### test_block_cli_chained.py (156 LOC)
 
 **Purpose:** Smoke for the chained-CLI hook: pipe, redirect and readback abuse across wrapper CLIs, plus interpreter-path and cwd bypass forms.
 **Reads:** nothing.
@@ -91,7 +101,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_dangerous_kill.py (74 LOC)
+### test_block_dangerous_kill.py (67 LOC)
 
 **Purpose:** Smoke for the dangerous-kill hook: pattern kills, pipe-kill chains, quoting exemptions and allowlist cases.
 **Reads:** nothing.
@@ -101,7 +111,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_gh_cli_local_path.py (68 LOC)
+### test_block_gh_cli_local_path.py (61 LOC)
 
 **Purpose:** Smoke for the gh-cli local-path hook: blocked local-path arguments, pass and shell-strip cases.
 **Reads:** nothing.
@@ -111,7 +121,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_git_destructive.py (88 LOC)
+### test_block_git_destructive.py (81 LOC)
 
 **Purpose:** Smoke for the destructive-git hook: force-push, amend, no-verify and config-write blocks, safe ops and false-positive regressions.
 **Reads:** nothing.
@@ -121,7 +131,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_manual_worker_cleanup.py (80 LOC)
+### test_block_manual_worker_cleanup.py (73 LOC)
 
 **Purpose:** Smoke for the manual worker cleanup hook: blocked session-kill and worktree-remove on worker targets, allowed non-worker forms.
 **Reads:** nothing.
@@ -131,7 +141,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_po_read.py (109 LOC)
+### test_block_po_read.py (99 LOC)
 
 **Purpose:** Smoke for the persisted-output read hook: blocked readers, allow cases and real-file size-boundary cases.
 **Reads:** its own temp-dir fixtures.
@@ -141,7 +151,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_rag_cli_document_repeat.py (167 LOC)
+### test_block_rag_cli_document_repeat.py (172 LOC)
 
 **Purpose:** Smoke for the rag-cli document-repeat hook: single, repeat, collection-wide, cross-session, delete and fail-open cases.
 **Reads:** nothing.
@@ -151,7 +161,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_rag_cli_index_isolated.py (117 LOC)
+### test_block_rag_cli_index_isolated.py (110 LOC)
 
 **Purpose:** Smoke for the isolated rag-cli index hook: blocked poll-then-index shapes including substitution smuggling, allowed bare and guarded forms.
 **Reads:** nothing.
@@ -161,7 +171,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_rag_corpus_read.py (126 LOC)
+### test_block_rag_corpus_read.py (120 LOC)
 
 **Purpose:** Smoke for the rag corpus read hook: blocked raw reads over the corpus tree, allowed management ops and unrelated reads.
 **Reads:** nothing.
@@ -171,7 +181,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_rag_docs_layer.py (60 LOC)
+### test_block_rag_docs_layer.py (53 LOC)
 
 **Purpose:** Smoke for the rag docs-layer hook: docs-collection search blocks without the process-docs filter and allows with it.
 **Reads:** nothing.
@@ -181,7 +191,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_unauthorized_background.py (84 LOC)
+### test_block_unauthorized_background.py (79 LOC)
 
 **Purpose:** Smoke for the unauthorized-background hook: sleep exempt, worker wait excluded from its opinion, other backgrounded commands forced to foreground.
 **Reads:** nothing.
@@ -191,7 +201,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_worker_kill_while_working.py (130 LOC)
+### test_block_worker_kill_while_working.py (115 LOC)
 
 **Purpose:** Smoke for the worker-kill decision function using the real shell-strip and a stub status function.
 **Reads:** nothing.
@@ -201,7 +211,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_worker_send_while_working.py (155 LOC)
+### test_block_worker_send_while_working.py (131 LOC)
 
 **Purpose:** Smoke for the worker-send decision function via the same stub pattern, plus one real subprocess for malformed-stdin fail-open.
 **Reads:** nothing.
@@ -211,7 +221,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_fire_log.py (163 LOC)
+### test_fire_log.py (162 LOC)
 
 **Purpose:** Regression for the shared hook fire-logging helper: block and rewrite decisions append the expected record and an env override is honored.
 **Reads:** nothing external.
@@ -231,7 +241,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_hook_setup_main_branch_gate.py (139 LOC)
+### test_hook_setup_main_branch_gate.py (124 LOC)
 
 **Purpose:** Smoke for the two-condition install gate of hook setup: committed on main and present in tree, either failing skips.
 **Reads:** nothing; stub git and tree queries.
@@ -251,7 +261,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_log_janitor.py (65 LOC)
+### test_log_janitor.py (60 LOC)
 
 **Purpose:** Smoke for the JSONL log janitor: old record dropped, recent, empty and naive-timestamp records kept.
 **Reads:** its own temp-file fixtures.
@@ -261,7 +271,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_rewrite_background_sleep.py (156 LOC)
+### test_rewrite_background_sleep.py (157 LOC)
 
 **Purpose:** Smoke for the background-sleep rewrite hook: sleep shapes rewritten to worker wait, no-op cases and the worktree-cwd guard.
 **Reads:** nothing.
@@ -271,7 +281,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_rewrite_chained_sleep.py (202 LOC)
+### test_rewrite_chained_sleep.py (199 LOC)
 
 **Purpose:** Smoke for the chained-sleep rewrite hook: trivial predecessors strip the sleep, load-bearing shapes are no-ops.
 **Reads:** nothing.
@@ -281,7 +291,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_rewrite_worker_wait.py (115 LOC)
+### test_rewrite_worker_wait.py (108 LOC)
 
 **Purpose:** Smoke for the worker-wait rewrite hook: correct forms no-op, background forced true, leading cd collapsed, other chains still block, false-positive guards.
 **Reads:** nothing.

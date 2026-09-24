@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from hook_runner import abort_if_failed
+from case_strands import case_runners, report_case, run_case_strands
 from src.panes.log_janitor import cleanup_old_jsonl
 
 _now = datetime.now(timezone.utc)
@@ -30,21 +30,16 @@ CASES = [
 # ORCHESTRATOR
 
 def test_log_janitor_workflow() -> None:
-    failures = []
-    for desc, input_lines, expected in CASES:
-        result, ok = _run_case(input_lines, expected)
-        status = "OK  " if ok else "FAIL"
-        print(f"  [{status}] {desc}")
-        if not ok:
-            print(f"           want: {expected}")
-            print(f"           got:  {result}")
-            failures.append(desc)
-            abort_if_failed(failures)
-    print()
-    print(f"All {len(CASES)} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, case_runners(CASES, _check_case)))
 
 
 # FUNCTIONS
+
+def _check_case(case: tuple) -> None:
+    desc, input_lines, expected = case
+    result, ok = _run_case(input_lines, expected)
+    report_case(desc, ok, '' if ok else f'\n           want: {expected}\n           got:  {result}')
+
 
 def _run_case(input_lines: list, expected: list) -> tuple:
     with tempfile.NamedTemporaryFile(

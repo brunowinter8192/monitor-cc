@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
 import json
-from hook_runner import abort_if_failed, run_hook
+import sys
+from case_strands import case_runners, report_case, run_case_strands
+from hook_runner import run_hook
 
 HOOK = "src/hooks/rewrite_worker_wait.py"
 
@@ -75,25 +77,19 @@ CASES = [
 # ORCHESTRATOR
 
 def test_rewrite_worker_wait_workflow() -> None:
-    failures = []
-    for desc, cmd, rb, expected_exit, expected_cmd, expected_bg in CASES:
-        got_cmd, got_bg, exit_code = _run_hook(cmd, rb)
-        ok = (exit_code == expected_exit and got_cmd == expected_cmd
-              and got_bg == expected_bg)
-        status = "OK  " if ok else "FAIL"
-        print(f"  [{status}] {desc}")
-        if not ok:
-            print(f"           want: exit={expected_exit} command={expected_cmd!r} "
-                  f"run_in_background={expected_bg!r}")
-            print(f"           got:  exit={exit_code} command={got_cmd!r} "
-                  f"run_in_background={got_bg!r}")
-            failures.append(desc)
-            abort_if_failed(failures)
-    print()
-    print(f"All {len(CASES)} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, case_runners(CASES, _check_case)))
 
 
 # FUNCTIONS
+
+def _check_case(case: tuple) -> None:
+    desc, command, run_in_background, expected_exit, expected_cmd, expected_bg = case
+    got_cmd, got_bg, exit_code = _run_hook(command, run_in_background)
+    ok = exit_code == expected_exit and got_cmd == expected_cmd and got_bg == expected_bg
+    want = f"exit={expected_exit} command={expected_cmd!r} run_in_background={expected_bg!r}"
+    got = f"exit={exit_code} command={got_cmd!r} run_in_background={got_bg!r}"
+    report_case(desc, ok, '' if ok else f'\n           want: {want}\n           got:  {got}')
+
 
 def _run_hook(command: str, run_in_background):
     tool_input = {"command": command}
@@ -102,12 +98,9 @@ def _run_hook(command: str, run_in_background):
     payload = json.dumps({"tool_name": "Bash", "tool_input": tool_input})
     result = run_hook(HOOK, payload.encode())
     if result.returncode == 0 and result.stdout.strip():
-        try:
-            data = json.loads(result.stdout)
-            updated = data["hookSpecificOutput"]["updatedInput"]
-            return updated["command"], updated["run_in_background"], result.returncode
-        except (KeyError, json.JSONDecodeError):
-            pass
+        data = json.loads(result.stdout)
+        updated = data["hookSpecificOutput"]["updatedInput"]
+        return updated["command"], updated["run_in_background"], result.returncode
     return None, None, result.returncode
 
 

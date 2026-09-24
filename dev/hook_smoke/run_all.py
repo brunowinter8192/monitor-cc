@@ -2,6 +2,7 @@
 import runpy
 import sys
 from functools import partial
+from unittest.mock import patch
 from pathlib import Path
 
 _AREA_DIR = Path(__file__).resolve().parent
@@ -56,8 +57,10 @@ def _register_strands(script_globals: dict) -> dict:
     return script_globals
 
 def _run_module(module: str) -> None:
+    module_path = str(_AREA_DIR / (module + '.py'))
     try:
-        runpy.run_path(str(_AREA_DIR / (module + '.py')), run_name='__main__')
+        with patch.object(sys, 'argv', [module_path]):
+            runpy.run_path(module_path, run_name='__main__')
     except SystemExit as exit_signal:
         if exit_signal.code not in (0, None):
             raise

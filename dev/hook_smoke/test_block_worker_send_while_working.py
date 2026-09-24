@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'hooks'))
 
 from block_worker_send_while_working import decide
+from case_strands import case_runners, function_runners, report_case, run_case_strands
 from hook_runner import run_hook
 
 HOOK = "src/hooks/block_worker_send_while_working.py"
@@ -79,11 +80,7 @@ CASES = [
 # ORCHESTRATOR
 
 def test_block_worker_send_while_working_workflow() -> None:
-    passed, failed = _run_cases()
-    if failed:
-        _report_and_exit(passed, failed)
-    entry_passed, entry_failed = _run_entrypoint_cases()
-    _report_and_exit(passed + entry_passed, failed + entry_failed)
+    sys.exit(run_case_strands(globals(), __file__, _all_runners()))
 
 
 # FUNCTIONS
@@ -96,45 +93,29 @@ def make_stub(name_to_status: dict):
     return stub
 
 
-def _run_cases() -> tuple:
-    passed = failed = 0
-    for label, cmd, stub_map, expect in CASES:
-        block, name = decide(cmd, make_stub(stub_map))
-        ok = (block == expect)
-        mark = "PASS" if ok else "FAIL"
-        blocking_info = f" (blocking: {name})" if block else ""
-        print(f"[{mark}] {label}{blocking_info}")
-        if ok:
-            passed += 1
-        else:
-            failed += 1
-            break
-    return passed, failed
+def _all_runners() -> dict:
+    runners = case_runners(CASES, _check_case)
+    runners.update(function_runners([_check_malformed_fails_open, _check_no_resolvable_worker]))
+    return runners
 
 
-def _run_entrypoint_cases() -> tuple:
+def _check_case(case: tuple) -> None:
+    label, command, stub_map, expect = case
+    block, name = decide(command, make_stub(stub_map))
+    report_case(label, block == expect, f" (blocking: {name})" if block else "")
+
+
+def _check_malformed_fails_open() -> None:
     with tempfile.TemporaryDirectory(prefix="worker_send_fake_") as tmp:
-        fake_env = _fake_worker_cli_env(Path(tmp))
-        malformed = run_hook(HOOK, b"not valid json at all", extra_env=fake_env)
-        no_worker = run_hook(
-            HOOK,
-            json.dumps({"tool_name": "Bash", "tool_input": {"command": "worker-cli send foo hi"}}).encode(),
-            extra_env=fake_env,
-        )
-    results = [
-        ("malformed stdin payload fails open", malformed.returncode),
-        ("real entrypoint, no resolvable worker status", no_worker.returncode),
-    ]
-    passed = failed = 0
-    for label, code in results:
-        ok = code == 0
-        print(f"[{'PASS' if ok else 'FAIL'}] {label}: exit={code} (expected 0)")
-        if ok:
-            passed += 1
-        else:
-            failed += 1
-            break
-    return passed, failed
+        malformed = run_hook(HOOK, b"not valid json at all", extra_env=_fake_worker_cli_env(Path(tmp)))
+    report_case("malformed stdin payload fails open", malformed.returncode == 0, f": exit={malformed.returncode} (expected 0)")
+
+
+def _check_no_resolvable_worker() -> None:
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "worker-cli send foo hi"}}).encode()
+    with tempfile.TemporaryDirectory(prefix="worker_send_fake_") as tmp:
+        no_worker = run_hook(HOOK, payload, extra_env=_fake_worker_cli_env(Path(tmp)))
+    report_case("real entrypoint, no resolvable worker status", no_worker.returncode == 0, f": exit={no_worker.returncode} (expected 0)")
 
 
 def _fake_worker_cli_env(tmp: Path) -> dict:
@@ -144,11 +125,6 @@ def _fake_worker_cli_env(tmp: Path) -> dict:
     fake.write_text("#!/bin/sh\nexit 1\n")
     fake.chmod(0o755)
     return {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "HOME": str(tmp)}
-
-
-def _report_and_exit(passed: int, failed: int) -> None:
-    print(f"\n{passed}/{passed + failed} passed")
-    sys.exit(0 if failed == 0 else 1)
 
 
 if __name__ == "__main__":

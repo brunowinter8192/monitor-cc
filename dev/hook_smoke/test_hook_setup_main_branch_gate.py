@@ -4,6 +4,7 @@ import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'hooks'))
 
+from case_strands import case_runners, function_runners, report_case, run_case_strands
 from hook_setup import decide_entries
 
 CASES = [
@@ -69,10 +70,7 @@ CASES = [
 # ORCHESTRATOR
 
 def test_hook_setup_main_branch_gate_workflow() -> None:
-    results = _run_cases()
-    if all(ok for _, ok, _ in results):
-        results += _run_multi_matcher_case() + _run_reason_text_case()
-    _report_and_exit(results)
+    sys.exit(run_case_strands(globals(), __file__, _all_runners()))
 
 
 # FUNCTIONS
@@ -88,30 +86,30 @@ def make_tree_stub(name_to_present: dict):
     return stub
 
 
-def _run_cases() -> list:
-    results = []
-    for label, hook_scripts, git_map, tree_map, expect_installed, expect_skipped_scripts in CASES:
-        installed, skipped = decide_entries(hook_scripts, make_git_stub(git_map), make_tree_stub(tree_map))
-        skipped_scripts = sorted({s for s, _m, _r in skipped})
-        ok = (installed == expect_installed) and (skipped_scripts == sorted(expect_skipped_scripts))
-        detail = "" if ok else f"       installed={installed} skipped_scripts={skipped_scripts}"
-        results.append((label, ok, detail))
-        if not ok:
-            break
-    return results
+def _all_runners() -> dict:
+    runners = case_runners(CASES, _check_case)
+    runners.update(function_runners([_check_multi_matcher_case, _check_reason_text_case]))
+    return runners
 
 
-def _run_multi_matcher_case() -> list:
+def _check_case(case: tuple) -> None:
+    label, hook_scripts, git_map, tree_map, expect_installed, expect_skipped_scripts = case
+    installed, skipped = decide_entries(hook_scripts, make_git_stub(git_map), make_tree_stub(tree_map))
+    skipped_scripts = sorted({s for s, _m, _r in skipped})
+    ok = (installed == expect_installed) and (skipped_scripts == sorted(expect_skipped_scripts))
+    report_case(label, ok, "" if ok else f"\n       installed={installed} skipped_scripts={skipped_scripts}")
+
+
+def _check_multi_matcher_case() -> None:
     _, skipped_multi = decide_entries(
         [("multi.py", "Bash"), ("multi.py", "Read"), ("multi.py", "Write")],
         make_git_stub({"multi.py": False}), make_tree_stub({}),
     )
     ok = len(skipped_multi) == 3 and all(s == "multi.py" for s, _m, _r in skipped_multi)
-    detail = "" if ok else f"       skipped_multi={skipped_multi}"
-    return [("absent script skips EVERY matcher entry, not just the first", ok, detail)]
+    report_case("absent script skips EVERY matcher entry, not just the first", ok, "" if ok else f"\n       skipped_multi={skipped_multi}")
 
 
-def _run_reason_text_case() -> list:
+def _check_reason_text_case() -> None:
     _, skipped_main = decide_entries(
         [("not_on_main.py", "Bash")], make_git_stub({"not_on_main.py": False}), make_tree_stub({}))
     _, skipped_tree = decide_entries(
@@ -119,20 +117,7 @@ def _run_reason_text_case() -> list:
     reason_main = skipped_main[0][2]
     reason_tree = skipped_tree[0][2]
     ok = ("not committed on" in reason_main) and ("missing from the current working tree" in reason_tree)
-    detail = "" if ok else f"       reason_main={reason_main!r} reason_tree={reason_tree!r}"
-    return [("skip reason text distinguishes not-on-main vs missing-from-tree", ok, detail)]
-
-
-def _report_and_exit(results: list) -> None:
-    passed = 0
-    for label, ok, detail in results:
-        print(f"[{'PASS' if ok else 'FAIL'}] {label}")
-        if ok:
-            passed += 1
-        else:
-            print(detail)
-    print(f"\n{passed}/{len(results)} passed")
-    sys.exit(0 if passed == len(results) else 1)
+    report_case("skip reason text distinguishes not-on-main vs missing-from-tree", ok, "" if ok else f"\n       reason_main={reason_main!r} reason_tree={reason_tree!r}")
 
 
 if __name__ == "__main__":

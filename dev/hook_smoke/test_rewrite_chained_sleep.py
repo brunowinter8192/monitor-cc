@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
 import json
-from hook_runner import abort_if_failed, run_hook
+import sys
+from case_strands import case_runners, report_case, run_case_strands
+from hook_runner import run_hook
 
 HOOK = "src/hooks/rewrite_chained_sleep.py"
 
@@ -166,24 +168,19 @@ CASES = [
 # ORCHESTRATOR
 
 def test_rewrite_chained_sleep_workflow() -> None:
-    failures = []
-    for desc, cmd, expected_rewrite in CASES:
-        exit_code, rewrite = _run_hook(cmd)
-        ok = exit_code == 0 and rewrite == expected_rewrite
-        status = "OK  " if ok else "FAIL"
-        want = repr(expected_rewrite) if expected_rewrite is not None else "None (no output)"
-        got  = repr(rewrite) if rewrite is not None else "None (no output)"
-        print(f"  [{status}] {desc}")
-        if not ok:
-            print(f"           want: {want}")
-            print(f"           got:  {got} (exit={exit_code})")
-            failures.append(desc)
-            abort_if_failed(failures)
-    print()
-    print(f"All {len(CASES)} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, case_runners(CASES, _check_case)))
 
 
 # FUNCTIONS
+
+def _check_case(case: tuple) -> None:
+    desc, command, expected_rewrite = case
+    exit_code, rewrite = _run_hook(command)
+    ok = exit_code == 0 and rewrite == expected_rewrite
+    want = repr(expected_rewrite) if expected_rewrite is not None else "None (no output)"
+    got = repr(rewrite) if rewrite is not None else "None (no output)"
+    report_case(desc, ok, '' if ok else f'\n           want: {want}\n           got:  {got} (exit={exit_code})')
+
 
 def _run_hook(command: str):
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
