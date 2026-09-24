@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 import json
-import sys
-from hook_runner import run_hook
+from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/rewrite_chained_sleep.py"
 
@@ -179,12 +178,8 @@ def test_rewrite_chained_sleep_workflow() -> None:
             print(f"           want: {want}")
             print(f"           got:  {got} (exit={exit_code})")
             failures.append(desc)
+            abort_if_failed(failures)
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for f in failures:
-            print(f"  - {f}")
-        sys.exit(1)
     print(f"All {len(CASES)} tests passed.")
 
 

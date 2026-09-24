@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -26,3 +27,12 @@ def run_hook(hook: str, stdin_bytes: bytes, extra_env: dict = None, cwd=None) ->
             env=env,
             cwd=str(cwd) if cwd else str(REPO_ROOT),
         )
+
+
+def abort_if_failed(failures: list) -> None:
+    if failures:
+        print()
+        print(f"FAILED: {len(failures)} case(s):")
+        for failure in failures:
+            print(f"  - {failure}")
+        sys.exit(1)

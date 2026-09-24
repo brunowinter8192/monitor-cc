@@ -80,6 +80,8 @@ CASES = [
 
 def test_block_worker_send_while_working_workflow() -> None:
     passed, failed = _run_cases()
+    if failed:
+        _report_and_exit(passed, failed)
     entry_passed, entry_failed = _run_entrypoint_cases()
     _report_and_exit(passed + entry_passed, failed + entry_failed)
 
@@ -106,6 +108,7 @@ def _run_cases() -> tuple:
             passed += 1
         else:
             failed += 1
+            break
     return passed, failed
 
 
@@ -130,6 +133,7 @@ def _run_entrypoint_cases() -> tuple:
             passed += 1
         else:
             failed += 1
+            break
     return passed, failed
 
 

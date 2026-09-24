@@ -117,6 +117,7 @@ def _run_cases() -> tuple:
             passed += 1
         else:
             failed += 1
+            break
     return passed, failed
 
 

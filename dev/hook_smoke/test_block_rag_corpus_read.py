@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 import json
-import sys
-from hook_runner import run_hook
+from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/block_rag_corpus_read.py"
 
@@ -70,12 +69,14 @@ def test_block_rag_corpus_read_workflow() -> None:
         print(f"  [{status}] {desc}: exit={got} (expected {expected})")
         if got != expected:
             failures.append(desc)
+            abort_if_failed(failures)
 
     malformed_got = _run_hook_raw(b"not valid json at all")
     status = "OK  " if malformed_got == 0 else "FAIL"
     print(f"  [{status}] malformed stdin payload fails open: exit={malformed_got} (expected 0)")
     if malformed_got != 0:
         failures.append("malformed stdin payload fails open")
+        abort_if_failed(failures)
 
     message_got, message_stderr = _run_hook_with_stderr(
         "cat /Users/x/cli/rag-cli/data/documents/z.md")
@@ -84,13 +85,9 @@ def test_block_rag_corpus_read_workflow() -> None:
         print(f"  [{status}] block message: {label}")
         if not ok:
             failures.append(f"block message: {label}")
+            abort_if_failed(failures)
 
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for f in failures:
-            print(f"  - {f}")
-        sys.exit(1)
     print(f"All {len(CASES) + 1 + len(_message_checks(message_stderr))} tests passed.")
 
 

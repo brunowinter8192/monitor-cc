@@ -3,9 +3,8 @@ import atexit
 import json
 import os
 import shutil
-import sys
 import tempfile
-from hook_runner import run_hook
+from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/block_non_canonical_edit.py.disabled"
 
@@ -91,6 +90,7 @@ def test_block_non_canonical_edit_workflow() -> None:
         print(f"  [{status}] {desc}: exit={got} (expected {expected})")
         if got != expected:
             failures.append(desc)
+            abort_if_failed(failures)
     got = _run_hook_raw(b"not valid json{{{")
     desc = "parse-error fail-open PASS"
     expected = 0
@@ -98,13 +98,9 @@ def test_block_non_canonical_edit_workflow() -> None:
     print(f"  [{status}] {desc}: exit={got} (expected {expected})")
     if got != expected:
         failures.append(desc)
+        abort_if_failed(failures)
     total = len(CASES) + 1
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for f in failures:
-            print(f"  - {f}")
-        sys.exit(1)
     print(f"All {total} tests passed.")
 
 

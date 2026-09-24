@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 import json
-import sys
-from hook_runner import run_hook
+from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/block_chained_sleep.py.disabled"
 
@@ -32,12 +31,8 @@ def test_block_chained_sleep_workflow() -> None:
         print(f"  [{status}] {desc}: exit={got} (expected {expected})")
         if got != expected:
             failures.append(desc)
+            abort_if_failed(failures)
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for f in failures:
-            print(f"  - {f}")
-        sys.exit(1)
     print(f"All {len(CASES)} tests passed.")
 
 

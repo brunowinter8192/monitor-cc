@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.menubar import proc_cache
+from hook_runner import abort_if_failed
 
 _POLL_DEADLINE_SECS = 10.0
 _POLL_INTERVAL_SECS = 0.05
@@ -28,12 +29,8 @@ def test_bg_task_detection_workflow() -> None:
         if not ok:
             print(f"           {detail}")
             failures.append(desc)
+            abort_if_failed(failures)
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for desc in failures:
-            print(f"  - {desc}")
-        sys.exit(1)
     print(f"All {len(CASES)} tests passed.")
 
 

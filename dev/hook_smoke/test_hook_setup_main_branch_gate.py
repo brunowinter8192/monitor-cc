@@ -69,7 +69,9 @@ CASES = [
 # ORCHESTRATOR
 
 def test_hook_setup_main_branch_gate_workflow() -> None:
-    results = _run_cases() + _run_multi_matcher_case() + _run_reason_text_case()
+    results = _run_cases()
+    if all(ok for _, ok, _ in results):
+        results += _run_multi_matcher_case() + _run_reason_text_case()
     _report_and_exit(results)
 
 
@@ -94,6 +96,8 @@ def _run_cases() -> list:
         ok = (installed == expect_installed) and (skipped_scripts == sorted(expect_skipped_scripts))
         detail = "" if ok else f"       installed={installed} skipped_scripts={skipped_scripts}"
         results.append((label, ok, detail))
+        if not ok:
+            break
     return results
 
 
