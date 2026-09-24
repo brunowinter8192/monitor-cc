@@ -11,13 +11,8 @@ No `__init__.py` in this directory. Each numbered `0N_*.py` script is its own en
 directly, e.g. `python3 dev/session_analysis/01_extract.py --session <path>`.
 
 ## Flow
-Each script reads session JSONL files (under the user's Claude Code projects directory) and/or a
-proxy log under `src/logs`, computes one specific breakdown or timeline, and either prints a
-Markdown table to stdout or writes a timestamped report to `md/`.
-
-Every numbered script over budget splits into the numbered entry file (kept at its original
-path/name) plus sibling modules named `<topic>_<concern>.py` — without the numeric prefix, since a
-literal `NN_name` is not a valid Python identifier.
+Each script reads session JSONL files (under the user's Claude Code projects directory) and/or a proxy log under `src/logs`, computes one breakdown or timeline, and either prints a Markdown table to stdout or writes a timestamped report to `md/`.
+Every numbered script over budget splits into the numbered entry file plus sibling modules named `<topic>_<concern>.py`, without the numeric prefix, since a literal `NN_name` is not a valid Python identifier.
 
 ## Modules
 
