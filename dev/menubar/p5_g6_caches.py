@@ -1,4 +1,6 @@
 # INFRASTRUCTURE
+import ast
+import inspect
 import json
 import os
 import subprocess
@@ -112,6 +114,11 @@ def orphans(mlog) -> None:
 
 def proc_cache_refreshes(d, mlog) -> None:
     p = load('proc_cache')
+    proc_cache_normal(p, d)
+    if _NEW:
+        proc_cache_failures(p, mlog)
+
+def proc_cache_normal(p, d) -> None:
     tasks = d / 'tasks'
     tasks.mkdir()
     p._TASKS_BASE = tasks
@@ -126,6 +133,12 @@ def proc_cache_refreshes(d, mlog) -> None:
         return run_result('COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nclaude 100 u cwd DIR 1,1 1 2 /the/cwd\n')
     with mock.patch.object(p.subprocess, 'run', fake_run):
         p._refresh_cc_proc_cache(100.0)
+    tmux_ok, tmux_rc, tmux_exc = tmux_state_cases(p)
+    active = p._has_active_bg('x', 's')
+    print(f'DIFF proc_cache {digest((sorted(p._bg_task_open_paths), p._bg_task_holder_pids, dict(p._cc_proc_cache), sorted(tmux_ok), sorted(tmux_rc), sorted(tmux_exc), active))}')
+    check('g6.proc_cache.normal', p._cc_proc_cache == {'100': ('ttys001', '/the/cwd')} and tmux_ok == {'a', 'b'} and tmux_rc == set() and tmux_exc == {'keep'})
+
+def tmux_state_cases(p) -> tuple:
     p._tmux_state_last_refresh = 0.0
     with mock.patch.object(p.subprocess, 'run', lambda *a, **k: run_result('a\nb\n')):
         p._refresh_tmux_state(100.0)
@@ -138,12 +151,9 @@ def proc_cache_refreshes(d, mlog) -> None:
     p._tmux_state_last_refresh = 0.0
     with mock.patch.object(p.subprocess, 'run', boom):
         p._refresh_tmux_state(300.0)
-    tmux_exc = set(p._tmux_state_cache)
-    active = p._has_active_bg('x', 's') 
-    print(f'DIFF proc_cache {digest((sorted(p._bg_task_open_paths), p._bg_task_holder_pids, dict(p._cc_proc_cache), sorted(tmux_ok), sorted(tmux_rc), sorted(tmux_exc), active))}')
-    check('g6.proc_cache.normal', p._cc_proc_cache == {'100': ('ttys001', '/the/cwd')} and tmux_ok == {'a', 'b'} and tmux_rc == set() and tmux_exc == {'keep'})
-    if not _NEW:
-        return
+    return tmux_ok, tmux_rc, set(p._tmux_state_cache)
+
+def proc_cache_failures(p, mlog) -> None:
     load('menubar_log')._last_by_key.clear()
     start = len(log_text(mlog))
     p._bg_task_last_refresh = 0.0
@@ -155,15 +165,22 @@ def proc_cache_refreshes(d, mlog) -> None:
         p._refresh_tmux_state(1000.0)
     t = since(mlog, start)
     check('g6.proc_cache.subprocess_failures_logged', all(k in t for k in ('lsof +D failed', 'ps failed', 'tmux list-sessions failed')))
+    tmux_rc_logged(p, mlog)
+    per_pid_lsof_failure(p, mlog)
+    src = inspect.getsource(p._has_active_bg)
+    check('g6.proc_cache.dead_handler_removed', not any(isinstance(n, ast.Try) for n in ast.walk(ast.parse(src))))
+
+def tmux_rc_logged(p, mlog) -> None:
     p._tmux_state_last_refresh = 0.0
     load('menubar_log')._last_by_key.clear()
     start = len(log_text(mlog))
     with mock.patch.object(p.subprocess, 'run', lambda *a, **k: run_result('', 1, 'no server running')):
         p._refresh_tmux_state(2000.0)
     check('g6.proc_cache.tmux_rc_logged', 'tmux list-sessions rc=1' in since(mlog, start))
+
+def per_pid_lsof_failure(p, mlog) -> None:
     p._cc_proc_last_refresh = 0.0
     p._cc_proc_cache.clear()
-    calls = []
     def flaky(cmd, **k):
         if cmd[0] == 'ps':
             return run_result('  PID TTY COMM\n100 ttys001 claude\n')
@@ -172,9 +189,6 @@ def proc_cache_refreshes(d, mlog) -> None:
     with mock.patch.object(p.subprocess, 'run', flaky):
         p._refresh_cc_proc_cache(3000.0)
     check('g6.proc_cache.per_pid_lsof_failure_logged', 'lsof cwd failed pid=100' in since(mlog, start))
-    import ast, inspect
-    src = inspect.getsource(p._has_active_bg)
-    check('g6.proc_cache.dead_handler_removed', not any(isinstance(n, ast.Try) for n in ast.walk(ast.parse(src))))
 
 def tmux_activity(mlog) -> None:
     p = load('proc_cache')

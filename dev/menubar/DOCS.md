@@ -121,7 +121,7 @@ line, per `block_dev_imports_src`.
 
 ---
 
-### p5_g6_caches.py (273 LOC)
+### p5_g6_caches.py (287 LOC)
 
 **Purpose:** Strand for `proc_cache.py`, `ghostty.py`, `bg_timer.py`, `bg_task_orphans.py`: subprocess failures logged, unknown tmux activity is None, proxy log dir derived from the project root; normal outputs digest-compared.
 **Reads:** temp directories; fake subprocess results.
