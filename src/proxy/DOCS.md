@@ -2,431 +2,370 @@
 
 ## Role
 
-mitmproxy addon package that intercepts every POST `/v1/messages` request from Claude Code, applies a deterministic modification pipeline (rule injection, content stripping, MCP tool injection, fixation, cache-breakpoint placement), logs the request/response pair, and forwards the modified payload to Anthropic. Touch this package when changing what gets injected, stripped, cached, or logged. Do NOT edit files here during a live proxy session — the running proxy uses a frozen copy under `src/logs/.proxy_live_<id>/proxy/` (see Gotchas).
+mitmproxy addon package that intercepts every Messages request from Claude Code, applies a deterministic modification pipeline (rule injection, content stripping, tool injection, fixation, cache breakpoints), logs the exchange and forwards the result. Touch it to change what gets injected, stripped, cached or logged. Do not edit during a live proxy session; the running proxy uses a frozen copy.
 
 ## Public Interface
 
-`__init__.py` is empty — package marker only, no exports. The actual entry point is `src/proxy_addon.py`, which mitmproxy loads via the `-s` flag (see `src/claude_proxy_start.sh`).
+`__init__.py` is empty. The entry path is `src/proxy_addon.py`, which mitmproxy loads via `-s` (see `src/claude_proxy_start.sh`).
 
 ## Flow
 
-mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
-→ `rules` (system2 + project rule injection, content strip)
-→ `fixation` (freeze sys[2] + msg[0] after first request) → `tools` (blocklist strip)
-→ `tool_injection` (MCP schema append) → `inject_helpers` (model override, context management)
-→ dual-log writes (original + forwarded + errors) → `cache` (strip all markers, set BP3/BP4/anchor)
-→ `accept-encoding: identity` forced on the outbound request so the response arrives uncompressed →
-modified payload forwarded to Anthropic; `responseheaders()` hook installs `response_model_probe`
-as `flow.response.stream` for 2xx (SSE `message_start.model` inspection, no body buffering); the
-`_response` dual-log (cc_requested/proxy_forwarded/answering model side by side) is written from
-whichever of `response()` or `error()` fires — mitmproxy guarantees exactly one of the two per flow,
-which is what makes the write survive a client-side mid-stream abort (see Gotchas); the same call also
-writes one `model_mismatch` record to the session `_errors` dual-log when `proxy_forwarded_model` and a
-non-empty `answering_model` disagree, surfacing in the warnings pane alongside tool errors; `response()`
-additionally writes stripped/injected dual-logs via metadata bridge on a completed exchange
+Request hook in `addon.py` → `rules.py` and the strip modules → `fixation.py`, `tools.py`, `tool_injection.py`, `inject_helpers.py`.
+→ `addon_dual_log.py` writes the dual-log streams → `cache.py` places breakpoints → payload forwarded to Anthropic.
+Response side: `response_model_probe.py` inspects the stream; the response and model-mismatch records are written from the response or error hook.
 
 ## Modules
 
 ### addon.py (331 LOC)
 
-**Purpose:** mitmproxy addon hook class (`ProxyAddon`) that receives HTTP flows and orchestrates the full request-modification and dual-log pipeline; `count_tokens` requests pass through unmodified.
-**Reads:** mitmproxy `http.HTTPFlow`; env vars `PROXY_PROJECT_PATH`, `PROXY_LOG_ID` (required; a missing one raises at import, a `worker_` id that does not parse raises).
-**Writes:** `flow.request.content` (modified payload, in place); `flow.request.headers` (`content-encoding` popped, `accept-encoding: identity` forced via `_request_identity_encoding`); `flow.metadata` (`mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_all_ops`, `mc_request_id`, `mc_answering_model_state`, `mc_response_entry_written`, `mc_model_mismatch_logged` — stashed in `request()`/`responseheaders()`, read/set in `response()`/`error()`). `_response` dual-log entry carries three distinctly-named model fields side by side — `cc_requested_model` (from `mc_original_payload`, what Claude Code asked for), `proxy_forwarded_model` (from `mc_modified_payload`, what the proxy actually sent — equal to the model Claude Code requested, since the proxy no longer rewrites the model id), `answering_model` (from the streamed probe state, what the API answered with) — written by `_write_response_entry`, called (via `_write_response_and_mismatch`) from both `response()` and `error()` (mitmproxy fires exactly one of the two per flow, never both) so a client-side mid-stream abort still produces an entry; `mc_response_entry_written` guards against a double write if that invariant is ever violated. When `proxy_forwarded_model` and a non-empty `answering_model` differ, `_write_model_mismatch_entry` additionally writes one `type: model_mismatch` record straight to the session `_errors` dual-log (`paths.errors`, the same file `addon_dual_log._log_errors_entries` writes tool_error records to) in the exact shape `warnings_pane._errors_record_to_display` expects (`tool_name`/`error_full`/`ts`/`worker`/`tool_use_id: ""`) — written independently of that function's `tool_use_id` dedup set, so it can never interact with it; `mc_model_mismatch_logged` guards its own double write. Actual dual-log file writes are delegated to `addon_dual_log.py`.
-**Called by:** `src/proxy_addon.py` (imports `ProxyAddon`, `addons`); mitmproxy itself via `addons = [ProxyAddon()]` at module level (hooks: `request`, `responseheaders`, `response`, `error`).
+**Purpose:** mitmproxy hook class that orchestrates the request-modification and dual-log pipeline and writes the response record.
+**Reads:** mitmproxy flows; process environment for project and log id.
+**Writes:** the modified request payload and headers in place; flow metadata handed from request to response hooks.
+**Called by:** `src/proxy_addon.py`; mitmproxy.
 **Calls out:** `mitmproxy`
 
 ---
 
 ### response_model_probe.py (28 LOC)
 
-**Purpose:** Builds a per-flow, stateful `flow.response.stream` callable that inspects streamed 2xx SSE bytes for the `message_start.model` field without buffering the body, honoring a byte budget.
-**Reads:** the raw response-body chunks mitmproxy passes it, one call per chunk plus a final `b""` call.
-**Writes:** — (returns each chunk unmodified; mutates its own closure-local `state` dict in place, which `addon.py` stashes on `flow.metadata["mc_answering_model_state"]`)
-**Called by:** `src/proxy/addon.py` (`responseheaders()`); `dev/proxy_instrumentation/p8_answering_model_probe_test.py` (unit-level verification against synthetic SSE bytes).
-**Calls out:** —
+**Purpose:** Builds a per-flow stream callable that reads the answering model from streamed SSE bytes without buffering the body.
+**Reads:** raw response chunks passed by mitmproxy.
+**Writes:** a state dict the addon stores in flow metadata.
+**Called by:** `addon.py`; `dev/proxy_instrumentation/p8_answering_model_probe_test.py`.
+**Calls out:** none
 
 ---
 
 ### addon_dual_log.py (148 LOC)
 
-**Purpose:** Builds and writes the dual-log JSONL entries (`original`, `forwarded`, `errors`, `stripped`/`injected`) and the flat `api_errors.jsonl` for one request/response cycle; keeps the per-model-family `forwarded_hashes_by_model` delta chain from advancing on a zero-tool CC-internal sidecar call (`_is_sidecar_payload`), so the request immediately after one still diffs against the last REAL request, not the sidecar.
-**Reads:** `http.HTTPFlow`-shaped objects and payload dicts passed by `addon.py`; env var `PROXY_LOG_ID` (required) and the repo root from `proxy_error_log.proxy_monitor_root` (path resolution only).
-**Writes:** `src/logs/dual_log/api_requests_<id>_{original,forwarded,stripped,injected,errors}.jsonl`; `src/logs/api_errors.jsonl`.
-**Called by:** `src/proxy/addon.py` (`__init__`, `request()`, `responseheaders()`, `response()`).
-**Calls out:** —
+**Purpose:** Builds and writes the dual-log JSONL entries and the flat API error log for one request/response cycle.
+**Reads:** flows and payload dicts from the addon; process environment; repo root via `proxy_error_log.py`.
+**Writes:** the runtime dual-log streams and the flat API error log (both gitignored under the runtime log directory).
+**Called by:** `addon.py`.
+**Calls out:** none
 
 ---
 
 ### addon_state.py (35 LOC)
 
-**Purpose:** Plain-class collaborators (`DualLogPaths`, `DeltaState`, `FixationState`, `SessionIdentity`) holding `ProxyAddon`'s per-concern instance state. Utility module — no ORCHESTRATOR/FUNCTIONS split.
-**Reads:** —
-**Writes:** — (instances constructed here, mutated by `addon.py`'s hooks and helpers)
-**Called by:** `src/proxy/addon.py` (`ProxyAddon.__init__` constructs one of each; every hook and helper threads them through by parameter).
-**Calls out:** —
+**Purpose:** Plain state holder classes for the addon's per-concern instance state.
+**Reads:** none.
+**Writes:** none (instances are mutated by the addon).
+**Called by:** `addon.py`.
+**Calls out:** none
 
 ---
 
 ### proxy_error_log.py (72 LOC)
 
-**Purpose:** The proxy's error channel — appends a timestamped entry with traceback to `src/logs/proxy_error.log` (size-capped), with a log-on-change variant for per-request failures; also hands the repo root to the other proxy modules.
-**Reads:** the repo root via `monitor_root.resolve_monitor_cc_root`.
-**Writes:** `<root>/src/logs/proxy_error.log`; its own failure is swallowed (last-resort sink).
+**Purpose:** The proxy's error channel: size-capped timestamped log with tracebacks; also provides the repo root to sibling modules.
+**Reads:** repo root via `monitor_root`.
+**Writes:** the proxy error log in the runtime log directory.
 **Called by:** `addon.py`, `addon_dual_log.py`, `bg_escape.py`, `inject_helpers.py`, `inject_poread.py`, `rules_config.py`, `tool_injection.py`; `dev/proxy/test_proxy_error_log.py`.
-**Calls out:** —
+**Calls out:** none
 
 ---
 
 ### bg_escape.py (102 LOC)
 
-**Purpose:** Sends a tmux Escape into a worker's pane the first time a genuine background-launch ack is detected in stripped content, so the worker doesn't poll the newly-backgrounded task.
-**Reads:** `stripped_msg_removed` dict, `worker_context`, `project_path` (passed by `addon.py`); the repo root from `proxy_error_log.proxy_monitor_root`.
-**Writes:** `_escaped_task_ids` (module-global in-memory set); `bg_escape_events.jsonl` (under `<root>/src/logs/`); one `tmux send-keys ... Escape` subprocess call per newly-seen task id.
-**Called by:** `src/proxy/addon.py` (`request()`, own `try/except` wrapper).
-**Calls out:** —
+**Purpose:** Sends a tmux Escape into a worker pane the first time a background-launch acknowledgement is detected.
+**Reads:** stripped-content data and worker context from the addon.
+**Writes:** an event log in the runtime log directory; tmux keystrokes; in-memory set of handled task ids.
+**Called by:** `addon.py`.
+**Calls out:** none
 
 ---
 
 ### rules_config.py (89 LOC)
 
-**Purpose:** Loads and mtime-caches `proxy_rules.json` and system2 rule-text files, assembling role- and project-scoped system2 rule text for a session; owns `is_main_session(worker_context)`, the single "is this the main session" predicate shared with `rules.py` and `bg_escape.py`.
-**Reads:** `proxy_rules.json` and rule files under the shared-rules directory in the user's home folder (mtime-cached); a failed load returns the default and is noted in `proxy_error.log` (once per changed error).
-**Writes:** — (returns config dict, assembled rule text, or a bool)
-**Called by:** `src/proxy/rules.py`, `src/proxy/message_passes.py`, `src/proxy/inject_helpers.py`, `src/proxy/bg_escape.py` (`is_main_session`).
-**Calls out:** —
+**Purpose:** Loads and mtime-caches the proxy rules file and system2 rule texts; owns the shared main-session predicate.
+**Reads:** the proxy rules JSON and rule files in the shared-rules directory of the home folder.
+**Writes:** none.
+**Called by:** `rules.py`, `message_passes.py`, `inject_helpers.py`, `bg_escape.py`.
+**Calls out:** none
 
 ---
 
 ### rules.py (142 LOC)
 
-**Purpose:** Orchestrates the message-pass pipeline (`apply_modification_rules`) and the system-block replacement pass (sys1 boilerplate strip, sys2 rule injection, sys3 session-guidance/gitStatus/worktree-path cleanup).
-**Reads:** Raw payload dict; system2 rule text via `rules_config._load_system2_rules`.
-**Writes:** — (returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, all_ops)`)
-**Called by:** `src/proxy_addon.py`, `src/proxy/addon.py`.
-**Calls out:** —
+**Purpose:** Runs the message-pass pipeline and the system-block replacement pass, returning the modified payload and its op records.
+**Reads:** raw payload; system2 rule text via `rules_config.py`.
+**Writes:** none (returns the modified payload and modification records).
+**Called by:** `src/proxy_addon.py`, `addon.py`.
+**Calls out:** none
 
 ---
 
 ### rule_ops.py (62 LOC)
 
-**Purpose:** Op-recording primitives (`_extract_block_op`, `_ops_from_content_change`, `_merge_ops`) shared by every message pass to record per-block strip/inject positions for downstream diff/log reconstruction.
-**Reads:** — (operates on content values passed as arguments)
-**Writes:** —
-**Called by:** `src/proxy/message_passes.py`, `src/proxy/message_passes_simple.py`, `src/proxy/message_passes_wakeup.py`, `src/proxy/rules.py`.
-**Calls out:** —
+**Purpose:** Op-recording primitives that every message pass uses to record strip/inject positions for later log reconstruction.
+**Reads:** none.
+**Writes:** none.
+**Called by:** `message_passes.py`, `message_passes_simple.py`, `message_passes_wakeup.py`, `rules.py`.
+**Calls out:** none
 
 ---
 
 ### message_passes.py (252 LOC)
 
-**Purpose:** The 4 structural message-level passes (`_apply_role_system_strip`, `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`) whose logic doesn't reduce to the generic spec runner in `message_passes_simple.py`.
-**Reads:** Message list; `rules_config._load_config()` (pyright-strip enable flag).
-**Writes:** — (returns new lists/dicts; no mutation of input messages)
-**Called by:** `src/proxy/rules.py` (imports `_apply_role_system_strip`, `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`).
-**Calls out:** —
+**Purpose:** The structural message-level passes that do not fit the generic spec runner.
+**Reads:** message list; the rules config.
+**Writes:** none (returns new structures).
+**Called by:** `rules.py`.
+**Calls out:** none
 
 ---
 
 ### message_passes_simple.py (184 LOC)
 
-**Purpose:** Spec-driven pass runner (`_run_simple_pass`) plus 10 declarative specs (PO-preview, BG-exit, hook-prefix, git-lock, bg-launch-ack, bd-noise, interrupt-marker, SN-notice, pasted-content-wrapper, poread-expand); role-filter, marker-guard, `strip_fn`.
-**Reads:** Message list.
-**Writes:** — (returns new lists/dicts; no mutation of input messages)
-**Called by:** `src/proxy/rules.py` (all 10 `_apply_*_strip` functions imported).
-**Calls out:** `constants` (`POREAD_MARKER_PREFIX`, via `.inject_poread`'s re-export — see that module's own entry for the live-copy sys.path bootstrap this indirectly depends on).
+**Purpose:** Spec-driven pass runner plus the declarative specs for the simple per-block strip rules.
+**Reads:** message list.
+**Writes:** none (returns new structures).
+**Called by:** `rules.py`.
+**Calls out:** `constants` (via `inject_poread.py`)
 
 ---
 
 ### message_passes_wakeup.py (68 LOC)
 
-**Purpose:** Deduplicates repeated wake-up-text injections within one message (`_dedup_wakeup_blocks`) and unwraps a top-level `<system-reminder>` wrapper CC sometimes places around an already-processed task-notification (`_unwrap_full_sr_wrapper`).
-**Reads:** Message list / content values passed as arguments.
-**Writes:** — (returns new lists/dicts/tuples; no mutation of input)
-**Called by:** `src/proxy/rules.py` (`_dedup_wakeup_blocks`, called after the pass loop); `src/proxy/message_passes.py` (`_unwrap_full_sr_wrapper`).
-**Calls out:** —
+**Purpose:** Deduplicates repeated wake-up texts within a message and unwraps a system-reminder wrapper around a task notification.
+**Reads:** message content passed as arguments.
+**Writes:** none.
+**Called by:** `rules.py`, `message_passes.py`.
+**Calls out:** none
 
 ---
 
 ### cache.py (140 LOC)
 
-**Purpose:** Strips all existing `cache_control` markers from a payload and places new breakpoints (system prompt, tools-end anchor, BP3 unchanged-tail, BP4 last message).
-**Reads:** Payload dicts; previous request's message summaries (BP3 unchanged-prefix detection).
-**Writes:** — (returns modified payload dicts)
-**Called by:** `src/proxy/addon.py`.
-**Calls out:** —
+**Purpose:** Strips all existing cache markers from a payload and places the new breakpoints.
+**Reads:** payload; previous request's message summaries.
+**Writes:** none (returns the modified payload).
+**Called by:** `addon.py`.
+**Calls out:** none
 
 ---
 
 ### strip_sr.py (162 LOC)
 
-**Purpose:** Strips `<system-reminder>` blocks from message content via a catalog of 12 exact-match templates (task-tools-nag, pyright-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, agent-types, plan-mode, git-attribution).
-**Reads:** Message content (string or list of blocks); template catalog (module-local); `_strip_system_reminder` raises `ValueError` for a marker with no template.
-**Writes:** — (returns modified content)
-**Called by:** `src/proxy/message_passes.py`.
-**Calls out:** —
+**Purpose:** Strips system-reminder blocks from message content through a catalog of exact-match templates.
+**Reads:** message content; module-local template catalog.
+**Writes:** none (returns modified content).
+**Called by:** `message_passes.py`.
+**Calls out:** none
 
 ---
 
 ### strip_po.py (63 LOC)
 
-**Purpose:** Strips the `Preview (first NKB):` section from `<persisted-output>` blocks, preserving the wrapper and the "Output too large ... Full output saved to:" header line.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_po_preview_strip`).
-**Calls out:** —
+**Purpose:** Strips the preview section from persisted-output blocks while keeping the wrapper and header line.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`.
+**Calls out:** none
 
 ---
 
 ### strip_bg_launch_ack.py (79 LOC)
 
-**Purpose:** Replaces any of three CC background-launch-ack wordings with a 3-line hold instruction (main vs. non-main; timeout-aware for auto-backgrounding), recovering task id and output path.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_bg_launch_ack_strip`); `src/proxy/bg_escape.py` (`_is_bg_launch_ack`, `_ACK_ID_RE` — unchanged by the third wording, deliberately: bg_escape's tmux-Escape trigger only fires for the two original wordings, see `src/proxy/DOCS.md` Gotchas).
-**Calls out:** —
+**Purpose:** Replaces the background-launch acknowledgement wordings with a short hold instruction.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`, `bg_escape.py`.
+**Calls out:** none
 
 ---
 
 ### inject_poread.py (81 LOC)
 
-**Purpose:** Recognizes a `<poread-export ...>` marker plus its fixed notice sentence as one whole `tool_result` block, replaces it with the file's full content.
-**Reads:** Message content (string or list of blocks); the named file's bytes from disk, up to its own `POREAD_MAX_BYTES`.
-**Writes:** — (returns `(modified_content, list[str])`); `src/logs/proxy_error.log` diagnostic (source `inject_poread <path>`, logged once per changed reason) when a structurally-valid marker fails validation (source changed, vanished, declares a size over the ceiling, or the block is not EXACTLY the marker followed by `POREAD_NOTICE` — a marker with no notice under it, different trailing text, or anything chained after it in one Bash call, leaves the whole block untouched rather than being silently dropped) — never partially expanded, and never cached across requests: size + truncated sha256 are both recomputed from disk on every call. This gives the notice sentence a property for free: when expansion succeeds it disappears along with the marker (both were part of the one matched-and-replaced block); when it doesn't, the notice stays in the agent's own context, which is exactly the case where it needs the explanation. Within one call, the file is opened exactly once — `_inject_poread_content` hands the predicate's own validated bytes to the replacement via a closure-scoped cache keyed by the exact marker text, so there is no second read and no window in which the source could change between validation and use (a benign race there would previously raise inside `_build_poread_replacement` and, uncaught, cause `ProxyAddon.request()`'s outer handler to skip ALL modifications for that request, not just this one marker).
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_poread_expand_strip`).
-**Calls out:** none — `POREAD_MAX_BYTES`/`POREAD_HASH_LEN`/`POREAD_MARKER_PREFIX`/`POREAD_NOTICE` are this module's own constants now (see Gotchas), no more `constants`-module `sys.path` bootstrap.
+**Purpose:** Recognizes a poread export marker with its notice sentence and replaces the whole block with the file's content.
+**Reads:** message content; the named file from disk.
+**Writes:** proxy error log on a failed validation; returns content and removed texts.
+**Called by:** `message_passes_simple.py`.
+**Calls out:** none
 
 ---
 
 ### strip_bg_completed.py (55 LOC)
 
-**Purpose:** Replaces the first background-Bash kill notification (SIGTERM/SIGKILL exit code) in a message with a generic wake-up hint; strips any further duplicates.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_bg_exit_strip`); `src/proxy/message_passes.py`, `src/proxy/message_passes_wakeup.py` (both import `_WAKEUP_TEXT`).
-**Calls out:** —
+**Purpose:** Replaces the first background-Bash kill notification in a message with a wake-up hint and strips later duplicates.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`, `message_passes.py`, `message_passes_wakeup.py`.
+**Calls out:** none
 
 ---
 
 ### strip_hook_prefix.py (61 LOC)
 
-**Purpose:** Strips CC's `PreToolUse:<Tool> hook error: [python3 <path>]:` wrapper prefix from tool_result content.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_hook_prefix_strip`).
-**Calls out:** —
+**Purpose:** Strips the hook-error wrapper prefix from tool results.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`.
+**Calls out:** none
 
 ---
 
 ### strip_git_lock.py (63 LOC)
 
-**Purpose:** Strips the constant 5-line git `index.lock` advice block from tool_result content, preserving the variable warning line above it.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_git_lock_strip`).
-**Calls out:** —
+**Purpose:** Strips the constant git index-lock advice block from tool results, keeping the variable warning line.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`.
+**Calls out:** none
 
 ---
 
 ### strip_bd_noise.py (71 LOC)
 
-**Purpose:** Strips bd (beads) auto-import/export status lines from tool_result content.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_bd_noise_strip`).
-**Calls out:** —
+**Purpose:** Strips bd auto-import/export status lines from tool results.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`.
+**Calls out:** none
 
 ---
 
 ### strip_interrupt_marker.py (19 LOC)
 
-**Purpose:** Replaces a whole block's content with `.` when it exactly matches one of two "Request interrupted by user" wordings — CC's rendering of `bg_escape.py`'s tmux Escape, never a genuine user interrupt.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_interrupt_marker_strip`).
-**Calls out:** —
+**Purpose:** Replaces the interrupt-marker wordings that result from the tmux Escape of `bg_escape.py` with a placeholder.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`.
+**Calls out:** none
 
 ---
 
 ### strip_pasted_content.py (47 LOC)
 
-**Purpose:** Removes the opening/closing `<pasted_content id="...">`/`</pasted_content id="...">` tag pair CC 2.1.280+ wraps around a bracketed-paste user message, keeping the enclosed text byte-for-byte.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_pasted_content_strip`).
-**Calls out:** —
+**Purpose:** Removes the paste wrapper tag pair around bracketed-paste user messages, keeping the text byte-for-byte.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`.
+**Calls out:** none
 
 ---
 
 ### strip_sn_notice.py (53 LOC)
 
-**Purpose:** Strips the bare `[SYSTEM NOTIFICATION - NOT USER INPUT]` paragraph CC injects ahead of `<task-notification>` tags in background-task wake-up messages.
-**Reads:** Message content (string or list of blocks).
-**Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_sn_notice_strip`); `src/proxy/message_passes_wakeup.py` (`_unwrap_full_sr_wrapper`).
-**Calls out:** —
+**Purpose:** Strips the system-notification paragraph injected ahead of task-notification tags in wake-up messages.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`, `message_passes_wakeup.py`.
+**Calls out:** none
 
 ---
 
 ### content_strip.py (156 LOC)
 
-**Purpose:** Strips or extracts non-SR content — rejection tool_result blocks, SessionStart SR extraction, session-guidance/gitStatus removal from sys[3], full sys[3] replacement, and per-tool/per-parameter description stripping.
-**Reads:** Message content (string or list of blocks); full payload dict for the tool/system strip functions.
-**Writes:** — (returns modified content, extracted text, or modified payload)
-**Called by:** `src/proxy/rules.py` (`_strip_session_guidance`, `_strip_git_status`); `src/proxy/message_passes.py` (`_message_has_rejection`, `_strip_rejection_message`); `src/proxy/addon.py` (`_strip_tool_descriptions`, `_strip_sys3`).
-**Calls out:** —
+**Purpose:** Strips or extracts non-system-reminder content: rejection results, session-start extraction, system-block cleanup and tool description stripping.
+**Reads:** message content; full payload for tool and system strips.
+**Writes:** none (returns modified content or payload).
+**Called by:** `rules.py`, `message_passes.py`, `addon.py`.
+**Calls out:** none
 
 ---
 
 ### diff_engine.py (207 LOC)
 
-**Purpose:** Aligns and classifies strip/inject/equal spans from an original↔forwarded payload diff (system by index, tools by name, messages by index+block, top-level scalar fields), and composes per-block ops into spans for message-level logging.
-**Reads:** — (pure functions over payload dicts/lists passed as arguments)
-**Writes:** — (returns diff result lists/dicts)
-**Called by:** `src/proxy/strip_inject_delta.py` (`_diff_system`, `_diff_tools`, `_diff_messages`, `_diff_top_level_fields`, `_get_inner_text`, `compose_block`).
-**Calls out:** —
+**Purpose:** Aligns and classifies strip, inject and equal spans between the original and forwarded payloads.
+**Reads:** payload dicts passed as arguments.
+**Writes:** none (returns diff results).
+**Called by:** `strip_inject_delta.py`.
+**Calls out:** none
 
 ---
 
 ### logging.py (245 LOC)
 
-**Purpose:** Builds structured JSONL entries for `forwarded_delta` (including the forwarded `model`/`max_tokens`/`thinking`/`output_config`/`context_management` values) and `tool_error` dual-log records, and owns the payload-normalization/hashing helpers (`_strip_cache_control`, `_normalize_msg_shape_for_hash`, `_delta_hash`) shared with the stripped/injected pipeline.
-**Reads:** Raw payload dicts, message lists, previous message summaries, previous delta hash state.
-**Writes:** — (returns structured entry dicts)
-**Called by:** `src/proxy/addon_dual_log.py`, `src/proxy/cache.py`, `src/proxy/strip_inject_delta.py`.
-**Calls out:** —
+**Purpose:** Builds forwarded-delta and tool-error log entries and owns the payload normalization and hashing shared with the stripped/injected pipeline.
+**Reads:** payloads, message lists, previous summaries and hash state.
+**Writes:** none (returns entry dicts).
+**Called by:** `addon_dual_log.py`, `cache.py`, `strip_inject_delta.py`.
+**Calls out:** none
 
 ---
 
 ### strip_inject_delta.py (287 LOC)
 
-**Purpose:** Builds `stripped_delta`/`injected_delta` JSONL entries from an original↔forwarded payload pair, with per-location hash chains for delta suppression and a function-attribution map (`fn_map`) for each recorded change.
-**Reads:** Original and forwarded payload dicts; previous hash state dicts (`loc_key → MD5[:10]`) from the prior request; `all_ops` bridged from `flow.metadata`.
-**Writes:** — (returns `(stripped_entry, injected_entry, new_stripped_hashes, new_injected_hashes)`)
-**Called by:** `src/proxy/addon_dual_log.py` (`_build_stripped_injected_deltas`).
-**Calls out:** —
+**Purpose:** Builds the stripped and injected delta entries from an original/forwarded payload pair with per-location hash chains and function attribution.
+**Reads:** original and forwarded payloads; previous hash state; ops from flow metadata.
+**Writes:** none (returns the two entries and new hash state).
+**Called by:** `addon_dual_log.py`.
+**Calls out:** none
 
 ---
 
 ### message_summary.py (183 LOC)
 
-**Purpose:** Summarizes and classifies message content into compact dicts (role, type, chars, preview, per-block breakdown, `cache_control` presence) for log entries; also owns `_infer_model_family(model)`, the single model-family classifier every proxy-side and display-side model-family check imports (`haiku`/`sonnet`/`opus`, else `unknown`).
-**Reads:** Raw message dicts from an API payload, or a model id string.
-**Writes:** — (returns summary dicts or a family string)
-**Called by:** `src/proxy/addon.py`, `src/proxy/logging.py`, `src/proxy/cache.py`, `src/proxy_display/forwarded_parser.py` (`_infer_model_family`), `src/dual_log_cli/reader.py` (`_infer_model_family` as `infer_family`).
-**Calls out:** —
+**Purpose:** Summarizes message content into compact log dicts and owns the single model-family classifier used across proxy and display code.
+**Reads:** message dicts; model id strings.
+**Writes:** none (returns summaries or a family string).
+**Called by:** `addon.py`, `logging.py`, `cache.py`, `src/proxy_display/forwarded_parser.py`, `src/dual_log_cli/reader.py`.
+**Calls out:** none
 
 ---
 
 ### tool_injection.py (179 LOC)
 
-**Purpose:** Deterministically appends MCP tool schemas to `payload["tools"]` in stable order (always-injected plugin slot first, then active plugins in activation order), preventing cache rebuilds caused by alphabetical insertion.
-**Reads:** Schema store at `src/proxy/schemas/<plugin>/*.json` (one-time load); `<project>/.claude/active_plugins.json` (mtime-reloaded); `proxy_rules.json` exclude list; degraded reads (missing store/file, malformed JSON, wrong shape) are noted in `proxy_error.log`.
-**Writes:** — (returns modified payload)
-**Called by:** `src/proxy/addon.py`; `src/proxy/fixation.py` (`_load_active_plugins`).
-**Calls out:** —
+**Purpose:** Appends MCP tool schemas to the payload tool list in a stable order to avoid cache rebuilds.
+**Reads:** the gitignored schema store inside this package; the project's active-plugins file; the rules file's exclude list.
+**Writes:** none (returns the modified payload).
+**Called by:** `addon.py`, `fixation.py`.
+**Calls out:** none
 
 ---
 
 ### tools.py (45 LOC)
 
-**Purpose:** Two pipeline helpers — `_strip_unused_tools` removes blocklisted tools from `payload["tools"]`; `_extract_deferred_tool_names` reads the deferred-tools list out of the original payload's `<system-reminder>` block before it is stripped.
-**Reads:** Payload dict with `tools` list and (for deferred-tool extraction) `messages`.
-**Writes:** — (returns tuples / list per function)
-**Called by:** `src/proxy/addon.py`.
-**Calls out:** —
+**Purpose:** Pipeline helpers that remove blocklisted tools and read the deferred-tool names before their reminder is stripped.
+**Reads:** payload with tools and messages.
+**Writes:** none (returns tuples or lists).
+**Called by:** `addon.py`.
+**Calls out:** none
 
 ---
 
 ### fixation.py (71 LOC)
 
-**Purpose:** Captures and replays `sys[2]` text, the msg[0] project-rules block, and the active-plugins list after the first request per model family, so a mid-session rule-file or plugin reload can't cause payload byte-drift.
-**Reads:** Modified payload dict; fixated state dict.
-**Writes:** — (returns an updated fixated dict on capture, or a modified payload on apply)
-**Called by:** `src/proxy/addon.py`.
-**Calls out:** —
+**Purpose:** Captures and replays system2, the message-0 project-rules block and the active plugins after the first request per model family.
+**Reads:** modified payload; fixated state.
+**Writes:** none (returns updated state or payload).
+**Called by:** `addon.py`.
+**Calls out:** none
 
 ---
 
 ### inject_helpers.py (127 LOC)
 
-**Purpose:** Injects model parameters (`thinking`/`effort`/`max_tokens` from the `model_params` table) and the `context_management` block into the payload, snapshotting the resolved value per exact model id for the process lifetime; also reconciles the two — `_strip_clear_thinking_edit` removes a `clear_thinking_20251015` context_management edit whenever the payload's final `thinking` is `{"type": "disabled"}`, whichever path set it, since the two together are a self-contradictory request the API rejects with a 400.
-**Reads:** Payload dict, optional fixation dict; `proxy_rules.json` via `rules_config._load_config()` (only on a cache-miss for the request's exact model id).
-**Writes:** — on the payload (returns modified payload or `(modified_payload, injected_bool)`); mutates the caller-owned `fixated_model_override` dict in place.
-**Called by:** `src/proxy/addon.py` (`_run_post_fixation_pipeline`).
-**Calls out:** —
+**Purpose:** Injects model parameters and the context-management block into the payload and reconciles contradictory combinations.
+**Reads:** payload; fixation state; the rules config on a cache miss.
+**Writes:** the caller-owned fixated model override state; returns the modified payload.
+**Called by:** `addon.py`.
+**Calls out:** none
 
 ---
 
 ### strip_vocab.py (224 LOC)
 
-**Purpose:** Shared vocabulary and classification logic for proxy strip attribution — rule-code/marker tables, chunk-to-rule attribution, and the 5-bucket (EFF/INERT/IDX/LEAK/SUS) per-request classifier used by audit tooling and the monitor display. Must stay in lockstep with `rules.py`'s rule set and markers.
-**Reads:** —
-**Writes:** — (pure data + helpers)
-**Called by:** `src/proxy/strip_inject_delta.py` (`attribute_chunk`); `src/proxy_display/render_messages.py` (`attribute_chunk`, `classify_tags`, `code_for_rule`, `classify_req`); `dev/tool_use_analysis/strip_audit.py`.
-**Calls out:** —
+**Purpose:** Shared vocabulary and classification for strip attribution and the per-request strip classifier used by audit tooling and the display.
+**Reads:** none.
+**Writes:** none (pure data and helpers).
+**Called by:** `strip_inject_delta.py`, `src/proxy_display/render_messages.py`, `dev/tool_use_analysis/strip_audit.py`.
+**Calls out:** none
 
 ---
 
 ### payload_helpers.py (220 LOC)
 
-**Purpose:** Low-level payload content inspection/manipulation — find/strip system-reminder blocks, strip blocklisted tool_reference blocks, replace task-notification tags, and the shared "predicate matches whole text → replace whole text" block walker.
-**Reads:** Message content (string or list), payload dicts.
-**Writes:** — (returns modified content or filtered dicts)
-**Called by:** `src/proxy/rules.py` (`_strip_blocked_tool_references`); `src/proxy/message_passes.py`, `src/proxy/message_passes_simple.py` (`_content_contains`, `_top_level_content_contains`, and others); `src/proxy/strip_bg_launch_ack.py`, `src/proxy/strip_interrupt_marker.py` (`_walk_replace_marker_blocks`); `src/proxy/strip_inject_delta.py` (`_top_level_content_contains`).
-**Calls out:** —
+**Purpose:** Low-level payload inspection and manipulation: system-reminder block lookup, tool-reference stripping and the whole-text block walker.
+**Reads:** message content; payload dicts.
+**Writes:** none (returns modified content or dicts).
+**Called by:** `rules.py`, `message_passes.py`, `message_passes_simple.py`, `strip_bg_launch_ack.py`, `strip_interrupt_marker.py`, `strip_inject_delta.py`.
+**Calls out:** none
 
 ---
 
 ## State
 
-`tool_injection.py` holds four module-level caches (set once per mitmproxy process): `_SCHEMA_STORE_CACHE` (all plugin schemas from the gitignored schemas directory under `src/proxy/`, populated by `dev/tool_injection/01_extract_schemas.py`); `_ACTIVE_PLUGINS_CACHE`/`_ACTIVE_PLUGINS_MTIME`/`_ACTIVE_PLUGINS_PATH` (active-plugin list, mtime-reloaded).
-
-`addon.py` owns `ProxyAddon` instance state via 4 collaborator objects from `addon_state.py`: `self.delta` (per-model-family delta-chain dicts for BP3 unchanged-prefix detection and the forwarded/stripped/injected/errors dedup chains), `self.fixation` (`fixated` — sys2/msg0 snapshot per model_family; `model_params_fixated` — resolved model-params snapshot per exact model id, owned by `inject_helpers._inject_model_override`), `self.identity` (`session_id`, `worker_context` — computed once at `__init__`, immutable for the process lifetime in production; a few `dev/` probes overwrite `worker_context` directly after construction). All of this state resets on mitmproxy hot-reload.
-
-`bg_escape.py` owns `_escaped_task_ids` — a module-global (not per-`ProxyAddon`-instance) in-memory set of background-task ids that have already fired an Escape, for this proxy process's lifetime. Resets on hot-reload or a full process restart. `bg_escape_events.jsonl` is append-only across restarts even though `_escaped_task_ids` is memory-only, so a restart-caused extra fire is still visible in the log.
-
-## Gotchas
-
-**The proxy runs with `mitmdump -q 2>/dev/null`, so nothing printed to stderr survives.** Every swallowed exception and refusal in this package goes through `proxy_error_log.log_proxy_error` into `src/logs/proxy_error.log`; the fail-open behaviour of the handlers is unchanged.
-
-**The live copy resolves code outside `proxy/` from the repo checkout.** `src/proxy_addon.py` puts the repo root on `sys.path` next to the live `proxy/` directory, so `from src.constants import ...` and `from src.monitor_root import ...` load the checkout's files, not copies.
-
-**`_TrailerCrashFilter` drops one specific mitmproxy crash record, not crash logging in general.** It filters the `NotImplementedError: HTTP trailers are not implemented yet` `LogRecord` mitmproxy 12.x raises from `proxy/layers/http/_http1.py`; every other `mitmproxy has crashed!` record still reaches stderr.
-
-**`_process_fields_section` never contributes to `fn_map` — only the `sys`/`tools`/`messages` sections do.** Every top-level field (`model`/`max_tokens`/`thinking`/`output_config`/`context_management`) that shows up in a `stripped_delta`/`injected_delta` entry's `fields_delta` carries NO function attribution in the real written JSONL `fn_map`. `strip_inject_delta.py` used to hold its own unread `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` maps for this — removed as dead code, since nothing consumed them and they had already drifted from the live copy (missing the `context_management` strip-side entry). The only attribution for `fields_delta` entries now lives in `dev/proxy_dual_log/attribution_coverage/attribution_coverage.py`'s own local `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` maps — update those directly if a field's owning function ever changes.
-
-**An op-less strip still rewrites the payload — it only loses its dual-log entry, silently.** `message_passes` sets new content directly; the op is recorded separately via `_ops_from_content_change`. If a pass changes content shape (e.g. list→str) in a way the op-builder doesn't handle, the op comes back empty, `strip_inject_delta._process_messages_section` skips the message (`if s_texts:`), and nothing marks the strip anywhere visible — the forwarded payload is still correct, but no pane or CLI can show it happened. When adding a pass that changes content shape, verify the message index appears in `all_ops`, not just that the payload is right.
-
-**`bg_escape.py`'s per-task-id dedup (`_escaped_task_ids`) is load-bearing, not an optimization.** A second `tmux send-keys ... Escape` into an already-idle or menu-open CC TUI opens the quit menu. The raw launch-ack text stays in the worker's own conversation history and is resent on nearly every subsequent request, so relaxing the dedup (e.g. to "per request" or "per tick") would re-fire the Escape on almost every request.
-
-**Hot-reload resets all `ProxyAddon` state.** mitmproxy hot-reloads addon scripts on any file change under `src/proxy/`, so BP3 loses its unchanged-prefix reference and forces a full cache rebuild. `claude_proxy_start.sh` works around this by copying `proxy_addon.py` and the entire `src/proxy/` package to `src/logs/.proxy_live_<id>/proxy/` at startup — that live copy is what actually runs; a direct edit to the live copy affects the running proxy immediately, but an edit to the repo copy does not until the next start.
-
-**Worker proxies are frozen at spawn time.** Each worker's `src/logs/.proxy_live_worker_<name>/` snapshot never updates. A worker spawned before a proxy-touching merge cannot reach the new code until it is killed and respawned.
-
-**SR stripping matches via `startswith` against extracted inner text, never a greedy regex across the whole message.** A greedy `<system-reminder>.*?</system-reminder>` would match across code literals inside `tool_result` and strip real user code — this is why `strip_sr.py` uses a template catalog instead.
-
-**The SR family never descends into `tool_result` content.** `strip_sr.py`, `_apply_first_pass`'s SR branches, `_apply_cumulative_sr_strips`, and `_find_system_reminder_blocks`/`_find_all_system_reminder_blocks` (`payload_helpers.py`) only scan top-level `str`/`text` blocks. Adding `tool_result` descent to any SR-family strip reintroduces false-positive stripping of quoted SR examples inside tool output. The non-SR passes (git-lock, hook-prefix, bd-noise, po-preview, bg-launch-ack) intentionally do descend into `tool_result` and are unaffected by this constraint.
-
-**In `_apply_cumulative_sr_strips`, a rule only counts as fired if its strip function actually changed the content.** A marker-guard match with no matching strip (template-identifier mismatch) must not append to `pass_mods`, or `modifications`/`stripped_msg_removed` desyncs from what the forwarded payload actually contains.
-
-**Pyright-diagnostics stripping lives in `_apply_cumulative_sr_strips`, never in `_apply_first_pass`'s elif-chain.** The elif-chain is exclusive per message (one branch wins); pyright SRs can co-occur in the same message as Skills/agent-types/claudeMd SRs. Any new rule that can co-occur with an existing first-pass rule must go in the cumulative pass, not the elif-chain.
-
-**`_PRESERVE_PREAMBLE` in `strip_sr.py` unconditionally preserves any SR whose inner text starts with the CLAUDE.md-context preamble.** A new strip rule targeting a block that shares this preamble (e.g. the env-context SR) must insert its own check BEFORE this guard, or the guard wins and the new strip never fires — see `_ENV_CONTEXT_RE.fullmatch(inner)` in `_apply_sr_strip._replace` for the pattern.
-
-**`_apply_role_system_strip`'s blanket `role='system'` → `"."` nuke has two content-anchored carve-outs checked before the nuke** (truncation-notice prefix, top-level `<task-notification>` presence). A new carve-out must follow the same anchored-check shape and add a matching exception to `strip_inject_delta.py`'s `role=='system' → 'RS'` attribution shortcut, or `fn_map` mislabels the change as the blanket nuke.
-
-**The session `_errors` dual-log carries two record shapes now, and `warnings_pane._errors_record_to_display` discriminates neither.** Real `tool_error` records (`addon_dual_log._log_errors_entries` → `logging._build_errors_entries`, request-side, deduped by `tool_use_id`) and `model_mismatch` records (`addon._write_model_mismatch_entry`, response-side, one-shot per flow) are structurally unrelated writers into the same file — the pane just renders whatever dict shows up as long as it carries `tool_name`/`error_full` (everything else defaults via `.get(..., '')`). A third record type added later must follow the same two-field minimum or it renders as a blank/garbled row with no error and no warning that something is missing.
-
-**A client-side mid-stream abort is the common case, not the exception, in this project — see `process-docs/abort_cascade/`.** Claude Code cancels the SSE connection and refires on any incoming event while a stream is open (user keystroke, background-task completion, subagent task-notification); depth-3+ cascades are routine. mitmproxy fires exactly one of `response`/`error` per flow, never both (`HttpErrorHook`'s own docstring: "Every flow will receive either an error or an response event, but not both."). Any per-request write that must survive an abort — the `_response` dual-log write is the current example — has to be called from both `response()` and `error()`, not just `response()`; a write that only lives in `response()` silently disappears for every aborted REQ, which given the cascade frequency here means most REQs, not a rare edge case.
-
-**`response_model_probe.py` needs uncompressed bytes to ever match — `_request_identity_encoding` is what makes that true in real traffic, not a body-decompression path.** The probe regexes raw wire bytes; a `gzip`/`br`-compressed SSE body never contains the literal `"message_start"` text, so `answering_model` stayed empty on every real (non-test) request until `ProxyAddon.request()` started forcing `accept-encoding: identity` on the outbound Messages request. This is a request-side fix, not a response-side decompression path — deliberately, per this project's stance against building/maintaining a decompression layer. Applies uniformly to every Messages request regardless of whether the response turns out to stream or not (not knowable at request time), including the non-streaming JSON side calls (`claude-haiku-4-5`, `content-type: application/json`) — harmless there since their body never contains `message_start` either way, compressed or not.
-
-**`strip_pasted_content.py` only ever touches top-level `text` blocks on `role='user'` messages, by design, not a placeholder.** CC's bracketed-paste wrapper is CC's own formatting of the user's own message text, so it structurally cannot appear inside a `tool_result` (a tool's return value) or on a non-`user` role — and real corpus confirms this both ways: a well-formed, matching-id `<pasted_content id="...">...</pasted_content id="...">` pair shows up quoted verbatim inside a `role='assistant'` text block in a real session (only the role gate saves it), and inside `tool_result` blocks from `Read`/`Bash` tool output quoting this same feature's own task/process docs (only the no-`tool_result`-descent saves those). Same precedent as the SR-family `tool_result`-descent removal (`process-docs/message_strip_fp_nuke/2026-07-28_tool_result_sr_fix.md`) — do not widen either gate without fresh corpus evidence.
-
-**`strip_bg_launch_ack.py`'s three wordings deliberately do NOT share one detection predicate.** `_is_bg_launch_ack` (the two deliberate/manual-launch wordings) stays untouched and is still what `bg_escape.py` imports to decide whether to fire a real tmux `Escape` keystroke into a worker's pane; the third wording (auto-backgrounded on timeout) is detected by a separate `_is_bg_auto_timeout_ack`, combined only inside `_strip_bg_launch_ack`'s own predicate via `_is_bg_launch_ack_any`. Widening `_is_bg_launch_ack` itself instead would have made `bg_escape.py` also fire on timeout auto-backgrounding — a real production side effect (see the `bg_escape.py`'s per-task-id dedup Gotcha above) this project never asked for. A future fourth wording should follow the same pattern: extend the strip's own combined predicate, never `_is_bg_launch_ack` directly, unless `bg_escape.py` is meant to fire for it too.
-
-**`strip_vocab.py`'s `RULES['BL']` marker list must carry a literal for every wording `strip_bg_launch_ack.py` recognizes, by hand.** `attribute_chunk` matches by plain substring against the ORIGINAL removed ack text (not the code), and this file has zero imports from `strip_bg_launch_ack.py` by design (same separately-maintained-copy pattern as the `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` Gotcha above) — a new wording added to the strip without a matching literal here silently returns `None` from `attribute_chunk`, losing `fn_map` attribution for `stripped_delta`/`injected_delta` entries for that wording specifically, with no error anywhere.
-
-**`addon_dual_log._is_sidecar_payload` (`len(payload.get("tools") or []) == 0`) mirrors `dual_log_cli.timeline_boundaries._is_sidecar`'s `counts.tools == 0` criterion, applied to the payload directly since `addon_dual_log.py` has not built a `counts` dict yet at the point it needs the check.** No import between the two — same separately-maintained-copy pattern as the `strip_vocab.py`/`RULES['BL']` Gotcha above — keep them in sync if the shape of a sidecar (a CC-internal zero-tool call: session-titling, quota check, security-monitor) ever changes. The sidecar's own `forwarded_delta` line is still written (full evidence stays visible, per this project's `process-docs/proxy_tool_stripping/sidecar_idle_recap_removal.md` stance against write-side content suppression) — only `DeltaState.forwarded_hashes_by_model[family]` is left un-advanced by it, so the next REAL request in that family keeps diffing against the last REAL request. `src/proxy_display/format.py`'s `_is_standalone_entry` was deliberately NOT widened to the same `tools == 0` criterion — every sidecar observed on disk is haiku, and its existing haiku check already excludes all of them from REQ numbering; see `process-docs/proxy_instrumentation/` for the measurement behind that call.
-
-**`inject_poread.py`'s four marker constants (`POREAD_MAX_BYTES`, `POREAD_HASH_LEN`, `POREAD_MARKER_PREFIX`, `POREAD_NOTICE`) are a hand-maintained copy of the poread CLI's own copy in the iterative-dev plugin (`src/poread_cli/__main__.py` there), not a shared import — the CLI half moved out of this repo entirely (it needed `worker-cli`'s sibling-CLI home, stdlib-only, no venv), so the single `src/constants.py` both sides used to import from no longer spans both halves. Same separately-maintained-copy pattern as the `strip_vocab.py`/`RULES['BL']` Gotcha above.** A change to the marker prefix, the ceiling, the hash length, or the exact notice sentence on one side without the matching edit on the other makes every future marker silently stop expanding — the agent sees only the tiny marker-plus-notice lines forever, no error anywhere, exactly the "drift nobody notices" failure mode this pattern always risks. `dev/proxy/poread_inject_tests.py` pins its own independent literal copy of the same four values (hardcoded in the test file, not imported from this module) specifically so a drift in THIS module's copy fails that test loudly instead of silently minting an unexpandable marker; the iterative-dev CLI's own test does the same for its side. Cross-repo drift itself is not machine-detectable — there is no shared CI between the two repos — change both together by hand.
+`tool_injection.py` holds process-wide schema and active-plugin caches. `addon.py` owns the per-session addon state through the collaborators in `addon_state.py` and resets on hot-reload. `bg_escape.py` owns a process-wide set of handled task ids. Details and the full gotcha list are in `process-docs/refactoring/` (phase 4 proxy/panes restructure file).
