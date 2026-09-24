@@ -31,6 +31,10 @@ def function_runners(functions: list) -> dict:
     return {function.__name__.lstrip('_'): function for function in functions}
 
 
+def error_string_runners(functions: list) -> dict:
+    return {function.__name__: partial(_check_error_string, function) for function in functions}
+
+
 def strand_name(index: int, desc: str) -> str:
     slug = re.sub(r'[^A-Za-z0-9]+', '_', desc).strip('_')[:_NAME_MAX_CHARS]
     return f'case_{index:02d}_{slug}'
@@ -55,3 +59,8 @@ def fail_open_runner(desc: str, run_raw_fn, payload: bytes) -> dict:
 def _check_fail_open(run_raw_fn, desc: str, payload: bytes) -> None:
     got = run_raw_fn(payload)
     report_case(desc, got == 0, f': exit={got} (expected 0)')
+
+
+def _check_error_string(function) -> None:
+    error = function()
+    report_case(function.__name__, error is None, '' if error is None else f': {error}')

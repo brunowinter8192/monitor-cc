@@ -8,7 +8,8 @@ import os
 import subprocess
 import sys
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+
+from case_strands import error_string_runners, run_case_strands
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOOK_DIR = os.path.join(REPO_ROOT, "src", "hooks")
@@ -17,14 +18,7 @@ HOOK_DIR = os.path.join(REPO_ROOT, "src", "hooks")
 # ORCHESTRATOR
 
 def test_hook_trace_lines_workflow() -> None:
-    cases = _collect_cases()
-    with ThreadPoolExecutor(max_workers=len(cases)) as pool:
-        results = list(pool.map(_run_case, cases))
-    failures = [r for r in results if r[1] is not None]
-    for name, err in results:
-        print(f"[{'PASS' if err is None else 'FAIL'}] {name}" + (f": {err}" if err else ""))
-    print(f"\n{len(results) - len(failures)}/{len(results)} passed")
-    sys.exit(1 if failures else 0)
+    sys.exit(run_case_strands(globals(), __file__, error_string_runners(_collect_cases())))
 
 
 # FUNCTIONS
@@ -38,13 +32,6 @@ def _collect_cases() -> list:
         case_status_fn_raises, case_getcwd_failed, case_sweep_prints, case_null_byte_read_path,
         case_unpack_entry_gone,
     ]
-
-
-def _run_case(fn) -> tuple:
-    try:
-        return fn.__name__, fn()
-    except Exception as e:
-        return fn.__name__, f"{type(e).__name__}: {e}"
 
 
 def _run_hook(hook: str, stdin: bytes, extra_env: dict = None, cwd: str = None, shell_prefix: str = None) -> tuple:
@@ -185,25 +172,47 @@ def case_worker_cli_rc():
     return _worker_case("#!/bin/sh\nexit 3\n", "rc=3")
 
 
+def _run_snippet(snippet: str) -> tuple:
+    tmp = tempfile.mkdtemp()
+    log = os.path.join(tmp, "f.jsonl")
+    env = dict(os.environ, MONITOR_CC_HOOK_FIRING_LOG=log)
+    proc = subprocess.run([sys.executable, "-c", snippet, HOOK_DIR], capture_output=True, text=True, env=env, timeout=30)
+    lines = [json.loads(x) for x in open(log).read().splitlines()] if os.path.exists(log) else []
+    return proc, lines
+
+
 def case_worker_cli_timeout():
-    return _worker_case("#!/bin/sh\nsleep 6\n", "status subprocess failed")
+    for module in ("block_worker_kill_while_working", "block_worker_send_while_working"):
+        snippet = (
+            "import subprocess, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            f"import {module} as m\n"
+            "def fake_run(cmd, **kwargs):\n"
+            "    raise subprocess.TimeoutExpired(cmd, kwargs['timeout'])\n"
+            "m._resolve_worker_cli = lambda: '/fake/worker-cli'\n"
+            "m.subprocess.run = fake_run\n"
+            "print(repr(m._live_worker_status('w1')))\n"
+        )
+        proc, lines = _run_snippet(snippet)
+        if proc.returncode != 0 or proc.stdout.strip() != "''" or not _traces(lines, module, "status subprocess failed for w1: TimeoutExpired"):
+            return f"{module} exit {proc.returncode} stdout {proc.stdout!r} stderr {proc.stderr[-200:]!r} lines {lines}"
+    return None
 
 
 def case_status_fn_raises():
     for module in ("block_worker_kill_while_working", "block_worker_send_while_working"):
-        mod = _load(module)
         verb = "kill" if "kill" in module else "send"
-        tmp = tempfile.mkdtemp()
-        os.environ["MONITOR_CC_HOOK_FIRING_LOG"] = os.path.join(tmp, "f.jsonl")
-        try:
-            def boom(name):
-                raise RuntimeError("x")
-            result = mod.decide(f"worker-cli {verb} w1", boom)
-            lines = [json.loads(x) for x in open(os.environ["MONITOR_CC_HOOK_FIRING_LOG"]).read().splitlines()]
-        finally:
-            os.environ.pop("MONITOR_CC_HOOK_FIRING_LOG")
-        if result != (False, None) or not _traces(lines, module, "status check failed for w1"):
-            return f"{module} result {result} lines {lines}"
+        snippet = (
+            "import json, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            f"import {module} as m\n"
+            "def boom(name):\n"
+            "    raise RuntimeError('x')\n"
+            f"print(json.dumps(m.decide('worker-cli {verb} w1', boom)))\n"
+        )
+        proc, lines = _run_snippet(snippet)
+        if proc.returncode != 0 or json.loads(proc.stdout) != [False, None] or not _traces(lines, module, "status check failed for w1"):
+            return f"{module} exit {proc.returncode} stdout {proc.stdout!r} stderr {proc.stderr[-200:]!r} lines {lines}"
     return None
 
 

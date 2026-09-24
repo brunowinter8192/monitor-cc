@@ -21,7 +21,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### case_strands.py (57 LOC)
+### case_strands.py (66 LOC)
 
 **Purpose:** Turns the table cases and standalone check functions of a test file into named strands run in parallel through the shared strand runner.
 **Reads:** nothing.
@@ -61,9 +61,9 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_bg_task_detection.py (152 LOC)
+### test_bg_task_detection.py (106 LOC)
 
-**Purpose:** Smoke for the active-background check: match, no-match, prefix boundary, a real subprocess case, fail-open and TTL gate.
+**Purpose:** Smoke for the active-background check: match, no-match, prefix boundary, fail-open and TTL gate; hermetic, no real process table.
 **Reads:** nothing external; the tasks base is redirected to a scratch dir.
 **Writes:** a scratch dir under the temp dir, removed on exit.
 **Called by:** none; manual CLI.
@@ -251,13 +251,13 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_hook_trace_lines.py (250 LOC)
+### test_hook_trace_lines.py (259 LOC)
 
 **Purpose:** Provokes each observed hook degradation and asserts the trace line while exit semantics stay unchanged.
 **Reads:** nothing.
 **Writes:** stdout only; all hook logs go to temp paths.
-**Called by:** none; manual CLI, cases run in parallel threads.
-**Calls out:** none; drives hooks via `subprocess` and direct module loads.
+**Called by:** none; manual CLI, cases run as parallel strands.
+**Calls out:** none; drives hooks via `subprocess`; the worker-status timeout is a faked `subprocess.run`, not a real sleep.
 
 ---
 
@@ -298,6 +298,16 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 **Writes:** stdout only.
 **Called by:** none; manual CLI from the project root.
 **Calls out:** none; drives the hook via `subprocess`.
+
+---
+
+### verify_bg_task_detection_live.py (76 LOC)
+
+**Purpose:** Verification of the active-background check against a real writer subprocess and the real `lsof`: detected while open, cleared after close.
+**Reads:** the real process table via `lsof`; a scratch tasks dir.
+**Writes:** stdout verdict only; the scratch dir is removed on exit.
+**Called by:** none; manual CLI.
+**Calls out:** `menubar.proc_cache`.
 
 ---
 

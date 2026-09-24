@@ -1,10 +1,15 @@
 # hook_smoke run_all
 
-22/23 strands passed
+23/23 strands passed
 
-## ABORT _strand_test_bg_task_detection
+## PASS _strand_test_bg_task_detection
 
-(no output)
+PASS  case_00_open_path_under_session_tasks_dir_True
+PASS  case_01_no_open_path_for_session_False
+PASS  case_02_session_id_prefix_collision_does_not_false_positive
+PASS  case_03_lsof_failure_fails_open_keeps_prior_snapshot
+PASS  case_04_TTL_gate_second_call_inside_window_is_a_no_op
+5/5 strands passed
 
 ## PASS _strand_test_block_broad_find
 
@@ -387,25 +392,24 @@ PASS  check_reason_text_case
 
 ## PASS _strand_test_hook_trace_lines
 
-[PASS] case_parse_error_all_hooks
-[PASS] case_log_dir_created
-[PASS] case_log_write_failure_stderr
-[PASS] case_strip_raw_fallback
-[PASS] case_unterminated_quote
-[PASS] case_shlex_exempt
-[PASS] case_po_read_unknown_size
-[PASS] case_rag_state_corrupt_line
-[PASS] case_rag_state_unreadable
-[PASS] case_worker_cli_missing
-[PASS] case_worker_cli_rc
-[PASS] case_worker_cli_timeout
-[PASS] case_status_fn_raises
-[PASS] case_getcwd_failed
-[PASS] case_sweep_prints
-[PASS] case_null_byte_read_path
-[PASS] case_unpack_entry_gone
-
-17/17 passed
+PASS  case_getcwd_failed
+PASS  case_log_dir_created
+PASS  case_log_write_failure_stderr
+PASS  case_null_byte_read_path
+PASS  case_parse_error_all_hooks
+PASS  case_po_read_unknown_size
+PASS  case_rag_state_corrupt_line
+PASS  case_rag_state_unreadable
+PASS  case_shlex_exempt
+PASS  case_status_fn_raises
+PASS  case_strip_raw_fallback
+PASS  case_sweep_prints
+PASS  case_unpack_entry_gone
+PASS  case_unterminated_quote
+PASS  case_worker_cli_missing
+PASS  case_worker_cli_rc
+PASS  case_worker_cli_timeout
+17/17 strands passed
 
 ## PASS _strand_test_log_janitor
 
