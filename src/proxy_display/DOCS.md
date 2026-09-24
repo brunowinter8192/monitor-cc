@@ -2,295 +2,194 @@
 
 ## Role
 
-Proxy pane TUI package. Reads mitmproxy forwarded-delta entries from the runtime dual-log
-directory (gitignored, not present in a fresh checkout — api_requests_*_forwarded.jsonl under
-src/logs/dual_log/), reconstructs per-request system/tools/messages via delta accumulation, and
-renders an interactive expand/collapse display showing API request structure (model, message
-counts, system/tools/messages detail). Also reads the sibling stripped/injected/original
-dual-logs to drive a yellow (`DIM_YELLOW_BG`) / green (`DIM_GREEN_BG`) overlay showing what the proxy stripped and injected
-per request, including expandable whole-stripped-tool original definitions. Runs two event loops
-— one for the main session proxy log (`pane.py`), one for the selected worker's proxy log
-(`worker_proxy_pane.py`) — both carry the full dual-log overlay and a permanent row-1 search bar.
-Touch this package when changing proxy pane display logic or the forwarded-log field extraction.
-Do NOT touch for the proxy modification pipeline (strip/inject rule logic) — that lives in
-`src/proxy/`.
+Proxy pane TUI package. Reads the forwarded, stripped, injected, original and response dual-logs, rebuilds per-request system/tools/messages by delta accumulation and renders an interactive expand/collapse view with a strip/inject overlay. Two event loops: main session and selected worker. Do not touch for the strip/inject rules in `src/proxy/`.
 
 ## Public Interface
 
-- `run_proxy_loop` — main proxy pane event loop, entry point from `core.monitor`
-- `run_worker_proxy_loop` — worker proxy pane event loop, entry point from `core.monitor`
-- `find_worker_proxy_log(worker_name, project_filter=None)` — resolve proxy log path for a named worker; returns `None` if no match or `project_filter` absent — lives in `parser.py`
-- `format_proxy_block(entries, ...)` — render full proxy pane ANSI string, returns `(ansi_string, total_lines)` — lives in `format.py`
+- main proxy pane loop and worker proxy pane loop, entry points from `core/monitor.py`
+- worker proxy log lookup (from `parser.py`)
+- proxy block renderer (from `format.py`)
 
-Other public entry points not re-exported from `__init__.py`: `parser.find_proxy_log_path`,
-`parser.find_errors_log_path`, `parser.find_response_log_path`, `parser.proxy_session_id_for_project`,
-`parser.get_proxy_session_start_ts`, `forwarded_parser.parse_proxy_log_forwarded`,
-`side_logs.read_response_log`, `side_logs.scan_worker_errors_logs` — imported directly by
-`src/panes/token_pane.py` and `src/panes/warnings_pane.py`.
+Other modules are imported directly by `src/panes/token_pane.py`, `src/panes/warnings_pane.py` and `src/dual_log_cli/`.
 
 ## Flow
 
-`api_requests_*_forwarded.jsonl` → `forwarded_parser._parse_forwarded_log` (incremental JSONL
-read, per-model-family delta accumulation, deque-bounded to the last `PROXY_MESSAGES_KEEP_LAST`
-entries — older entries carry `messages=None` until lazy-loaded)
-→ `pane.py` / `worker_proxy_pane.py` (extend entries, attach dual-log overlay references via
-`proxy_pane_shared._accumulate_dual_logs_and_attach`)
-→ `format.format_proxy_block` (group by turn, viewport/scroll, row backgrounds)
-→ `render_turn` (per-REQ header + expand dispatch) → `render_sections` / `render_sections_system`
-/ `render_messages` (expanded request detail — system, tools, fields, messages)
-→ stdout (direct ANSI write, tmux pane).
-
-On expand-click or search-Enter, `forwarded_parser._lazy_load_messages_forwarded` /
-`reconstruct_all_messages` replay the forwarded stream from byte 0, matched by `flow_id`, to
-populate `messages` for entries the deque window dropped.
+Forwarded dual-log → `forwarded_parser.py` (incremental parse, delta accumulation) → `pane.py` / `worker_proxy_pane.py` with overlay accumulation from `dual_log_accumulator.py`.
+→ `format.py` and `frozen_turns.py` (turn groups, viewport, row backgrounds) → `render_turn.py` → section renderers → ANSI to stdout.
+Entries outside the keep-last window are replayed lazily from the log on expand or search.
 
 ## Modules
 
 ### pane.py (352 LOC)
 
-**Purpose:** Event loop for the main proxy pane — reads the `_forwarded` dual-log incrementally, handles mouse (click expand/collapse, scroll, hover, copy, search) and keyboard input (search, undo, `n`/`N`), renders on change via the drain-refresh-render pattern.
-**Reads:** Module-level state; active project filter from `core.monitor`; stdin (keypresses, mouse events).
-**Writes:** frames to stdout via `frame_writer.write_frame`; clipboard via `copy_to_clipboard`; `/tmp/monitor_cc_error.log` on caught exception (via `pane_error_log`); mutates its own module-level state (entries, expand states, scroll/hover, search state, undo stack, dual-log accumulators).
-**Called by:** `src/proxy_display/__init__.py`, `src/core/monitor.py` (lazy import, mode dispatch)
-**Calls out:** `input.click_handler` (keypress/mouse/clipboard primitives), `panes.cache_turns` (`build_cache_turns`), `ram_audit` (`register_ram_dump`), `pane_error_log` (`log_pane_error`), `search_bar` (`SearchState` and search-bar mechanics)
+**Purpose:** Event loop for the main proxy pane: incremental log read, mouse and keyboard input, search, and render on change.
+**Reads:** module state; active project filter from `core/monitor.py`; stdin.
+**Writes:** frames to stdout; clipboard; pane error log; its own module state.
+**Called by:** `__init__.py`, `src/core/monitor.py`.
+**Calls out:** `input.click_handler`, `panes.cache_turns`, `ram_audit`, `pane_error_log`, `search_bar`
 
 ---
 
 ### worker_proxy_pane.py (351 LOC)
 
-**Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate. The worker-switcher header itself is built by the shared `workers.worker_switch_header.format_worker_switch_header` (imported under the alias `_format_worker_proxy_header`, its pre-move name) — `_worker_proxy_workers` is enriched with token/context-% liveness via `worker_tmux.attach_worker_stats(_worker_proxy_workers, _worker_proxy_stats_cache)` before that header renders (incremental, own cache — see `workers/DOCS.md`'s `attach_worker_stats` gotcha for why this must stay incremental).
-**Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_selection.get_selection_file_path`); stdin.
-**Writes:** frames to stdout via `frame_writer.write_frame` (header is the first rows of the built output); clipboard via `copy_to_clipboard`; worker selection IPC file via `workers.write_selection`; `/tmp/monitor_cc_error.log` on caught exception; mutates its own module-level state (including `_worker_proxy_stats_cache`, the per-session incremental read state `attach_worker_stats` owns — never reset on worker switch, same as `worker_tokens_pane.py`'s own copy).
-**Called by:** `src/proxy_display/__init__.py`, `src/core/monitor.py` (lazy import, mode dispatch)
-**Calls out:** `input.click_handler`, `workers.worker_tmux` (`find_worker_jsonl`, `list_workers`, `attach_worker_stats`), `workers.worker_selection` (`get_selection_file_path`), `workers` (`write_selection`), `workers.worker_switch_header` (`format_worker_switch_header`), `panes.cache_turns` (`build_cache_turns`), `utils` (`visual_line_count`), `ram_audit` (`register_ram_dump`), `pane_error_log` (`log_pane_error`), `search_bar`
+**Purpose:** Event loop for the worker proxy pane with worker switching, own header row and the same input handling as the main pane.
+**Reads:** module state; live worker list and selection file from `workers`; stdin.
+**Writes:** frames to stdout; clipboard; worker selection file; pane error log; its own module state.
+**Called by:** `__init__.py`, `src/core/monitor.py`.
+**Calls out:** `input.click_handler`, `workers`, `panes.cache_turns`, `utils`, `ram_audit`, `pane_error_log`, `search_bar`
 
 ---
 
 ### proxy_pane_shared.py (271 LOC)
 
-**Purpose:** Mechanics shared by both proxy panes (`pane.py`, `worker_proxy_pane.py`), each function parameterized by explicit arguments — never reads either pane's own module-level globals. Covers key/entry-idx resolution, copy-text serialization, the flow_id-to-request_id and flow_id-to-status accumulation from `_response` (`_accumulate_request_ids`, `_attach_http_status` writing `entry['http_status']`), expand+lazy-load toggling, dual-log accumulate-and-attach, search-on-commit, scroll/hover dispatch, and render+scroll+row-shift. (2026-09) The worker-switcher header builder moved to `workers.worker_switch_header` — that pane's own header is now shared with `workers/worker_tokens_pane.py` too, and `proxy_display` already depends on `workers` one-directionally for worker discovery/selection, so the header followed that same direction rather than `workers` depending back on `proxy_display`.
-**Reads:** Parameters only.
-**Writes:** Nothing — returns values; several functions mutate an argument in place (`entries`, `line_map`, `copy_rows`, accumulator dicts) as documented per function, never a name outside the parameter list. `_prepare_copy_text` dispatches on key shape — a `('think', entry_idx, msg_idx, bidx)` key OR a `('block', entry_idx, msg_idx, bidx)` key both route to the same `_serialize_proxy_block` (one block's own `full_text`, with `preview` fallback; for a thinking block this is never its signature — the signature is never stored anywhere in this data, only its char count — the two key shapes share one serializer because nothing in its body was ever thinking-specific, only the guard was), a `('msg', entry_idx, msg_idx)` key routes to `_serialize_proxy_message`, everything else to `_serialize_proxy_entry` (unchanged); `_copy_feedback_key` returns the same `key` for a msg, think, or block row (so its flash never leaks onto the REQ header or a sibling row) and `entry_idx` for everything else, unchanged.
-**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` exclusively
-**Calls out:** `side_logs` (`read_response_log`), `search_bar` (`SearchState`, `handle_search_mouse_motion`)
+**Purpose:** Mechanics shared by both proxy panes: key resolution, copy text, response-log joins, expand and lazy load, overlay attachment, search and scroll dispatch.
+**Reads:** parameters only.
+**Writes:** mutates argument collections in place; returns values otherwise.
+**Called by:** `pane.py`, `worker_proxy_pane.py`.
+**Calls out:** `side_logs.py`, `search_bar`
 
 ---
 
 ### format.py (145 LOC)
 
-**Purpose:** `format_proxy_block` — orchestrates group assignment and frozen-turn rendering (delegated to `frozen_turns`, which reuses cached turn groups), applies scroll/viewport windowing and the row-background priority chain (the only place hover is applied), returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
-**Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
-**Writes:** Nothing — returns `(ansi_string, total_lines)` tuple; mutates the `line_map`/`copy_rows_out`/`item_positions_out` arguments when given.
-**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/render_turn.py` (`_is_standalone_entry`, `_shorten_model`, `_format_k`, `_fmt_thinking_budget`, `_fmt_effort`), `src/proxy_display/search.py` (`_is_standalone_entry`), `src/proxy_display/proxy_pane_shared.py` (`_is_standalone_entry`), `src/proxy_display/render_sections.py` (`_format_k`), `src/proxy_display/render_sections_system.py` (`_format_k`), `src/proxy_display/__init__.py`
-**Calls out:** `format.token_format` (`_format_k`), `frozen_turns` (lazy import), `turn_cache` (`TurnCache`), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`)
+**Purpose:** Orchestrates turn grouping and frozen-turn rendering, applies viewport windowing and the row-background priority chain, and identifies standalone entries.
+**Reads:** entries, expand states, line map, hover row, dimensions, scroll offset, turns.
+**Writes:** returns the ANSI string and total line count; fills position outputs when given.
+**Called by:** `pane.py`, `worker_proxy_pane.py`, `render_turn.py`, `search.py`, `proxy_pane_shared.py`, `render_sections.py`, `render_sections_system.py`, `__init__.py`.
+**Calls out:** `format/token_format.py`, `search_bar`
 
 ---
 
 ### frozen_turns.py (185 LOC)
 
-**Purpose:** Frozen-turn rendering for `format_proxy_block` — assigns entries to turns, fingerprints every turn group, re-renders only groups whose fingerprint changed, and returns the flattened lines with positions, collision set and prefix counts.
-**Reads:** Entries, expand states, turns, request-id map, copy feedback, search state, `dual_log_accumulator.overlay_epoch`, the `TurnCache`.
-**Writes:** The `TurnCache` (records, flat result, flow maps, last assignment path); one note line via `pane_error_log.log_pane_note` when the assignment path changes.
-**Called by:** `src/proxy_display/format.py` (lazy import inside `format_proxy_block`)
-**Calls out:** `format.token_format`, `pane_error_log` (`log_pane_note`), `dual_log_accumulator`, `format`, `proxy_badge`, `render_turn`
+**Purpose:** Renders turn groups with per-group fingerprints so only changed groups are re-rendered.
+**Reads:** entries, expand states, turns, request-id map, copy feedback, search state, overlay epoch, the turn cache.
+**Writes:** the turn cache; a pane-error-log note when the assignment path changes.
+**Called by:** `format.py`.
+**Calls out:** `format/token_format.py`, `pane_error_log`, `dual_log_accumulator.py`, `format.py`, `proxy_badge.py`, `render_turn.py`
 
 ---
 
 ### turn_cache.py (14 LOC)
 
-**Purpose:** `TurnCache` holder for the frozen-turn state of one pane.
-**Reads:** nothing.
+**Purpose:** Holder for the frozen-turn state of one pane.
+**Reads:** none.
 **Writes:** its own fields.
-**Called by:** `src/proxy_display/format.py`, `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`
+**Called by:** `format.py`, `pane.py`, `worker_proxy_pane.py`.
 **Calls out:** none
 
 ---
 
 ### forwarded_parser.py (291 LOC)
 
-**Purpose:** Forwarded-log delta reconstruction (continue requests are kept out of the per-family accumulator, see Gotchas) — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`; also owns `_proxy_session_id_for_project` (hashes `os.path.normpath(os.path.expanduser(project_path))`, matching `tmux_launcher.generate_session_name` byte-for-byte) and `_resolve_log_id` (marker-file → log_id resolution; a missing marker falls back to the session id and is noted once per session id in the pane error log, a short or empty marker raises), both shared with `parser.py`. Leaf module — does not import from `parser.py` (parser.py imports these id-resolution helpers from here instead, avoiding a circular import).
-**Reads:** `_forwarded` dual-log JSONL files (incremental by byte position); `.proxy_session_*` marker files (`_resolve_log_id`); the repo root from `monitor_root` (`_monitor_root`, shared with `parser.py` and `side_logs.py`).
-**Writes:** Nothing — returns `(entry_list, new_position)`, a `{flow_id: messages}` dict, or a log-id string; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`); `_lazy_load_messages_forwarded` fills `entry['messages']` in place and raises `LookupError` when the flow cannot be loaded. An entry outside the keep-last window has no `messages` key (absent means not loaded, never `None`).
-**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/parser.py` (`_proxy_session_id_for_project`, `_resolve_log_id`), `src/proxy_display/proxy_pane_shared.py` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `src/proxy_display/dual_log_accumulator.py` (`_infer_model_family`), `src/dual_log_cli/project_map.py` (`_proxy_session_id_for_project`)
-**Calls out:** `proxy.message_summary` (`_infer_model_family`, `_summarize_message`), `proxy.logging` (`_compute_diff`), `pane_error_log` (`log_pane_error`, `log_pane_note`), `monitor_root` (`resolve_monitor_cc_root`)
+**Purpose:** Parses the forwarded dual-log and rebuilds per-request entries by delta application; owns proxy session id and log id resolution shared with `parser.py`.
+**Reads:** forwarded dual-log files (incremental); session marker files; repo root via `monitor_root`.
+**Writes:** returns entries and positions; pane error log on read failures.
+**Called by:** `pane.py`, `worker_proxy_pane.py`, `parser.py`, `proxy_pane_shared.py`, `dual_log_accumulator.py`, `src/dual_log_cli/project_map.py`.
+**Calls out:** `proxy.message_summary`, `proxy.logging`, `pane_error_log`, `monitor_root`
 
 ---
 
 ### parser.py (81 LOC)
 
-**Purpose:** Proxy log path resolution — marker-file-based resolution of the current proxy session's `_forwarded`/`_stripped`/`_injected`/`_original`/`_errors`/`_response` log paths (`_find_response_log_path` derives the `_response` sibling of a main-log path), and worker log discovery via glob. The marker-file → log_id resolution itself lives in `forwarded_parser._resolve_log_id`, shared by every `find_*_log_path` function here.
-**Reads:** `.proxy_session_*` marker files under the runtime log directory (src/logs/, gitignored).
-**Writes:** Nothing — returns path objects, a session-id string, or a marker mtime float, or `None` when no marker exists; an unreadable marker file's `OSError` propagates to the caller (every pane loop already catches and logs via `pane_error_log`).
-**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/proxy_pane_shared.py` (`_find_dual_log_paths`), `src/proxy_display/__init__.py` (`find_worker_proxy_log`), `src/panes/warnings_pane.py` (`find_errors_log_path`, `proxy_session_id_for_project`, `get_proxy_session_start_ts`), `src/panes/token_pane.py` (`find_response_log_path`)
-**Calls out:** `forwarded_parser` (`_monitor_root`, `_proxy_session_id_for_project`, `_resolve_log_id`)
+**Purpose:** Resolves the proxy log paths of the current session from marker files and discovers worker logs.
+**Reads:** session marker files in the runtime log directory.
+**Writes:** none (returns paths, ids or None).
+**Called by:** `pane.py`, `worker_proxy_pane.py`, `proxy_pane_shared.py`, `__init__.py`, `src/panes/warnings_pane.py`, `src/panes/token_pane.py`.
+**Calls out:** `forwarded_parser.py`
 
 ---
 
 ### proxy_badge.py (81 LOC)
 
-**Purpose:** REQ-header strip/inject badge logic and the total_tokens-nuke text-shape detection it depends on. `badge_flags(entry) -> (show_strip, show_inject)` coordinates the stripped and injected dual-log sides by `flow_id` so that a total_tokens nuke (which injects the same literal `"."` as a real nag/deferred/date-changed nuke) is the one class that shows neither badge word.
-**Reads:** Entry dicts (`badge_flags`) or raw delta values (everything else) — parameters only, no module state.
-**Writes:** Nothing — returns bools, a 2-tuple, or an int.
-**Called by:** `src/proxy_display/dual_log_accumulator.py` (`_is_total_tokens_nuke`, `_msgs_delta_is_substantial`), `src/proxy_display/render_turn.py` (`badge_flags`), `src/proxy_display/format.py` (`_chars_to_tokens`)
-**Calls out:** stdlib only (`re`)
+**Purpose:** Decides which strip/inject badges a REQ header shows, including the total-tokens nuke text detection.
+**Reads:** entry dicts or raw delta values; parameters only.
+**Writes:** none.
+**Called by:** `dual_log_accumulator.py`, `render_turn.py`, `format.py`.
+**Calls out:** stdlib only
 
 ---
 
 ### dual_log_accumulator.py (112 LOC)
 
-**Purpose:** Dual-log overlay accumulation — tails `_stripped`/`_injected`/`_original` and builds the per-family accumulator state both panes' entries hold references into. `accumulate_original_tools` keeps a latest-snapshot `{tool_name -> tool_def}` map per family (the `_original` log is a full-snapshot log, not delta-encoded). `accumulate_dual_log` mutates its accumulator dict in place (`.clear()`+`.update()`, preserving Python references held by pane entries), maintaining per-flow lookup dicts (`_has_content_by_flow_id`, `_msg_idx_by_flow_id`, `_sys_idx_by_flow_id`, `_tool_name_by_flow_id`, `_lag_msg_idx_by_flow_id`) that back the REQ-header badge and the flow-scoped span lookup in `render_messages._lookup_spans`.
-**Reads:** `_stripped`/`_injected`/`_original` dual-log JSONL files (incremental by byte position).
-**Writes:** Nothing — returns the new file position; mutates the `acc_by_family` argument in place; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`, retry-next-poll position unchanged).
-**Called by:** `src/proxy_display/pane.py` (`accumulate_original_tools`), `src/proxy_display/proxy_pane_shared.py` (`accumulate_dual_log`), `src/proxy_display/frozen_turns.py` (`overlay_epoch`), `src/dual_log_cli/overlay.py` (`accumulate_dual_log`, its own independent accumulator per call — never shares state with the panes')
-**Calls out:** `pane_error_log` (`log_pane_error`), `forwarded_parser` (`_monitor_root`)
+**Purpose:** Tails the stripped, injected and original dual-logs and builds the per-family overlay state that pane entries reference.
+**Reads:** stripped, injected and original dual-log files (incremental).
+**Writes:** the accumulator argument in place; returns the new file position; pane error log on read failure.
+**Called by:** `pane.py`, `proxy_pane_shared.py`, `frozen_turns.py`, `src/dual_log_cli/overlay.py`.
+**Calls out:** `pane_error_log`, `forwarded_parser.py`
 
 ---
 
 ### side_logs.py (56 LOC)
 
-**Purpose:** `_response`/`_errors` side-log readers. `read_response_log` reads `_response` entries incrementally (`{request_id: full entry dict}` — headers plus `cc_requested_model`/`proxy_forwarded_model`/`answering_model`, whatever the on-disk entry carries). `scan_worker_errors_logs` globs worker `_errors` dual-logs and reads them incrementally by byte position.
-**Reads:** `_response`/`_errors` dual-log JSONL files (incremental by byte position).
-**Writes:** Nothing — returns tuples; `/tmp/monitor_cc_error.log` on `read_response_log`'s `OSError` and on each skipped `scan_worker_errors_logs` file (via `pane_error_log`, retry-next-poll position unchanged). `scan_worker_errors_logs` requires the project session id and `min_mtime`; without a project there is no worker-errors scan.
-**Called by:** `src/panes/token_pane.py` (`read_response_log`, lazy import), `src/panes/warnings_pane.py` (`scan_worker_errors_logs`, lazy import)
-**Calls out:** `pane_error_log` (`log_pane_error`), `forwarded_parser` (`_monitor_root`)
+**Purpose:** Incremental readers for the response and errors side-logs.
+**Reads:** response and errors dual-log files.
+**Writes:** none (returns tuples); pane error log on failures.
+**Called by:** `src/panes/token_pane.py`, `src/panes/warnings_pane.py`, `proxy_pane_shared.py`.
+**Calls out:** `pane_error_log`, `forwarded_parser.py`
 
 ---
 
 ### render_turn.py (170 LOC)
 
-**Purpose:** Renders all per-request rows for an expanded turn group — REQ-header line (`▶/▼ REQ #N model Nmsg [eff:X] [think:Nk] [mods] [warns] [tag badge]`), request labels (`REQ #N` from the token pane's numbering via the flow-to-request-id join, `REQ #N.M` for a refire sharing a request_id, `REQ #?` when unmapped, `H`/`S` for standalone sidecars); a `[404]` (red) or `[pending]` (dim, no `_response` line yet) marker ends the header row of a non-200 or unfinished request, and the expanded section starts with a `status:` line, and dispatch into the expanded-request section renderers.
-**Reads:** Group dict, all entries, expand states, pane width, the flow-to-REQ-number map.
-**Writes:** Nothing — returns `(lines, keys)` tuple (`label_counts` is mutated in place); `_render_req_expanded` threads its own `copy_feedback` parameter down into `render_messages` unchanged, so message-row copy symbols and REQ-header copy symbols (`_build_req_header_line`) share the same caller-supplied dict.
-**Called by:** `src/proxy_display/frozen_turns.py`, `src/proxy_display/search.py` (`_render_req_expanded`, `_resolve_prev_same_family`)
-**Calls out:** `render_messages` (`_aggregate_req_buckets`), `render_sections` (`render_fields_delta`, `render_beta`, `render_directives`, `render_tools`), `render_sections_system` (`render_system_blocks`), `format` (`_BG_RESTORE_SENTINEL`), `utils` (`highlight_query_in_line`)
+**Purpose:** Renders the per-request rows of an expanded turn group: header line, request labels, status markers and dispatch to the section renderers.
+**Reads:** group, entries, expand states, pane width, request number map.
+**Writes:** returns lines and keys; mutates a label counter in place.
+**Called by:** `frozen_turns.py`, `search.py`.
+**Calls out:** `render_messages.py`, `render_sections.py`, `render_sections_system.py`, `format.py`, `utils`
 
 ---
 
 ### render_sections.py (257 LOC)
 
-**Purpose:** Renders tools, fields-delta, beta-flags, and directives sections for an expanded request entry. Tools rendering reads `entry['_stripped_spans']`/`entry['_injected_spans']` span data — every entry reaching this module carries dual-log overlay attachment (`proxy_pane_shared._accumulate_dual_logs_and_attach` runs unconditionally in both `pane.py` and `worker_proxy_pane.py`), so there is exactly one tools-rendering path, no legacy fallback. Whole-stripped tools (blocklist-removed entirely, not just desc-changed) are expandable via `_render_whole_stripped_tool`, sourcing the original definition from `entry['_original_tools_by_name']` — falls back to a `(original definition unavailable)` line when absent (worker pane never attaches this field).
-**Reads:** Entry dict, previous entry, expand states, pane width, modifications list.
-**Writes:** Nothing — returns `(lines, keys)` tuple.
-**Called by:** `src/proxy_display/render_turn.py`, `dev/proxy_tool_stripping/tests/test_whole_stripped_tool_expand.py` (`_render_whole_stripped_tool`, `render_tools`)
-**Calls out:** `render_line_helpers` (`_emit_text_lines`, `_emit_span_lines`, `_emit_inline_spans`)
+**Purpose:** Renders the tools, fields-delta, beta-flags and directives sections of an expanded request, including expandable whole-stripped tools.
+**Reads:** entry, previous entry, expand states, pane width, modifications.
+**Writes:** returns lines and keys.
+**Called by:** `render_turn.py`; `dev/proxy_tool_stripping/tests/test_whole_stripped_tool_expand.py`.
+**Calls out:** `render_line_helpers.py`
 
 ---
 
 ### render_sections_system.py (88 LOC)
 
-**Purpose:** `render_system_blocks` — the system-blocks section of an expanded request entry. Per-block delta visibility is content-based (`sb['preview'] == prev.get('preview')`); a first request shows all blocks, a later request skips unchanged blocks entirely. Block header color: yellow when a strip span is present, green when an inject span is present, gray otherwise.
-**Reads:** Entry dict (dual-log span overlays), previous entry, expand states.
-**Writes:** Nothing — returns `(lines, keys)` tuple.
-**Called by:** `src/proxy_display/render_turn.py`
-**Calls out:** `format` (`_format_k`), `render_line_helpers` (`_emit_text_lines`, `_emit_span_lines`, `_emit_inline_spans`)
+**Purpose:** Renders the system-blocks section of an expanded request with per-block delta visibility and strip/inject coloring.
+**Reads:** entry, previous entry, expand states.
+**Writes:** returns lines and keys.
+**Called by:** `render_turn.py`.
+**Calls out:** `format.py`, `render_line_helpers.py`
 
 ---
 
 ### render_line_helpers.py (31 LOC)
 
-**Purpose:** Shared line-emission primitives used by `render_sections.py` and `render_sections_system.py` — split text on `\n`, `expandtabs(8)`, emit one background-colored line per raw line with a `None` key. `_emit_text_lines` is the base case; `_emit_span_lines` applies the same background to every chunk in a flat span list; `_emit_inline_spans` renders the `(tag, text)` inline-diff shape, coloring only `tag == "injected"` chunks. Utility module — no ORCHESTRATOR/FUNCTIONS split, all three functions are equally primitive.
-**Reads:** Parameters only.
-**Writes:** Nothing — returns `(lines, keys)` tuples.
-**Called by:** `src/proxy_display/render_sections.py`, `src/proxy_display/render_sections_system.py`
-**Calls out:** `colors` (`SOFT_RESET`, `DIM`)
+**Purpose:** Shared line-emission primitives for the section renderers.
+**Reads:** parameters only.
+**Writes:** returns lines and keys.
+**Called by:** `render_sections.py`, `render_sections_system.py`.
+**Calls out:** `colors`
 
 ---
 
 ### render_messages.py (230 LOC)
 
-**Purpose:** Renders new/modified/removed messages for an expanded request entry. `render_messages()` dispatches to `_render_new_messages` (when the message count grew) or `_render_modified_messages` (retry/abort re-send) — the request's payload delta is the only source of rendered message content; every entry must carry the dual-log overlay references (`_stripped_spans`/`_injected_spans`), the pre-overlay render paths were removed. Span content rendering (inline new-format vs. legacy stacked) goes through the shared `_render_span_content`. `_lookup_spans` scopes the shared, cumulative `_stripped_spans`/`_injected_spans` accumulator dicts to the entry's own `flow_id` via the `_strip_msgs_lookup`/`_inject_msgs_lookup`/`_lag_msgs_lookup` reference sets, preventing a later request's overwrite of a message index from rendering under an earlier/neighbor request. Thinking blocks (`btype == 'thinking'`) get their own collapsed-by-default drill-down (`('think', entry_idx, msg_idx, bidx)` key) with word-wrapped content via `utils.wrap_visible`.
-**Reads:** Entry dict, previous entry, all entries, expand states, pane width.
-**Writes:** Nothing — returns `(lines, keys)` tuple; when `copy_feedback` is given, the two plain message-summary row sites (`_render_new_messages`/`_render_modified_messages`, not the `[STRIPPED]` variant) assign each row a `('msg', entry_idx, msg_idx)` key and append a `utils.append_copy_symbol` copy affordance — `None` when `copy_feedback` is omitted, unchanged. `_render_block_spans` does the same for a thinking block's own always-visible summary line (`('think', entry_idx, msg_idx, bidx)` key, not gated on that block's own expand/collapse state) and, identically, for every other block row reaching its non-thinking branch — text, tool_use, tool_result, anything else — via a `('block', entry_idx, msg_idx, bidx)` key (`_block_row_key`) — the same `_append_msg_copy_symbol` helper, reused rather than duplicated, across all three row kinds.
-**Called by:** `src/proxy_display/render_turn.py`
-**Calls out:** `proxy.strip_vocab` (`attribute_chunk`, `classify_tags`, `code_for_rule`, `classify_req`), `utils` (`wrap_visible`, `append_copy_symbol`)
+**Purpose:** Renders new, modified and removed messages of an expanded request with span overlay, thinking drill-down and copy affordances.
+**Reads:** entry, previous entry, all entries, expand states, pane width.
+**Writes:** returns lines and keys.
+**Called by:** `render_turn.py`.
+**Calls out:** `proxy.strip_vocab`, `utils`
 
 ---
 
 ### search.py (24 LOC)
 
-**Purpose:** `build_search_matches(query, entries, expand_states, pane_width)` — the ordered list of entry_idx whose expanded-view content matches `query` (case-insensitive). Calls `render_turn._render_req_expanded` FORCE-EXPANDED for every entry (ignoring that entry's own collapsed/expanded state, so a currently-collapsed request can still match) using the real render function rather than a duplicated serializer, so a match can never diverge from what the pane actually renders. Requires `entry['messages']` populated on every entry — the caller runs `forwarded_parser.reconstruct_all_messages` first.
-**Reads:** Entries list (requires `messages` populated), expand states, pane width — parameters only, no module state.
-**Writes:** Nothing — returns `List[int]`.
-**Called by:** `src/proxy_display/proxy_pane_shared.py` (`build_search_matches`, inside `_run_pane_search`, itself called from both panes' search-on-commit)
-**Calls out:** `utils` (`_ANSI_ESCAPE_RE`)
+**Purpose:** Finds the entries whose force-expanded render matches a query, using the real render path.
+**Reads:** entries with messages populated, expand states, pane width.
+**Writes:** none (returns entry indices).
+**Called by:** `proxy_pane_shared.py`.
+**Calls out:** `utils`
 
 ---
 
 ## State
 
-`pane.py` and `worker_proxy_pane.py` each own independent module-level mutable state — entries
-list, expand states dict, scroll offset, hover row, line map, turns list, current log path,
-last-rendered pane width, copy-row set, copy-feedback timers, and an undo stack (`pane.py` only,
-capped at 200).
-
-**Search state** — each pane owns one `search_bar.SearchState` instance (`_proxy_search` /
-`_worker_proxy_search`): query text, focus, ordered match list, match set, current-match index,
-and drag-select fields. Rebuilt on every Enter via `proxy_pane_shared._run_pane_search` (never
-gated on query-unchanged — the one-sweep reconstruction is cheap enough to always re-run).
-Cleared via `search_bar.handle_search_cancel(state)` on session/worker change, NOT on the hourly
-reparse (entry_idx-keyed expand/search state assumes stable re-indexing across a same-file
-reparse). Drag-select and click-elsewhere clearing go through `search_bar.clear_selection(state)`,
-called directly from each pane's own mouse handler.
-
-**Dual-log accumulator** (both panes) — `_proxy_acc_stripped`/`_proxy_acc_injected` and their
-worker-pane equivalents are `{family: {...}}` dicts mutated in place by
-`dual_log_accumulator.accumulate_dual_log`; every parsed entry holds a REFERENCE (not a copy) to
-its family's accumulator dict plus the per-flow lookup sub-dicts, so late-arriving delta updates
-propagate to already-rendered entries automatically. Reset (`.clear()`, byte positions to 0) on
-session/worker change and on the hourly reparse trigger.
-
-**Whole-stripped tool original-def accumulator** (`pane.py` only) — `_proxy_acc_original`
-(`{family -> {tool_name -> tool_def}}`), fed from the `_original` log via
-`dual_log_accumulator.accumulate_original_tools`, latest-snapshot overwrite (not merge — tool
-defs are stable within a session). `worker_proxy_pane.py` has no equivalent; a whole-stripped
-tool row there always shows the `(original definition unavailable)` fallback.
-
-**Frozen-turn cache** — each pane owns one `turn_cache.TurnCache` (`_proxy_turn_cache` / `_worker_proxy_turn_cache`), passed to `format_proxy_block`, cleared in the pane's `_reset_*positions`. Details in `process-docs/pane_flicker/`.
-
-**Lazy-reload invariant:** an entry outside the `PROXY_MESSAGES_KEEP_LAST` tail window and not in
-`expand_states` has `messages=None` (stripped by `_parse_forwarded_log`). On expand-click or
-search-match, `_lazy_load_messages_forwarded`/`reconstruct_all_messages` replay the forwarded
-stream from byte 0, matched by `flow_id`, to repopulate it.
-
-## Gotchas
-
-- `entry['http_status']` is set only once a `_response` line has been read (both panes, every poll): an int for a finished request, `None` for one still without a response line (`[pending]`). Without any response info the key is absent and no marker or status line appears.
-
-- REQ numbers in the proxy panes are the token pane's numbers, joined per request: forwarded `flow_id` -> `_response` `request_id` -> transcript call (`token_format.request_numbers_by_id`). `forwarded.request_id` is empty in every entry, so the `_response` join is the only path. See `process-docs/proxy_display/`.
-- A continue request (sonnet, `counts.tools == 0`, `diagnostics.previous_message_id` set) is flagged `is_continue`, never enters `acc_by_family`, carries only its own 1-2 msgs, is never standalone, and has no `prev_same` (nor is it anyone's). Folding it into the accumulator truncates the family list to 2 msgs and the next create raises `KeyError: 'role'` in `_compute_diff`.
-
-- `PROXY_MESSAGES_KEEP_LAST = 10` — only the last N parsed entries retain `messages`; older
-  entries are lazy-loaded on demand. `PROXY_REPARSE_INTERVAL_SECONDS = 3600` — hourly full
-  reparse resets byte positions and accumulators but NOT expand/search state.
-- `flow_id`, not `_fwd_req_idx`, is the stable cross-call correlation key. `_fwd_req_idx` resets
-  to 0 on every `_parse_forwarded_log` call — it is unique only within one incremental batch, not
-  across the polling session. Using it as a dict key across separate parse calls silently loads
-  the wrong entry's content.
-- `ZEBRA_BG_A = ''` is a valid "no override" background value, not "nothing". `resolve_bg_restore`
-  must substitute an explicit `\033[49m` for it when closing a search-highlight span, or the
-  highlight background floods the rest of the row to the trailing `\033[K`.
-- `_BG_RESTORE_SENTINEL = '\033[999m'` (out-of-range but syntactically valid SGR code) stands in
-  for "resume the row's real background" at embed time in `render_turn.py`, since that module
-  doesn't know `chosen_bg` (zebra/hover/strip/collision) until `format._apply_row_backgrounds`
-  computes it; `utils._ANSI_ESCAPE_RE` strips the sentinel as zero-width wherever visible-length
-  math (padding, truncation) already runs.
-- A trailing-message total_tokens strip is attributed one request LATE by the delta writer (CC
-  hangs the cache-control breakpoint on the last message, so a fresh trailing system message
-  arrives list-shaped and produces no diff op on the request that actually stripped it).
-  `dual_log_accumulator._apply_lag_correction` re-attributes it to the correct flow via
-  `_lag_msg_idx_by_flow_id`, guarded by `proxy_badge._is_total_tokens_nuke` matching the previous
-  line's trailing index. This guard is load-bearing: without it, a mid-conversation nag/deferred
-  nuke that lands on an index that was an earlier request's trailing message would bleed into the
-  wrong request's rendered spans.
-- A strip landing outside the request's own payload delta (task-tools nag, deferred-tools notice,
-  date-changed) is INVISIBLE in the expanded body — only the REQ-header `strip`/`inject` badge
-  words show it happened. The original text is only recoverable via the dual-log CLI
-  (`duallog expand`), not in the pane. Do not "fix" this by loosening `_lookup_spans`' flow
-  scoping — that reintroduces cross-request span bleed.
-- `_is_total_tokens_nuke_text`'s catalogued-nudge-paragraph matching (`_TOTAL_TOKENS_NUDGE_PARAGRAPHS`)
-  is deliberately NOT future-proof against a new, uncatalogued CC nudge sentence: an unrecognized
-  sentence fails the test and the request stays badged (fails toward showing it) rather than being
-  silently absorbed as quiet.
-- `parser.get_proxy_session_start_ts` always returns an existing marker file's mtime, however old —
-  a warnings-pane session-start filter keyed off this can reach back arbitrarily far if the marker
-  itself is stale (no marker at all returns `None`; the warnings pane then shows a header notice and scans no worker errors).
+`pane.py` and `worker_proxy_pane.py` each own independent module-level state: entries, expand and search state, scroll and hover, overlay accumulators, and the frozen-turn cache held via `turn_cache.py`. The main pane alone owns the original-tools accumulator and an undo stack. Entries hold references into the accumulators. All other modules are stateless. Invariants and gotchas are in `process-docs/refactoring/` (phase 4 proxy/panes restructure file).
