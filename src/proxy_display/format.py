@@ -6,9 +6,10 @@ from ..colors import (
     RESET, SOFT_RESET, DIM, YELLOW, HOVER_BG,
     DIM_YELLOW_BG, DIM_GREEN_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
-from ..format.token_format import _format_k, _format_turn_header_line, request_numbers_by_id, request_times_by_id
+from ..format.token_format import _format_k
 from ..utils import truncate_visible
 from .proxy_badge import _chars_to_tokens
+from src.proxy_display.turn_cache import TurnCache
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 
 # FUNCTIONS
@@ -105,59 +106,11 @@ def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_en
         result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
     return result_lines
 
-def _number_by_flow(turns, request_id_by_flow: Optional[dict]) -> dict:
-    numbers = request_numbers_by_id(turns or [])
-    return {flow_id: numbers[request_id] for flow_id, request_id in (request_id_by_flow or {}).items() if request_id in numbers}
-
-def _time_by_flow(turns, request_id_by_flow: Optional[dict]) -> dict:
-    times = request_times_by_id(turns or [])
-    return {flow_id: times[request_id] for flow_id, request_id in (request_id_by_flow or {}).items() if request_id in times}
-
-def _render_all_groups(entries: list, groups: list, expand_states: dict, pane_width: int, turns, item_positions_out: Optional[dict], copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query: str, request_id_by_flow: Optional[dict] = None) -> tuple:
-    from .render_turn import render_turn_expanded
-    all_lines = []
-    line_keys = []
-    rendered_opus_labels = []
-    number_by_flow = _number_by_flow(turns, request_id_by_flow)
-    time_by_flow = _time_by_flow(turns, request_id_by_flow)
-    label_counts = {}
-    for group in groups:
-        turn_idx = group['turn_idx']
-        if turns:
-            all_lines.append(_format_turn_header_line(turn_idx, turns[turn_idx], pane_width))
-            line_keys.append(None)
-        t_lines, t_keys = render_turn_expanded(
-            group, entries, expand_states, pane_width,
-            number_by_flow, label_counts, time_by_flow,
-            turns=turns, turn_idx=turn_idx,
-            rendered_opus_labels=rendered_opus_labels,
-            copy_feedback=copy_feedback,
-            copy_rows_out=copy_rows_out,
-            search_match_set=search_match_set,
-            search_current_entry_idx=search_current_entry_idx,
-            search_query=search_query,
-        )
-        all_lines.extend(t_lines)
-        line_keys.extend(t_keys)
-        if item_positions_out is not None:
-            base = len(all_lines) - len(t_lines)
-            for i, key in enumerate(t_keys):
-                if key is not None:
-                    item_positions_out[key] = base + i
-        all_lines.append('')
-        line_keys.append(None)
-    return all_lines, line_keys, rendered_opus_labels
-
 def _compute_collision_idxs(rendered_opus_labels: list) -> set:
     label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
     return {idx for idx, lbl in rendered_opus_labels if label_counts[lbl] >= 2}
 
-def _trim_trailing_blank(all_lines: list, line_keys: list) -> None:
-    while all_lines and all_lines[-1] == '':
-        all_lines.pop()
-        line_keys.pop()
-
-def _slice_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int, line_map: Optional[dict]) -> tuple:
+def _slice_viewport(all_lines: list, line_keys: list, parent_prefix: list, pane_height: int, scroll_offset: int, line_map: Optional[dict]) -> tuple:
     total_lines = len(all_lines)
     viewport_lines = max(1, pane_height - 1)
     max_scroll = max(0, len(all_lines) - viewport_lines)
@@ -171,26 +124,26 @@ def _slice_viewport(all_lines: list, line_keys: list, pane_height: int, pane_wid
         for row_idx, key in enumerate(visible_keys):
             if key is not None:
                 line_map[row_idx + 1] = key
-    initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
+    initial_parent_count = parent_prefix[start]
     return visible_lines, visible_keys, initial_parent_count, total_lines
 
-def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '', request_id_by_flow: Optional[dict] = None) -> tuple:
+def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '', request_id_by_flow: Optional[dict] = None, turn_cache: Optional[TurnCache] = None) -> tuple:
     if not entries:
         return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
+    from src.proxy_display.frozen_turns import assign_groups, render_frozen
     if expand_states is None:
         expand_states = {}
-    if turns:
-        groups = _assign_turns_to_entries(entries, turns)
-    else:
-        groups = [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
-    all_lines, line_keys, rendered_opus_labels = _render_all_groups(
-        entries, groups, expand_states, pane_width, turns, item_positions_out,
-        copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query, request_id_by_flow,
+    if turn_cache is None:
+        turn_cache = TurnCache()
+    groups = assign_groups(entries, turns, turn_cache)
+    flat = render_frozen(
+        entries, groups, expand_states, pane_width, turns,
+        copy_feedback, search_match_set, search_current_entry_idx, search_query, request_id_by_flow, turn_cache,
     )
-    collision_entry_idxs = _compute_collision_idxs(rendered_opus_labels)
-    _trim_trailing_blank(all_lines, line_keys)
+    if item_positions_out is not None:
+        item_positions_out.update(flat['positions'])
     visible_lines, visible_keys, initial_parent_count, total_lines = _slice_viewport(
-        all_lines, line_keys, pane_height, pane_width, scroll_offset, line_map
+        flat['lines'], flat['keys'], flat['parent_prefix'], pane_height, scroll_offset, line_map
     )
-    result_lines = _apply_row_backgrounds(visible_lines, visible_keys, collision_entry_idxs, hover_row, copy_rows_out, pane_width, initial_parent_count)
+    result_lines = _apply_row_backgrounds(visible_lines, visible_keys, flat['collision'], hover_row, copy_rows_out, pane_width, initial_parent_count)
     return '\n'.join(result_lines), total_lines
