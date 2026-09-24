@@ -1,64 +1,51 @@
 # dev/native-model-start/
 
 ## Role
-Verification scripts for starting the orchestrator's main CC session natively on a chosen model:
-the launcher's flag precedence, the proxy's per-model `model_params` injection, and a historical
-live-verify of the CC 2.1.223 pin bump. Touch it when changing either; the pin-bump probes don't
-need re-running otherwise.
+Verification scripts for starting the orchestrator's main CC session natively on a chosen model: launcher flag precedence, the proxy's per-model parameter injection, and historical live-verifies of a CC pin bump. Touch when changing either; the pin-bump probes need no re-run otherwise.
 
 ## Public Interface
-No `__init__.py` in this directory. Each script is its own entry point, run directly, e.g.
-`python3 dev/native-model-start/p2_model_params_probe.py` or `bash p1_arg_parse_dry_run.sh`.
+No `__init__.py`. Each script is its own entry point, run directly (Python with `python3`, the argv dry run with `bash`).
 
 ## Flow
-Synthetic argv (`p1`), mocked config (`p2` and its test-group modules), or recorded dual-log
-payloads (`p3`/`p4`/`p5`) go in. Each script drives real production code (the launcher's parse
-loop mirrored in bash, or a real `ProxyAddon`/`apply_modification_rules` instance) and asserts
-specific invariants. Output is stdout PASS/FAIL plus a fixed-name report `md/p2_model_params_probe.md` for the strand run of `p2`.
-Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
+Synthetic argv, mocked config or recorded dual-log payloads go in. Each script drives real production code (the launcher parse loop mirrored in bash, or a real proxy addon) and asserts invariants. Converted suites run as parallel fail-fast strands through the strand runner in `dev/refactoring/`; output is stdout plus fixed-name reports in `md/`.
 
 ## Modules
 
 ### p1_arg_parse_dry_run.sh (154 LOC)
 
-**Purpose:** Dry-runs the `--fable`/`--opus`/`--model` precedence logic mirrored from
-`src/claude_proxy_start.sh`'s parse loop; never starts the proxy or claude.
-**Reads:** nothing persistent — pure in-process argv simulation.
+**Purpose:** Dry-runs the launcher's model-flag precedence, mirrored from its parse loop; never starts the proxy or claude.
+**Reads:** nothing persistent; in-process argv simulation.
 **Writes:** `md/p1_arg_parse_dry_run_<timestamp>.md`.
-**Called by:** none — manual regression guard, re-run after editing the parse loop.
-**Calls out:** stdlib bash only.
+**Called by:** none; manual guard, re-run after editing the parse loop.
+**Calls out:** bash only.
 
 ---
 
 ### p2_model_params_probe.py (54 LOC)
 
-**Purpose:** Entry point for the model_params probe — runs the 15 test groups imported from the
-two test-group modules in order and writes the report.
-**Reads:** nothing persistent — builds all fixtures in-process.
+**Purpose:** Entry point of the model-parameter probe: runs the test groups from the two group modules and writes the report.
+**Reads:** nothing persistent; fixtures are built in-process.
 **Writes:** `md/p2_model_params_probe_<timestamp>.md`.
-**Called by:** none — manual regression guard, re-run after touching `_inject_model_override`.
-**Calls out:** `model_params_test_infra`, `model_override_injection_tests`,
-`thinking_context_management_tests`.
+**Called by:** none; manual guard.
+**Calls out:** `model_params_test_infra.py`, `model_override_injection_tests.py`, `thinking_context_management_tests.py`.
 
 ---
 
 ### model_params_test_infra.py (24 LOC)
 
-**Purpose:** Shared raising `check()` assertion infra and the `_with_config` helper
-used by every test group in this probe.
+**Purpose:** Shared raising assertion helper and config helper used by every test group of the probe.
 **Reads:** nothing.
-**Writes:** nothing — `check()` prints a PASS line or raises `AssertionError`.
-**Called by:** `p2_model_params_probe.py`, `model_override_injection_tests.py`,
-`thinking_context_management_tests.py`.
+**Writes:** nothing; prints a pass line or raises.
+**Called by:** `p2_model_params_probe.py`, `model_override_injection_tests.py`, `thinking_context_management_tests.py`.
 **Calls out:** `src.proxy.inject_helpers`.
 
 ---
 
 ### model_override_injection_tests.py (220 LOC)
 
-**Purpose:** Tests 1-12 — `_inject_model_override`'s per-model `model_params` lookup (a config without `model_params` is ignored), plus the cross-call fixation mechanism.
-**Reads:** nothing persistent — builds all fixtures in-process.
-**Writes:** nothing — results recorded via `model_params_test_infra.check`.
+**Purpose:** Tests 1-12: the per-model parameter lookup of the model override injection and the cross-call fixation mechanism.
+**Reads:** nothing persistent; in-process fixtures.
+**Writes:** nothing; results go through the shared assertion helper.
 **Called by:** `p2_model_params_probe.py`.
 **Calls out:** `src.proxy.inject_helpers`.
 
@@ -66,52 +53,43 @@ used by every test group in this probe.
 
 ### thinking_context_management_tests.py (158 LOC)
 
-**Purpose:** Tests 13-15 — `_strip_clear_thinking_edit`'s thinking/context_management
-self-consistency, the forwarded `thinking` field, and strip-side field attribution.
-**Reads:** nothing persistent — builds all fixtures in-process.
-**Writes:** nothing — results recorded via `model_params_test_infra.check`.
+**Purpose:** Tests 13-15: thinking and context-management self-consistency, the forwarded thinking field and strip-side field attribution.
+**Reads:** nothing persistent; in-process fixtures.
+**Writes:** nothing; results go through the shared assertion helper.
 **Called by:** `p2_model_params_probe.py`.
-**Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging`, `src.proxy.strip_inject_delta`,
-`dev/proxy_dual_log/attribution_coverage/attribution_coverage_classify.py` (loaded via `importlib.util`).
+**Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging`, `src.proxy.strip_inject_delta`, the attribution classifier in `dev/proxy_dual_log/attribution_coverage/` via `importlib`.
 
 ---
 
 ### p3_cache_breakpoints_probe.py (282 LOC)
 
-**Purpose:** Replays two 223-era recorded sessions through a real `ProxyAddon()` and checks cache
-breakpoint positional stability plus shared-index content diffs.
-**Reads:** two pinned `_original.jsonl` session stems under `src/logs/dual_log` — currently
-absent (rotated out of the live corpus); the script raises before writing its report.
-**Writes:** `md/p3_cache_breakpoints_probe_report.md` — not regenerated while the source sessions
-are absent; the tracked file is a historical snapshot.
-**Called by:** none — manual, historical 223 pin-bump live-verify.
-**Calls out:** `src.proxy.addon` (`ProxyAddon`, `_derive_worker_context`).
+**Purpose:** Replays two recorded pin-bump-era sessions through a real proxy addon and checks cache-breakpoint positional stability.
+**Reads:** two pinned dual-log session stems, currently rotated out of the live corpus, so the script raises before writing.
+**Writes:** `md/p3_cache_breakpoints_probe_report.md`, a historical snapshot not regenerated.
+**Called by:** none; historical pin-bump live-verify.
+**Calls out:** `src.proxy.addon`.
 
 ---
 
 ### p4_dual_log_integrity_probe.py (241 LOC)
 
-**Purpose:** Verifies the composition invariant against `compose_block` and top-level payload/
-schema stability, on the same two 223-era sessions as `p3_`.
-**Reads:** the same two pinned session stems as `p3_cache_breakpoints_probe.py` — currently
-absent; the script raises before writing its report.
-**Writes:** `md/p4_dual_log_integrity_probe_report.md` — a historical snapshot, not regenerated.
-**Called by:** none — manual, historical 223 pin-bump live-verify.
-**Calls out:** `src.proxy.rules` (`apply_modification_rules`), `src.proxy.diff_engine`.
+**Purpose:** Verifies the composition invariant and top-level payload and schema stability on the same two recorded sessions.
+**Reads:** the same two pinned session stems, currently absent.
+**Writes:** `md/p4_dual_log_integrity_probe_report.md`, a historical snapshot.
+**Called by:** none; historical pin-bump live-verify.
+**Calls out:** `src.proxy.rules`, `src.proxy.diff_engine`.
 
 ---
 
 ### p5_strip_wordings_probe.py (203 LOC)
 
-**Purpose:** Checks bg-launch-ack/bg-completed/task-notification strip coverage on 223-era
-wordings via a dual-log fn_map census plus a current-code replay sweep.
-**Reads:** the same two pinned session stems' `_original`/`_stripped`/`_injected.jsonl` files —
-currently absent; the script raises before writing its report.
-**Writes:** `md/p5_strip_wordings_probe_report.md` — a historical snapshot, not regenerated.
-**Called by:** none — manual, historical 223 pin-bump live-verify.
-**Calls out:** `src.proxy.rules` (`apply_modification_rules`), `src.proxy.payload_helpers`.
+**Purpose:** Checks strip coverage of background-launch, completion and task-notification wordings via a dual-log census plus a current-code replay.
+**Reads:** the same two pinned sessions' log streams, currently absent.
+**Writes:** `md/p5_strip_wordings_probe_report.md`, a historical snapshot.
+**Called by:** none; historical pin-bump live-verify.
+**Calls out:** `src.proxy.rules`, `src.proxy.payload_helpers`.
 
 ---
 
 ## State
-No persistent state lives in this directory. Test-group modules share only the raising `check()` of `model_params_test_infra.py`; every strand is its own subprocess.
+No persistent state. Test-group modules share only the assertion helper; every strand is its own subprocess.
