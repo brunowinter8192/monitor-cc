@@ -47,3 +47,8 @@ M2 test (`m2_byte_identity_test.py`, `m2_state_sequence_driver.py`, report `md/m
 - macOS `sed -i` needs a backup-suffix argument; use python for edits. Do not print full screen diffs from the tests (thousands of characters); the harness prints row/token of the first difference.
 - Hypotheses, not observed: the proxy panes' `format_proxy_block` rebuild (other worker's scope) is probably the dominant cost there; tmux server restart to 3.7c is needed to see mode 2026 take effect.
 - Out of scope this cycle and still clear-then-print: warnings, workers, gpu, news panes.
+
+## Recap, 2026-09-24
+- M1 and M2 were reviewed and merged into `integration`; `git diff integration --name-only` for this worktree is empty afterwards.
+- All DOCS.md module headings touched by this work (`src`, `src/format`, `src/panes`, `src/workers`, `src/proxy_display`, `dev/pane_flicker`) were checked against `wc -l` and match.
+- Still open, owned by the orchestrator and the user: live check in the real panes after the tmux server restart to 3.7c (mode 2026 only takes effect then).
