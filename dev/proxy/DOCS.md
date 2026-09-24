@@ -81,9 +81,9 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix.py (251 LOC)
+### test_strip_fix.py (209 LOC)
 
-**Purpose:** Entry point of the largest suite: imports and runs every test from the sibling fixture and case modules.
+**Purpose:** Entry point of the largest suite: imports every test from the sibling fixture and case modules and runs each as its own parallel strand.
 **Reads:** nothing external.
 **Writes:** stdout; exits 1 if any check fails.
 **Called by:** none; manual CLI.

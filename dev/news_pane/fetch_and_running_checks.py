@@ -9,24 +9,43 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
+from dev.refactoring.check_group import assert_checks
+from dev.refactoring.strand_runner import strand_workflow
+
+_STRAND_NAMES = ['strand_fetch', 'strand_last_run', 'strand_running']
+
 # ORCHESTRATOR
 
 
 def main():
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, title='news_pane fetch and running checks'))
+
+
+# FUNCTIONS
+
+
+def strand_fetch() -> None:
+    workdir, pane, _parser = _setup()
+    assert_checks(_fetch_checks(pane, workdir))
+
+
+def strand_last_run() -> None:
+    workdir, _pane, parser = _setup()
+    assert_checks(_last_run_checks(parser, workdir))
+
+
+def strand_running() -> None:
+    _workdir, pane, _parser = _setup()
+    assert_checks(_running_checks(pane))
+
+
+def _setup() -> tuple:
     workdir = Path(tempfile.mkdtemp(prefix='mcfix_news_'))
     pane_log = importlib.import_module('src.pane_error_log')
     pane_log.PANE_ERROR_LOG_PATH = str(workdir / 'pane_error.log')
     pane = importlib.import_module('src.news_pane.pane')
     parser = importlib.import_module('src.news_pane.log_parser')
-    results = _fetch_checks(pane, workdir) + _last_run_checks(parser, workdir) + _running_checks(pane)
-    for name, ok in results:
-        print(('PASS: ' if ok else 'FAIL: ') + name)
-    failed = [n for n, ok in results if not ok]
-    print(f'{len(results) - len(failed)}/{len(results)} passed')
-    sys.exit(1 if failed else 0)
-
-
-# FUNCTIONS
+    return workdir, pane, parser
 
 
 def _set_rag_cli(workdir: Path, body: str | None) -> None:

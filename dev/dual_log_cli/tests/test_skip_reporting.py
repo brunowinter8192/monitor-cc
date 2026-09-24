@@ -6,10 +6,13 @@ import json
 import sys
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
+from functools import partial
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
+
+from dev.refactoring.strand_runner import strand_workflow
 
 from src.dual_log_cli import commands, diagnostics
 from src.dual_log_cli.commands import _report_numbering_paths
@@ -22,6 +25,23 @@ PASS_LIST = []
 FAIL_LIST = []
 
 # FUNCTIONS
+
+def _strand_cases() -> dict:
+    return {fn.__name__: fn for fn in (
+        test_report_skip_dedup, test_project_map_reports, test_load_last_request_reports_malformed_line,
+        test_resolve_transcript_reasons, test_numbering_line_carries_reason, test_timestamps,
+        test_command_skip_paths,
+    )}
+
+def _strand_globals() -> dict:
+    runners = {name: partial(_run_case, fn) for name, fn in _strand_cases().items()}
+    return {**globals(), **runners}
+
+def _run_case(fn) -> None:
+    fn()
+    print(f"{len(PASS_LIST)}/{len(PASS_LIST) + len(FAIL_LIST)} checks passed")
+    if FAIL_LIST:
+        raise AssertionError("failed checks: " + "; ".join(FAIL_LIST))
 
 def check(name: str, condition: bool, detail: str = "") -> None:
     if condition:
@@ -128,18 +148,7 @@ def test_command_skip_paths() -> None:
 # ORCHESTRATOR
 
 def test_skip_reporting_workflow() -> None:
-    test_report_skip_dedup()
-    test_project_map_reports()
-    test_load_last_request_reports_malformed_line()
-    test_resolve_transcript_reasons()
-    test_numbering_line_carries_reason()
-    test_timestamps()
-    test_command_skip_paths()
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        sys.exit(1)
-    print("ALL PASS")
+    sys.exit(strand_workflow(_strand_globals(), __file__, sorted(_strand_cases()), title='test_skip_reporting'))
 
 
 if __name__ == "__main__":

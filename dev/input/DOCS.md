@@ -11,13 +11,13 @@ Child processes with a null or pty stdin, a pipe as fake stdin and a fake `pbcop
 
 ## Modules
 
-### tripwire_checks.py (123 LOC)
+### tripwire_checks.py (145 LOC)
 
 **Purpose:** Proves a non-tty stdin, a malformed SGR field and a failing `pbcopy` raise, valid sequences still parse and a failing terminal restore is logged.
 **Reads:** nothing external; fake `pbcopy` and log in a temp dir.
 **Writes:** temp dir only; stdout pass/fail lines, exit 1 on failure.
-**Called by:** none; run manually.
-**Calls out:** `src.input.click_handler`, `src.pane_error_log` via `importlib`.
+**Called by:** none; run manually. The four check groups run as parallel strands.
+**Calls out:** `src.input.click_handler`, `src.pane_error_log` via `importlib`; the strand runner and check helper in `dev/refactoring/`.
 
 ---
 

@@ -172,13 +172,13 @@ Converted suites run as parallel fail-fast strands through the strand runner in 
 
 ---
 
-### tests/test_skip_reporting.py (146 LOC)
+### tests/test_skip_reporting.py (155 LOC)
 
 **Purpose:** Proves the stderr reporting and narrowed-exception paths: skip dedup, unreadable inputs, malformed lines, transcript reasons and search skipping.
 **Reads:** temp files and directories built in-script.
 **Writes:** stdout pass/fail per check; exits 1 on failure.
-**Called by:** none; run manually.
-**Calls out:** `src.dual_log_cli.commands`, `.diagnostics`, `.project_map`, `.reader`, `.render_reqs`, `.usage`.
+**Called by:** none; run manually. Each test function runs as its own parallel strand.
+**Calls out:** `src.dual_log_cli.commands`, `.diagnostics`, `.project_map`, `.reader`, `.render_reqs`, `.usage`; the strand runner in `dev/refactoring/`.
 
 ---
 

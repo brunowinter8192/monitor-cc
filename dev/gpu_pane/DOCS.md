@@ -21,13 +21,13 @@ Synthetic fixtures are built in-script, the real pane renderer is driven at two 
 
 ---
 
-### fallback_tripwire_checks.py (142 LOC)
+### fallback_tripwire_checks.py (168 LOC)
 
 **Purpose:** Proves the traced-skip, retry and tripwire paths of `src/gpu_pane/` with a fake `rag-cli` on PATH.
 **Reads:** nothing external; state files and the pane error log live in a temp dir.
 **Writes:** temp dir; the gpu pane module's own log in this checkout.
-**Called by:** none; run manually.
-**Calls out:** `src.gpu_pane.status`, `.gpu_actions`, `.gpu_render`, `src.pane_error_log` (via `importlib`).
+**Called by:** none; run manually. The four check groups run as parallel strands.
+**Calls out:** `src.gpu_pane.status`, `.gpu_actions`, `.gpu_render`, `src.pane_error_log` (via `importlib`); the strand runner and check helper in `dev/refactoring/`.
 
 ---
 
