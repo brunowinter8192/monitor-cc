@@ -44,11 +44,14 @@ def switch_to_desktop_workflow(desktop: int) -> float:
 class SpaceSwitchError(Exception):
     pass
 
-def _require_post_event_access() -> None:
+def request_post_event_access_if_missing() -> bool:
     if _CG.CGPreflightPostEventAccess():
-        return
-    _CG.CGRequestPostEventAccess()
-    raise SpaceSwitchError('postevent_not_granted')
+        return True
+    return bool(_CG.CGRequestPostEventAccess())
+
+def _require_post_event_access() -> None:
+    if not _CG.CGPreflightPostEventAccess():
+        raise SpaceSwitchError('postevent_not_granted')
 
 def _space_id_for_desktop(desktop: int) -> int:
     space_map = _build_space_map(_CG.CGSMainConnectionID())
