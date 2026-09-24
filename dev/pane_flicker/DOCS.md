@@ -1,7 +1,7 @@
 # dev/pane_flicker/
 
 ## Role
-Tests and measurements for the flicker fix on the tokens, worker-tokens, proxy and worker-proxy panes: the in-place synchronized frame write (M1) and the frozen-turn cache for the tokens panes (M2). Touch when changing `src/frame_writer.py`, `src/format/turn_cache.py`, or the frame-write / turn-cache wiring in the four panes.
+Tests and measurements for the flicker fix on the tokens, worker-tokens, proxy and worker-proxy panes: the in-place synchronized frame write (M1) and the frozen-turn cache for the tokens panes (M2), and the frozen turns of the proxy panes (M3). Touch when changing `src/frame_writer.py`, `src/format/turn_cache.py`, `src/proxy_display/frozen_turns.py`, or the frame-write / turn-cache wiring in the four panes.
 
 ## Public Interface
 No `__init__.py`. Each `*_test.py` and `m2_hover_timing.py` is run directly: `python3 dev/pane_flicker/<script>.py`. They compare the working tree against `git archive integration` (the pre-fix reference) extracted to a temp directory, so run them with the `integration` branch still holding the old code.
@@ -58,6 +58,58 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 **Writes:** `md/m2_hover_timing.md`.
 **Called by:** none, manual.
 **Calls out:** `git`; re-invokes itself as a child process per measurement.
+
+---
+
+---
+
+### scenario_lib.py (246 LOC)
+
+**Purpose:** `Sim` replays the proxy pane's data flow (growing forwarded/stripped/injected/response logs in a temp dir, synthetic turns) and renders through `_render_and_scroll_body`.
+**Reads:** the largest real dual-log quartet (env `PANE_FLICKER_LOG_DIR`, `PANE_FLICKER_STEM`).
+**Writes:** a temp dir it removes; `render` returns a hash and the number of group renders.
+**Called by:** `scenario_run.py`, `bench_hover_render.py`.
+**Calls out:** `src.proxy_display.*` from the given root.
+
+---
+
+### scenario_run.py (238 LOC)
+
+**Purpose:** One M3 scenario (hover, grow, late response, late overlay, expand, search, width, copy feedback, reparse, unsorted turns, tripwire) per process, writes per-step hashes as JSON.
+**Reads:** argv (root, scenario, out).
+**Writes:** the JSON file.
+**Called by:** `run_scenarios.py`.
+**Calls out:** `scenario_lib.py`.
+
+---
+
+### run_scenarios.py (80 LOC)
+
+**Purpose:** Runs every scenario against the old tree (`/tmp/pf_old`, a `git archive` of the pre-M3 commit, must be extracted first) and the working tree in parallel; checks byte identity and group-render counts.
+**Reads:** the per-process JSON files.
+**Writes:** `md/run_scenarios.md`.
+**Called by:** none, manual.
+**Calls out:** `scenario_run.py`.
+
+---
+
+### bench_hover_render.py (81 LOC)
+
+**Purpose:** Times hover renders (`--mode block` for `format_proxy_block`, `--mode pane` for `_build_proxy_output`, needs a tty), optional `--scale` replicates entries.
+**Reads:** argv; the real log via `scenario_lib.py`.
+**Writes:** a JSON file at `--out`.
+**Called by:** none, manual.
+**Calls out:** `scenario_lib.py`.
+
+---
+
+### observe_timestamp_order.py (66 LOC)
+
+**Purpose:** Reports whether entry timestamps of forwarded logs or turn timestamps of transcripts were ever unsorted.
+**Reads:** all `*_forwarded.jsonl` under the main `src/logs` and all transcripts under `~/.claude/projects`.
+**Writes:** `md/observe_timestamp_order.md`.
+**Called by:** none, manual.
+**Calls out:** `src.jsonl`.
 
 ---
 
