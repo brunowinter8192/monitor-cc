@@ -14,7 +14,7 @@ from types import SimpleNamespace
 AREA_DIR = Path(__file__).resolve().parent
 WORKTREE_ROOT = AREA_DIR.parents[1]
 REPORT_DIR = AREA_DIR / 'md'
-OLD_REF = 'integration'
+OLD_REF = '0ce370df'
 HOVER_RENDERS = 21
 PROJECTS = Path.home() / '.claude' / 'projects'
 SESSIONS = {

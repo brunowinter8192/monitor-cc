@@ -12,7 +12,7 @@ AREA_DIR = Path(__file__).resolve().parent
 WORKTREE_ROOT = AREA_DIR.parents[1]
 DRIVER = AREA_DIR / 'm2_state_sequence_driver.py'
 REPORT_DIR = AREA_DIR / 'md'
-OLD_REF = 'integration'
+OLD_REF = '0ce370df'
 PROJECTS = Path.home() / '.claude' / 'projects'
 SESSIONS = {
     'many_calls': PROJECTS / '-Users-brunowinter2000-Documents-ai-Meta-ClaudeCode-cli-rag-cli--claude-worktrees-builder' / 'b390fcfd-d2ca-41a6-8dff-d35174c717d1.jsonl',
