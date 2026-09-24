@@ -50,7 +50,8 @@ def _parse_targets():
         else:
             return None, None, None
         return file_path, (content if isinstance(content, str) else None), sid
-    except Exception:
+    except Exception as e:
+        log_fire("block_dev_imports_src", "trace", "Write/Edit", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None, None
 
 

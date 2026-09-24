@@ -26,7 +26,8 @@ def _parse_path():
         payload = json.loads(sys.stdin.read())
         path = payload.get("tool_input", {}).get("file_path")
         return (path if isinstance(path, str) else None), payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("block_read_directory", "trace", "Read", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None
 
 def _is_directory(path: str) -> bool:

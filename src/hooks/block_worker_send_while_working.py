@@ -78,7 +78,8 @@ def _parse_command():
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
         return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("block_worker_send_while_working", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None
 
 
