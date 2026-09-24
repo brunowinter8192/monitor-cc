@@ -66,7 +66,7 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 
 ---
 
-### verify_req_numbering.py (137 LOC)
+### verify_req_numbering.py (152 LOC)
 
 **Purpose:** Side-by-side check of one turn: proxy pane rows versus token pane rows for a real dual-log session, plus a pairwise (number, turn, time) equality verdict, rendered at width 62.
 **Reads:** `_forwarded`/`_response` under the main checkout's `src/logs/dual_log`, the matching transcript under `~/.claude/projects` (found by request_id).
