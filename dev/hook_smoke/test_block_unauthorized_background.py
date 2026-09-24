@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import json
-import subprocess
 import sys
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_unauthorized_background.py"
 
@@ -75,11 +75,7 @@ def _run_hook(command: str, run_in_background: bool):
         "tool_name": "Bash",
         "tool_input": {"command": command, "run_in_background": run_in_background},
     })
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-    )
+    result = run_hook(HOOK, payload.encode())
     if result.returncode == 0 and result.stdout.strip():
         try:
             data = json.loads(result.stdout)

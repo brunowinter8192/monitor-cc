@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import json
-import subprocess
 import sys
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_rag_corpus_read.py"
 
@@ -109,9 +109,7 @@ def _run_hook(command: str) -> int:
 
 
 def _run_hook_with_stderr(command: str) -> tuple:
-    result = subprocess.run(
-        ["python3", HOOK], input=_payload(command), capture_output=True,
-    )
+    result = run_hook(HOOK, _payload(command))
     return result.returncode, result.stderr.decode()
 
 
@@ -123,11 +121,7 @@ def _payload(command: str) -> bytes:
 
 
 def _run_hook_raw(stdin_bytes: bytes) -> int:
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=stdin_bytes,
-        capture_output=True,
-    )
+    result = run_hook(HOOK, stdin_bytes)
     return result.returncode
 
 

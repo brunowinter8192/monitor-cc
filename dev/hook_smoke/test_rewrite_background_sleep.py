@@ -1,9 +1,9 @@
 # INFRASTRUCTURE
 import json
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from hook_runner import run_hook
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 HOOK = str(WORKTREE_ROOT / "src" / "hooks" / "rewrite_background_sleep.py")
@@ -146,12 +146,7 @@ def _run_hook(command: str, run_in_background: bool, cwd: str):
         "tool_name": "Bash",
         "tool_input": {"command": command, "run_in_background": run_in_background},
     })
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-        cwd=cwd,
-    )
+    result = run_hook(HOOK, payload.encode(), cwd=cwd)
     rewrite = None
     if result.returncode == 0 and result.stdout.strip():
         try:

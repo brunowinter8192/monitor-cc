@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import json
-import subprocess
 import sys
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_cli_chained.py"
 
@@ -162,11 +162,7 @@ def _run_hook(command: str, cwd: str = None) -> int:
 
 
 def _run_hook_raw(stdin_bytes: bytes) -> int:
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=stdin_bytes,
-        capture_output=True,
-    )
+    result = run_hook(HOOK, stdin_bytes)
     return result.returncode
 
 

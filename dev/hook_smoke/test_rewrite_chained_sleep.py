@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import json
-import subprocess
 import sys
+from hook_runner import run_hook
 
 HOOK = "src/hooks/rewrite_chained_sleep.py"
 
@@ -192,11 +192,7 @@ def test_rewrite_chained_sleep_workflow() -> None:
 
 def _run_hook(command: str):
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
-    result  = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-    )
+    result  = run_hook(HOOK, payload.encode())
     rewrite = None
     if result.returncode == 0 and result.stdout.strip():
         try:

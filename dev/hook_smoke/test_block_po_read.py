@@ -3,9 +3,9 @@ import atexit
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_po_read.py"
 PO_PATH = "~/.claude/projects/-Users-x-proj/abc123-session/tool-results/def456.txt"
@@ -105,11 +105,7 @@ def _run_hook(command: str) -> int:
     return _run_hook_raw(payload.encode())
 
 def _run_hook_raw(stdin_bytes: bytes) -> int:
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=stdin_bytes,
-        capture_output=True,
-    )
+    result = run_hook(HOOK, stdin_bytes)
     return result.returncode
 
 

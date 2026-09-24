@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
+# INFRASTRUCTURE
 import json
 import os
-import subprocess
 import sys
+import tempfile
+from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'hooks'))
 
 from block_worker_send_while_working import decide
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_worker_send_while_working.py"
-
-
-def make_stub(name_to_status: dict):
-    def stub(name: str) -> str:
-        if name == 'raises':
-            raise RuntimeError("simulated status_fn error")
-        return name_to_status.get(name, '')
-    return stub
-
 
 CASES = [
     (
@@ -81,41 +75,77 @@ CASES = [
     ),
 ]
 
-passed = failed = 0
-for label, cmd, stub_map, expect in CASES:
-    block, name = decide(cmd, make_stub(stub_map))
-    ok = (block == expect)
-    mark = "PASS" if ok else "FAIL"
-    blocking_info = f" (blocking: {name})" if block else ""
-    print(f"[{mark}] {label}{blocking_info}")
-    if ok:
-        passed += 1
-    else:
-        failed += 1
 
-malformed_result = subprocess.run(
-    ["python3", HOOK], input=b"not valid json at all", capture_output=True,
-)
-ok = malformed_result.returncode == 0
-mark = "PASS" if ok else "FAIL"
-print(f"[{mark}] malformed stdin payload fails open: exit={malformed_result.returncode} (expected 0)")
-if ok:
-    passed += 1
-else:
-    failed += 1
+# ORCHESTRATOR
 
-no_worker_result = subprocess.run(
-    ["python3", HOOK],
-    input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "worker-cli send foo hi"}}).encode(),
-    capture_output=True,
-)
-ok = no_worker_result.returncode == 0
-mark = "PASS" if ok else "FAIL"
-print(f"[{mark}] real entrypoint, no resolvable worker status: exit={no_worker_result.returncode} (expected 0)")
-if ok:
-    passed += 1
-else:
-    failed += 1
+def test_block_worker_send_while_working_workflow() -> None:
+    passed, failed = _run_cases()
+    entry_passed, entry_failed = _run_entrypoint_cases()
+    _report_and_exit(passed + entry_passed, failed + entry_failed)
 
-print(f"\n{passed}/{passed + failed} passed")
-sys.exit(0 if failed == 0 else 1)
+
+# FUNCTIONS
+
+def make_stub(name_to_status: dict):
+    def stub(name: str) -> str:
+        if name == 'raises':
+            raise RuntimeError("simulated status_fn error")
+        return name_to_status.get(name, '')
+    return stub
+
+
+def _run_cases() -> tuple:
+    passed = failed = 0
+    for label, cmd, stub_map, expect in CASES:
+        block, name = decide(cmd, make_stub(stub_map))
+        ok = (block == expect)
+        mark = "PASS" if ok else "FAIL"
+        blocking_info = f" (blocking: {name})" if block else ""
+        print(f"[{mark}] {label}{blocking_info}")
+        if ok:
+            passed += 1
+        else:
+            failed += 1
+    return passed, failed
+
+
+def _run_entrypoint_cases() -> tuple:
+    with tempfile.TemporaryDirectory(prefix="worker_send_fake_") as tmp:
+        fake_env = _fake_worker_cli_env(Path(tmp))
+        malformed = run_hook(HOOK, b"not valid json at all", extra_env=fake_env)
+        no_worker = run_hook(
+            HOOK,
+            json.dumps({"tool_name": "Bash", "tool_input": {"command": "worker-cli send foo hi"}}).encode(),
+            extra_env=fake_env,
+        )
+    results = [
+        ("malformed stdin payload fails open", malformed.returncode),
+        ("real entrypoint, no resolvable worker status", no_worker.returncode),
+    ]
+    passed = failed = 0
+    for label, code in results:
+        ok = code == 0
+        print(f"[{'PASS' if ok else 'FAIL'}] {label}: exit={code} (expected 0)")
+        if ok:
+            passed += 1
+        else:
+            failed += 1
+    return passed, failed
+
+
+def _fake_worker_cli_env(tmp: Path) -> dict:
+    bin_dir = tmp / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "worker-cli"
+    fake.write_text("#!/bin/sh\nexit 1\n")
+    fake.chmod(0o755)
+    return {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "HOME": str(tmp)}
+
+
+def _report_and_exit(passed: int, failed: int) -> None:
+    print(f"\n{passed}/{passed + failed} passed")
+    sys.exit(0 if failed == 0 else 1)
+
+
+if __name__ == "__main__":
+    test_block_worker_send_while_working_workflow()

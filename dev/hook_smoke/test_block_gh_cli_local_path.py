@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import json
-import subprocess
 import sys
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_gh_cli_local_path.py"
 
@@ -65,11 +65,7 @@ def _run_hook(command: str) -> int:
         "tool_name": "Bash",
         "tool_input": {"command": command},
     })
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-    )
+    result = run_hook(HOOK, payload.encode())
     return result.returncode
 
 

@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import json
-import subprocess
 import sys
+from hook_runner import run_hook
 
 HOOK = "src/hooks/rewrite_worker_wait.py"
 
@@ -105,11 +105,7 @@ def _run_hook(command: str, run_in_background):
     if run_in_background is not None:
         tool_input["run_in_background"] = run_in_background
     payload = json.dumps({"tool_name": "Bash", "tool_input": tool_input})
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-    )
+    result = run_hook(HOOK, payload.encode())
     if result.returncode == 0 and result.stdout.strip():
         try:
             data = json.loads(result.stdout)

@@ -1,9 +1,9 @@
 # INFRASTRUCTURE
 import json
 import os
-import subprocess
 import sys
 import tempfile
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_rag_cli_document_repeat.py"
 
@@ -32,18 +32,12 @@ def test_block_rag_cli_document_repeat_workflow() -> None:
 # FUNCTIONS
 
 def _run_hook(command: str, session_id: str, state_path: str) -> int:
-    env = dict(os.environ, MONITOR_CC_RAG_DOC_REPEAT_STATE=state_path)
     payload = json.dumps({
         "session_id": session_id,
         "tool_name": "Bash",
         "tool_input": {"command": command},
     })
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-        env=env,
-    )
+    result = run_hook(HOOK, payload.encode(), extra_env={"MONITOR_CC_RAG_DOC_REPEAT_STATE": state_path})
     return result.returncode
 
 
@@ -167,11 +161,7 @@ def _test_delete_subcommand_also_counts() -> list:
 
 def _test_malformed_stdin_fail_open() -> list:
     failures = []
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=b"not json at all {{{",
-        capture_output=True,
-    )
+    result = run_hook(HOOK, b"not json at all {{{")
     got = result.returncode
     status = "OK  " if got == 0 else "FAIL"
     print(f"  [{status}] malformed stdin fail-open: exit={got} (expected 0)")
