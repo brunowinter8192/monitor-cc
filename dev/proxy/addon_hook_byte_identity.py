@@ -17,6 +17,8 @@ _LOG_ID = 'opus_probe_0'
 _TIMESTAMP_KEYS = ('timestamp', 'ts')
 _DUAL_LOG_SUFFIXES = ('original', 'forwarded', 'stripped', 'injected', 'errors', 'response')
 
+_SKIPPED_LINES = 0
+
 # ORCHESTRATOR
 
 
@@ -35,10 +37,20 @@ def main():
         digest = _hash_dual_logs(tmp_root, stderr_text)
     print(f'source: {orig_path.name}')
     print(f'payloads: {len(payloads)}')
+    _report_skipped_lines()
     print(f'HASH: {digest}')
 
 
 # FUNCTIONS
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
 
 def _import_proxy_addon():
     from src.proxy.addon import ProxyAddon
@@ -67,6 +79,7 @@ def _load_payloads(orig_path: Path) -> list:
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
+                _note_skipped_line()
                 continue
             payload = entry.get('payload')
             if isinstance(payload, dict):

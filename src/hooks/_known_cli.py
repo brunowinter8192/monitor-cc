@@ -69,9 +69,6 @@ def resolve_cli_segment(segment: str, command_context: str, cwd=None):
         return match
     return match_interpreter_cli_segment(segment, command_context, cwd)
 
-def is_known_cli_segment(segment: str) -> bool:
-    return match_known_cli_segment(segment) is not None
-
 def is_protected_segment(match) -> bool:
     if match is None:
         return False

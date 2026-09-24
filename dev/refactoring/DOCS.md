@@ -21,6 +21,16 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
+### check_group.py (10 LOC)
+
+**Purpose:** Prints a list of named check results and raises on any failed check, so a check group can be one strand.
+**Reads:** nothing.
+**Writes:** stdout PASS/FAIL lines and a count.
+**Called by:** the `*_checks.py` scripts of gpu_pane, input and news_pane.
+**Calls out:** none.
+
+---
+
 ### strand_runner_selftest.py (97 LOC)
 
 **Purpose:** Proves the runner's behavior on throwaway strand scripts: parallel execution, fail-fast within a strand, siblings finishing after an abort, report content.

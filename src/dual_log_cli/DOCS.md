@@ -2,7 +2,7 @@
 
 ## Role
 
-Read-only command-line inspector for the dual-log streams in the runtime dual-log directory (gitignored) written by the proxy. Provides a session inventory, deduplicated search, request-grouped message listing, full-content expand with strip/inject overlay, and a turn-grouped request listing. Add new read-side views here. Never write, create or lock anything under the log directory.
+Read-only command-line inspector for the dual-log streams the proxy writes to the gitignored runtime directory. Provides session inventory, deduplicated search, request-grouped message listing, full-content expand with strip/inject overlay and a turn-grouped request listing. Add new read-side views here. Never write, create or lock anything under the log directory.
 
 ## Public Interface
 
@@ -76,7 +76,7 @@ Read-only command-line inspector for the dual-log streams in the runtime dual-lo
 
 ---
 
-### reader.py (90 LOC)
+### reader.py (83 LOC)
 
 **Purpose:** Read-only file primitives: reverse line scanner, model sniff, last-request loader, small-file JSONL iterator and local-time conversion.
 **Reads:** the original stream (byte ranges) and small streams line by line.
@@ -166,7 +166,7 @@ Read-only command-line inspector for the dual-log streams in the runtime dual-lo
 
 ---
 
-### usage.py (154 LOC)
+### usage.py (156 LOC)
 
 **Purpose:** Builds the per-flow cache read and creation figures by joining the response stream with Claude Code's transcript usage records.
 **Reads:** the session's response stream; a stem-scoped subset of the transcript store.

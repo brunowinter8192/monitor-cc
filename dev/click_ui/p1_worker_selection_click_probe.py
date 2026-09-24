@@ -2,6 +2,7 @@
 import importlib
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,8 +15,9 @@ _ROOT_PKG = 'src'
 wp = importlib.import_module(f'{_ROOT_PKG}.proxy_display.worker_proxy_pane')
 wpane = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tokens_pane')
 
-_FAKE_PROXY_PROJECT = '/tmp/click_ui_probe_worker_proxy'
-_FAKE_WORKERS_PROJECT = '/tmp/click_ui_probe_worker_tokens'
+_RUN_ID = uuid.uuid4().hex[:8]
+_FAKE_PROXY_PROJECT = f'/tmp/click_ui_probe_worker_proxy_{_RUN_ID}'
+_FAKE_WORKERS_PROJECT = f'/tmp/click_ui_probe_worker_tokens_{_RUN_ID}'
 
 _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"

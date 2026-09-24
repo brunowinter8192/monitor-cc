@@ -11,10 +11,45 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
+from dev.refactoring.check_group import assert_checks
+from dev.refactoring.strand_runner import strand_workflow
+
+_PRESET_SHIM = 'echo \'[{"name": "embedding-8b"}, {"name": "reranker-0.6b"}]\''
+_STRAND_NAMES = ['strand_presets', 'strand_state_files', 'strand_collections', 'strand_toggles']
+
 # ORCHESTRATOR
 
 
 def main():
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, title='gpu_pane fallback tripwire checks'))
+
+
+# FUNCTIONS
+
+
+def strand_presets() -> None:
+    workdir, status, _actions, _render, _locks = _setup()
+    assert_checks(_preset_checks(status, workdir))
+
+
+def strand_state_files() -> None:
+    workdir, status, _actions, _render, locks = _setup()
+    _set_rag_cli(workdir, _PRESET_SHIM)
+    status.all_statuses()
+    assert_checks(_state_file_checks(status, locks))
+
+
+def strand_collections() -> None:
+    workdir, status, _actions, render, _locks = _setup()
+    assert_checks(_collections_checks(status, render, workdir))
+
+
+def strand_toggles() -> None:
+    workdir, _status, actions, _render, _locks = _setup()
+    assert_checks(_toggle_checks(actions, workdir))
+
+
+def _setup() -> tuple:
     workdir = Path(tempfile.mkdtemp(prefix='mcfix_gpu_'))
     pane_log = importlib.import_module('src.pane_error_log')
     pane_log.PANE_ERROR_LOG_PATH = str(workdir / 'pane_error.log')
@@ -24,16 +59,7 @@ def main():
     locks = workdir / 'locks'
     locks.mkdir()
     status.RAG_LOCKS_DIR = locks
-    results = (_preset_checks(status, workdir) + _state_file_checks(status, locks)
-               + _collections_checks(status, render, workdir) + _toggle_checks(actions, workdir))
-    for name, ok in results:
-        print(('PASS: ' if ok else 'FAIL: ') + name)
-    failed = [n for n, ok in results if not ok]
-    print(f'{len(results) - len(failed)}/{len(results)} passed')
-    sys.exit(1 if failed else 0)
-
-
-# FUNCTIONS
+    return workdir, status, actions, render, locks
 
 
 def _set_rag_cli(workdir: Path, body: str | None) -> None:
@@ -64,7 +90,7 @@ def _preset_checks(status, workdir: Path) -> list:
     status.all_statuses()
     absent_kinds = _kinds(status)
     absent_names = list(status.PRESET_NAMES)
-    _set_rag_cli(workdir, 'echo \'[{"name": "embedding-8b"}, {"name": "reranker-0.6b"}]\'')
+    _set_rag_cli(workdir, _PRESET_SHIM)
     status.all_statuses()
     return [
         ('discovery with rag-cli absent yields an anomaly and no names', 'presets_unavailable' in absent_kinds and absent_names == []),

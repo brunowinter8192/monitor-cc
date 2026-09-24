@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
 import json
-from hook_runner import abort_if_failed, run_hook
+import sys
+from case_strands import exit_code_runners, run_case_strands
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_broad_find.py"
 
@@ -55,16 +57,7 @@ CASES = [
 # ORCHESTRATOR
 
 def test_block_broad_find_workflow() -> None:
-    failures = []
-    for desc, cmd, expected in CASES:
-        got = _run_hook(cmd)
-        status = "OK  " if got == expected else "FAIL"
-        print(f"  [{status}] {desc}: exit={got} (expected {expected})")
-        if got != expected:
-            failures.append(desc)
-            abort_if_failed(failures)
-    print()
-    print(f"All {len(CASES)} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, exit_code_runners(CASES, _run_hook)))
 
 
 # FUNCTIONS

@@ -1,8 +1,10 @@
 # INFRASTRUCTURE
 import json
+import sys
 import tempfile
 from pathlib import Path
-from hook_runner import abort_if_failed, run_hook
+from case_strands import case_runners, report_case, run_case_strands
+from hook_runner import run_hook
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 HOOK = str(WORKTREE_ROOT / "src" / "hooks" / "rewrite_background_sleep.py")
@@ -112,29 +114,28 @@ CASES = [
 # ORCHESTRATOR
 
 def test_rewrite_background_sleep_workflow() -> None:
-    with tempfile.TemporaryDirectory() as orchestrator_cwd, tempfile.TemporaryDirectory() as outer:
-        worktree_cwd = Path(outer) / ".claude" / "worktrees" / "fake-worker"
-        worktree_cwd.mkdir(parents=True)
-        cwd_by_kind = {"orchestrator": orchestrator_cwd, "worktree": str(worktree_cwd)}
-
-        failures = []
-        for desc, cmd, rb, expected_rewrite, cwd_kind in CASES:
-            exit_code, rewrite = _run_hook(cmd, rb, cwd_by_kind[cwd_kind])
-            ok = exit_code == 0 and rewrite == expected_rewrite
-            status = "OK  " if ok else "FAIL"
-            want = repr(expected_rewrite) if expected_rewrite is not None else "None (no output)"
-            got  = repr(rewrite) if rewrite is not None else "None (no output)"
-            print(f"  [{status}] {desc}")
-            if not ok:
-                print(f"           want: {want}")
-                print(f"           got:  {got} (exit={exit_code})")
-                failures.append(desc)
-                abort_if_failed(failures)
-        print()
-        print(f"All {len(CASES)} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, case_runners(CASES, _check_case)))
 
 
 # FUNCTIONS
+
+def _check_case(case: tuple) -> None:
+    desc, command, run_in_background, expected_rewrite, cwd_kind = case
+    with tempfile.TemporaryDirectory() as outer:
+        exit_code, rewrite = _run_hook(command, run_in_background, _cwd_for_kind(cwd_kind, outer))
+    ok = exit_code == 0 and rewrite == expected_rewrite
+    want = repr(expected_rewrite) if expected_rewrite is not None else "None (no output)"
+    got = repr(rewrite) if rewrite is not None else "None (no output)"
+    report_case(desc, ok, '' if ok else f'\n           want: {want}\n           got:  {got} (exit={exit_code})')
+
+
+def _cwd_for_kind(cwd_kind: str, outer: str) -> str:
+    if cwd_kind == "orchestrator":
+        return outer
+    worktree_cwd = Path(outer) / ".claude" / "worktrees" / "fake-worker"
+    worktree_cwd.mkdir(parents=True)
+    return str(worktree_cwd)
+
 
 def _run_hook(command: str, run_in_background: bool, cwd: str):
     payload = json.dumps({

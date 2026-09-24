@@ -88,24 +88,19 @@ from test_strip_fix_cases_pasted_content import (
     pc10_pass_role_gate_and_mod_and_ops, pc11_full_pipeline_attribution_via_strip_vocab,
 )
 
-_STRANDS = [
-    'strand_templates',
-    'strand_env_context',
-    'strand_git_attribution',
-    'strand_wakeup',
-    'strand_launch_ack_interrupt',
-    'strand_wrapped_tn',
-    'strand_badge',
-    'strand_pasted_content',
-]
-
 # ORCHESTRATOR
 
 def run_test_strip_fix_workflow() -> int:
-    return strand_workflow(globals(), __file__, _STRANDS, title='test_strip_fix')
+    return strand_workflow(globals(), __file__, _case_names(), title='test_strip_fix')
 
 
 # FUNCTIONS
+
+def _case_names() -> list:
+    groups = [_seq_templates, _seq_env_context, _seq_git_attribution, _seq_wakeup,
+              _seq_launch_ack_interrupt, _seq_wrapped_tn, _seq_badge, _seq_pasted_content]
+    return sorted(fn.__name__ for group in groups for fn in group())
+
 
 def _seq_templates() -> list:
     return [
@@ -208,43 +203,6 @@ def _seq_pasted_content() -> list:
         pc08_real_tool_result_bare_mention_preserved, pc09_real_tool_result_word_mention_preserved,
         pc10_pass_role_gate_and_mod_and_ops, pc11_full_pipeline_attribution_via_strip_vocab,
     ]
-
-
-def strand_templates() -> None:
-    _run_group(_seq_templates())
-
-
-def strand_env_context() -> None:
-    _run_group(_seq_env_context())
-
-
-def strand_git_attribution() -> None:
-    _run_group(_seq_git_attribution())
-
-
-def strand_wakeup() -> None:
-    _run_group(_seq_wakeup())
-
-
-def strand_launch_ack_interrupt() -> None:
-    _run_group(_seq_launch_ack_interrupt())
-
-
-def strand_wrapped_tn() -> None:
-    _run_group(_seq_wrapped_tn())
-
-
-def strand_badge() -> None:
-    _run_group(_seq_badge())
-
-
-def strand_pasted_content() -> None:
-    _run_group(_seq_pasted_content())
-
-
-def _run_group(cases: list) -> None:
-    for fn in cases:
-        fn()
 
 
 if __name__ == '__main__':

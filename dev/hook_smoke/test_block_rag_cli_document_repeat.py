@@ -1,7 +1,9 @@
 # INFRASTRUCTURE
 import json
 import os
+import sys
 import tempfile
+from case_strands import function_runners, run_case_strands
 from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/block_rag_cli_document_repeat.py"
@@ -10,18 +12,21 @@ HOOK = "src/hooks/block_rag_cli_document_repeat.py"
 # ORCHESTRATOR
 
 def test_block_rag_cli_document_repeat_workflow() -> None:
-    _test_single_document_call_allowed()
-    _test_second_call_blocks()
-    _test_collection_wide_always_allowed()
-    _test_different_session_independent()
-    _test_delete_subcommand_also_counts()
-    _test_malformed_stdin_fail_open()
-
-    print()
-    print("All rag-cli document-repeat tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, function_runners(_strand_functions())))
 
 
 # FUNCTIONS
+
+def _strand_functions() -> list:
+    return [
+        _test_single_document_call_allowed,
+        _test_second_call_blocks,
+        _test_collection_wide_always_allowed,
+        _test_different_session_independent,
+        _test_delete_subcommand_also_counts,
+        _test_malformed_stdin_fail_open,
+    ]
+
 
 def _run_hook(command: str, session_id: str, state_path: str) -> int:
     payload = json.dumps({

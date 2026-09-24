@@ -11,7 +11,7 @@ Reads one flat request log (or auto-discovers the newest under `src/logs/`), com
 
 ## Modules
 
-### 01_session_summary.py (234 LOC)
+### 01_session_summary.py (247 LOC)
 
 **Purpose:** Prints overview, anomalies and a one-line-per-request timeline for one proxy log file.
 **Reads:** a flat `api_requests_<session_id>.jsonl` under `src/logs/`; the schema is obsolete (see process-docs).

@@ -21,7 +21,7 @@ The probe polls live session data and toggles a real NSPanel through a real glob
 
 ---
 
-### p1_hotkey.py (62 LOC)
+### p1_hotkey.py (63 LOC)
 
 **Purpose:** Registers the panel hotkey as a real system-wide global hotkey via Carbon, the same mechanism the production menubar uses.
 **Reads:** nothing.

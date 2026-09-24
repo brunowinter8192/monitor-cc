@@ -4,11 +4,13 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TREE = os.environ.get('MCFIX_TREE') or str(REPO_ROOT)
+_PROJECT_KEY = f'/tmp/mcfix_workers_{uuid.uuid4().hex[:8]}'
 CASES = ('selection_write_failure_logged', 'selection_read_only_missing_file', 'worker_status_probes', 'list_workers_has_no_model')
 
 # ORCHESTRATOR
@@ -39,7 +41,7 @@ def case_selection_write_failure_logged() -> None:
     errors = []
     worker_selection.log_pane_error = lambda name: errors.append(name)
     worker_selection.get_selection_file_path = lambda project_filter: '/nonexistent_dir_mcfix/x.txt'
-    worker_selection._write_selection('/tmp/p', 'w1')
+    worker_selection._write_selection(f'{_PROJECT_KEY}/p', 'w1')
     assert errors == ['worker_selection'], errors
 
 def case_selection_read_only_missing_file() -> None:
@@ -47,7 +49,7 @@ def case_selection_read_only_missing_file() -> None:
     from src.proxy_display import worker_proxy_pane
 
     class FakeMonitor:
-        active_project_filter = '/tmp/p'
+        active_project_filter = f'{_PROJECT_KEY}/p'
     with tempfile.TemporaryDirectory() as td:
         for module in (worker_tokens_pane, worker_proxy_pane):
             module.get_selection_file_path = lambda project_filter, base=td: str(Path(base) / 'missing.txt')
@@ -95,7 +97,7 @@ def case_list_workers_has_no_model() -> None:
             return subprocess.CompletedProcess(cmd, 0, '1\n', '')
         raise AssertionError(joined)
     worker_tmux.subprocess.run = fake_run
-    workers = worker_tmux.list_workers('/tmp/proj')
+    workers = worker_tmux.list_workers(f'{_PROJECT_KEY}/proj')
     assert len(workers) == 1 and 'model' not in workers[0], workers
 
 if __name__ == '__main__':

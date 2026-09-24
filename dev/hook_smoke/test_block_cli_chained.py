@@ -1,6 +1,9 @@
 # INFRASTRUCTURE
 import json
-from hook_runner import abort_if_failed, run_hook
+import sys
+from functools import partial
+from case_strands import exit_code_runners, fail_open_runner, report_case, run_case_strands, strand_name
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_cli_chained.py"
 
@@ -123,29 +126,16 @@ CASES = [
 # ORCHESTRATOR
 
 def test_block_cli_chained_workflow() -> None:
-    failures = []
-    for case in CASES:
-        desc, cmd, expected = case[0], case[1], case[2]
-        cwd = case[3] if len(case) > 3 else None
-        got = _run_hook(cmd, cwd)
-        status = "OK  " if got == expected else "FAIL"
-        print(f"  [{status}] {desc}: exit={got} (expected {expected})")
-        if got != expected:
-            failures.append(desc)
-            abort_if_failed(failures)
-
-    malformed_got = _run_hook_raw(b"not valid json at all")
-    status = "OK  " if malformed_got == 0 else "FAIL"
-    print(f"  [{status}] malformed stdin payload fails open: exit={malformed_got} (expected 0)")
-    if malformed_got != 0:
-        failures.append("malformed stdin payload fails open")
-        abort_if_failed(failures)
-
-    print()
-    print(f"All {len(CASES) + 1} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, _all_runners()))
 
 
 # FUNCTIONS
+
+def _all_runners() -> dict:
+    runners = exit_code_runners(CASES, _run_hook)
+    runners.update(fail_open_runner("malformed stdin payload fails open", _run_hook_raw, b"not valid json at all"))
+    return runners
+
 
 def _run_hook(command: str, cwd: str = None) -> int:
     payload_dict = {

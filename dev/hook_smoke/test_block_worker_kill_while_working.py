@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'hooks'))
 
 from block_worker_kill_while_working import decide
+from case_strands import case_runners, report_case, run_case_strands
 
 CASES = [
     (
@@ -91,8 +92,7 @@ CASES = [
 # ORCHESTRATOR
 
 def test_block_worker_kill_while_working_workflow() -> None:
-    passed, failed = _run_cases()
-    _report_and_exit(passed, failed)
+    sys.exit(run_case_strands(globals(), __file__, case_runners(CASES, _check_case)))
 
 
 # FUNCTIONS
@@ -105,25 +105,10 @@ def make_stub(name_to_status: dict):
     return stub
 
 
-def _run_cases() -> tuple:
-    passed = failed = 0
-    for label, cmd, stub_map, expect in CASES:
-        block, name = decide(cmd, make_stub(stub_map))
-        ok = (block == expect)
-        mark = "PASS" if ok else "FAIL"
-        blocking_info = f" (blocking: {name})" if block else ""
-        print(f"[{mark}] {label}{blocking_info}")
-        if ok:
-            passed += 1
-        else:
-            failed += 1
-            break
-    return passed, failed
-
-
-def _report_and_exit(passed: int, failed: int) -> None:
-    print(f"\n{passed}/{passed + failed} passed")
-    sys.exit(0 if failed == 0 else 1)
+def _check_case(case: tuple) -> None:
+    label, command, stub_map, expect = case
+    block, name = decide(command, make_stub(stub_map))
+    report_case(label, block == expect, f" (blocking: {name})" if block else "")
 
 
 if __name__ == "__main__":

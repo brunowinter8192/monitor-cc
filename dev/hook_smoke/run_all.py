@@ -2,6 +2,7 @@
 import runpy
 import sys
 from functools import partial
+from unittest.mock import patch
 from pathlib import Path
 
 _AREA_DIR = Path(__file__).resolve().parent
@@ -14,13 +15,11 @@ _MODULES = [
     'test_bg_task_detection',
     'test_block_broad_find',
     'test_block_broad_grep',
-    'test_block_chained_sleep',
     'test_block_cli_chained',
     'test_block_dangerous_kill',
     'test_block_gh_cli_local_path',
     'test_block_git_destructive',
     'test_block_manual_worker_cleanup',
-    'test_block_non_canonical_edit',
     'test_block_po_read',
     'test_block_rag_cli_document_repeat',
     'test_block_rag_cli_index_isolated',
@@ -58,8 +57,10 @@ def _register_strands(script_globals: dict) -> dict:
     return script_globals
 
 def _run_module(module: str) -> None:
+    module_path = str(_AREA_DIR / (module + '.py'))
     try:
-        runpy.run_path(str(_AREA_DIR / (module + '.py')), run_name='__main__')
+        with patch.object(sys, 'argv', [module_path]):
+            runpy.run_path(module_path, run_name='__main__')
     except SystemExit as exit_signal:
         if exit_signal.code not in (0, None):
             raise

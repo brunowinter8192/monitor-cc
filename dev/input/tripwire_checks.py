@@ -11,26 +11,48 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
+from dev.refactoring.check_group import assert_checks
+from dev.refactoring.strand_runner import strand_workflow
+
 _RAISE_CODE = "import src.input.click_handler as c; c.set_raw_stdin()"
 _OK_CODE = "import src.input.click_handler as c; print(c.set_raw_stdin())"
+_STRAND_NAMES = ['strand_stdin', 'strand_mouse', 'strand_clipboard', 'strand_restore']
 
 # ORCHESTRATOR
 
 
 def main():
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, title='input tripwire checks'))
+
+
+# FUNCTIONS
+
+
+def strand_stdin() -> None:
+    assert_checks(_stdin_checks())
+
+
+def strand_mouse() -> None:
+    _workdir, click, _pane_log = _setup()
+    assert_checks(_mouse_checks(click))
+
+
+def strand_clipboard() -> None:
+    workdir, click, _pane_log = _setup()
+    assert_checks(_clipboard_checks(click, workdir))
+
+
+def strand_restore() -> None:
+    _workdir, click, pane_log = _setup()
+    assert_checks(_restore_checks(click, pane_log))
+
+
+def _setup() -> tuple:
     workdir = Path(tempfile.mkdtemp(prefix='mcfix_input_'))
     click = importlib.import_module('src.input.click_handler')
     pane_log = importlib.import_module('src.pane_error_log')
     pane_log.PANE_ERROR_LOG_PATH = str(workdir / 'pane_error.log')
-    results = _stdin_checks() + _mouse_checks(click) + _clipboard_checks(click, workdir) + _restore_checks(click, pane_log)
-    for name, ok in results:
-        print(('PASS: ' if ok else 'FAIL: ') + name)
-    failed = [n for n, ok in results if not ok]
-    print(f'{len(results) - len(failed)}/{len(results)} passed')
-    sys.exit(1 if failed else 0)
-
-
-# FUNCTIONS
+    return workdir, click, pane_log
 
 
 def _child(code: str, stdin) -> subprocess.CompletedProcess:

@@ -4,7 +4,7 @@ import sys
 import tracemalloc
 from pathlib import Path
 
-from p1_full_sweep_reconstruct import _traced_sweep, _measure_lazy_load_all
+from p1_full_sweep_reconstruct import _traced_sweep, _measure_lazy_load_all, skipped_line_count
 from p1_full_sweep_report import _KEEP_LAST_BASELINE, _log_stats, _build_report_md
 
 _DEFAULT_FWD_LOG = Path(
@@ -43,6 +43,7 @@ def probe_workflow(fwd_path: Path) -> None:
     print(f'entries={stats["n_entries"]} lazy_sum_ms={sum(lazy_times) * 1000:.1f} '
           f'sweep_ms={sweep_elapsed * 1000:.2f} ram_delta_kb={(sweep_current - base_current) / 1024:+.1f}')
     print(f'Report written to {_REPORT_PATH}')
+    print(f'skipped undecodable line reads: {skipped_line_count()}')
 
 
 if __name__ == '__main__':

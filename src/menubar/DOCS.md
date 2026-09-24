@@ -40,6 +40,8 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 ### panel_dims.py (7 LOC)
 
 **Purpose:** Outer dimension values of the main panel.
+**Reads:** nothing; module constants only.
+**Writes:** nothing.
 **Called by:** `panel.py`, `app.py`, `app_settings.py`, `model_panel_ui.py`, `rag_controller.py`.
 **Calls out:** none.
 
@@ -48,6 +50,8 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 ### panel_grid.py (9 LOC)
 
 **Purpose:** Column-width values of the main sessions grid.
+**Reads:** nothing; module constants only.
+**Writes:** nothing.
 **Called by:** `panel_manager.py`.
 **Calls out:** none.
 
@@ -56,6 +60,8 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 ### bar_icons.py (5 LOC)
 
 **Purpose:** Menubar status-item icon glyphs and baseline offset.
+**Reads:** nothing; module constants only.
+**Writes:** nothing.
 **Called by:** `app.py`.
 **Calls out:** none.
 
@@ -111,7 +117,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### paths.py (23 LOC)
+### paths.py (20 LOC)
 
 **Purpose:** Single source of truth for on-disk path values (app-support directory, shared-rules files, repo root).
 **Reads:** the project-root environment variable via the shared root resolver.
@@ -264,6 +270,8 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 ### panel_tabs.py (9 LOC)
 
 **Purpose:** Tab names, ring keys and the per-tab header pieces.
+**Reads:** nothing; module constants only.
+**Writes:** nothing; returns the header piece list.
 **Called by:** `panel.py`, `panel_lifecycle.py`, `app.py`.
 **Calls out:** none.
 
@@ -272,6 +280,8 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 ### launch_config.py (15 LOC)
 
 **Purpose:** Fixed list of launchable project paths and selectable desktop numbers.
+**Reads:** nothing; module constants only.
+**Writes:** nothing.
 **Called by:** `launch_controller.py`, `session_launch.py`.
 **Calls out:** none.
 
@@ -387,7 +397,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### bg_timer.py (167 LOC)
+### bg_timer.py (159 LOC)
 
 **Purpose:** Scans orchestrator wake-up processes, attributes them per project and aborts them on request.
 **Reads:** process table; the CC process cache; per-PID open files via `lsof`.

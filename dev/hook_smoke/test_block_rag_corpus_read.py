@@ -1,6 +1,9 @@
 # INFRASTRUCTURE
 import json
-from hook_runner import abort_if_failed, run_hook
+import sys
+from functools import partial
+from case_strands import exit_code_runners, fail_open_runner, report_case, run_case_strands, strand_name
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_rag_corpus_read.py"
 
@@ -62,36 +65,27 @@ CASES = [
 # ORCHESTRATOR
 
 def test_block_rag_corpus_read_workflow() -> None:
-    failures = []
-    for desc, cmd, expected in CASES:
-        got = _run_hook(cmd)
-        status = "OK  " if got == expected else "FAIL"
-        print(f"  [{status}] {desc}: exit={got} (expected {expected})")
-        if got != expected:
-            failures.append(desc)
-            abort_if_failed(failures)
-
-    malformed_got = _run_hook_raw(b"not valid json at all")
-    status = "OK  " if malformed_got == 0 else "FAIL"
-    print(f"  [{status}] malformed stdin payload fails open: exit={malformed_got} (expected 0)")
-    if malformed_got != 0:
-        failures.append("malformed stdin payload fails open")
-        abort_if_failed(failures)
-
-    message_got, message_stderr = _run_hook_with_stderr(
-        "cat /Users/x/cli/rag-cli/data/documents/z.md")
-    for label, ok in _message_checks(message_stderr):
-        status = "OK  " if ok else "FAIL"
-        print(f"  [{status}] block message: {label}")
-        if not ok:
-            failures.append(f"block message: {label}")
-            abort_if_failed(failures)
-
-    print()
-    print(f"All {len(CASES) + 1 + len(_message_checks(message_stderr))} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, _all_runners()))
 
 
 # FUNCTIONS
+
+def _all_runners() -> dict:
+    runners = exit_code_runners(CASES, _run_hook)
+    runners.update(fail_open_runner("malformed stdin payload fails open", _run_hook_raw, b"not valid json at all"))
+    runners.update(_message_runners())
+    return runners
+
+
+def _message_runners() -> dict:
+    labels = [label for label, _ in _message_checks("")]
+    return {strand_name(98, label): partial(_check_message, label) for label in labels}
+
+
+def _check_message(label: str) -> None:
+    _, stderr = _run_hook_with_stderr("cat /Users/x/cli/rag-cli/data/documents/z.md")
+    report_case(f"block message: {label}", dict(_message_checks(stderr))[label])
+
 
 def _message_checks(stderr: str) -> list:
     return [

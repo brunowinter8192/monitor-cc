@@ -47,10 +47,7 @@ def _load_messages(jsonl_path):
             line = line.strip()
             if not line:
                 continue
-            try:
-                messages.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+            messages.append(json.loads(line))
     return messages
 
 def _run_one(session_path):

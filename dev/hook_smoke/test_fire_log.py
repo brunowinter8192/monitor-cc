@@ -1,9 +1,11 @@
 # INFRASTRUCTURE
 import json
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
+from case_strands import function_runners, run_case_strands
 from hook_runner import FIRING_LOG_ENV, REPO_ROOT, abort_if_failed, run_hook
 
 BLOCK_HOOK = "src/hooks/block_noop_edit.py"
@@ -18,14 +20,14 @@ REWRITE_PAYLOAD = {
 # ORCHESTRATOR
 
 def test_fire_log_workflow() -> None:
-    _test_block_fire()
-    _test_rewrite_fire()
-    _test_env_var_override()
+    sys.exit(run_case_strands(globals(), __file__, function_runners(_strand_functions())))
 
-    print()
-    print("All fire-log tests passed.")
 
 # FUNCTIONS
+
+def _strand_functions() -> list:
+    return [_test_block_fire, _test_rewrite_fire, _test_env_var_override]
+
 
 def _last_record(log_path: Path):
     if not log_path.exists():
@@ -33,10 +35,7 @@ def _last_record(log_path: Path):
     lines = [l for l in log_path.read_text().splitlines() if l.strip()]
     if not lines:
         return None
-    try:
-        return json.loads(lines[-1])
-    except json.JSONDecodeError:
-        return None
+    return json.loads(lines[-1])
 
 
 def _run_hook(hook: str, payload: dict, log_path: Path) -> tuple:

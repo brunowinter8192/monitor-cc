@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
 import json
-from hook_runner import abort_if_failed, run_hook
+import sys
+from case_strands import case_runners, report_case, run_case_strands
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_unauthorized_background.py"
 
@@ -50,20 +52,16 @@ CASES = [
 # ORCHESTRATOR
 
 def test_block_unauthorized_background_workflow() -> None:
-    failures = []
-    for desc, cmd, rb, expected_bg in CASES:
-        got_bg = _run_hook(cmd, rb)
-        ok = got_bg == expected_bg
-        status = "OK  " if ok else "FAIL"
-        print(f"  [{status}] {desc}: rewritten_bg={got_bg!r} (expected {expected_bg!r})")
-        if not ok:
-            failures.append(desc)
-            abort_if_failed(failures)
-    print()
-    print(f"All {len(CASES)} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, case_runners(CASES, _check_case)))
 
 
 # FUNCTIONS
+
+def _check_case(case: tuple) -> None:
+    desc, command, run_in_background, expected_bg = case
+    got_bg = _run_hook(command, run_in_background)
+    report_case(desc, got_bg == expected_bg, f': rewritten_bg={got_bg!r} (expected {expected_bg!r})')
+
 
 def _run_hook(command: str, run_in_background: bool):
     payload = json.dumps({
@@ -72,11 +70,8 @@ def _run_hook(command: str, run_in_background: bool):
     })
     result = run_hook(HOOK, payload.encode())
     if result.returncode == 0 and result.stdout.strip():
-        try:
-            data = json.loads(result.stdout)
-            return data["hookSpecificOutput"]["updatedInput"]["run_in_background"]
-        except (KeyError, json.JSONDecodeError):
-            pass
+        data = json.loads(result.stdout)
+        return data["hookSpecificOutput"]["updatedInput"]["run_in_background"]
     return None
 
 

@@ -11,7 +11,7 @@ Synthetic pane entries, worker lists and coordinates go in. Each script seeds a 
 
 ## Modules
 
-### p1_worker_selection_click_probe.py (260 LOC)
+### p1_worker_selection_click_probe.py (262 LOC)
 
 **Purpose:** Proves both worker panes' header click regions have one entry per worker and a click matches the digit key's state change.
 **Reads:** nothing external; seeds worker lists directly.

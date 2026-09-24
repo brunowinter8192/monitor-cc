@@ -40,11 +40,11 @@ def _compute_req_mods_str(entry: dict, prev_same) -> str:
     added = len(set(_curr) - set(_prev))
     removed = len(set(_prev) - set(_curr))
     if added > 0 and removed > 0:
-        return f" {YELLOW}🔧+{added}-{removed}{SOFT_RESET}"
+        return f" {YELLOW}tl+{added}-{removed}{SOFT_RESET}"
     if added > 0:
-        return f" {YELLOW}🔧+{added}{SOFT_RESET}"
+        return f" {YELLOW}tl+{added}{SOFT_RESET}"
     if removed > 0:
-        return f" {YELLOW}🔧-{removed}{SOFT_RESET}"
+        return f" {YELLOW}tl-{removed}{SOFT_RESET}"
     return ''
 
 def _status_marker(entry: dict) -> str:
@@ -79,7 +79,7 @@ def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symb
     _badge_parts = []
     if _has_strip: _badge_parts.append(f'{YELLOW}strip{SOFT_RESET}')
     if _has_inj:   _badge_parts.append(f'{GREEN}inject{SOFT_RESET}')
-    if _has_think: _badge_parts.append(f'{GREEN}🧠{SOFT_RESET}')
+    if _has_think: _badge_parts.append(f'{GREEN}th{SOFT_RESET}')
     tag_badge = (' ' + ' '.join(_badge_parts)) if _badge_parts else ''
     body = f"{WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{mods_str}{warn_str}{haiku_info}{tag_badge}{_status_marker(entry)}{SOFT_RESET}"
     if is_search_match:
@@ -153,7 +153,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         prev_same = _resolve_prev_same_family(entries, entry_idx)
         if prev_same is not None:
             if entry.get('tools_hash') and prev_same.get('tools_hash') and entry.get('tools_hash') != prev_same.get('tools_hash'):
-                warn_parts.append(f"{RED}⚠T{SOFT_RESET}")
+                warn_parts.append(f"{RED}!T{SOFT_RESET}")
         warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else ''
         req_key = ('req', entry_idx)
         is_req_expanded = expand_states.get(req_key, False)

@@ -11,7 +11,7 @@ The proof script loads recent real session JSONLs, runs the cache-turn extractio
 
 ## Modules
 
-### A_extract_cache_turns_proof.py (102 LOC)
+### A_extract_cache_turns_proof.py (99 LOC)
 
 **Purpose:** Captures and verifies byte-identical cache-turn extraction output across real session JSONLs.
 **Reads:** real session JSONLs under the user's Claude projects directory.

@@ -28,7 +28,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### _known_cli.py (86 LOC)
+### _known_cli.py (83 LOC)
 
 **Purpose:** table and matchers resolving a Bash chain segment to one of the policed project CLIs and deciding whether its subcommand is protected.
 **Reads:** n/a.

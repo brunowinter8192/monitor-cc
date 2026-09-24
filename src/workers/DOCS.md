@@ -24,9 +24,9 @@ tmux session list -> `worker_tmux.py` (discovery, status, JSONL path, incrementa
 
 ---
 
-### worker_format.py (51 LOC)
+### worker_format.py (32 LOC)
 
-**Purpose:** pure JSONL extraction for one worker: incremental token sum and context percentage, plus a tool-call list.
+**Purpose:** pure JSONL extraction for one worker: incremental token sum and context percentage.
 **Reads:** the worker JSONL file from a caller-supplied byte position.
 **Writes:** nothing; returns values.
 **Called by:** `workers/worker_tmux.py`.

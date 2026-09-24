@@ -50,7 +50,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### format.py (145 LOC)
+### format.py (141 LOC)
 
 **Purpose:** Orchestrates turn grouping and frozen-turn rendering, applies viewport windowing and the row-background priority chain, and identifies standalone entries.
 **Reads:** entries, expand states, line map, hover row, dimensions, scroll offset, turns.

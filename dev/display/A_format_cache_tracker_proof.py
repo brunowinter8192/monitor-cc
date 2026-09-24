@@ -54,10 +54,7 @@ def _load_turns(jsonl_path):
             line = line.strip()
             if not line:
                 continue
-            try:
-                messages.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+            messages.append(json.loads(line))
     return extract_cache_turns(messages)
 
 def _run_one_case(turns, pane_height, pane_width):

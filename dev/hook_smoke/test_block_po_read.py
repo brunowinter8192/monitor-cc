@@ -3,8 +3,10 @@ import atexit
 import json
 import os
 import shutil
+import sys
 import tempfile
-from hook_runner import abort_if_failed, run_hook
+from case_strands import exit_code_runners, fail_open_runner, run_case_strands
+from hook_runner import run_hook
 
 HOOK = "src/hooks/block_po_read.py"
 PO_PATH = "~/.claude/projects/-Users-x-proj/abc123-session/tool-results/def456.txt"
@@ -70,28 +72,16 @@ CASES = [
 # ORCHESTRATOR
 
 def test_block_po_read_workflow() -> None:
-    failures = []
-    for desc, cmd, expected in CASES:
-        got = _run_hook(cmd)
-        status = "OK  " if got == expected else "FAIL"
-        print(f"  [{status}] {desc}: exit={got} (expected {expected})")
-        if got != expected:
-            failures.append(desc)
-            abort_if_failed(failures)
-    got = _run_hook_raw(b"not valid json{{{")
-    desc = "parse-error fail-open PASS"
-    expected = 0
-    status = "OK  " if got == expected else "FAIL"
-    print(f"  [{status}] {desc}: exit={got} (expected {expected})")
-    if got != expected:
-        failures.append(desc)
-        abort_if_failed(failures)
-    total = len(CASES) + 1
-    print()
-    print(f"All {total} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, _all_runners()))
 
 
 # FUNCTIONS
+
+def _all_runners() -> dict:
+    runners = exit_code_runners(CASES, _run_hook)
+    runners.update(fail_open_runner("parse-error fail-open PASS", _run_hook_raw, b"not valid json{{{"))
+    return runners
+
 
 def _run_hook(command: str) -> int:
     payload = json.dumps({

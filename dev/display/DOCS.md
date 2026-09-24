@@ -34,7 +34,7 @@ top/bottom placement) in a temporary session.
 
 ---
 
-### scan_jsonl_rules.py (100 LOC)
+### scan_jsonl_rules.py (114 LOC)
 
 **Purpose:** Scans a Claude Code session JSONL for "Contents of" lines to check whether loaded
 rules data is present, and in what message shape.
@@ -56,7 +56,7 @@ PNG for visual review.
 
 ---
 
-### A_format_cache_tracker_proof.py (117 LOC)
+### A_format_cache_tracker_proof.py (114 LOC)
 
 **Purpose:** Verification, not a test: differential proof the cache tracker's serialized return is byte-identical to a captured baseline. Reads live JSONLs.
 **Reads:** real session JSONLs under `~/.claude/projects/`.

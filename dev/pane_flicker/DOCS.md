@@ -111,7 +111,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### observe_timestamp_order.py (66 LOC)
+### observe_timestamp_order.py (79 LOC)
 
 **Purpose:** Reports whether entry timestamps of forwarded logs or turn timestamps of transcripts were ever unsorted.
 **Reads:** all `*_forwarded.jsonl` under the main `src/logs` and all transcripts under `~/.claude/projects`.

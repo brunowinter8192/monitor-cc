@@ -55,7 +55,7 @@ Dedicated tmux pane event loops for the token/cache tracker and the warnings pan
 
 ---
 
-### warnings_render.py (193 LOC)
+### warnings_render.py (192 LOC)
 
 **Purpose:** Pure rendering helpers for the warnings pane: pane body, header, clipboard text and search matching.
 **Reads:** all state passed as arguments.

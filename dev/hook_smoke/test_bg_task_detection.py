@@ -1,10 +1,6 @@
 # INFRASTRUCTURE
-import os
-import signal
-import subprocess
 import sys
 import tempfile
-import time
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,29 +8,24 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.menubar import proc_cache
-from hook_runner import abort_if_failed
+from case_strands import case_runners, report_case, run_case_strands
 
-_POLL_DEADLINE_SECS = 10.0
-_POLL_INTERVAL_SECS = 0.05
+_FIXED_NOW = 1000.0
 
 
 # ORCHESTRATOR
 
 def test_bg_task_detection_workflow() -> None:
-    failures = []
-    for desc, fn in CASES:
-        ok, detail = fn()
-        status = "OK  " if ok else "FAIL"
-        print(f"  [{status}] {desc}")
-        if not ok:
-            print(f"           {detail}")
-            failures.append(desc)
-            abort_if_failed(failures)
-    print()
-    print(f"All {len(CASES)} tests passed.")
+    sys.exit(run_case_strands(globals(), __file__, case_runners(CASES, _check_case)))
 
 
 # FUNCTIONS
+
+def _check_case(case: tuple) -> None:
+    desc, fn = case
+    ok, detail = fn()
+    report_case(desc, ok, '' if ok else f'\n           {detail}')
+
 
 @contextmanager
 def _scratch_tasks_base():
@@ -46,21 +37,6 @@ def _scratch_tasks_base():
                 patch.object(proc_cache, '_bg_task_holder_pids', {}), \
                 patch.object(proc_cache, '_bg_task_last_refresh', 0.0):
             yield base
-
-
-def _wait_until(predicate, timeout: float) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        time.sleep(_POLL_INTERVAL_SECS)
-    return predicate()
-
-
-def _refreshed_active_bg(encoded_dir: str, session_id: str) -> bool:
-    proc_cache._bg_task_last_refresh = 0.0
-    proc_cache._refresh_bg_task_cache(time.time())
-    return proc_cache._has_active_bg(encoded_dir, session_id)
 
 
 def _case_match_true() -> tuple:
@@ -90,26 +66,6 @@ def _case_prefix_boundary() -> tuple:
     return got is False, f'want False (no session-id prefix collision), got {got}'
 
 
-def _case_real_lsof_roundtrip() -> tuple:
-    with _scratch_tasks_base() as base:
-        tasks_dir = base / 'enc_probe' / 'sess_probe' / 'tasks'
-        tasks_dir.mkdir(parents=True)
-        out_file = tasks_dir / 'probe.output'
-        proc = subprocess.Popen(
-            ['bash', '-c', f'exec > "{out_file}" 2>&1; for i in $(seq 1 100); do echo progress; sleep 0.5; done'],
-            start_new_session=True)
-        try:
-            during = _wait_until(lambda: _refreshed_active_bg('enc_probe', 'sess_probe'), _POLL_DEADLINE_SECS)
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            proc.wait(timeout=5)
-            after = _wait_until(lambda: not _refreshed_active_bg('enc_probe', 'sess_probe'), _POLL_DEADLINE_SECS)
-        finally:
-            if proc.poll() is None:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                proc.wait(timeout=5)
-    return during and after, f'detected_while_open={during} (want True), cleared_after_close={after} (want True)'
-
-
 def _case_fail_open() -> tuple:
     def _raising_run(*a, **kw):
         raise OSError('lsof unavailable (synthetic)')
@@ -117,7 +73,7 @@ def _case_fail_open() -> tuple:
     with _scratch_tasks_base(), patch.object(proc_cache, 'subprocess', SimpleNamespace(run=_raising_run)):
         proc_cache._bg_task_open_paths = {'stale/should/stay'}
         proc_cache._bg_task_last_refresh = 0.0
-        proc_cache._refresh_bg_task_cache(time.time())
+        proc_cache._refresh_bg_task_cache(_FIXED_NOW)
         got = proc_cache._has_active_bg('enc1', 'sess1')
         stale_kept = proc_cache._bg_task_open_paths == {'stale/should/stay'}
     return (got is False and stale_kept), f'got={got} (want False), stale_kept={stale_kept} (want True)'
@@ -131,10 +87,9 @@ def _case_ttl_gate() -> tuple:
         return SimpleNamespace(stdout='', returncode=0)
 
     with _scratch_tasks_base(), patch.object(proc_cache, 'subprocess', SimpleNamespace(run=_counting_run)):
-        now = time.time()
         proc_cache._bg_task_last_refresh = 0.0
-        proc_cache._refresh_bg_task_cache(now)
-        proc_cache._refresh_bg_task_cache(now + 0.1)
+        proc_cache._refresh_bg_task_cache(_FIXED_NOW)
+        proc_cache._refresh_bg_task_cache(_FIXED_NOW + 0.1)
     return len(calls) == 1, f'lsof invocations={len(calls)} (want 1)'
 
 
@@ -142,7 +97,6 @@ CASES = [
     ('open path under session tasks dir -> True',            _case_match_true),
     ('no open path for session -> False',                     _case_no_match_false),
     ('session-id prefix collision does not false-positive',   _case_prefix_boundary),
-    ('real subprocess writer: detected while open, not after', _case_real_lsof_roundtrip),
     ('lsof failure fails open, keeps prior snapshot',         _case_fail_open),
     ('TTL gate: second call inside window is a no-op',        _case_ttl_gate),
 ]

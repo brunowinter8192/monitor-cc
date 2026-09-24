@@ -35,7 +35,7 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bo
             think_color = YELLOW
         else:
             think_color = GREEN
-        think_indicator = f' {think_color}🧠{_format_k(sig_chars)}{SOFT_RESET}'
+        think_indicator = f' {think_color}th{_format_k(sig_chars)}{SOFT_RESET}'
     else:
         think_indicator = ''
     if wide:
@@ -83,12 +83,6 @@ def _call_thinking_meta(call: dict) -> tuple:
     has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
     sig_chars = sum(b.get('sig_chars', 0) for b in call.get('content_blocks', []) if b.get('type') == 'thinking')
     return has_thinking, sig_chars
-
-def _get_tool_preview(input_data: dict) -> str:
-    for key in ('file_path', 'pattern', 'command', 'subagent_type', 'prompt', 'query'):
-        if key in input_data:
-            return str(input_data[key]).replace('\n', ' ')
-    return ''
 
 def _format_ts(timestamp: str) -> str:
     from ..utils import format_timestamp
@@ -264,7 +258,7 @@ def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
     truncated = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
     api_calls = turn.get('api_calls', [])
     thinking_calls = sum(1 for call in api_calls if _call_thinking_meta(call)[0])
-    think_str = f" ({thinking_calls}/{len(api_calls)} 🧠)" if thinking_calls > 0 else ""
+    think_str = f" ({thinking_calls}/{len(api_calls)} th)" if thinking_calls > 0 else ""
     row = f"{PASTEL_PURPLE}Turn {turn_idx + 1}{think_str}: \"{truncated}\"{SOFT_RESET}"
     return right_align_time(row, timestamp, pane_width)
 

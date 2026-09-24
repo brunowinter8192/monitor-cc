@@ -15,6 +15,8 @@ RESET = "\033[0m"
 LARGE_JUMP_THRESHOLD = 0.20
 
 
+_SKIPPED_LINES = 0
+
 # ORCHESTRATOR
 
 def session_summary_workflow(session_id: str | None) -> None:
@@ -28,9 +30,19 @@ def session_summary_workflow(session_id: str | None) -> None:
     _print_overview(log_file, entries)
     _print_anomalies(entries)
     _print_timeline(entries)
+    _report_skipped_lines()
 
 
 # FUNCTIONS
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
 
 def _find_logs_dir() -> Path:
     if root := os.environ.get("MONITOR_CC_ROOT"):
@@ -68,6 +80,7 @@ def _load_entries(log_file: Path) -> list:
                 try:
                     entries.append(json.loads(line))
                 except json.JSONDecodeError:
+                    _note_skipped_line()
                     continue
     return entries
 
