@@ -11,11 +11,14 @@ from Foundation import NSMakeRect
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from dev.session_launcher.test_env import isolate_home
+
 REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_four_tab_ring.md"
 
 # ORCHESTRATOR
 
 def verify_four_tab_ring_workflow() -> None:
+    isolate_home()
     panel_manager   = _imp('src.menubar.panel_manager')
     rag_controller  = _imp('src.menubar.rag_controller')
     model_controller = _imp('src.menubar.model_controller')
