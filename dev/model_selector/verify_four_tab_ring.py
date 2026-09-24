@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 import importlib
 import sys
-from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -25,7 +24,7 @@ def verify_four_tab_ring_workflow() -> None:
     launch_controller = _imp('src.menubar.launch_controller')
     panel_lifecycle = _imp('src.menubar.panel_lifecycle')
 
-    lines = [f"# Four-tab ring verification — {datetime.now().isoformat(timespec='seconds')}", ""]
+    lines = ["# Four-tab ring verification", ""]
 
     app = _FakeApp(panel_manager, rag_controller, model_controller, launch_controller)
 

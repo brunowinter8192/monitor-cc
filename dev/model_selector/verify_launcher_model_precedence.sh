@@ -157,11 +157,10 @@ echo "$PASS/$total passed."
 
 MD_DIR="$WORKTREE_ROOT/dev/model_selector/md"
 mkdir -p "$MD_DIR"
-STAMP="$(date -u +%Y%m%d_%H%M%S)"
-OUT_PATH="$MD_DIR/verify_launcher_model_precedence_${STAMP}.md"
+OUT_PATH="$MD_DIR/verify_launcher_model_precedence.md"
 
 {
-    echo "# Launcher model-selection precedence dry run ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+    echo "# Launcher model-selection precedence dry run"
     echo
     echo "**Result: $PASS/$total checks passed**"
     echo

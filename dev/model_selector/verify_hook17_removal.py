@@ -2,7 +2,6 @@
 import importlib
 import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -13,7 +12,7 @@ REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook17_remov
 # ORCHESTRATOR
 
 def verify_hook17_removal_workflow() -> None:
-    lines = [f"# Hook 17 (block_worker_spawn_opus.py) removal verification — {datetime.now().isoformat(timespec='seconds')}", ""]
+    lines = ["# Hook 17 (block_worker_spawn_opus.py) removal verification", ""]
 
     hook_setup = importlib.import_module('src.hooks.hook_setup')
 

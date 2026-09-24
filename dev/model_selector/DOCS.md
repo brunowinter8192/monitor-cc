@@ -13,11 +13,11 @@ No `__init__.py` in this directory. Each script is its own entry point, run dire
 Synthetic payloads, tempdir paths, or in-memory fixtures go in. Each script drives real
 production code (`hook_writer.py`, `model_selection.py`, `panel_lifecycle.py`'s ring, or the
 launcher's parse loop mirrored in bash) and asserts specific invariants. Output is stdout plus a
-report under `md/`.
+report under `md/` with a fixed file name and no wall-clock value in the body.
 
 ## Modules
 
-### verify_hook_writer_split.py (71 LOC)
+### verify_hook_writer_split.py (73 LOC)
 
 **Purpose:** Regression guard for `hook_writer.py`'s hook-state half — feeds synthetic
 `UserPromptSubmit`/`Stop` payloads through the real workflow, asserting status transitions and
@@ -29,18 +29,18 @@ no queue-file side effect.
 
 ---
 
-### verify_model_cycle_and_io.py (278 LOC)
+### verify_model_cycle_and_io.py (311 LOC)
 
 **Purpose:** Regression guard for `model_selection.py`'s cycle logic (model/effort/max_tokens/
 thinking) and its `model_selection.json`/`proxy_rules.json` read-modify-write I/O.
 **Reads:** nothing persistent — every case uses a tempdir path or an in-memory fixture string.
-**Writes:** `md/verify_model_cycle_and_io.md`.
+**Writes:** `md/verify_model_cycle_and_io.md` (fixed name, written by the strand runner). The eight independent sections run as parallel fail-fast strands (`dev/refactoring/strand_runner.py`, one subprocess each). Needs no AppKit and no WindowServer.
 **Called by:** none — run manually; re-run after any `model_selection.py` I/O change.
 **Calls out:** `src.menubar.model_selection`, loaded via `importlib.import_module`.
 
 ---
 
-### verify_four_tab_ring.py (128 LOC)
+### verify_four_tab_ring.py (127 LOC)
 
 **Purpose:** Regression guard for the four-tab Cmd+→/← ring (Sessions/RAG/Models/Launch) — drives the
 real, unmocked ring functions against a `_FakeApp` wrapping real panel controllers.
@@ -48,23 +48,24 @@ real, unmocked ring functions against a `_FakeApp` wrapping real panel controlle
 **Writes:** `md/verify_four_tab_ring.md`.
 **Called by:** none — run manually; MUTATES the desktop (real NSPanel objects underneath); do
 not run. Re-run after any ring-wiring change in `panel_lifecycle.py`.
+**Verification, not a headless test:** builds real `NSPanel`/`NSMakeRect` objects, so it needs a macOS session with WindowServer and cannot run headless. It is one dependent flow (each step starts from the previous ring state), so it is not split into strands; the first failed `assert` aborts it. Its `isolate_home` helper comes from `dev/session_launcher/test_env.py`, a cross-area coupling that stays until that helper moves to a shared location.
 **Calls out:** `src/menubar/panel_manager.py`, `rag_controller.py`, `model_controller.py`,
 `launch_controller.py`, `panel_lifecycle.py`, `Foundation`, `dev/session_launcher/test_env.py`.
 
 ---
 
-### verify_launcher_model_precedence.sh (186 LOC)
+### verify_launcher_model_precedence.sh (185 LOC)
 
 **Purpose:** Full precedence-chain dry run for the launcher's model selection — explicit
 `--model` > config-file `main` key > nothing injected (no CLI shortcuts since 2026-09-23).
 **Reads:** nothing persistent outside its own tempdir.
-**Writes:** `md/verify_launcher_model_precedence_<timestamp>.md`.
+**Writes:** `md/verify_launcher_model_precedence.md` (fixed name, no clock in the body).
 **Called by:** none — run manually; re-run after any change to the launcher's precedence logic.
 **Calls out:** `jq`, `src/claude_proxy_start.sh`'s parse loop (mirrored, not sourced).
 
 ---
 
-### verify_hook17_removal.py (86 LOC)
+### verify_hook17_removal.py (85 LOC)
 
 **Purpose:** Confirms a retired hook's removal — the file is gone, no longer registered, and
 `_sweep_stale_hooks()` removes a dead-path entry while leaving a live one untouched.
