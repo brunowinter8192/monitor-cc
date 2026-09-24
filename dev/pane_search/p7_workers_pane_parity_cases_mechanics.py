@@ -23,8 +23,8 @@ def test_two_row_header_composition():
         'prompt': 'do it', 'timestamp': '2026-01-01T00:00:00Z',
         'api_calls': [{'cache_read': 1000, 'cache_creation': 0, 'direct': 0, 'output_tokens': 10, 'content_blocks': []}],
     }]
-    output, header = mod_wt._build_worker_tokens_output(_MONITOR)
-    lines = header.splitlines()
+    output = mod_wt._build_worker_tokens_output(_MONITOR)
+    lines = output.splitlines()
     check("row 1 (search bar) contains the label", 'search:' in lines[0])
     check("row 1 has no click-arrows", '[<-]' not in lines[0] and '[->]' not in lines[0])
     check("worker-switch header text appears on a LATER line, not row 1",

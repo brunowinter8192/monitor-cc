@@ -14,6 +14,7 @@ from ..input.click_handler import (
 )
 from ..format.token_format import format_cache_tracker
 from ..utils import truncate_visible
+from ..frame_writer import write_frame
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
 from .token_search import build_token_search_matches
@@ -68,9 +69,7 @@ def run_tokens_loop() -> None:
                 if input_changed:
                     output = _build_tokens_output()
                     if output != last_output:
-                        print("\033[2J\033[3J\033[H", end='', flush=True)
-                        if output:
-                            print(output)
+                        write_frame(output)
                         last_output = output
 
                 wait_for_input(INPUT_POLL_INTERVAL)

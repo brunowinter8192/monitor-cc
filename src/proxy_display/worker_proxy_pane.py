@@ -21,6 +21,7 @@ from ..input.click_handler import (
     enable_mouse, disable_mouse, read_mouse_event, parse_digit_key, copy_to_clipboard, wait_for_input,
 )
 from ..utils import visual_line_count
+from ..frame_writer import write_frame
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
 from .proxy_pane_shared import (
@@ -80,12 +81,9 @@ def run_worker_proxy_loop() -> None:
                 if _worker_copy_feedback_until:
                     input_changed = True
                 if input_changed:
-                    output, header = _build_worker_proxy_output(_monitor)
+                    output = _build_worker_proxy_output(_monitor)
                     if output != last_output:
-                        print("\033[2J\033[3J\033[H", end='', flush=True)
-                        if output:
-                            print(output, end='', flush=True)
-                            print(f"\033[H{header}\033[K", end='', flush=True)
+                        write_frame(output)
                         last_output = output
                 wait_for_input(INPUT_POLL_INTERVAL)
             except Exception:
@@ -330,7 +328,7 @@ def _render_worker_proxy_body(pane_width: int, content_height: int, total_header
         _render, worker_proxy_line_map, _worker_proxy_copy_rows, total_header_lines, _wp_just_expanded, worker_proxy_scroll_offset, viewport_lines_n)
     return body
 
-def _build_worker_proxy_output(monitor) -> tuple:
+def _build_worker_proxy_output(monitor) -> str:
     global _worker_proxy_pane_width, worker_proxy_hover_row, _wp_just_expanded
     pane_height, pane_width = _terminal_size()
     _worker_proxy_pane_width = pane_width
@@ -344,4 +342,4 @@ def _build_worker_proxy_output(monitor) -> tuple:
     else:
         body = _render_worker_proxy_body(pane_width, content_height, total_header_lines, body_hover)
     _wp_just_expanded = None
-    return header + '\n' + body, header
+    return header + '\n' + body

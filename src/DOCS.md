@@ -48,6 +48,16 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
+### frame_writer.py (30 LOC)
+
+**Purpose:** `write_frame(output)` writes one pane frame in place (cursor home, per-row erase-to-EOL, erase below) wrapped in synchronized output (mode 2026), replacing clear-then-print.
+**Reads:** nothing (the built frame string is passed in).
+**Writes:** stdout (one write and flush per frame).
+**Called by:** `panes/token_pane.py`, `workers/worker_tokens_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`.
+**Calls out:** none.
+
+---
+
 ### monitor_janitor.py (69 LOC)
 
 **Purpose:** `sweep_workflow()` — kills every `monitor_cc_*` tmux session older than 24h and logs one line per session (name, age, KILLED/SPARED).

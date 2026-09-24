@@ -21,8 +21,8 @@ def test_two_row_header_composition_and_shifts():
     _reset_state()
     mod_wp._worker_proxy_workers = [{'name': 'alpha', 'session': ''}, {'name': 'beta', 'session': ''}]
     mod_wp.worker_proxy_entries.extend(_make_wp_entry(i) for i in range(3))
-    output, header = _build_output_with_worker('alpha')
-    lines = header.splitlines()
+    output = _build_output_with_worker('alpha')
+    lines = output.splitlines()
     check("row 1 (search bar) contains the label", 'search:' in lines[0])
     check("row 1 has no click-arrows", '[<-]' not in lines[0] and '[->]' not in lines[0]
           and '[←]' not in lines[0] and '[→]' not in lines[0])
