@@ -1,7 +1,7 @@
 import hashlib
 import re
-import sys
 
+from .proxy_error_log import log_proxy_error_on_change
 from .payload_helpers import _walk_replace_marker_blocks
 
 # INFRASTRUCTURE
@@ -64,11 +64,11 @@ def _is_poread_marker_valid(text, cache):
         return False
     path, expected_bytes, expected_hash = parsed
     if expected_bytes > POREAD_MAX_BYTES:
-        print(f"[proxy_addon] poread: marker declares {expected_bytes}B, over the {POREAD_MAX_BYTES}B ceiling — refusing to inject: {path}", file=sys.stderr)
+        log_proxy_error_on_change(f"inject_poread {path}", f"marker declares {expected_bytes}B, over the {POREAD_MAX_BYTES}B ceiling, refusing to inject: {path}")
         return False
     data = _read_validated_poread_source(path, expected_bytes, expected_hash)
     if data is None:
-        print(f"[proxy_addon] poread: source changed or unavailable, refusing to inject: {path}", file=sys.stderr)
+        log_proxy_error_on_change(f"inject_poread {path}", f"source changed or unavailable, refusing to inject: {path}")
         return False
     cache[text] = data
     return True

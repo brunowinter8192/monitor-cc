@@ -1,12 +1,11 @@
 # INFRASTRUCTURE
 import json
 import os
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .proxy_error_log import proxy_monitor_root
+from .proxy_error_log import log_proxy_error, proxy_monitor_root
 from .logging import _build_forwarded_delta, _build_errors_entries
 from .strip_inject_delta import _build_stripped_injected_deltas
 
@@ -35,7 +34,7 @@ def _log_original_request(log_file: Path, flow, payload: dict) -> None:
             "payload": payload,
         })
     except Exception as e:
-        print(f"[dual_log] original write failed: {e}", file=sys.stderr)
+        log_proxy_error("addon_dual_log.original", e)
 
 
 def _log_forwarded_delta(log_file: Path, modified_payload: dict, flow, prev_delta) -> Optional[dict]:
@@ -51,7 +50,7 @@ def _log_forwarded_delta(log_file: Path, modified_payload: dict, flow, prev_delt
         _write_entry(log_file, delta_entry)
         return curr_delta
     except Exception as e:
-        print(f"[dual_log] forwarded write failed: {e}", file=sys.stderr)
+        log_proxy_error("addon_dual_log.forwarded", e)
         return None
 
 
@@ -70,7 +69,7 @@ def _log_errors_entries(log_file: Path, payload: dict, mc_request_id: str, mc_ti
             return new_seen
         return None
     except Exception as e:
-        print(f"[dual_log] errors write failed: {e}", file=sys.stderr)
+        log_proxy_error("addon_dual_log.errors", e)
         return None
 
 
@@ -100,12 +99,14 @@ def _log_4xx_error(flow, errors_log_file: Path) -> None:
     resp_body = ""
     try:
         resp_body = flow.response.content.decode("utf-8", errors="replace")[:2000]
-    except Exception:
+    except Exception as e:
+        log_proxy_error("addon_dual_log.4xx_response_body", e)
         resp_body = ""
     req_payload = None
     try:
         req_payload = json.loads(flow.request.content.decode("utf-8", errors="replace"))
-    except Exception:
+    except Exception as e:
+        log_proxy_error("addon_dual_log.4xx_request_payload", e)
         req_payload = None
     error_data = {
         "ts": datetime.now(timezone.utc).isoformat() + "Z",
@@ -116,7 +117,7 @@ def _log_4xx_error(flow, errors_log_file: Path) -> None:
     }
     errors_log = errors_log_file.parent.parent / "api_errors.jsonl"
     _write_entry(errors_log, error_data)
-    print(f"[proxy_addon] API {flow.response.status_code} error — logged to api_errors.jsonl", file=sys.stderr)
+    log_proxy_error("addon_dual_log.4xx", f"API {flow.response.status_code} error logged to api_errors.jsonl flow={flow.id}")
 
 
 def _write_stripped_injected(flow, delta_state, paths) -> None:

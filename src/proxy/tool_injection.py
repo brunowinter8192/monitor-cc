@@ -1,10 +1,9 @@
 # INFRASTRUCTURE
 import json
 import os
-import sys
 from pathlib import Path
 
-from .proxy_error_log import proxy_monitor_root
+from .proxy_error_log import log_proxy_error, proxy_monitor_root
 
 _SCHEMA_STORE_CACHE = None
 _ACTIVE_PLUGINS_CACHE = None
@@ -60,10 +59,10 @@ def _load_schema_store() -> dict:
 
     store_base = _resolve_schema_store_path()
     if not store_base.exists():
-        print(
-            f"[tool_injection] WARNING: schema store missing at {store_base} — tool injection disabled. "
+        log_proxy_error(
+            "tool_injection.schema_store",
+            f"schema store missing at {store_base}, tool injection disabled. "
             "Run dev/tool_injection/01_extract_schemas.py to populate.",
-            file=sys.stderr,
         )
         _SCHEMA_STORE_CACHE = {}
         return _SCHEMA_STORE_CACHE
@@ -83,10 +82,10 @@ def _load_schema_store() -> dict:
             store[plugin_dir.name] = schemas
 
     if not store:
-        print(
-            f"[tool_injection] WARNING: schema store at {store_base} is empty — tool injection disabled. "
+        log_proxy_error(
+            "tool_injection.schema_store",
+            f"schema store at {store_base} is empty, tool injection disabled. "
             "Run dev/tool_injection/01_extract_schemas.py to populate.",
-            file=sys.stderr,
         )
 
     _SCHEMA_STORE_CACHE = store

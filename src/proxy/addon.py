@@ -4,13 +4,13 @@ import hashlib
 import json
 import logging
 import os
-import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from mitmproxy import http
 
+from .proxy_error_log import log_proxy_error
 from .addon_state import DualLogPaths, DeltaState, FixationState, SessionIdentity
 from .addon_dual_log import (
     _resolve_dual_log_file, _write_entry, _log_original_request,
@@ -93,7 +93,7 @@ class ProxyAddon:
             try:
                 _trigger_bg_escape(stripped_msg_removed, self.identity.worker_context, project_path)
             except Exception as e:
-                print(f"[proxy_addon] bg_escape trigger failed: {e}", file=sys.stderr)
+                log_proxy_error(f"addon.request.bg_escape flow={flow.id}", e)
 
             modified_payload = _finalize_cache_state(self.delta, model_family, modified_payload)
             _write_request_dual_logs(flow, payload, modified_payload, model_family, mc_request_id, mc_timestamp, self.paths, self.delta, self.identity)
@@ -104,7 +104,7 @@ class ProxyAddon:
             flow.request.headers.pop("content-encoding", None)
             _request_identity_encoding(flow)
         except Exception as e:
-            print(f"[proxy_addon] Error: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.request flow={flow.id}", e)
 
     def responseheaders(self, flow: http.HTTPFlow) -> None:
         try:
@@ -115,7 +115,7 @@ class ProxyAddon:
                 flow.response.stream = probe
                 flow.metadata["mc_answering_model_state"] = probe_state
         except Exception as e:
-            print(f"[proxy_addon] Error in responseheaders hook: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.responseheaders flow={flow.id}", e)
 
     def response(self, flow: http.HTTPFlow) -> None:
         try:
@@ -130,9 +130,9 @@ class ProxyAddon:
                 try:
                     _write_stripped_injected(flow, self.delta, self.paths)
                 except Exception as e:
-                    print(f"[dual_log] stripped/injected write failed: {e}", file=sys.stderr)
+                    log_proxy_error(f"addon.response.stripped_injected flow={flow.id}", e)
         except Exception as e:
-            print(f"[proxy_addon] Error in response hook: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.response flow={flow.id}", e)
 
     def error(self, flow: http.HTTPFlow) -> None:
         try:
@@ -141,7 +141,7 @@ class ProxyAddon:
             if flow.response:
                 _write_response_and_mismatch(flow, self.paths, self.identity)
         except Exception as e:
-            print(f"[proxy_addon] Error in error hook: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.error flow={flow.id}", e)
 
 
 # FUNCTIONS
@@ -245,12 +245,12 @@ def _write_response_and_mismatch(flow: http.HTTPFlow, paths, identity) -> None:
     try:
         response_entry = _write_response_entry(flow, paths.response)
     except Exception as e:
-        print(f"[dual_log] response write failed: {e}", file=sys.stderr)
+        log_proxy_error(f"addon.response_entry flow={flow.id}", e)
     if response_entry is not None:
         try:
             _write_model_mismatch_entry(flow, response_entry, paths.errors, identity)
         except Exception as e:
-            print(f"[dual_log] model mismatch write failed: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.model_mismatch flow={flow.id}", e)
 
 
 def _write_model_mismatch_entry(flow: http.HTTPFlow, response_entry: dict, errors_log_file, identity) -> None:
@@ -295,7 +295,8 @@ def _decode_body(request: http.Request) -> Optional[bytes]:
     if request.headers.get("content-encoding", "").lower() == "gzip":
         try:
             content = gzip.decompress(content)
-        except OSError:
+        except OSError as e:
+            log_proxy_error("addon._decode_body", e)
             return None
     return content
 
@@ -303,7 +304,8 @@ def _decode_body(request: http.Request) -> Optional[bytes]:
 def _parse_payload(body: bytes) -> Optional[dict]:
     try:
         return json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        log_proxy_error("addon._parse_payload", e)
         return None
 
 

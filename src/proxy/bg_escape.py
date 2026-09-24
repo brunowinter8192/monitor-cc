@@ -2,11 +2,10 @@
 import json
 import os
 import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .proxy_error_log import proxy_monitor_root
+from .proxy_error_log import log_proxy_error, proxy_monitor_root
 from .rules_config import is_main_session
 from .strip_bg_launch_ack import _is_bg_launch_ack, _ACK_ID_RE
 
@@ -96,7 +95,7 @@ def _log_bg_escape_event(event: str, worker_context: str, task_id: str, tmux_ses
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     except Exception as e:
-        print(f"[bg_escape] event log write failed: {e}", file=sys.stderr)
+        log_proxy_error("bg_escape.event_log", e)
 
 
 def _resolve_bg_escape_log_file() -> Path:
