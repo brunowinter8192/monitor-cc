@@ -61,7 +61,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t2_launch_tab.py (     417 LOC)
+### t2_launch_tab.py (417 LOC)
 
 **Purpose:** Ten parallel subprocess cases covering header texts, occupied-desktop marking (marked, never refused), project rows, exact start commands, launch workflow failure stages, click handling, the main-thread PostEvent request on tab open, and `space_switch` units.
 **Reads:** real `src/menubar` launch modules with fakes and patches.
