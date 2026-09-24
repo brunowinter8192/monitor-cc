@@ -118,7 +118,7 @@ class _SyncOperationQueue:
 
 class _FakeApp:
     def __init__(self, panel_manager, rag_controller, model_controller):
-        self.settings = SimpleNamespace(panel_width=380, panel_min_height=460, auto_focus=False)
+        self.settings = SimpleNamespace(panel_width=380, panel_min_height=460)
         self._panel_controller = None
         self._nsapp = _FakeNSApp()
         self.hotkey = _FakeHotkey()

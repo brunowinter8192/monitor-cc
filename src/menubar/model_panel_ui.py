@@ -35,12 +35,12 @@ def _make_models_nspanel():
     top_bar = NSView.alloc().initWithFrame_(
         NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
     top_bar.setAutoresizingMask_(10)
-    toggle_btn = _CursorlessButton.alloc().initWithFrame_(
+    header_btn = _CursorlessButton.alloc().initWithFrame_(
         NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
-    toggle_btn.setBordered_(False)
-    toggle_btn.setButtonType_(7)
-    toggle_btn.setAutoresizingMask_(2)
-    top_bar.addSubview_(toggle_btn)
+    header_btn.setBordered_(False)
+    header_btn.setButtonType_(7)
+    header_btn.setAutoresizingMask_(2)
+    top_bar.addSubview_(header_btn)
     cv.addSubview_(top_bar)
     stack_h = PANEL_HEIGHT - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, stack_h))
@@ -50,7 +50,7 @@ def _make_models_nspanel():
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)
     cv.addSubview_(stack)
-    return panel, stack, toggle_btn
+    return panel, stack, header_btn
 
 def _reposition_models_panel(panel, nsstatusitem) -> None:
     btn_win = nsstatusitem.button().window()

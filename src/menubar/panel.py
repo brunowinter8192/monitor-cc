@@ -194,12 +194,12 @@ def _make_panel_footer(pw: int):
 def _make_panel_top_bar(pw: int):
     top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, pw, _TOP_BAR_H))
     top_bar.setAutoresizingMask_(10)
-    toggle_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, pw - 22, _TOP_BAR_H - 1))
-    toggle_btn.setBordered_(False)
-    toggle_btn.setButtonType_(7)
-    toggle_btn.setAutoresizingMask_(2)
-    top_bar.addSubview_(toggle_btn)
-    return top_bar, toggle_btn
+    header_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, pw - 22, _TOP_BAR_H - 1))
+    header_btn.setBordered_(False)
+    header_btn.setButtonType_(7)
+    header_btn.setAutoresizingMask_(2)
+    top_bar.addSubview_(header_btn)
+    return top_bar, header_btn
 
 def _make_nspanel():
     panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
@@ -218,7 +218,7 @@ def _make_nspanel():
     panel.enableCursorRects()
     footer, quit_btn, kill_btn = _make_panel_footer(PANEL_WIDTH)
     cv.addSubview_(footer)
-    top_bar, toggle_btn = _make_panel_top_bar(PANEL_WIDTH)
+    top_bar, header_btn = _make_panel_top_bar(PANEL_WIDTH)
     cv.addSubview_(top_bar)
     stack_h = PANEL_HEIGHT - _FOOTER_H - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(
@@ -233,7 +233,7 @@ def _make_nspanel():
         ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
             child.bounds(), _TA_CURSOR_OPTS, cv, None)
         child.addTrackingArea_(ta)
-    return panel, stack, quit_btn, toggle_btn, kill_btn
+    return panel, stack, quit_btn, header_btn, kill_btn
 
 def _reposition_panel(panel, nsstatusitem) -> None:
     w  = panel.frame().size.width
