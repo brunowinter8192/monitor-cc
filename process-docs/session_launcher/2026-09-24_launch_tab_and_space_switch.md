@@ -235,3 +235,10 @@ Not covered: `dev/model_selector/verify_four_tab_ring.py` (another area's script
 Its `LaunchController.open()` only logs when PostEvent is missing, which does not happen in the dev process, but it is not isolated.
 Lesson: any dev script that imports `src.menubar.*` must isolate `HOME` first; `log_menubar` and `paths.py` have import-time side effects.
 
+
+## verify_four_tab_ring.py isolated (2026-09-24)
+
+`dev/model_selector/verify_four_tab_ring.py` now calls `dev/session_launcher/test_env.py:isolate_home()` first (cross-area import of the helper).
+Re-run with the user's go, one short-lived process building real NSPanels: RESULT PASS (forward and reverse ring over 4 tabs). Real
+`menubar.log` before/after that run: 8 `[launch]` lines both times (total 492429 both times), no temp home left behind. The five old test lines
+in the production log were left in place on the user's instruction.

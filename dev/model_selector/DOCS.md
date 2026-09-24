@@ -40,16 +40,16 @@ thinking) and its `model_selection.json`/`proxy_rules.json` read-modify-write I/
 
 ---
 
-### verify_four_tab_ring.py (125 LOC)
+### verify_four_tab_ring.py (128 LOC)
 
 **Purpose:** Regression guard for the four-tab Cmd+→/← ring (Sessions/RAG/Models/Launch) — drives the
 real, unmocked ring functions against a `_FakeApp` wrapping real panel controllers.
-**Reads:** nothing persistent.
+**Reads:** nothing persistent (HOME is redirected to a temp dir via `dev/session_launcher/test_env.py`).
 **Writes:** `md/verify_four_tab_ring.md`.
 **Called by:** none — run manually; MUTATES the desktop (real NSPanel objects underneath); do
 not run. Re-run after any ring-wiring change in `panel_lifecycle.py`.
 **Calls out:** `src/menubar/panel_manager.py`, `rag_controller.py`, `model_controller.py`,
-`launch_controller.py`, `panel_lifecycle.py`, `Foundation`.
+`launch_controller.py`, `panel_lifecycle.py`, `Foundation`, `dev/session_launcher/test_env.py`.
 
 ---
 
