@@ -31,7 +31,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m2_state_sequence_driver.py (252 LOC)
+### m2_state_sequence_driver.py (270 LOC)
 
 **Purpose:** Replays a scripted state sequence (hover, expand, scroll, search, width change, feedback, growth, reset) on the tokens or worker-tokens pane and dumps output, line map, copy rows and nav per step.
 **Reads:** argv (root, pane, session JSONL, output path).

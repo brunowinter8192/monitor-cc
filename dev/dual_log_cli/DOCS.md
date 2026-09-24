@@ -222,6 +222,56 @@ turn assignment, duration bands, `--turn N`, and separator survival under filter
 
 ---
 
+### tests/test_reqs_pane_numbering.py (57 LOC)
+
+**Purpose:** Runner for the 19 pane-numbering checks of `reqs`, `msgs` and `expand --req`; prints the pass count and exits 1 on failure.
+**Reads:** the check functions of the three `reqs_pane_numbering_*_checks.py` modules.
+**Writes:** stdout (pass/fail per check); exits 1 on failure.
+**Called by:** none — run manually.
+**Calls out:** `tests/reqs_pane_numbering_basic_checks.py`, `tests/reqs_pane_numbering_ownership_checks.py`, `tests/reqs_pane_numbering_unmapped_checks.py`, `tests/reqs_pane_numbering_fixtures.py`.
+
+---
+
+### tests/reqs_pane_numbering_fixtures.py (270 LOC)
+
+**Purpose:** Shared `check()` with the `PASS_LIST`/`FAIL_LIST` state and the synthetic forwarded, transcript and response builders for the pane-numbering checks.
+**Reads:** nothing external — temp files it writes and removes.
+**Writes:** `PASS_LIST`, `FAIL_LIST` (module state read by the runner).
+**Called by:** the runner and the three check modules.
+**Calls out:** `src.dual_log_cli.numbering`, `.reader`, `.render_reqs`, `.timeline_boundaries`, `src.proxy_display.forwarded_parser`.
+
+---
+
+### tests/reqs_pane_numbering_basic_checks.py (150 LOC)
+
+**Purpose:** Ten checks for continue detection, numbering, the REQ listing, `--gap`, msgs numbers, owner rule, fallback, folded creates, hidden sessions and the empty result.
+**Reads:** synthetic fixtures.
+**Writes:** results via `check()`.
+**Called by:** `tests/test_reqs_pane_numbering.py`.
+**Calls out:** `tests/reqs_pane_numbering_fixtures.py`, `src.dual_log_cli.*`.
+
+---
+
+### tests/reqs_pane_numbering_ownership_checks.py (117 LOC)
+
+**Purpose:** Six checks for msg start of creates and continues, `--req` ranges, unlocated continues, continue separators and `expand --req`.
+**Reads:** synthetic ownership fixture.
+**Writes:** results via `check()`.
+**Called by:** `tests/test_reqs_pane_numbering.py`.
+**Calls out:** `tests/reqs_pane_numbering_fixtures.py`, `src.dual_log_cli.*`.
+
+---
+
+### tests/reqs_pane_numbering_unmapped_checks.py (40 LOC)
+
+**Purpose:** Three checks for unmapped REQ rows — turn placement by send time, exclusion from gap pairs, visible non-200 status.
+**Reads:** synthetic unmapped-turn fixture.
+**Writes:** results via `check()`.
+**Called by:** `tests/test_reqs_pane_numbering.py`.
+**Calls out:** `tests/reqs_pane_numbering_fixtures.py`.
+
+---
+
 ## State
 
 No shared or mutating state across modules — each test file owns its own module-level
