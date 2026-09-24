@@ -13,7 +13,7 @@ sys.path.insert(0, str(_ROOT))
 from dev.session_launcher.space_lib import write_report
 from dev.session_launcher.test_env import isolate_home
 
-_JSON_DIR = Path(__file__).resolve().parent / 'json'
+_JSON_DIR = Path('/tmp/session_launcher_p2_panel_snapshot')
 _SETTINGS_VARIANTS = ((422, 460), (500, 300), (380, 700), (600, 520))
 _STATUS_ITEM_FRAMES = ((1000.0, 900.0, 22.0, 22.0), (12.5, 40.0, 30.0, 24.0))
 _REPOSITION_OLD_NAMES = {'rag': '_reposition_rag_panel', 'models': '_reposition_models_panel',
@@ -167,9 +167,15 @@ def _flatten(value, prefix=''):
     else:
         yield prefix, value
 
+def _require_snapshot(label: str) -> dict:
+    path = _JSON_DIR / f'p2_panel_snapshot_{label}.json'
+    if not path.is_file():
+        raise SystemExit(f'missing {path}: take it first with --label {label}')
+    return json.loads(path.read_text())
+
 def _compare_snapshots():
-    before = json.loads((_JSON_DIR / 'p2_panel_snapshot_before.json').read_text())
-    after = json.loads((_JSON_DIR / 'p2_panel_snapshot_after.json').read_text())
+    before = _require_snapshot('before')
+    after = _require_snapshot('after')
     fb, fa = dict(_flatten(before)), dict(_flatten(after))
     diffs = [(k, fb.get(k, '<missing>'), fa.get(k, '<missing>')) for k in sorted(set(fb) | set(fa)) if fb.get(k, '<missing>') != fa.get(k, '<missing>')]
     ok = not diffs

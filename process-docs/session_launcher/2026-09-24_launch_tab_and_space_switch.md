@@ -306,3 +306,9 @@ Also unchanged: `panel_manager_byte_identity.py` and `model_controller_byte_iden
 Lessons: there is no linter in the venv (no pyflakes/flake8/ruff); after moving code between modules a throwaway AST check for unused imports and undefined names (kept out of the repo, in /tmp) caught the missing `_make_tab_nspanel`/`_resize_panel_keep_top`
 import in `rag_controller.py` that the plain `import src.menubar.app` smoke test had not (Python resolves those names only when the function runs; the snapshot's controller construction is what exercises them).
 Baseline hashes of scripts that print a hash are best taken from a clean `git worktree add /tmp/x HEAD` (the scripts locate their root from `__file__`), not by stashing.
+
+Correction (same day, after review): the two snapshot JSON files (about 7,700 lines each) were committed in `8d41f8b6` under `dev/session_launcher/json/` and then removed again, because a `before` snapshot of a code state that no longer
+exists and an `after` snapshot that can be regenerated at any time are of no use to a successor. `p2_panel_snapshot.py` now writes its JSON to `/tmp/session_launcher_p2_panel_snapshot/` (not in the repo); the compare report
+`md/p2_panel_snapshot.md` (PASS, 3174 identical values) stays. Checked before deleting: regenerating `--label after` reproduced the committed `after` file byte for byte. The compare mode needs both snapshots in that /tmp directory,
+so for a future refactor take `--label before` on the old code first. The statement above that the snapshots are "committed in `dev/session_launcher/json/`" no longer holds.
+
