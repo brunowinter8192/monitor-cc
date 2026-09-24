@@ -71,7 +71,7 @@ def test_haiku_sidecar_does_not_consume_a_req_number():
         _entry('claude-opus-4-8', 4, 500, 1000, 2, 'f2', '2026-09-15T10:00:04.000Z'),
     ]
     group = {'entry_pairs': list(enumerate(entries))}
-    lines, keys, opus_req_num, sub_req_num = render_turn_expanded(group, entries, {}, 120, 0, 0)
+    lines, keys = render_turn_expanded(group, entries, {}, 120, {'f1': 1, 'f2': 2}, {})
     header_lines = [l for l, k in zip(lines, keys) if isinstance(k, tuple) and k[0] == 'req']
     labels = _labels(header_lines, _ANSI_ESCAPE_RE)
 
@@ -80,7 +80,9 @@ def test_haiku_sidecar_does_not_consume_a_req_number():
     check("haiku sidecar gets 'H', not a numbered REQ", labels[1] == 'H')
     check("the request after the sidecar gets '#2', not '#3' — its number was never shifted",
           labels[2] == '#2')
-    check("opus_req_num returned to the caller is 2, not 3", opus_req_num == 2)
+    check("the rendered rows spell 'REQ #1' / 'REQ #2'",
+          all('REQ #' in _strip(l, _ANSI_ESCAPE_RE) for l, k in zip(lines, keys)
+              if isinstance(k, tuple) and k[0] == 'req' and 'haiku' not in _strip(l, _ANSI_ESCAPE_RE)))
 
 
 # ORCHESTRATOR

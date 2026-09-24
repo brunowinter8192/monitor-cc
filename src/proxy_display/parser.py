@@ -69,6 +69,13 @@ def _find_original_log_path(main_log_path: Optional[Path]) -> Optional[Path]:
     stem = main_log_path.stem
     return dual_dir / f'{stem}_original.jsonl'
 
+def _find_response_log_path(main_log_path: Optional[Path]) -> Optional[Path]:
+    if main_log_path is None:
+        return None
+    dual_dir = main_log_path.parent / 'dual_log'
+    stem = main_log_path.stem
+    return dual_dir / f'{stem}_response.jsonl'
+
 def find_errors_log_path(project_filter: Optional[str]) -> Optional[Path]:
     if not project_filter:
         return None

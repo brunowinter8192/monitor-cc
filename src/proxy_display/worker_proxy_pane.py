@@ -8,7 +8,7 @@ from ..constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
-from .parser import find_worker_proxy_log
+from .parser import find_worker_proxy_log, _find_response_log_path
 from .forwarded_parser import _parse_forwarded_log, _infer_model_family
 from .format import format_proxy_block
 from ..panes.cache_turns import build_cache_turns
@@ -26,7 +26,7 @@ from ..pane_error_log import log_pane_error
 from .proxy_pane_shared import (
     _entry_idx_from_key, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _terminal_size, _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body,
-    _accumulate_dual_logs_and_attach, _copy_feedback_key,
+    _accumulate_dual_logs_and_attach, _copy_feedback_key, _accumulate_request_ids,
 )
 from .. import search_bar
 
@@ -37,6 +37,8 @@ worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position = 
 
 _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_workers, _worker_proxy_force_reload = 0, [], [], False
 _worker_proxy_fwd_pos: int = 0
+_worker_proxy_response_pos: int = 0
+_worker_proxy_request_id_by_flow: dict = {}
 _worker_proxy_acc_fwd: dict = {}
 _worker_proxy_log_path: Optional[Path] = None
 _worker_proxy_pane_width: int = 80
@@ -237,10 +239,10 @@ def _handle_worker_proxy_key(char: str, monitor) -> bool:
 
 def _reset_worker_proxy_positions(now: float) -> None:
     global worker_proxy_log_position, _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_fwd_pos
-    global _worker_proxy_last_full_parse_ts, _worker_proxy_stripped_pos, _worker_proxy_injected_pos
-    for c in (worker_proxy_entries, worker_proxy_line_map, _worker_proxy_acc_fwd, _worker_proxy_acc_stripped, _worker_proxy_acc_injected):
+    global _worker_proxy_last_full_parse_ts, _worker_proxy_stripped_pos, _worker_proxy_injected_pos, _worker_proxy_response_pos
+    for c in (worker_proxy_entries, worker_proxy_line_map, _worker_proxy_acc_fwd, _worker_proxy_acc_stripped, _worker_proxy_acc_injected, _worker_proxy_request_id_by_flow):
         c.clear()
-    worker_proxy_log_position = _worker_proxy_jsonl_position = _worker_proxy_fwd_pos = 0
+    worker_proxy_log_position = _worker_proxy_jsonl_position = _worker_proxy_fwd_pos = _worker_proxy_response_pos = 0
     _worker_proxy_cache_turns = []
     _worker_proxy_last_full_parse_ts = now
     _worker_proxy_stripped_pos = _worker_proxy_injected_pos = 0
@@ -257,7 +259,7 @@ def _reset_worker_proxy_reparse_state(now: float) -> None:
 
 def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_fwd_pos, _worker_proxy_log_path
-    global _worker_proxy_last_full_parse_ts, _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_stripped_pos, _worker_proxy_injected_pos
+    global _worker_proxy_last_full_parse_ts, _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_stripped_pos, _worker_proxy_injected_pos, _worker_proxy_response_pos
     if not _worker_proxy_force_reload and now - last_data_refresh < POLL_INTERVAL:
         return input_changed, last_data_refresh
     _worker_proxy_force_reload = False
@@ -287,6 +289,7 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
             _worker_proxy_stripped_pos, _worker_proxy_injected_pos = _accumulate_dual_logs_and_attach(
                 new_entries, worker_proxy_entries, worker_proxy_expand_states, log_path,
                 _worker_proxy_acc_stripped, _worker_proxy_acc_injected, _worker_proxy_stripped_pos, _worker_proxy_injected_pos, _infer_model_family)
+            _worker_proxy_response_pos = _accumulate_request_ids(_find_response_log_path(log_path), _worker_proxy_response_pos, _worker_proxy_request_id_by_flow)
             _worker_proxy_log_path = log_path
             if new_entries:
                 input_changed = True
@@ -318,7 +321,7 @@ def _render_worker_proxy_body(pane_width: int, content_height: int, total_header
         body, total_lines = format_proxy_block(
             worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, scroll_offset,
             turns=_worker_proxy_cache_turns, item_positions_out=item_positions, copy_feedback=_worker_copy_feedback_until, copy_rows_out=_worker_proxy_copy_rows,
-            search_match_set=_worker_proxy_search.match_set, search_current_entry_idx=current_match_entry_idx, search_query=_worker_proxy_search.query)
+            search_match_set=_worker_proxy_search.match_set, search_current_entry_idx=current_match_entry_idx, search_query=_worker_proxy_search.query, request_id_by_flow=_worker_proxy_request_id_by_flow)
         return body, total_lines, item_positions
     body, worker_proxy_scroll_offset = _render_and_scroll_body(
         _render, worker_proxy_line_map, _worker_proxy_copy_rows, total_header_lines, _wp_just_expanded, worker_proxy_scroll_offset, viewport_lines_n)

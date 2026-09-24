@@ -15,14 +15,24 @@ from ..search_bar import _BG_RESTORE_SENTINEL
 
 def _resolve_prev_same_family(entries: list, entry_idx: int) -> Optional[dict]:
     entry = entries[entry_idx]
-    if _is_standalone_entry(entry):
+    if _is_standalone_entry(entry) or entry.get('is_continue'):
         return None
     ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
     for i in range(entry_idx - 1, -1, -1):
         pf = 'haiku' if 'haiku' in entries[i].get('model', '').lower() else 'opus'
-        if pf == ef and not _is_standalone_entry(entries[i]):
+        if pf == ef and not _is_standalone_entry(entries[i]) and not entries[i].get('is_continue'):
             return entries[i]
     return None
+
+def _req_label(entry: dict, model_short: str, number_by_flow: dict, label_counts: dict) -> str:
+    if _is_standalone_entry(entry):
+        return 'H' if model_short == 'haiku' else 'S'
+    number = number_by_flow.get(entry.get('flow_id'))
+    if number is None:
+        return 'REQ #?'
+    seen = label_counts.get(number, 0)
+    label_counts[number] = seen + 1
+    return f'REQ #{number}' if seen == 0 else f'REQ #{number}.{seen}'
 
 def _compute_req_mods_str(entry: dict, prev_same) -> str:
     _curr = entry.get('tools_names', [])
@@ -112,25 +122,16 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     lines = _mark_search_lines(lines, search_query, is_search_current)
     return lines, keys
 
-def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '') -> tuple:
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, number_by_flow: dict, label_counts: dict, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '') -> tuple:
     lines = []
     keys = []
     for entry_idx, entry in group['entry_pairs']:
         model_short = _shorten_model(entry.get('model', '?'))
-        if _is_standalone_entry(entry):
-            num_label = 'H' if model_short == 'haiku' else 'S'
-        else:
-            if (entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0:
-                opus_req_num += 1
-                sub_req_num = 0
-                num_label = f'#{opus_req_num}'
-            else:
-                sub_req_num += 1
-                num_label = f'#{opus_req_num}.{sub_req_num}'
+        num_label = _req_label(entry, model_short, number_by_flow, label_counts)
         msg_count = entry.get('message_count', 0)
         warn_parts = []
         is_standalone = _is_standalone_entry(entry)
-        if model_short != 'haiku' and not is_standalone and rendered_opus_labels is not None:
+        if model_short != 'haiku' and not is_standalone and num_label != 'REQ #?' and rendered_opus_labels is not None:
             rendered_opus_labels.append((entry_idx, num_label))
         prev_same = _resolve_prev_same_family(entries, entry_idx)
         if prev_same is not None:
@@ -149,4 +150,4 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             e_lines, e_keys = _render_req_expanded(entry_idx, entry, entries, is_standalone, prev_same, expand_states, pane_width, search_query if is_search_match else '', is_search_current, copy_feedback)
             lines.extend(e_lines)
             keys.extend(e_keys)
-    return lines, keys, opus_req_num, sub_req_num
+    return lines, keys

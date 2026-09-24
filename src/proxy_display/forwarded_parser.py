@@ -157,7 +157,30 @@ def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, messag
 
     return entry
 
+def _is_continue_entry(fwd_e: dict) -> bool:
+    if _infer_model_family(fwd_e.get('model', '')) == 'haiku':
+        return False
+    if (fwd_e.get('counts') or {}).get('tools', 0) != 0:
+        return False
+    return bool((fwd_e.get('diagnostics') or {}).get('previous_message_id'))
+
+def _finish_entry(entry: dict, fwd_e: dict, req_idx: int, prev_messages_for_diff, new_summaries: list) -> dict:
+    entry['_fwd_req_idx'] = req_idx
+    entry['flow_id'] = fwd_e.get('flow_id', '')
+    entry['diff_from_prev'] = _compute_diff(prev_messages_for_diff, new_summaries)
+    return entry
+
+def _process_continue_entry(fwd_e: dict, req_idx: int) -> tuple:
+    counts = fwd_e.get('counts', {})
+    new_system, new_tools, new_summaries, delta_summaries = _reconstruct_first_request(
+        fwd_e, counts.get('system', 0), counts.get('tools', 0), counts.get('messages', 0))
+    entry = _extract_forwarded_fields(fwd_e, new_system, new_tools, new_summaries, delta_summaries)
+    entry['is_continue'] = True
+    return _finish_entry(entry, fwd_e, req_idx, None, new_summaries), new_summaries
+
 def _process_forwarded_entry(fwd_e: dict, req_idx: int, acc_by_family: dict) -> tuple:
+    if _is_continue_entry(fwd_e):
+        return _process_continue_entry(fwd_e, req_idx)
     family = _infer_model_family(fwd_e.get('model', ''))
     is_first = fwd_e.get('is_first', False)
     counts = fwd_e.get('counts', {})
@@ -176,10 +199,7 @@ def _process_forwarded_entry(fwd_e: dict, req_idx: int, acc_by_family: dict) -> 
         'messages': new_summaries,
     }
     entry = _extract_forwarded_fields(fwd_e, new_system, new_tools, new_summaries, delta_summaries)
-    entry['_fwd_req_idx'] = req_idx
-    entry['flow_id'] = fwd_e.get('flow_id', '')
-    entry['diff_from_prev'] = _compute_diff(prev_messages_for_diff, new_summaries)
-    return entry, new_summaries
+    return _finish_entry(entry, fwd_e, req_idx, prev_messages_for_diff, new_summaries), new_summaries
 
 def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict, keep_last: int = PROXY_MESSAGES_KEEP_LAST) -> tuple:
     entries: list = []
@@ -241,6 +261,13 @@ def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> bool:
                 is_first = fwd_e.get('is_first', False)
                 counts = fwd_e.get('counts', {})
                 msg_cnt = counts.get('messages', 0)
+                if _is_continue_entry(fwd_e):
+                    if fwd_e.get('flow_id') == target_flow_id:
+                        own = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
+                        entry['messages'] = own
+                        entry['messages_total_chars'] = sum(x.get('chars', 0) for x in own)
+                        return True
+                    continue
                 if is_first:
                     summaries = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
                 else:
