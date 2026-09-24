@@ -42,7 +42,7 @@ def render_all_headers(entries: list) -> list:
             '', '', 200, None,
         )
         stripped = mod_utils._ANSI_ESCAPE_RE.sub('', header)
-        delta_brain = 'th' in stripped
+        delta_brain = 'th' in stripped.split()
         cumulative_brain = _has_cumulative_thinking(entry)
         rows.append({
             'idx': idx, 'model': model, 'family': family, 'label': label,
