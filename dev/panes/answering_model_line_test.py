@@ -1,24 +1,30 @@
 # INFRASTRUCTURE
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+
+from dev.refactoring.strand_runner import strand_workflow
+
+_STRAND_NAMES = [
+    '_test_equal_models_render_dim',
+    '_test_mismatch_models_render_red',
+    '_test_missing_answering_model_renders_nothing',
+    '_test_missing_entry_renders_nothing',
+    '_test_missing_forwarded_model_shows_plain',
+    '_test_rate_limit_lines_still_work_with_new_shape',
+    '_test_wired_into_expanded_call_lines',
+]
+_TITLE = 'answering_model_line_test'
+_REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'answering_model_line_test.md'
 
 # ORCHESTRATOR
 
 
 def main():
-    (_render_answering_model_line, _render_rate_limit_lines, _render_expanded_call_lines,
-     RED, DIM, SOFT_RESET) = _import_target()
-    _test_equal_models_render_dim(_render_answering_model_line, DIM, SOFT_RESET)
-    _test_mismatch_models_render_red(_render_answering_model_line, RED, SOFT_RESET)
-    _test_missing_answering_model_renders_nothing(_render_answering_model_line)
-    _test_missing_entry_renders_nothing(_render_answering_model_line)
-    _test_missing_forwarded_model_shows_plain(_render_answering_model_line, DIM, SOFT_RESET)
-    _test_rate_limit_lines_still_work_with_new_shape(_render_rate_limit_lines)
-    _test_wired_into_expanded_call_lines(_render_expanded_call_lines, RED, SOFT_RESET)
-    print("[answering_model_line_test] all checks passed")
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, _REPORT_PATH, _TITLE))
 
 
 # FUNCTIONS
@@ -28,10 +34,18 @@ def _import_target():
         _render_answering_model_line, _render_rate_limit_lines, _render_expanded_call_lines,
     )
     from src.colors import RED, DIM, SOFT_RESET
-    return _render_answering_model_line, _render_rate_limit_lines, _render_expanded_call_lines, RED, DIM, SOFT_RESET
+    return SimpleNamespace(
+        answering_model_line=_render_answering_model_line,
+        rate_limit_lines=_render_rate_limit_lines,
+        expanded_call_lines=_render_expanded_call_lines,
+        RED=RED, DIM=DIM, SOFT_RESET=SOFT_RESET,
+    )
 
 
-def _test_equal_models_render_dim(render_fn, DIM, SOFT_RESET) -> None:
+def _test_equal_models_render_dim() -> None:
+    t = _import_target()
+    render_fn = t.answering_model_line
+    DIM, RED, SOFT_RESET = t.DIM, t.RED, t.SOFT_RESET
     call = {'request_id': 'req-1'}
     response_rid_map = {
         'req-1': {'proxy_forwarded_model': 'claude-opus-4-6', 'answering_model': 'claude-opus-4-6'},
@@ -41,7 +55,10 @@ def _test_equal_models_render_dim(render_fn, DIM, SOFT_RESET) -> None:
     assert keys == [None]
 
 
-def _test_mismatch_models_render_red(render_fn, RED, SOFT_RESET) -> None:
+def _test_mismatch_models_render_red() -> None:
+    t = _import_target()
+    render_fn = t.answering_model_line
+    DIM, RED, SOFT_RESET = t.DIM, t.RED, t.SOFT_RESET
     call = {'request_id': 'req-1'}
     response_rid_map = {
         'req-1': {'proxy_forwarded_model': 'claude-opus-4-6', 'answering_model': 'claude-opus-4-6-fallback'},
@@ -51,7 +68,10 @@ def _test_mismatch_models_render_red(render_fn, RED, SOFT_RESET) -> None:
     assert keys == [None]
 
 
-def _test_missing_answering_model_renders_nothing(render_fn) -> None:
+def _test_missing_answering_model_renders_nothing() -> None:
+    t = _import_target()
+    render_fn = t.answering_model_line
+    DIM, RED, SOFT_RESET = t.DIM, t.RED, t.SOFT_RESET
     call = {'request_id': 'req-1'}
     response_rid_map = {
         'req-1': {'proxy_forwarded_model': 'claude-opus-4-6', 'answering_model': ''},
@@ -62,7 +82,10 @@ def _test_missing_answering_model_renders_nothing(render_fn) -> None:
     )
 
 
-def _test_missing_entry_renders_nothing(render_fn) -> None:
+def _test_missing_entry_renders_nothing() -> None:
+    t = _import_target()
+    render_fn = t.answering_model_line
+    DIM, RED, SOFT_RESET = t.DIM, t.RED, t.SOFT_RESET
     call = {'request_id': 'req-unknown'}
     lines, keys = render_fn(call, {'req-1': {'answering_model': 'x', 'proxy_forwarded_model': 'x'}})
     assert lines == [] and keys == []
@@ -73,7 +96,10 @@ def _test_missing_entry_renders_nothing(render_fn) -> None:
     assert lines == [] and keys == []
 
 
-def _test_missing_forwarded_model_shows_plain(render_fn, DIM, SOFT_RESET) -> None:
+def _test_missing_forwarded_model_shows_plain() -> None:
+    t = _import_target()
+    render_fn = t.answering_model_line
+    DIM, RED, SOFT_RESET = t.DIM, t.RED, t.SOFT_RESET
     call = {'request_id': 'req-1'}
     response_rid_map = {
         'req-1': {'proxy_forwarded_model': '', 'answering_model': 'claude-opus-4-6'},
@@ -85,7 +111,10 @@ def _test_missing_forwarded_model_shows_plain(render_fn, DIM, SOFT_RESET) -> Non
     )
 
 
-def _test_rate_limit_lines_still_work_with_new_shape(render_fn) -> None:
+def _test_rate_limit_lines_still_work_with_new_shape() -> None:
+    t = _import_target()
+    render_fn = t.rate_limit_lines
+    DIM, RED, SOFT_RESET = t.DIM, t.RED, t.SOFT_RESET
     call = {'request_id': 'req-1'}
     response_rid_map = {
         'req-1': {
@@ -104,7 +133,10 @@ def _test_rate_limit_lines_still_work_with_new_shape(render_fn) -> None:
     )
 
 
-def _test_wired_into_expanded_call_lines(render_fn, RED, SOFT_RESET) -> None:
+def _test_wired_into_expanded_call_lines() -> None:
+    t = _import_target()
+    render_fn = t.expanded_call_lines
+    DIM, RED, SOFT_RESET = t.DIM, t.RED, t.SOFT_RESET
     call = {'request_id': 'req-1', 'content_blocks': []}
     response_rid_map = {
         'req-1': {'proxy_forwarded_model': 'claude-opus-4-6', 'answering_model': 'claude-opus-4-6-fallback'},

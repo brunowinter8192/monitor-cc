@@ -1,31 +1,44 @@
 # INFRASTRUCTURE
 import sys
 import os
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from src.proxy_display.format import format_proxy_block
 from src.format.token_format import format_cache_tracker
+from dev.refactoring.strand_runner import check, strand_workflow
 
 PANE_HEIGHT = 30
 PANE_WIDTH = 120
+FIXTURE_DIR = Path(__file__).resolve().parent / 'fixtures'
+FIXTURE_ENTRY_COUNT = 5
+FIXTURE_MIN_NONEMPTY_ENTRIES = 3
+_STRAND_NAMES = [
+    'test_proxy_no_expand',
+    'test_proxy_one_req_expanded',
+    'test_proxy_turns_always_expanded',
+    'test_proxy_hover_matches_row',
+    'test_proxy_hover_wrap_header',
+    'test_proxy_shift_uses_header_lines',
+    'test_stripped_msg_pair_alignment',
+]
+_TITLE = 'test_hover_map: synthetic line_map assertions'
+_REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'test_hover_map.md'
 
-PASS = 0
-FAIL = 0
+# ORCHESTRATOR
 
+def run_tests() -> None:
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, _REPORT_PATH, _TITLE))
+
+# FUNCTIONS
 
 def _turn_cache():
     from src.proxy_display.turn_cache import TurnCache
     return TurnCache()
 
 def assert_true(condition: bool, label: str) -> None:
-    global PASS, FAIL
-    if condition:
-        print(f"  PASS  {label}")
-        PASS += 1
-    else:
-        print(f"  FAIL  {label}")
-        FAIL += 1
+    check(label, condition)
 
 
 def _check_line_map(line_map: dict, pane_height: int, label: str) -> None:
@@ -96,9 +109,6 @@ def test_proxy_one_req_expanded() -> None:
     expand_states = {('req', 1): True}
     output, total = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns, turn_cache=_turn_cache())
     _check_line_map(line_map, PANE_HEIGHT, "proxy_one_req_expanded")
-    sys_key = ('sys', 1)
-    tools_key = ('tools', 1)
-    assert_true(sys_key in line_map.values() or True, "proxy_expanded: sys key may be present if sys_blocks exist")
     rows = sorted(line_map.keys())
     assert_true(rows[0] >= 1, f"proxy_one_req_expanded: first row >= 1, got {rows[0]}")
 
@@ -138,9 +148,6 @@ def test_proxy_hover_matches_row() -> None:
     lines = output_hover.split('\n')
     target_line = lines[req0_row - 1]
     assert_true(HOVER_BG in target_line, f"proxy_hover: HOVER_BG at terminal row {req0_row}")
-    if req0_row + 1 <= len(lines):
-        next_line = lines[req0_row]
-        assert_true(HOVER_BG not in next_line or True, "proxy_hover: adjacent row not hovered (soft check)")
 
 
 
@@ -201,20 +208,7 @@ def test_proxy_shift_uses_header_lines() -> None:
 
 
 
-def _resolve_dual_log_dir():
-    from pathlib import Path
-
-    worktree_root = Path(__file__).parent.parent.parent
-    dual_dir = worktree_root / 'src' / 'logs' / 'dual_log'
-    if not dual_dir.exists():
-        dual_dir = worktree_root.parent.parent.parent / 'src' / 'logs' / 'dual_log'
-    if not dual_dir.exists():
-        return None
-    return dual_dir
-
-
 def _collect_stripped_pair_entries(dual_dir) -> list:
-    from pathlib import Path
     from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
     from src.proxy_display.dual_log_accumulator import accumulate_dual_log
 
@@ -260,42 +254,20 @@ def test_stripped_msg_pair_alignment() -> None:
     print("\n[render_messages] Stripped-msg lines/keys exact pairing (no line_map drift)")
     from src.proxy_display.render_messages import render_messages
 
-    dual_dir = _resolve_dual_log_dir()
-    if dual_dir is None:
-        assert_true(True, "stripped_pair: dual_log dir missing — skipped")
-        return
+    tested_entries = _collect_stripped_pair_entries(FIXTURE_DIR)
+    assert_true(len(tested_entries) == FIXTURE_ENTRY_COUNT,
+                f"stripped_pair: fixture yields {FIXTURE_ENTRY_COUNT} entries, got {len(tested_entries)}")
 
-    tested_entries = _collect_stripped_pair_entries(dual_dir)
-
-    if not tested_entries:
-        assert_true(True, "stripped_pair: no stripped-content entries in available dual logs — skipped")
-        return
-
+    nonempty = 0
     for entry_idx, entry, prev in tested_entries:
         lines, keys = render_messages(entry_idx, entry, prev, [], {entry_idx: True}, 150)
         assert_true(
             len(lines) == len(keys),
             f"stripped_pair entry[{entry_idx}]: len(lines)={len(lines)} == len(keys)={len(keys)}"
         )
-
-
-# ORCHESTRATOR
-
-def run_tests() -> None:
-    print("=" * 60)
-    print("test_hover_map.py — synthetic line_map assertions")
-    print("=" * 60)
-    test_proxy_no_expand()
-    test_proxy_one_req_expanded()
-    test_proxy_turns_always_expanded()
-    test_proxy_hover_matches_row()
-    test_proxy_hover_wrap_header()
-    test_proxy_shift_uses_header_lines()
-    test_stripped_msg_pair_alignment()
-    print(f"\n{'=' * 60}")
-    print(f"Results: {PASS} passed, {FAIL} failed")
-    if FAIL:
-        sys.exit(1)
+        nonempty += 1 if lines else 0
+    assert_true(nonempty >= FIXTURE_MIN_NONEMPTY_ENTRIES,
+                f"stripped_pair: at least {FIXTURE_MIN_NONEMPTY_ENTRIES} entries render lines, got {nonempty}")
 
 
 if __name__ == '__main__':

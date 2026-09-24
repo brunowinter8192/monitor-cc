@@ -8,7 +8,10 @@ from p1_shared import _PROBE_LOG_PATH
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
-os.environ.setdefault('MONITOR_CC_ROOT', str(WORKTREE_ROOT))
+os.environ['MONITOR_CC_ROOT'] = str(WORKTREE_ROOT)
+
+_FIXED_TERMINAL = os.terminal_size((220, 50))
+os.get_terminal_size = lambda fd=1: _FIXED_TERMINAL
 
 _ROOT_PKG = 'src'
 

@@ -9,7 +9,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 os.environ.setdefault('MONITOR_CC_ROOT', str(_ROOT))
 
-_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
+_FIXTURE_JSONL = Path(__file__).resolve().parent / 'fixtures' / 'session_prefix_300.jsonl'
 _PREFIX_LINES = 300
 _CHUNK_SIZE = 40
 
@@ -42,10 +42,7 @@ def _session_jsonl() -> Path:
     override = os.environ.get('PANES_BYTE_IDENTITY_JSONL')
     if override:
         return Path(override)
-    files = sorted(_PROJECTS_DIR.glob('*/*.jsonl'), key=lambda p: p.stat().st_mtime)
-    if not files:
-        raise SystemExit(f'no *.jsonl session logs found under {_PROJECTS_DIR}')
-    return files[-1]
+    return _FIXTURE_JSONL
 
 
 def _frozen_prefix_lines(source: Path) -> list:

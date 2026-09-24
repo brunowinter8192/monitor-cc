@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
@@ -11,16 +12,22 @@ sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
 
 from proxy.addon import _write_response_entry
+from dev.refactoring.strand_runner import strand_workflow
+
+_STRAND_NAMES = [
+    '_test_normal_completion_entry_shape',
+    '_test_abort_before_first_chunk_still_writes_entry',
+    '_test_abort_mid_stream_preserves_partial_probe_state',
+    '_test_double_write_guard_prevents_duplicate',
+    '_test_model_override_visible_via_three_distinct_fields',
+]
+_TITLE = 'p9_response_entry_abort_survival_test'
+_REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'p9_response_entry_abort_survival_test.md'
 
 # ORCHESTRATOR
 
 def run_response_entry_tests_workflow() -> None:
-    _test_normal_completion_entry_shape()
-    _test_abort_before_first_chunk_still_writes_entry()
-    _test_abort_mid_stream_preserves_partial_probe_state()
-    _test_double_write_guard_prevents_duplicate()
-    _test_model_override_visible_via_three_distinct_fields()
-    print("[p9_response_entry_abort_survival_test] all checks passed")
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, _REPORT_PATH, _TITLE))
 
 # FUNCTIONS
 
@@ -51,79 +58,85 @@ class _FakeFlow:
         }
 
 
+@contextmanager
+def _tmp_jsonl():
+    with tempfile.TemporaryDirectory() as tmp:
+        yield Path(tmp) / "entries.jsonl"
+
+
 def _read_entries(path: Path) -> list:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def _test_normal_completion_entry_shape() -> None:
-    tmp = Path(tempfile.mktemp(suffix=".jsonl"))
-    flow = _FakeFlow(answering_model="claude-opus-4-6", probe_done=True)
-    _write_response_entry(flow, tmp)
-    entries = _read_entries(tmp)
-    assert len(entries) == 1
-    entry = entries[0]
-    assert entry["cc_requested_model"] == "claude-opus-4-6"
-    assert entry["proxy_forwarded_model"] == "claude-opus-4-6"
-    assert entry["answering_model"] == "claude-opus-4-6"
-    assert entry["request_id"] == "req_1"
-    assert entry["status_code"] == 200
-    assert set(entry.keys()) == {
-        "flow_id", "timestamp", "request_id", "status_code", "headers",
-        "cc_requested_model", "proxy_forwarded_model", "answering_model",
-    }
+    with _tmp_jsonl() as tmp:
+        flow = _FakeFlow(answering_model="claude-opus-4-6", probe_done=True)
+        _write_response_entry(flow, tmp)
+        entries = _read_entries(tmp)
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["cc_requested_model"] == "claude-opus-4-6"
+        assert entry["proxy_forwarded_model"] == "claude-opus-4-6"
+        assert entry["answering_model"] == "claude-opus-4-6"
+        assert entry["request_id"] == "req_1"
+        assert entry["status_code"] == 200
+        assert set(entry.keys()) == {
+            "flow_id", "timestamp", "request_id", "status_code", "headers",
+            "cc_requested_model", "proxy_forwarded_model", "answering_model",
+        }
 
 
 def _test_abort_before_first_chunk_still_writes_entry() -> None:
-    tmp = Path(tempfile.mktemp(suffix=".jsonl"))
-    flow = _FakeFlow(flow_id="flow_abort_early", answering_model="", probe_done=False)
-    _write_response_entry(flow, tmp)
-    entries = _read_entries(tmp)
-    assert len(entries) == 1, "an abort between responseheaders and the first chunk must still write an entry"
-    assert entries[0]["answering_model"] == ""
+    with _tmp_jsonl() as tmp:
+        flow = _FakeFlow(flow_id="flow_abort_early", answering_model="", probe_done=False)
+        _write_response_entry(flow, tmp)
+        entries = _read_entries(tmp)
+        assert len(entries) == 1, "an abort between responseheaders and the first chunk must still write an entry"
+        assert entries[0]["answering_model"] == ""
 
 
 def _test_abort_mid_stream_preserves_partial_probe_state() -> None:
-    tmp = Path(tempfile.mktemp(suffix=".jsonl"))
-    flow = _FakeFlow(flow_id="flow_abort_mid", answering_model="claude-opus-4-6-20260701", probe_done=True)
-    _write_response_entry(flow, tmp)
-    entries = _read_entries(tmp)
-    assert len(entries) == 1
-    assert entries[0]["answering_model"] == "claude-opus-4-6-20260701", (
-        "message_start typically arrives in the first chunk — an abort later in the stream "
-        "must not discard a model already captured by the probe"
-    )
+    with _tmp_jsonl() as tmp:
+        flow = _FakeFlow(flow_id="flow_abort_mid", answering_model="claude-opus-4-6-20260701", probe_done=True)
+        _write_response_entry(flow, tmp)
+        entries = _read_entries(tmp)
+        assert len(entries) == 1
+        assert entries[0]["answering_model"] == "claude-opus-4-6-20260701", (
+            "message_start typically arrives in the first chunk — an abort later in the stream "
+            "must not discard a model already captured by the probe"
+        )
 
 
 def _test_double_write_guard_prevents_duplicate() -> None:
-    tmp = Path(tempfile.mktemp(suffix=".jsonl"))
-    flow = _FakeFlow(flow_id="flow_double")
-    _write_response_entry(flow, tmp)
-    _write_response_entry(flow, tmp)
-    entries = _read_entries(tmp)
-    assert len(entries) == 1, (
-        "mitmproxy guarantees exactly one of response/error per flow, but the guard must hold "
-        "even if that invariant is ever violated"
-    )
+    with _tmp_jsonl() as tmp:
+        flow = _FakeFlow(flow_id="flow_double")
+        _write_response_entry(flow, tmp)
+        _write_response_entry(flow, tmp)
+        entries = _read_entries(tmp)
+        assert len(entries) == 1, (
+            "mitmproxy guarantees exactly one of response/error per flow, but the guard must hold "
+            "even if that invariant is ever violated"
+        )
 
 
 def _test_model_override_visible_via_three_distinct_fields() -> None:
-    tmp = Path(tempfile.mktemp(suffix=".jsonl"))
-    flow = _FakeFlow(
-        flow_id="flow_override",
-        cc_model="claude-opus-4-6",
-        forwarded_model="claude-opus-4-6-fixed-override",
-        answering_model="claude-opus-4-6-fixed-override",
-        probe_done=True,
-    )
-    _write_response_entry(flow, tmp)
-    entry = _read_entries(tmp)[0]
-    assert entry["cc_requested_model"] == "claude-opus-4-6"
-    assert entry["proxy_forwarded_model"] == "claude-opus-4-6-fixed-override"
-    assert entry["answering_model"] == "claude-opus-4-6-fixed-override"
-    assert entry["cc_requested_model"] != entry["proxy_forwarded_model"], (
-        "the whole point of the three-field split: an active model override must be visible "
-        "as a cc_requested_model/proxy_forwarded_model mismatch, not hidden behind one shared field"
-    )
+    with _tmp_jsonl() as tmp:
+        flow = _FakeFlow(
+            flow_id="flow_override",
+            cc_model="claude-opus-4-6",
+            forwarded_model="claude-opus-4-6-fixed-override",
+            answering_model="claude-opus-4-6-fixed-override",
+            probe_done=True,
+        )
+        _write_response_entry(flow, tmp)
+        entry = _read_entries(tmp)[0]
+        assert entry["cc_requested_model"] == "claude-opus-4-6"
+        assert entry["proxy_forwarded_model"] == "claude-opus-4-6-fixed-override"
+        assert entry["answering_model"] == "claude-opus-4-6-fixed-override"
+        assert entry["cc_requested_model"] != entry["proxy_forwarded_model"], (
+            "the whole point of the three-field split: an active model override must be visible "
+            "as a cc_requested_model/proxy_forwarded_model mismatch, not hidden behind one shared field"
+        )
 
 
 if __name__ == "__main__":

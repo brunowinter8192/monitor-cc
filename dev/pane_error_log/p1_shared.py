@@ -1,13 +1,21 @@
 # INFRASTRUCTURE
-import os
+import atexit
+import shutil
+import sys
+import tempfile
 from pathlib import Path
 
-_PROBE_LOG_PATH = '/tmp/_pane_error_log_probe.log'
-_STOP_AFTER_TICKS = 3
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
 
-_PASS = "\033[32mPASS\033[0m"
-_FAIL = "\033[31mFAIL\033[0m"
-_RESULTS = []
+from dev.refactoring.strand_runner import check
+
+_PROBE_DIR = tempfile.mkdtemp(prefix='pane_error_log_p1_')
+atexit.register(shutil.rmtree, _PROBE_DIR, True)
+_PROBE_LOG_PATH = str(Path(_PROBE_DIR) / 'probe.log')
+_PROBE_TINY_LOG_PATH = str(Path(_PROBE_DIR) / 'probe_tiny.log')
+_PROBE_CAP_LOG_PATH = str(Path(_PROBE_DIR) / 'probe_cap.log')
+_STOP_AFTER_TICKS = 3
 
 
 class _ProbeInjectedError(Exception):
@@ -20,14 +28,8 @@ class _ProbeStop(BaseException):
 
 # FUNCTIONS
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
-
-
 def _read_probe_log():
     log_text = ''
-    if os.path.exists(_PROBE_LOG_PATH):
+    if Path(_PROBE_LOG_PATH).exists():
         log_text = Path(_PROBE_LOG_PATH).read_text()
     return log_text

@@ -103,6 +103,8 @@ def run_worker_tokens() -> None:
 def run_proxy() -> None:
     mod = importlib.import_module(f'{_ROOT_PKG}.proxy_display.pane')
     mod.proxy_entries.extend(make_proxy_entry(i) for i in range(12))
+    monitor = importlib.import_module(f'{_ROOT_PKG}.core.monitor')
+    monitor._get_session_start_ts = lambda: '2000-01-01T00:00:00Z'
     state = {'first': True}
     def refresh(now, input_changed, last_refresh, monitor):
         if state['first']:

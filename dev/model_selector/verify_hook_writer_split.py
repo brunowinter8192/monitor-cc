@@ -4,7 +4,6 @@ import io
 import json
 import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -15,7 +14,7 @@ REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook_writer_
 # ORCHESTRATOR
 
 def verify_hook_writer_split_workflow() -> None:
-    lines = [f"# hook_writer.py split verification — {datetime.now().isoformat(timespec='seconds')}", ""]
+    lines = ["# hook_writer.py split verification", ""]
     with tempfile.TemporaryDirectory() as tmp:
         hook_writer = _load_hook_writer_with_tmp_app_support(Path(tmp))
         session_id = "test-session-model-selector"
@@ -23,12 +22,12 @@ def verify_hook_writer_split_workflow() -> None:
 
         _run_payload(hook_writer, {"hook_event_name": "UserPromptSubmit", "session_id": session_id, "cwd": cwd})
         state_after_prompt = json.loads(hook_writer._HOOK_STATE_FILE.read_text())
-        lines.append(f"UserPromptSubmit -> hooks.json: {state_after_prompt}")
+        lines.append(f"UserPromptSubmit -> hooks.json: {_without_clock(state_after_prompt)}")
         assert state_after_prompt[session_id]["status"] == "working"
 
         _run_payload(hook_writer, {"hook_event_name": "Stop", "session_id": session_id, "cwd": cwd})
         state_after_stop = json.loads(hook_writer._HOOK_STATE_FILE.read_text())
-        lines.append(f"Stop -> hooks.json: {state_after_stop}")
+        lines.append(f"Stop -> hooks.json: {_without_clock(state_after_stop)}")
         assert state_after_stop[session_id]["status"] == "idle"
 
         queue_file_exists = (Path(tmp) / "msg_queue.json").exists()
@@ -46,6 +45,9 @@ def verify_hook_writer_split_workflow() -> None:
     print("\n".join(lines))
 
 # FUNCTIONS
+
+def _without_clock(state: dict) -> dict:
+    return {sid: {k: v for k, v in entry.items() if k != 'updated_ts'} for sid, entry in state.items()}
 
 def _load_hook_writer_with_tmp_app_support(tmp_dir: Path):
     spec_path = REPO_ROOT / "src" / "menubar" / "hook_writer.py"
