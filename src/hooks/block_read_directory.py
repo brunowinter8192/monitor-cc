@@ -31,10 +31,7 @@ def _parse_path():
         return None, None
 
 def _is_directory(path: str) -> bool:
-    try:
-        return os.path.isdir(path)
-    except Exception:
-        return False
+    return os.path.isdir(path)
 
 
 if __name__ == "__main__":
