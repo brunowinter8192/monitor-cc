@@ -46,7 +46,7 @@ populate `messages` for entries the deque window dropped.
 
 ## Modules
 
-### pane.py (334 LOC)
+### pane.py (339 LOC)
 
 **Purpose:** Event loop for the main proxy pane — reads the `_forwarded` dual-log incrementally, handles mouse (click expand/collapse, scroll, hover, copy, search) and keyboard input (search, undo, `n`/`N`), renders on change via the drain-refresh-render pattern.
 **Reads:** Module-level state; active project filter from `core.monitor`; stdin (keypresses, mouse events).
@@ -56,7 +56,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### worker_proxy_pane.py (341 LOC)
+### worker_proxy_pane.py (344 LOC)
 
 **Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate. The worker-switcher header itself is built by the shared `workers.worker_switch_header.format_worker_switch_header` (imported under the alias `_format_worker_proxy_header`, its pre-move name) — `_worker_proxy_workers` is enriched with token/context-% liveness via `worker_tmux.attach_worker_stats(_worker_proxy_workers, _worker_proxy_stats_cache)` before that header renders (incremental, own cache — see `workers/DOCS.md`'s `attach_worker_stats` gotcha for why this must stay incremental).
 **Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_selection.get_selection_file_path`); stdin.
@@ -66,29 +66,29 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### proxy_pane_shared.py (254 LOC)
+### proxy_pane_shared.py (263 LOC)
 
-**Purpose:** Mechanics shared by both proxy panes (`pane.py`, `worker_proxy_pane.py`), each function parameterized by explicit arguments — never reads either pane's own module-level globals. Covers key/entry-idx resolution, copy-text serialization, expand+lazy-load toggling, dual-log accumulate-and-attach, search-on-commit, scroll/hover dispatch, and render+scroll+row-shift. (2026-09) The worker-switcher header builder moved to `workers.worker_switch_header` — that pane's own header is now shared with `workers/worker_tokens_pane.py` too, and `proxy_display` already depends on `workers` one-directionally for worker discovery/selection, so the header followed that same direction rather than `workers` depending back on `proxy_display`.
+**Purpose:** Mechanics shared by both proxy panes (`pane.py`, `worker_proxy_pane.py`), each function parameterized by explicit arguments — never reads either pane's own module-level globals. Covers key/entry-idx resolution, copy-text serialization, the flow_id-to-request_id accumulation from `_response` (`_accumulate_request_ids`), expand+lazy-load toggling, dual-log accumulate-and-attach, search-on-commit, scroll/hover dispatch, and render+scroll+row-shift. (2026-09) The worker-switcher header builder moved to `workers.worker_switch_header` — that pane's own header is now shared with `workers/worker_tokens_pane.py` too, and `proxy_display` already depends on `workers` one-directionally for worker discovery/selection, so the header followed that same direction rather than `workers` depending back on `proxy_display`.
 **Reads:** Parameters only.
 **Writes:** Nothing — returns values; several functions mutate an argument in place (`entries`, `line_map`, `copy_rows`, accumulator dicts) as documented per function, never a name outside the parameter list. `_prepare_copy_text` dispatches on key shape — a `('think', entry_idx, msg_idx, bidx)` key OR a `('block', entry_idx, msg_idx, bidx)` key both route to the same `_serialize_proxy_block` (one block's own `full_text`, with `preview` fallback; for a thinking block this is never its signature — the signature is never stored anywhere in this data, only its char count — the two key shapes share one serializer because nothing in its body was ever thinking-specific, only the guard was), a `('msg', entry_idx, msg_idx)` key routes to `_serialize_proxy_message`, everything else to `_serialize_proxy_entry` (unchanged); `_copy_feedback_key` returns the same `key` for a msg, think, or block row (so its flash never leaks onto the REQ header or a sibling row) and `entry_idx` for everything else, unchanged.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` exclusively
-**Calls out:** `search_bar` (`SearchState`, `handle_search_mouse_motion`)
+**Calls out:** `side_logs` (`read_response_log`), `search_bar` (`SearchState`, `handle_search_mouse_motion`)
 
 ---
 
-### format.py (183 LOC)
+### format.py (191 LOC)
 
-**Purpose:** `format_proxy_block` — groups proxy entries by turn (turns always expanded, no turn-level header row), applies scroll/viewport windowing, delegates row rendering to `render_turn`, applies the row-background priority chain, returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
+**Purpose:** `format_proxy_block` — groups proxy entries by turn, emits one token-pane-style `Turn n [..]` header row per group (`token_format._format_turn_header_line`), applies scroll/viewport windowing, delegates row rendering to `render_turn`, applies the row-background priority chain, returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
 **Writes:** Nothing — returns `(ansi_string, total_lines)` tuple; mutates the `line_map`/`copy_rows_out`/`item_positions_out` arguments when given.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/render_turn.py` (`_is_standalone_entry`, `_shorten_model`, `_format_k`, `_fmt_thinking_budget`, `_fmt_effort`), `src/proxy_display/search.py` (`_is_standalone_entry`), `src/proxy_display/proxy_pane_shared.py` (`_is_standalone_entry`), `src/proxy_display/render_sections.py` (`_format_k`), `src/proxy_display/render_sections_system.py` (`_format_k`), `src/proxy_display/__init__.py`
-**Calls out:** `format.token_format` (`_format_k`), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`)
+**Calls out:** `format.token_format` (`_format_k`, `_format_turn_header_line`, `request_numbers_by_id`), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`)
 
 ---
 
-### forwarded_parser.py (274 LOC)
+### forwarded_parser.py (301 LOC)
 
-**Purpose:** Forwarded-log delta reconstruction — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`; also owns `_proxy_session_id_for_project` (hashes `os.path.normpath(os.path.expanduser(project_path))`, matching `tmux_launcher.generate_session_name` byte-for-byte) and `_resolve_log_id` (marker-file → log_id resolution), both shared with `parser.py`. Leaf module — does not import from `parser.py` (parser.py imports these id-resolution helpers from here instead, avoiding a circular import).
+**Purpose:** Forwarded-log delta reconstruction (continue requests are kept out of the per-family accumulator, see Gotchas) — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`; also owns `_proxy_session_id_for_project` (hashes `os.path.normpath(os.path.expanduser(project_path))`, matching `tmux_launcher.generate_session_name` byte-for-byte) and `_resolve_log_id` (marker-file → log_id resolution), both shared with `parser.py`. Leaf module — does not import from `parser.py` (parser.py imports these id-resolution helpers from here instead, avoiding a circular import).
 **Reads:** `_forwarded` dual-log JSONL files (incremental by byte position); `.proxy_session_*` marker files (`_resolve_log_id`).
 **Writes:** Nothing — returns `(entry_list, new_position)`, `True`/`False`, a `{flow_id: messages}` dict, or a log-id string; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`).
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/parser.py` (`_proxy_session_id_for_project`, `_resolve_log_id`), `src/proxy_display/proxy_pane_shared.py` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `src/proxy_display/dual_log_accumulator.py` (`_infer_model_family`), `src/dual_log_cli/project_map.py` (`_proxy_session_id_for_project`)
@@ -96,9 +96,9 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### parser.py (86 LOC)
+### parser.py (93 LOC)
 
-**Purpose:** Proxy log path resolution — marker-file-based resolution of the current proxy session's `_forwarded`/`_stripped`/`_injected`/`_original`/`_errors`/`_response` log paths, and worker log discovery via glob. The marker-file → log_id resolution itself lives in `forwarded_parser._resolve_log_id`, shared by every `find_*_log_path` function here.
+**Purpose:** Proxy log path resolution — marker-file-based resolution of the current proxy session's `_forwarded`/`_stripped`/`_injected`/`_original`/`_errors`/`_response` log paths (`_find_response_log_path` derives the `_response` sibling of a main-log path), and worker log discovery via glob. The marker-file → log_id resolution itself lives in `forwarded_parser._resolve_log_id`, shared by every `find_*_log_path` function here.
 **Reads:** `.proxy_session_*` marker files under the runtime log directory (src/logs/, gitignored).
 **Writes:** Nothing — returns path objects, a session-id string, or a marker mtime/`time.time()` float; an unreadable marker file's `OSError` propagates to the caller (every pane loop already catches and logs via `pane_error_log`).
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/proxy_pane_shared.py` (`_find_dual_log_paths`), `src/proxy_display/__init__.py` (`find_worker_proxy_log`), `src/panes/warnings_pane.py` (`find_errors_log_path`, `proxy_session_id_for_project`, `get_proxy_session_start_ts`), `src/panes/token_pane.py` (`find_response_log_path`)
@@ -136,11 +136,11 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### render_turn.py (152 LOC)
+### render_turn.py (153 LOC)
 
-**Purpose:** Renders all per-request rows for an expanded turn group — REQ-header line (`▶/▼ #N model Nmsg [eff:X] [think:Nk] [mods] [warns] [tag badge]`), request numbering (`#N` fresh vs `#N.M` retry, `H`/`S` for standalone sidecars), and dispatch into the expanded-request section renderers.
-**Reads:** Group dict, all entries, expand states, pane width.
-**Writes:** Nothing — returns `(lines, keys, opus_req_num, sub_req_num)` tuple; `_render_req_expanded` threads its own `copy_feedback` parameter down into `render_messages` unchanged, so message-row copy symbols and REQ-header copy symbols (`_build_req_header_line`) share the same caller-supplied dict.
+**Purpose:** Renders all per-request rows for an expanded turn group — REQ-header line (`▶/▼ REQ #N model Nmsg [eff:X] [think:Nk] [mods] [warns] [tag badge]`), request labels (`REQ #N` from the token pane's numbering via the flow-to-request-id join, `REQ #N.M` for a refire sharing a request_id, `REQ #?` when unmapped, `H`/`S` for standalone sidecars), and dispatch into the expanded-request section renderers.
+**Reads:** Group dict, all entries, expand states, pane width, the flow-to-REQ-number map.
+**Writes:** Nothing — returns `(lines, keys)` tuple (`label_counts` is mutated in place); `_render_req_expanded` threads its own `copy_feedback` parameter down into `render_messages` unchanged, so message-row copy symbols and REQ-header copy symbols (`_build_req_header_line`) share the same caller-supplied dict.
 **Called by:** `src/proxy_display/format.py`, `src/proxy_display/search.py` (`_render_req_expanded`, `_resolve_prev_same_family`)
 **Calls out:** `render_messages` (`_aggregate_req_buckets`), `render_sections` (`render_fields_delta`, `render_beta`, `render_directives`, `render_tools`), `render_sections_system` (`render_system_blocks`), `format` (`_BG_RESTORE_SENTINEL`), `utils` (`highlight_query_in_line`)
 
@@ -231,6 +231,9 @@ search-match, `_lazy_load_messages_forwarded`/`reconstruct_all_messages` replay 
 stream from byte 0, matched by `flow_id`, to repopulate it.
 
 ## Gotchas
+
+- REQ numbers in the proxy panes are the token pane's numbers, joined per request: forwarded `flow_id` -> `_response` `request_id` -> transcript call (`token_format.request_numbers_by_id`). `forwarded.request_id` is empty in every entry, so the `_response` join is the only path. See `process-docs/proxy_display/`.
+- A continue request (sonnet, `counts.tools == 0`, `diagnostics.previous_message_id` set) is flagged `is_continue`, never enters `acc_by_family`, carries only its own 1-2 msgs, is never standalone, and has no `prev_same` (nor is it anyone's). Folding it into the accumulator truncates the family list to 2 msgs and the next create raises `KeyError: 'role'` in `_compute_diff`.
 
 - `PROXY_MESSAGES_KEEP_LAST = 10` — only the last N parsed entries retain `messages`; older
   entries are lazy-loaded on demand. `PROXY_REPARSE_INTERVAL_SECONDS = 3600` — hourly full

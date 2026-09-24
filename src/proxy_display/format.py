@@ -6,7 +6,7 @@ from ..colors import (
     RESET, SOFT_RESET, DIM, YELLOW, HOVER_BG,
     DIM_YELLOW_BG, DIM_GREEN_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
-from ..format.token_format import _format_k
+from ..format.token_format import _format_k, _format_turn_header_line, request_numbers_by_id
 from ..utils import truncate_visible
 from .proxy_badge import _chars_to_tokens
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
@@ -41,6 +41,8 @@ def _shorten_model(model: str) -> str:
     return model[:8] if model else '?'
 
 def _is_standalone_entry(entry: dict) -> bool:
+    if entry.get('is_continue'):
+        return False
     sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
     return (
@@ -103,19 +105,25 @@ def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_en
         result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
     return result_lines
 
-def _render_all_groups(entries: list, groups: list, expand_states: dict, pane_width: int, turns, item_positions_out: Optional[dict], copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query: str) -> tuple:
+def _number_by_flow(turns, request_id_by_flow: Optional[dict]) -> dict:
+    numbers = request_numbers_by_id(turns or [])
+    return {flow_id: numbers[request_id] for flow_id, request_id in (request_id_by_flow or {}).items() if request_id in numbers}
+
+def _render_all_groups(entries: list, groups: list, expand_states: dict, pane_width: int, turns, item_positions_out: Optional[dict], copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query: str, request_id_by_flow: Optional[dict] = None) -> tuple:
     from .render_turn import render_turn_expanded
     all_lines = []
     line_keys = []
     rendered_opus_labels = []
-    opus_req_num = 0
-    sub_req_num = 0
+    number_by_flow = _number_by_flow(turns, request_id_by_flow)
+    label_counts = {}
     for group in groups:
         turn_idx = group['turn_idx']
-        sub_req_num = 0
-        t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
+        if turns:
+            all_lines.append(_format_turn_header_line(turn_idx, turns[turn_idx], pane_width))
+            line_keys.append(None)
+        t_lines, t_keys = render_turn_expanded(
             group, entries, expand_states, pane_width,
-            opus_req_num, sub_req_num,
+            number_by_flow, label_counts,
             turns=turns, turn_idx=turn_idx,
             rendered_opus_labels=rendered_opus_labels,
             copy_feedback=copy_feedback,
@@ -161,7 +169,7 @@ def _slice_viewport(all_lines: list, line_keys: list, pane_height: int, pane_wid
     initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
     return visible_lines, visible_keys, initial_parent_count, total_lines
 
-def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '') -> tuple:
+def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '', request_id_by_flow: Optional[dict] = None) -> tuple:
     if not entries:
         return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
     if expand_states is None:
@@ -172,7 +180,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         groups = [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
     all_lines, line_keys, rendered_opus_labels = _render_all_groups(
         entries, groups, expand_states, pane_width, turns, item_positions_out,
-        copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query,
+        copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query, request_id_by_flow,
     )
     collision_entry_idxs = _compute_collision_idxs(rendered_opus_labels)
     _trim_trailing_blank(all_lines, line_keys)

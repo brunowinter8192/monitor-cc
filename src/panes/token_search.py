@@ -2,7 +2,7 @@
 from typing import List
 
 from ..utils import _ANSI_ESCAPE_RE
-from ..format.token_format import _format_turn_header_line, _format_cache_call, _call_thinking_meta, _render_expanded_call_lines
+from ..format.token_format import call_numbers, _format_turn_header_line, _format_cache_call, _call_thinking_meta, _render_expanded_call_lines
 
 # FUNCTIONS
 
@@ -23,13 +23,12 @@ def build_token_search_matches(query: str, turns: list, pane_width: int, respons
     q = query.lower()
     wide = pane_width >= 60
     matches = []
-    request_num = 0
+    numbers = call_numbers(turns)
     for turn_idx, turn in enumerate(turns):
         turn_line = _format_turn_header_line(turn_idx, turn, pane_width)
         if q in _ANSI_ESCAPE_RE.sub('', turn_line).lower():
             matches.append(('turn', turn_idx))
         for call_idx, call in enumerate(turn.get('api_calls', [])):
-            request_num += 1
-            if _call_matches_query(call, request_num, wide, response_rid_map, q):
+            if _call_matches_query(call, numbers[turn_idx][call_idx], wide, response_rid_map, q):
                 matches.append((turn_idx, call_idx))
     return matches

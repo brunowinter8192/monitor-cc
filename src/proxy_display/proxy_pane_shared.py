@@ -8,6 +8,7 @@ from .forwarded_parser import _lazy_load_messages_forwarded, reconstruct_all_mes
 from .parser import _find_dual_log_paths
 from .dual_log_accumulator import accumulate_dual_log
 from .search import build_search_matches
+from .side_logs import read_response_log
 from .. import search_bar
 
 # FUNCTIONS
@@ -182,6 +183,14 @@ def _attach_overlay_references(entries: list, acc_stripped: dict, acc_injected: 
         entry['_lag_msgs_lookup'] = acc_stripped[family].setdefault('_lag_msg_idx_by_flow_id', {})
         if original_tools_by_family is not None:
             entry['_original_tools_by_name'] = original_tools_by_family.setdefault(family, {})
+
+def _accumulate_request_ids(response_path, position: int, request_id_by_flow: dict) -> int:
+    by_request_id, new_position = read_response_log(response_path, position)
+    for request_id, entry in by_request_id.items():
+        flow_id = entry.get('flow_id')
+        if flow_id:
+            request_id_by_flow[flow_id] = request_id
+    return new_position
 
 def _shift_line_map_and_copy_rows(line_map: dict, copy_rows: set, shift: int) -> None:
     shifted = {r + shift: k for r, k in line_map.items()}

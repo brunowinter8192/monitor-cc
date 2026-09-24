@@ -41,7 +41,7 @@ via `RENDER_BYTE_IDENTITY_LOG_DIR` to pin a frozen quartet for a stable before/a
 
 ---
 
-### test_standalone_sidecar.py (105 LOC)
+### test_standalone_sidecar.py (107 LOC)
 
 **Purpose:** Regression guard confirming `format._is_standalone_entry`'s existing haiku check
 already excludes every CC-internal zero-tool sidecar shape observed in real data from
@@ -53,6 +53,26 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 **Calls out:** `src.proxy_display.format` (`_is_standalone_entry`), `src.proxy_display.render_turn`
 (`render_turn_expanded`), `src.utils` (`_ANSI_ESCAPE_RE`) — imported inside functions, per the
 `block_dev_imports_src` hook's indentation-based exemption.
+
+---
+
+### test_req_prefix_turn_headers.py (213 LOC)
+
+**Purpose:** Regression test for the `REQ #n` row prefix, `Turn` header rows, continue-safe forwarded parsing and REQ-number/turn-header parity with `format_cache_tracker`, on synthetic forwarded lines and turns.
+**Reads:** nothing external — a temp forwarded JSONL and in-process turns.
+**Writes:** PASS/FAIL lines to stdout.
+**Called by:** none — manual regression test.
+**Calls out:** `src.proxy_display.forwarded_parser`, `src.proxy_display.format`, `src.format.token_format`, `src.utils` — imported inside functions.
+
+---
+
+### verify_req_numbering.py (132 LOC)
+
+**Purpose:** Side-by-side check of one turn: proxy pane rows versus token pane rows for a real dual-log session, plus a pairwise (number, turn) equality verdict.
+**Reads:** `_forwarded`/`_response` under the main checkout's `src/logs/dual_log`, the matching transcript under `~/.claude/projects` (found by request_id).
+**Writes:** `dev/proxy_display/md/verify_req_numbering_<stem>_turn<N>.md` and stdout.
+**Called by:** none — run manually: `python dev/proxy_display/verify_req_numbering.py <stem> <turn>`.
+**Calls out:** `src.proxy_display.*`, `src.dual_log_cli.usage` (`_find_transcript`), `src.panes.cache_turns`, `src.format.token_format`.
 
 ---
 

@@ -41,6 +41,26 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bo
         return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}"
     return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}"
 
+def call_numbers(turns: list) -> list:
+    numbers = []
+    request_num = 0
+    for turn in turns:
+        row = []
+        for _call in turn.get('api_calls', []):
+            request_num += 1
+            row.append(request_num)
+        numbers.append(row)
+    return numbers
+
+def request_numbers_by_id(turns: list) -> dict:
+    numbers = {}
+    for turn, row in zip(turns, call_numbers(turns)):
+        for call, request_num in zip(turn.get('api_calls', []), row):
+            request_id = call.get('request_id', '')
+            if request_id:
+                numbers.setdefault(request_id, request_num)
+    return numbers
+
 def _call_thinking_meta(call: dict) -> tuple:
     has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
     sig_chars = sum(b.get('sig_chars', 0) for b in call.get('content_blocks', []) if b.get('type') == 'thinking')
@@ -254,9 +274,9 @@ def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: boo
     return call_line, key, marker
 
 def _render_turn_lines(turn_idx: int, turn: dict, expand_states: dict, pane_width: int, wide: bool,
-                       request_num: int, response_rid_map: dict, copy_feedback: Optional[dict],
+                       numbers: list, response_rid_map: dict, copy_feedback: Optional[dict],
                        search_match_set: Optional[set], search_current_key, search_query: str,
-                       nav_out: Optional[dict], all_lines: list, line_keys: list) -> int:
+                       nav_out: Optional[dict], all_lines: list, line_keys: list) -> None:
     turn_key = ('turn', turn_idx)
     turn_line = _format_turn_header_line(turn_idx, turn, pane_width)
     turn_is_match = bool(search_match_set) and turn_key in search_match_set
@@ -271,9 +291,8 @@ def _render_turn_lines(turn_idx: int, turn: dict, expand_states: dict, pane_widt
     api_calls = turn.get('api_calls', [])
     for call_idx, call in enumerate(api_calls):
         is_expanded = expand_states.get((turn_idx, call_idx), False)
-        request_num += 1
         call_line, key, marker = _render_call_line(
-            turn_idx, call_idx, call, is_expanded, request_num, wide, pane_width,
+            turn_idx, call_idx, call, is_expanded, numbers[call_idx], wide, pane_width,
             search_match_set, search_current_key, copy_feedback)
         if nav_out is not None:
             nav_out[key] = len(all_lines)
@@ -288,7 +307,6 @@ def _render_turn_lines(turn_idx: int, turn: dict, expand_states: dict, pane_widt
 
     all_lines.append('')
     line_keys.append(None)
-    return request_num
 
 def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None, copy_feedback: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '', nav_out: Optional[dict] = None) -> tuple:
     if not turns:
@@ -304,15 +322,15 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
 
     all_lines = []
     line_keys = []
-    request_num = 0
+    numbers = call_numbers(turns)
 
     if not wide:
         all_lines.append(f"{WHITE}CR/CC/D = Read/Create/Direct{SOFT_RESET}")
         line_keys.append(None)
 
     for turn_idx, turn in enumerate(turns):
-        request_num = _render_turn_lines(
-            turn_idx, turn, expand_states, pane_width, wide, request_num, response_rid_map,
+        _render_turn_lines(
+            turn_idx, turn, expand_states, pane_width, wide, numbers[turn_idx], response_rid_map,
             copy_feedback, search_match_set, search_current_key, search_query, nav_out,
             all_lines, line_keys)
 

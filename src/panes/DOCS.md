@@ -50,7 +50,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### token_search.py (35 LOC)
+### token_search.py (34 LOC)
 
 **Purpose:** `build_token_search_matches(query, turns, pane_width, response_rid_map=None)` — the ordered list of match keys whose content matches `query` (case-insensitive), reusing the real render functions from `format.token_format` so a match can never diverge from what the pane actually renders.
 **Reads:** turns list, pane width, optional response_rid_map — parameters only.

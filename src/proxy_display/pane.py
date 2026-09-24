@@ -8,13 +8,13 @@ from ..constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
-from .parser import find_proxy_log_path, _find_original_log_path
+from .parser import find_proxy_log_path, _find_original_log_path, _find_response_log_path
 from .forwarded_parser import parse_proxy_log_forwarded, _infer_model_family
 from .dual_log_accumulator import accumulate_original_tools
 from .proxy_pane_shared import (
     _entry_idx_from_key, _terminal_size, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body, _accumulate_dual_logs_and_attach,
-    _copy_feedback_key,
+    _copy_feedback_key, _accumulate_request_ids,
 )
 from .format import format_proxy_block
 from ..panes.cache_turns import build_cache_turns
@@ -47,6 +47,8 @@ _proxy_injected_pos: int = 0
 _proxy_acc_stripped: dict = {}
 _proxy_acc_injected: dict = {}
 _proxy_original_pos: int = 0
+_proxy_response_pos: int = 0
+_proxy_request_id_by_flow: dict = {}
 _proxy_acc_original: dict = {}
 _proxy_log_path: Optional[Path] = None
 _proxy_pane_width: int = 80
@@ -235,7 +237,7 @@ def _undo_proxy_expand() -> bool:
 
 def _reset_proxy_positions(now: float) -> None:
     global proxy_log_position, _proxy_jsonl_position, _proxy_cache_turns, _proxy_fwd_pos
-    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _last_full_parse_ts
+    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _last_full_parse_ts, _proxy_response_pos
     proxy_entries.clear()
     proxy_line_map.clear()
     proxy_log_position = _proxy_jsonl_position = _proxy_fwd_pos = 0
@@ -246,6 +248,8 @@ def _reset_proxy_positions(now: float) -> None:
     _proxy_acc_stripped.clear()
     _proxy_acc_injected.clear()
     _proxy_acc_original.clear()
+    _proxy_request_id_by_flow.clear()
+    _proxy_response_pos = 0
 
 def _reset_proxy_session_state(monitor, now: float) -> None:
     global _proxy_session_start_ts, proxy_scroll_offset, proxy_hover_row, _proxy_log_path
@@ -263,7 +267,7 @@ def _reset_proxy_reparse_state(now: float) -> None:
 
 def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global _proxy_fwd_pos, _proxy_acc_fwd, _proxy_log_path, _last_full_parse_ts, _proxy_current_main_session
-    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _proxy_jsonl_position, _proxy_cache_turns
+    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _proxy_jsonl_position, _proxy_cache_turns, _proxy_response_pos
     if now - last_data_refresh < POLL_INTERVAL:
         return input_changed, last_data_refresh
     newest = monitor._get_newest_main_session()
@@ -282,6 +286,7 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
     filtered = [e for e in new_entries if e.get('timestamp', '') >= _proxy_session_start_ts]
     proxy_entries.extend(filtered)
     _proxy_log_path = find_proxy_log_path(monitor.active_project_filter)
+    _proxy_response_pos = _accumulate_request_ids(_find_response_log_path(_proxy_log_path), _proxy_response_pos, _proxy_request_id_by_flow)
     original_path = _find_original_log_path(_proxy_log_path)
     _proxy_original_pos = accumulate_original_tools(original_path, _proxy_original_pos, _proxy_acc_original)
     _proxy_stripped_pos, _proxy_injected_pos = _accumulate_dual_logs_and_attach(
@@ -325,7 +330,7 @@ def _build_proxy_output() -> str:
             scroll_offset, turns=_proxy_cache_turns, item_positions_out=item_positions,
             copy_feedback=_copy_feedback_until, copy_rows_out=_proxy_copy_rows,
             search_match_set=_proxy_search.match_set, search_current_entry_idx=current_match_entry_idx,
-            search_query=_proxy_search.query,
+            search_query=_proxy_search.query, request_id_by_flow=_proxy_request_id_by_flow,
         )
         return body, total_lines, item_positions
     body, proxy_scroll_offset = _render_and_scroll_body(
