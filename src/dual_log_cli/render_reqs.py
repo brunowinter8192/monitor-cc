@@ -117,14 +117,21 @@ def _merged_entries(results: list, turns_by_stem: dict = None, usage_by_stem: di
 
 def _bracket_gap_positions(entries: list, gap_minutes: int) -> dict:
     positions = {}
-    for i in range(len(entries) - 1):
-        dt_before = entries[i][0]
-        dt_after = entries[i + 1][0]
-        elapsed = int((dt_after - dt_before).total_seconds() // 60)
+    last_index_by_turn = {}
+    for i, entry in enumerate(entries):
+        turn_number = entry[4]
+        if turn_number is None:
+            continue
+        key = (entry[1], turn_number)
+        previous = last_index_by_turn.get(key)
+        last_index_by_turn[key] = i
+        if previous is None:
+            continue
+        elapsed = int((entry[0] - entries[previous][0]).total_seconds() // 60)
         if elapsed < gap_minutes:
             continue
-        positions.setdefault(i, None)
-        positions[i + 1] = None
+        positions[previous] = None
+        positions[i] = None
     return positions
 
 

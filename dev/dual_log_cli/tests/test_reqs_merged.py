@@ -51,12 +51,25 @@ def _boundaries(entries: list) -> list:
 def _session(stem: str) -> dict:
     return {"stem": stem}
 
+def _turns(stems: list, openers: list) -> dict:
+    rows = [{"index": i, "role": "user" if i in openers else "assistant", "type": "text", "chars": 10,
+             "blocks": [{"label": "text", "type": "text", "chars": 10, "sig_chars": 0, "preview": "p"}]}
+            for i in range(max(openers) + 1)]
+    return {stem: rows for stem in stems}
+
+def _req_lines(got: str) -> list:
+    return [l for l in got.split("\n") if l.startswith("REQ")]
+
+STEM_A = "api_requests_opus_monitor_cc_1788500000"
+STEM_B = "api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001"
+
 # ORCHESTRATOR
 
 def test_reqs_merged_workflow() -> None:
     test_merged_order_interleaved_across_sessions()
-    test_merged_gap_bridged_by_another_session_does_not_qualify()
-    test_merged_gap_across_sessions_qualifies()
+    test_merged_gap_interleaved_by_another_session_still_qualifies()
+    test_merged_gap_across_sessions_dropped()
+    test_merged_gap_cross_turn_dropped()
 
     total = len(PASS_LIST) + len(FAIL_LIST)
     print(f"{len(PASS_LIST)}/{total} checks passed")
@@ -89,7 +102,7 @@ def test_merged_order_interleaved_across_sessions() -> None:
     check("merged REQs interleave in strict chronological order, each tagged with its own session",
           got == expected, got)
 
-def test_merged_gap_bridged_by_another_session_does_not_qualify() -> None:
+def test_merged_gap_interleaved_by_another_session_still_qualifies() -> None:
     boundaries_a = _boundaries([
         _delta_entry("a0", "2026-09-04T10:00:00Z", 2, is_first=True),
         _delta_entry("a1", "2026-09-04T11:35:00Z", 5),
@@ -97,24 +110,29 @@ def test_merged_gap_bridged_by_another_session_does_not_qualify() -> None:
     boundaries_b = _boundaries([
         _delta_entry("b0", "2026-09-04T10:30:00Z", 2, is_first=True),
     ])
-    session_a = _session("api_requests_opus_monitor_cc_1788500000")
-    session_b = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001")
-    got = render_reqs_merged([(session_a, boundaries_a), (session_b, boundaries_b)], gap_minutes=90)
-    check("the within-session gap is bridged — no qualifying pair, header only",
-          got == "merged 2 sessions\n", got)
+    got = render_reqs_merged([(_session(STEM_A), boundaries_a), (_session(STEM_B), boundaries_b)],
+                             gap_minutes=90, turns_by_stem=_turns([STEM_A, STEM_B], [0]))
+    lines = _req_lines(got)
+    check("the same-turn gap of session A qualifies although B's REQ sits chronologically between",
+          len(lines) == 2 and all("monitor_cc" in l for l in lines), lines)
 
-def test_merged_gap_across_sessions_qualifies() -> None:
+def test_merged_gap_across_sessions_dropped() -> None:
     boundaries_a = _boundaries([_delta_entry("a0", "2026-09-04T10:00:00Z", 2, is_first=True)])
     boundaries_b = _boundaries([_delta_entry("b0", "2026-09-04T11:40:00Z", 2, is_first=True)])
-    session_a = _session("api_requests_opus_monitor_cc_1788500000")
-    session_b = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001")
-    got = render_reqs_merged([(session_a, boundaries_a), (session_b, boundaries_b)], gap_minutes=90)
-    expected = (
-        "merged 2 sessions\n"
-        f"REQ 1   {_local_clock('2026-09-04T10:00:00Z')}  monitor_cc  CR ?  CC ?\n"
-        f"REQ 1   {_local_clock('2026-09-04T11:40:00Z')}  proxy-tn-wrap  CR ?  CC ?\n"
-    )
-    check("a genuine cross-session gap qualifies, both REQs print with their tags", got == expected, got)
+    got = render_reqs_merged([(_session(STEM_A), boundaries_a), (_session(STEM_B), boundaries_b)],
+                             gap_minutes=90, turns_by_stem=_turns([STEM_A, STEM_B], [0]))
+    check("a cross-session chronological neighbor never forms a gap, header only",
+          got == "merged 2 sessions\n", got)
+
+def test_merged_gap_cross_turn_dropped() -> None:
+    boundaries_a = _boundaries([
+        _delta_entry("a0", "2026-09-04T10:00:00Z", 2, is_first=True),
+        _delta_entry("a1", "2026-09-04T11:35:00Z", 9),
+    ])
+    got = render_reqs_merged([(_session(STEM_A), boundaries_a)], gap_minutes=90,
+                             turns_by_stem=_turns([STEM_A], [0, 7]))
+    check("under --merged a gap between two turns of one session is dropped",
+          got == "merged 1 sessions\n", got)
 
 if __name__ == "__main__":
     test_reqs_merged_workflow()
