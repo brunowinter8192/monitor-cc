@@ -1,17 +1,10 @@
 # hook_smoke run_all
 
-25/25 strands passed
+22/23 strands passed
 
-## PASS _strand_test_bg_task_detection
+## ABORT _strand_test_bg_task_detection
 
-  [OK  ] open path under session tasks dir -> True
-  [OK  ] no open path for session -> False
-  [OK  ] session-id prefix collision does not false-positive
-  [OK  ] real subprocess writer: detected while open, not after
-  [OK  ] lsof failure fails open, keeps prior snapshot
-  [OK  ] TTL gate: second call inside window is a no-op
-
-All 6 tests passed.
+(no output)
 
 ## PASS _strand_test_block_broad_find
 
@@ -57,24 +50,6 @@ All 19 tests passed.
   [OK  ] grep in heredoc body PASS: exit=0 (expected 0)
 
 All 16 tests passed.
-
-## PASS _strand_test_block_chained_sleep
-
-  [OK  ] canonical pass: exit=0 (expected 0)
-  [OK  ] canonical float pass: exit=0 (expected 0)
-  [OK  ] no sleep pass: exit=0 (expected 0)
-  [OK  ] chained before sleep BLOCK: exit=2 (expected 2)
-  [OK  ] non-echo-done cont BLOCK: exit=2 (expected 2)
-  [OK  ] real sleep after quoted BLOCK: exit=2 (expected 2)
-  [OK  ] heredoc quoted body PASS: exit=0 (expected 0)
-  [OK  ] heredoc unquoted body PASS: exit=0 (expected 0)
-  [OK  ] single-quoted sleep PASS: exit=0 (expected 0)
-  [OK  ] double-quoted sleep PASS: exit=0 (expected 0)
-  [OK  ] ANSI-C quote sleep PASS: exit=0 (expected 0)
-  [OK  ] cmd-subst sleep BLOCK: exit=2 (expected 2)
-  [OK  ] backtick sleep BLOCK: exit=2 (expected 2)
-
-All 13 tests passed.
 
 ## PASS _strand_test_block_cli_chained
 
@@ -220,29 +195,6 @@ All 21 tests passed.
   [OK  ] tmux kill-session worker in comment PASS: exit=0 (expected 0)
 
 All 21 tests passed.
-
-## PASS _strand_test_block_non_canonical_edit
-
-  [OK  ] sed -i on existing file BLOCK: exit=2 (expected 2)
-  [OK  ] perl -pi on existing file BLOCK: exit=2 (expected 2)
-  [OK  ] gawk -i inplace on existing file BLOCK: exit=2 (expected 2)
-  [OK  ] python open() mode r+ on existing file BLOCK: exit=2 (expected 2)
-  [OK  ] cat > truncating an existing file BLOCK: exit=2 (expected 2)
-  [OK  ] python open() mode w on existing file, -c form BLOCK: exit=2 (expected 2)
-  [OK  ] non-canonical python heredoc (wrong delimiter) on existing file BLOCK: exit=2 (expected 2)
-  [OK  ] tee (no -a) on existing file BLOCK: exit=2 (expected 2)
-  [OK  ] cat > creating a brand-new file PASS: exit=0 (expected 0)
-  [OK  ] cat >> appending an existing file PASS: exit=0 (expected 0)
-  [OK  ] tee -a an existing file PASS: exit=0 (expected 0)
-  [OK  ] python open() mode x on a brand-new file PASS: exit=0 (expected 0)
-  [OK  ] python open() mode w on a brand-new file PASS: exit=0 (expected 0)
-  [OK  ] the exact canonical LINEEDIT form on an existing file PASS: exit=0 (expected 0)
-  [OK  ] unresolvable path (sys.argv) PASS: exit=0 (expected 0)
-  [OK  ] sed -i mentioned only as prose inside a new-file heredoc PASS: exit=0 (expected 0)
-  [OK  ] sed -i mentioned only as a quoted search term PASS: exit=0 (expected 0)
-  [OK  ] parse-error fail-open PASS: exit=0 (expected 0)
-
-All 18 tests passed.
 
 ## PASS _strand_test_block_po_read
 

@@ -81,16 +81,6 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_chained_sleep.py (51 LOC)
-
-**Purpose:** Smoke for the retired chained-sleep hook: canonical versus chained placements, quoting and heredoc stripping.
-**Reads:** nothing.
-**Writes:** stdout only.
-**Called by:** none; manual CLI.
-**Calls out:** none; drives the retired hook file via `subprocess`.
-
----
-
 ### test_block_cli_chained.py (166 LOC)
 
 **Purpose:** Smoke for the chained-CLI hook: pipe, redirect and readback abuse across wrapper CLIs, plus interpreter-path and cwd bypass forms.
@@ -138,16 +128,6 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 **Writes:** stdout only.
 **Called by:** none; manual CLI.
 **Calls out:** none; drives the hook via `subprocess`.
-
----
-
-### test_block_non_canonical_edit.py (123 LOC)
-
-**Purpose:** Smoke for the retired non-canonical edit hook: always-block and always-allow forms, the canonical line-edit form and fail-open.
-**Reads:** its own temp-dir fixtures.
-**Writes:** stdout; its own temp dir, cleaned via `atexit`.
-**Called by:** none; manual CLI.
-**Calls out:** none; drives the retired hook file via `subprocess`.
 
 ---
 
@@ -308,26 +288,6 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 **Writes:** stdout only.
 **Called by:** none; manual CLI from the project root.
 **Calls out:** none; drives the hook via `subprocess`.
-
----
-
-### verify_block_non_canonical_edit_corpus.py (64 LOC)
-
-**Purpose:** Ran the retired non-canonical edit hook against every real corpus record; cannot currently run because the target is disabled.
-**Reads:** `dev/cache/jsonl/bash_file_mods_*.jsonl`, read-only.
-**Writes:** nothing directly; delegates to the report module.
-**Called by:** none; cannot currently run.
-**Calls out:** `src.hooks.block_non_canonical_edit`, retired.
-
----
-
-### verify_block_non_canonical_edit_report.py (87 LOC)
-
-**Purpose:** Pure Markdown rendering of the corpus-verification report from an evaluated results list.
-**Reads:** nothing; results as argument.
-**Writes:** `md/block_non_canonical_edit_corpus_report.md`, a historical snapshot.
-**Called by:** `verify_block_non_canonical_edit_corpus.py`.
-**Calls out:** none.
 
 ---
 
