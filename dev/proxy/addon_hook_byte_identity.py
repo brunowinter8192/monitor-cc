@@ -13,6 +13,7 @@ sys.path.insert(0, str(_ROOT))
 
 _MAIN_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 _PREFIX_LINES = 60
+_LOG_ID = 'opus_probe_0'
 _TIMESTAMP_KEYS = ('timestamp', 'ts')
 _DUAL_LOG_SUFFIXES = ('original', 'forwarded', 'stripped', 'injected', 'errors', 'response')
 
@@ -22,12 +23,11 @@ _DUAL_LOG_SUFFIXES = ('original', 'forwarded', 'stripped', 'injected', 'errors',
 def main():
     orig_path = _source_log()
     payloads = _load_payloads(orig_path)
-    proxy_addon_cls = _import_proxy_addon()
     with tempfile.TemporaryDirectory() as tmp_root:
         os.environ['MONITOR_CC_ROOT'] = tmp_root
-        os.environ.pop('PROXY_LOG_ID', None)
-        os.environ.pop('PROXY_SESSION_ID', None)
+        os.environ['PROXY_LOG_ID'] = _LOG_ID
         os.environ['PROXY_PROJECT_PATH'] = ''
+        proxy_addon_cls = _import_proxy_addon()
         stderr_buf = io.StringIO()
         with redirect_stderr(stderr_buf):
             _drive_addon(payloads, proxy_addon_cls)
@@ -139,7 +139,7 @@ def _hash_dual_logs(tmp_root: str, stderr_text: str) -> str:
     digest = hashlib.sha256()
     dual_log_dir = Path(tmp_root) / 'src' / 'logs' / 'dual_log'
     for suffix in _DUAL_LOG_SUFFIXES:
-        path = dual_log_dir / f'api_requests_{suffix}.jsonl'
+        path = dual_log_dir / f'api_requests_{_LOG_ID}_{suffix}.jsonl'
         digest.update(f'==={suffix}==='.encode())
         if path.exists():
             with open(path, encoding='utf-8') as f:

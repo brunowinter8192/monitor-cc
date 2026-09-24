@@ -12,9 +12,15 @@ from .strip_inject_delta import _build_stripped_injected_deltas
 # FUNCTIONS
 
 
+def proxy_log_id() -> str:
+    log_id = os.environ.get("PROXY_LOG_ID")
+    if not log_id:
+        raise RuntimeError("PROXY_LOG_ID is not set")
+    return log_id
+
+
 def _resolve_dual_log_file(suffix: str) -> Path:
-    log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID")
-    filename = f"api_requests_{log_id}_{suffix}.jsonl" if log_id else f"api_requests_{suffix}.jsonl"
+    filename = f"api_requests_{proxy_log_id()}_{suffix}.jsonl"
     return proxy_monitor_root() / "src" / "logs" / "dual_log" / filename
 
 

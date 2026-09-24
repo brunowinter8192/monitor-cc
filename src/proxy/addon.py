@@ -10,10 +10,10 @@ from typing import Optional
 
 from mitmproxy import http
 
-from .proxy_error_log import log_proxy_error
+from .proxy_error_log import log_proxy_error, log_proxy_error_on_change
 from .addon_state import DualLogPaths, DeltaState, FixationState, SessionIdentity
 from .addon_dual_log import (
-    _resolve_dual_log_file, _write_entry, _log_original_request,
+    _resolve_dual_log_file, _write_entry, proxy_log_id, _log_original_request,
     _write_request_dual_logs, _log_4xx_error, _write_stripped_injected,
 )
 
@@ -75,6 +75,8 @@ class ProxyAddon:
             flow.metadata["mc_original_payload"] = payload
 
             model_family = _infer_model_family(payload.get("model", ""))
+            if model_family == "unknown":
+                log_proxy_error_on_change("addon.model_family", f"unknown model family for model {payload.get('model', '')!r}")
             project_path = os.environ.get("PROXY_PROJECT_PATH", "")
 
             _log_original_request(self.paths.original, flow, payload)
@@ -317,12 +319,13 @@ def _derive_session_id() -> str:
 
 
 def _derive_worker_context() -> str:
-    log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID") or ""
-    if log_id.startswith("worker_"):
-        parts = log_id.split("_")
-        if len(parts) >= 4:
-            return "worker:" + "_".join(parts[2:-1])
-    return "main"
+    log_id = proxy_log_id()
+    if not log_id.startswith("worker_"):
+        return "main"
+    parts = log_id.split("_")
+    if len(parts) < 4:
+        raise ValueError(f"unparsable worker log id: {log_id!r}")
+    return "worker:" + "_".join(parts[2:-1])
 
 
 addons = [ProxyAddon()]
