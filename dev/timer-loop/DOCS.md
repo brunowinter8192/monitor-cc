@@ -1,92 +1,65 @@
 # dev/timer-loop/
 
 ## Role
-Measurement and verification scripts around the background-task wake-up chain. `p1_` inventories
-real background-task completion/kill notice wordings in the recorded corpus. `p3_` is a dead probe
-for a removed proxy-side design (kept as historical record). `test_abort_stamp_scope.py` guards the
-menubar-side abort-scoping fix, a separate mechanism in the same chain.
+Measurement and verification scripts around the background-task wake-up chain: an inventory of real completion and kill notice wordings, a dead probe for a removed proxy-side design (historical), and a guard for the menubar-side abort-scoping fix.
 
 ## Public Interface
-No `__init__.py` in this directory. Entry paths: `./venv/bin/python
-dev/timer-loop/p1_scan_bg_completion_wordings.py [log_dir]`, `./venv/bin/python
-dev/timer-loop/p3_project_scope_incident_probe.py` (DEAD, see below), `python3
-dev/timer-loop/test_abort_stamp_scope.py`.
+No `__init__.py`. Entry paths: `./venv/bin/python dev/timer-loop/p1_scan_bg_completion_wordings.py [log_dir]`, `dev/timer-loop/p3_project_scope_incident_probe.py` (dead) and `python3 dev/timer-loop/test_abort_stamp_scope.py`.
 
 ## Flow
-`p1_scan_bg_completion_wordings.py` scans the dual-log corpus for wording variety and writes a
-findings report. `test_abort_stamp_scope.py` drives the real menubar abort function against real
-spawned subprocesses and asserts on file/process state, as one fail-fast strand.
+The wording scan reads the dual-log corpus and writes a findings report. The abort test drives the real menubar abort function against spawned subprocesses and asserts on file and process state as one fail-fast strand.
 
 ## Modules
 
 ### p1_scan_bg_completion_wordings.py (47 LOC)
 
-**Purpose:** Entry script — resolves the corpus dir, drives the per-file scan loop, writes the
-report.
-**Reads:** all `*_original.jsonl` files under src/logs/dual_log (corpus dir overridable via the
-first CLI argument).
+**Purpose:** Entry script: resolves the corpus dir, drives the per-file scan loop and writes the report.
+**Reads:** all `*_original.jsonl` files of the dual log (dir overridable by first argument).
 **Writes:** `md/bg_completion_wordings_<date>.md`.
-**Called by:** none — manual, measurement only.
+**Called by:** none; manual measurement.
 **Calls out:** `bg_completion_scan.py`, `bg_completion_report.py`.
 
 ---
 
 ### bg_completion_scan.py (154 LOC)
 
-**Purpose:** Corpus-scanning concern for p1 — candidate-block extraction, TN/bare structural
-filters, dedup, and mechanism-verdict evaluation against the real extraction code.
-**Reads:** nothing directly (operates on data passed in by the caller).
-**Writes:** nothing (mutates the `findings`/counter dicts passed in by the caller).
+**Purpose:** Corpus scanning for the wording inventory: candidate extraction, structural filters, dedup and mechanism verdicts against the real extraction code.
+**Reads:** nothing directly; works on data passed in.
+**Writes:** nothing; mutates finding and counter dicts passed in.
 **Called by:** `p1_scan_bg_completion_wordings.py`, `bg_completion_report.py`.
-**Calls out:** `src/proxy/strip_sn_notice.py`, `src/proxy/strip_bg_completed.py`,
-`src/proxy/payload_helpers.py`.
+**Calls out:** `src/proxy/strip_sn_notice.py`, `src/proxy/strip_bg_completed.py`, `src/proxy/payload_helpers.py`.
 
 ---
 
 ### bg_completion_report.py (274 LOC)
 
-**Purpose:** Report-building concern for p1 — one function per markdown section, assembled by
-`_build_report`.
-**Reads:** nothing (operates on the `findings`/counter dicts built by `bg_completion_scan.py`).
-**Writes:** nothing (returns the report text; the entry script writes the file).
+**Purpose:** Report building for the wording inventory, one section per concern.
+**Reads:** nothing; operates on the scanner's dicts.
+**Writes:** nothing; returns the report text.
 **Called by:** `p1_scan_bg_completion_wordings.py`.
-**Calls out:** `bg_completion_scan.py` (`_is_canonical_timer_command`, `_mechanism_verdict`,
-`EXCLUDED_FILES`).
+**Calls out:** `bg_completion_scan.py`.
 
 ---
 
 ### p3_project_scope_incident_probe.py (214 LOC)
 
-**Purpose:** Replays a cross-project false-block incident where one project's main session was
-blocked by another project's pending background-task entry in a shared state file.
-**Reads:** nothing persistent — seeded its own state file per case under a temp directory.
-**Writes:** `md/p3_project_scope_incident_probe_report.md` — never reached; see Called by.
-**Called by:** none — DEAD CODE. Both the hook module and the state-writer module it imports do
-not exist under `src/`; the script raises `ModuleNotFoundError` partway through and never
-completes.
-**Calls out:** none reachable — its imports (a hook module and a pending-state module, both under
-`src/`) do not exist; `src/proxy/addon.py` (`ProxyAddon`, `_derive_worker_context`) is still live
-but unreachable since the script crashes before that import executes.
+**Purpose:** Replays a cross-project false-block incident where one project's session was blocked by another's pending background-task entry.
+**Reads:** nothing persistent; seeds its own state file per case in a temp dir.
+**Writes:** a report that is never reached.
+**Called by:** none. Dead code: the hook and state-writer modules it imports no longer exist, so it raises before completing.
+**Calls out:** nothing reachable.
 
 ---
 
 ### test_abort_stamp_scope.py (130 LOC)
 
-**Purpose:** Integration regression guard for the menubar abort-stamp scoping fix
-(`_abort_bg_sleep_timers`/`_resolve_pid_output_file`) — spawns two real subprocesses, calls the
-real abort function with only one PID, and asserts only that file/process pair is touched.
-**Reads:** nothing persistent — spawns its own subprocesses and temp directory.
-**Writes:** a temp directory holding the fixture files and a scratch menubar log (`MENUBAR_LOG` is
-patched), removed in `finally`; `md/test_abort_stamp_scope.md`.
-**Called by:** none — manual CLI, run via `python3 dev/timer-loop/test_abort_stamp_scope.py`.
-**Calls out:** `src.menubar.bg_timer` (`_abort_bg_sleep_timers`, dynamic import),
-`src.menubar.menubar_log` (dynamic import), `dev.refactoring.strand_runner`; spawns `sleep` as fixture subprocesses.
+**Purpose:** Integration guard for the menubar abort-stamp scoping fix: spawns two subprocesses, aborts one PID and asserts only that pair is touched.
+**Reads:** nothing persistent; spawns its own subprocesses and temp dir.
+**Writes:** a temp dir with fixtures and a scratch menubar log, removed at the end; `md/test_abort_stamp_scope.md`.
+**Called by:** none; manual CLI.
+**Calls out:** `src.menubar.bg_timer`, `src.menubar.menubar_log` (dynamic imports), the strand runner in `dev/refactoring/`.
 
 ---
 
 ## State
-`bg_completion_scan.py`'s `_scan_file` owns and mutates the `findings`/`cmd_variant_counts`/
-`raw_dup_counter`/`bare_hits`/`session_is_worker` dicts that `p1_scan_bg_completion_wordings.py`
-creates and passes by reference through the whole scan -> report pipeline; `bg_completion_report.py`
-only reads them. `p3_project_scope_incident_probe.py` and `test_abort_stamp_scope.py` each own and
-mutate only their own per-run temp files / spawned subprocesses; neither persists state across runs.
+The scanner owns and mutates the finding and counter dicts the entry script creates and passes through scan and report; the report module only reads them. The other scripts own only per-run temp files and subprocesses.

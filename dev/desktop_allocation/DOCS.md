@@ -126,8 +126,7 @@ only.
 
 ### probe03_bridge.py (87 LOC)
 
-**Purpose:** ctypes/objc/libproc bridge setup plus reflection helpers (`_cf_describe`,
-`_dict_all_keys`) used to dump arbitrary CGWindow fields.
+**Purpose:** ctypes/objc/libproc bridge setup plus reflection helpers used to dump arbitrary CGWindow fields.
 **Reads:** —. **Writes:** —.
 **Called by:** `probe03_diagnostics.py`, `probe03_windows.py`, `probe03_ghostty_detail.py`,
 `03_field_availability_probe.py`.
@@ -334,7 +333,7 @@ after measurement of one move-primitive trial.
 ### probe06_workflow.py (141 LOC)
 
 **Purpose:** Probe setup, precondition validation, the 4 primitives' symbol loading, and
-per-primitive `call_fn` construction/execution.
+per-primitive call construction and execution.
 **Reads:** live CGS state. **Writes:** stdout status lines.
 **Called by:** `06_move_sweep_probe.py`.
 **Calls out:** —.

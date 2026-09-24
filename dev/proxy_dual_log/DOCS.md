@@ -1,152 +1,115 @@
 # dev/proxy_dual_log/
 
 ## Role
-
-Verification suite for the dual-log quartet (`_original`/`_forwarded`/`_stripped`/`_injected`)
-written by `src/proxy/addon.py`. Proves losslessness of the forwarded-delta log, and completeness
-of the strip/inject diff engine. Touch when changing the dual-log write side, the diff engine, or
-read-side badge/render logic. Do not add features beyond verification.
+Verification suite for the dual-log quartet (original, forwarded, stripped, injected) written by `src/proxy/addon.py`: losslessness of the forwarded delta log and completeness of the strip/inject diff engine. Touch when changing the dual-log write side, the diff engine or read-side badge and render logic. Verification only.
 
 ## Public Interface
-
-No `__init__.py` in this directory. Entry path: run each script directly, e.g.
-`./venv/bin/python dev/proxy_dual_log/attribution_coverage/attribution_coverage.py` (most scripts
-expect to be run from the project root so their own `sys.path`/`from src.` setup resolves). Eight
-entry scripts live one level deeper, in a subfolder named after themselves (see Modules below);
-five single-file scripts live directly in this directory.
+No `__init__.py`. Each script is run directly from the project root. Eight entry scripts live one level deeper in a subfolder named after themselves; five single-file scripts live in this directory.
 
 ## Flow
-
-A script reads one or more dual-log JSONL files (real corpus data or synthetic fixtures). It
-replays the delta chain, or runs the real `src/proxy`/`src/proxy_display` functions directly, over
-that data. It either asserts an invariant via `check()`/exit code, or builds Markdown report lines
-and writes them to its own `*_reports/`/`md/` directory at this area's root — output directories
-never move into a subfolder, even for scripts that do. Every script resolves its own area root by
-walking up from `__file__` until a directory named `proxy_dual_log` is found, then derives the
-project/worktree root as two levels above that; a handful additionally derive the main-checkout
-root specifically for the dual-log corpus, since that data is gitignored and worktree-local copies
-never have it (see `process-docs/proxy_dual_log/` for the exact split and why the corpus lookup
-keeps its pre-existing two-candidate fallback rather than being collapsed to one).
-Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
+A script reads dual-log JSONL files (real corpus or synthetic fixtures), replays the delta chain or runs real proxy and display functions over the data, and asserts an invariant or writes a Markdown report to a report directory at this area's root.
+Each script derives the area root by walking up from its own file; scripts needing the gitignored corpus also derive the main-checkout root (see process-docs).
+Converted suites run as parallel strands through the strand runner in `dev/refactoring/`.
 
 ## Modules
 
 ### verify_delta.py (279 LOC)
 
-**Purpose:** Reconstructs the full forwarded payload from a `_forwarded.jsonl` delta stream and
-verifies element counts match the delta's declared counts.
-**Reads:** an `_original.jsonl` + `_forwarded.jsonl` pair (positional or `--original`/`--forwarded`).
-**Writes:** a per-request table and PASS/FAIL summary to stdout.
-**Called by:** none — manual CLI, exits 1 on a hard-check failure.
-**Calls out:** none at import time — parses JSONL directly.
+**Purpose:** Reconstructs the full forwarded payload from a forwarded delta stream and verifies element counts match the declared counts.
+**Reads:** an original and forwarded log pair.
+**Writes:** a per-request table and summary to stdout.
+**Called by:** none; manual CLI, exits 1 on a hard-check failure.
+**Calls out:** none at import time.
 
 ---
 
 ### tt_delta_skip_replay.py (279 LOC)
 
-**Purpose:** Replays an `_original.jsonl` through the real modification/delta-build/accumulator
-pipeline to prove the total_tokens badge-suppression fix.
-**Reads:** a dual-log stem's `_original`/`_stripped`/`_injected` triplet under the main checkout's
-`src/logs/dual_log`.
-**Writes:** PASS/FAIL classification report to stdout.
-**Called by:** none — manual CLI, exits 1 if a class regresses.
+**Purpose:** Replays an original log through the real modification, delta-build and accumulator pipeline to prove the token-badge suppression fix.
+**Reads:** one stem's original, stripped and injected logs under the main checkout's dual log.
+**Writes:** a classification report to stdout.
+**Called by:** none; manual CLI, exits 1 if a class regresses.
 **Calls out:** `src.proxy.rules`, `src.proxy_display.dual_log_accumulator`, `src.proxy_display.proxy_badge`.
 
 ---
 
 ### diff_strip_inject.py (255 LOC)
 
-**Purpose:** Span-level strip/inject diff of an original vs. forwarded proxy log pair, classifying
-spans as equal/stripped/injected via `difflib`.
-**Reads:** an `_original.jsonl` + `_forwarded.jsonl` pair (positional or `--original`/`--forwarded`).
-**Writes:** per-request diff sections with IDENTICAL/REPLACED/STRIPPED/INJECTED tags to stdout.
-**Called by:** none — manual CLI.
+**Purpose:** Span-level strip/inject diff of an original versus forwarded log pair, classifying spans as equal, stripped or injected.
+**Reads:** an original and forwarded log pair.
+**Writes:** per-request diff sections to stdout.
+**Called by:** none; manual CLI.
 **Calls out:** `src.proxy.diff_engine`.
 
 ---
 
 ### proxy_176_agent_types_tests.py (148 LOC)
 
-**Purpose:** Unit tests for the CC 2.1.176 agent-types system-reminder strip and its attribution
-code.
-**Reads:** nothing — synthetic in-script fixture text.
-**Writes:** PASS/FAIL lines to stdout.
-**Called by:** none — manual CLI.
-**Calls out:** `proxy.message_passes`, `.strip_inject_delta`, `.diff_engine`, `.logging`,
-`.rule_ops` (via direct `sys.path` insertion, 2 levels up from this file's fixed root-level
-location).
+**Purpose:** Unit tests for the CC 2.1.176 agent-types system-reminder strip and its attribution code.
+**Reads:** nothing; synthetic fixture text.
+**Writes:** stdout only.
+**Called by:** none; manual CLI.
+**Calls out:** the message-pass, delta, diff, logging and rule modules of `src/proxy`, via a direct path insert.
 
 ---
 
 ### proxy_176_strip_tests.py (171 LOC)
 
-**Purpose:** Unit tests for two CC 2.1.176 proxy drift fixes — the Workflow tool blocklist entry
-and the role=system message strip.
-**Reads:** nothing — synthetic in-script fixture text.
-**Writes:** PASS/FAIL lines to stdout.
-**Called by:** none — manual CLI.
-**Calls out:** `proxy.tools`, `.message_passes`, `.strip_inject_delta`, `.diff_engine`, `.logging`
-(via direct `sys.path` insertion, 2 levels up from this file's fixed root-level location).
+**Purpose:** Unit tests for two CC 2.1.176 proxy drift fixes: the Workflow tool blocklist entry and the system-role message strip.
+**Reads:** nothing; synthetic fixture text.
+**Writes:** stdout only.
+**Called by:** none; manual CLI.
+**Calls out:** the tools, message-pass, delta, diff and logging modules of `src/proxy`, via a direct path insert.
 
 ---
 
-### A_render_refactor_proof/ (3 modules — see its own `DOCS.md`)
+### A_render_refactor_proof/ (see its own `DOCS.md`)
 
-Byte-identical differential test harness for the proxy_display render cluster (capture/verify
-modes over 14 synthetic cases).
-
----
-
-### attribution_coverage/ (4 modules — see its own `DOCS.md`)
-
-Read-only coverage analysis of the dual-log corpus — can every stripped/injected entry be
-attributed to a proxy function?
+Byte-identical differential harness for the proxy_display render cluster.
 
 ---
 
-### green_overlay_probe/ (3 modules — see its own `DOCS.md`)
+### attribution_coverage/ (see its own `DOCS.md`)
+
+Read-only coverage analysis: can every stripped or injected entry be attributed to a proxy function?
+
+---
+
+### green_overlay_probe/ (see its own `DOCS.md`)
 
 Reproduces a green-overlay false-injection bug and validates a char-level diff fix.
 
 ---
 
-### groundtruth_message_spans_probe/ (4 modules — see its own `DOCS.md`)
+### groundtruth_message_spans_probe/ (see its own `DOCS.md`)
 
 Validates the ground-truth span-construction algorithm that replaces blind diffing for messages.
 
 ---
 
-### main_log_elimination_probe/ (5 modules — see its own `DOCS.md`)
+### main_log_elimination_probe/ (see its own `DOCS.md`)
 
 Feasibility probe on eliminating the main proxy log in favor of the dual-log quartet.
 
 ---
 
-### proxy_176_bg_launch_ack_tests/ (5 modules — see its own `DOCS.md`)
+### proxy_176_bg_launch_ack_tests/ (see its own `DOCS.md`)
 
-Unit tests for the CC 2.1.176 background-launch-ack strip across all 3 observed wordings.
-
----
-
-### span_inline_probe/ (4 modules — see its own `DOCS.md`)
-
-Compares the Form A vs Form B inline-render data model on one fixed recorded session's blocks.
+Unit tests for the CC 2.1.176 background-launch-ack strip across all observed wordings.
 
 ---
 
-### test_composition_invariant/ (5 modules — see its own `DOCS.md`)
+### span_inline_probe/ (see its own `DOCS.md`)
 
-CI-style regression test plus the underlying multi-pass span-composition probe it imports as a
-module.
+Compares two inline-render data models on one fixed recorded session.
+
+---
+
+### test_composition_invariant/ (see its own `DOCS.md`)
+
+CI-style regression test plus the span-composition probe it imports.
 
 ---
 
 ## State
-
-No shared or mutating state across modules or subfolders. Each CLI entry point owns its own
-report-writing (`REPORT_DIR`/`_REPORT_DIR` constants, always anchored at this area's root via the
-`_AREA_ROOT` walk, never at a subfolder); sibling helper modules are pure functions with no
-module-level mutable state, except `tt_delta_skip_replay.py`'s `has_content_map`, which
-monkeypatches and restores `_accumulator._msgs_delta_is_substantial` for the duration of one
-baseline comparison call. `md/`, `json/`, `fixtures/`, and every `*_reports/` directory are this
-area's shared bus, read/written across whichever unit needs them, and never move.
+No shared or mutating state across modules or subfolders. Each entry point owns its report writing, always anchored at this area's root; helper modules are pure. One replay script patches and restores an accumulator predicate within a single comparison call. The `md/`, `json/`, `fixtures/` and report directories are this area's shared bus and never move.

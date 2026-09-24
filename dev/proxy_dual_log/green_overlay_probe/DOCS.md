@@ -52,11 +52,4 @@ cases used by the report.
 ---
 
 ## State
-No shared or mutating state across modules. `green_overlay_probe.py` and
-`green_overlay_probe_cases.py` each independently resolve `_AREA_ROOT` (by walking up from
-`__file__` until the directory named `proxy_dual_log` is found); the dual-log corpus lookup falls
-back from the project root to the main-checkout root (stripping a trailing
-`.claude/worktrees/<name>` when present) if the direct path doesn't exist. The hardcoded session
-stem this unit reads is currently rotated off disk — its case-loading calls raise
-`FileNotFoundError`, caught per-section and embedded as an `ERROR:` block in the report rather than
-crashing the script.
+No shared or mutating state. The entry and cases modules each resolve the area root independently; the corpus lookup falls back to the main checkout because the corpus is gitignored. The hardcoded session stem is rotated off disk, so case loading fails per section and the failure is embedded as an error block in the report (see process-docs).

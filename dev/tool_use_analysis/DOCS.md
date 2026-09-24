@@ -14,12 +14,8 @@ No `__init__.py` in this directory. Entry path: run each script directly, e.g.
 
 ## Flow
 
-Each script reads one or more proxy-log or session JSONL files (positional args, or an auto-picked
-newest/default set). It computes one specific breakdown — tool-call cost, waste ratio, zero-result
-search, leftover tag presence, strip effectiveness — over that data. It writes a Markdown report to
-stdout or to an auto-dated file under this directory or `md/`. Scripts over ~400 LOC split into
-same-directory sibling modules by concern (data collection, classification, report rendering), each
-a plain INFRASTRUCTURE+FUNCTIONS helper imported back into the CLI entry point.
+Each script reads proxy-log or session JSONL files (positional args, or an auto-picked newest or default set), computes one breakdown (tool-call cost, waste ratio, zero-result search, leftover tag presence, strip effectiveness) and writes a Markdown report to stdout or an auto-dated file under this directory or `md/`.
+Scripts over about 400 LOC split into same-directory sibling modules by concern (collection, classification, rendering), imported back into the CLI entry point.
 
 ## Modules
 
@@ -34,7 +30,7 @@ input size, and ranks by size or by input/output ratio.
 
 ### extract_long_calls_lib.py (301 LOC)
 
-**Purpose:** The former `src/proxy_forensics.py` library, inlined verbatim — dataclasses, JSONL
+**Purpose:** Formerly a separate proxy-forensics library, now inlined — dataclasses, JSONL
 loading, tool_use/tool_result collection and pairing, filtering, aggregation.
 **Reads:** nothing — pure data-model/collection functions over passed-in paths/events.
 **Writes:** nothing.
@@ -45,7 +41,7 @@ loading, tool_use/tool_result collection and pairing, filtering, aggregation.
 
 **Purpose:** All Markdown report builders for both modes — summary tables, prefix-cluster table,
 per-call detail sections, and the two top-level assemblers.
-**Reads:** `ToolUse`/`Pair` objects from `extract_long_calls_lib.py`.
+**Reads:** tool-use and pair objects from `extract_long_calls_lib.py`.
 **Writes:** nothing — returns report strings.
 **Called by:** `extract_long_calls.py`.
 **Calls out:** `extract_long_calls_lib.py`.
@@ -72,7 +68,7 @@ through unchanged, other system noise still reduces to `"."`.
 **Writes:** console PASS/FAIL summary; a detail table to
 `dev/tool_use_analysis/md/rs_truncation_preserve_replay_detail.md`.
 **Called by:** none — manual CLI.
-**Calls out:** `src.proxy.message_passes` (`_apply_role_system_strip`).
+**Calls out:** `src.proxy.message_passes`.
 
 ---
 
@@ -202,7 +198,7 @@ each with its `stripped_msg_removed` entries.
 
 **Purpose:** The SR/TN/ND/PO template catalog and tag regexes, the streaming per-REQ scanner, and
 small message/tool-label lookup helpers.
-**Reads:** nothing at module scope — streams the JSONL path passed to `_stream_and_audit`.
+**Reads:** nothing at module scope — streams the JSONL path passed in by the entry script.
 **Writes:** nothing.
 **Called by:** `tag_presence_audit.py`.
 **Calls out:** none — stdlib JSONL/regex parsing only.
@@ -241,8 +237,8 @@ using rule-counter deltas and marker-based attribution.
 ### strip_audit_classify.py (201 LOC)
 
 **Purpose:** Loads/filters opus entries, delegates per-REQ EFF/INERT/IDX classification, and builds
-LEAK/SUSPECT tag lines via `raw_payload` SR-block scanning.
-**Reads:** nothing at module scope — `_load_entries` streams the JSONL path passed to it.
+LEAK/SUSPECT tag lines via raw-payload SR-block scanning.
+**Reads:** nothing at module scope — streams the JSONL path passed in by the entry script.
 **Writes:** nothing.
 **Called by:** `strip_audit.py`, `strip_audit_report.py`.
 **Calls out:** `src.proxy.strip_vocab`, `src.proxy.strip_sr`.

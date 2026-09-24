@@ -42,9 +42,7 @@ logging a delta flag when the window received bytes since the last sample.
 
 ### probe_b.py (121 LOC)
 
-**Purpose:** Activates `tmux pipe-pane` for each target session, routing pane output through
-`byte_touch.py`, which touches an activity file and logs cumulative byte count; samples both every
-second.
+**Purpose:** Activates tmux pipe-pane per target session, routing output through the byte-touch helper, and samples the activity file and byte count every second.
 **Reads:** an activity file's mtime and a byte-count file, both under the system temp directory.
 **Writes:** `csv/raw_probe_b_<timestamp>.csv`.
 **Called by:** `run_all.py`.
@@ -65,9 +63,7 @@ file's mtime and overwrites the byte-count file with the cumulative total.
 
 ### probe_c.py (149 LOC)
 
-**Purpose:** Spawns `tmux -C attach-session` per target session; reader threads parse
-`%output`/`%extended-output` control-mode events filtered to window 0 pane IDs, sampling event and
-byte counters each second.
+**Purpose:** Spawns a tmux control-mode client per target session; reader threads count output events and bytes for window 0 panes, sampled each second.
 **Reads:** the control-mode subprocess's stdout, line by line, per session.
 **Writes:** `csv/raw_probe_c_<timestamp>.csv`.
 **Called by:** `run_all.py`.
@@ -76,4 +72,4 @@ byte counters each second.
 ---
 
 ## State
-No module owns persistent state across runs. `probe_b.py`'s `_active_pipes` and `probe_c.py`'s `_procs` are process-local dicts populated during setup and cleared by each script's own `atexit`-registered cleanup handler.
+No module owns persistent state across runs. The pipe and process registries of the second and third probes are process-local, populated during setup and cleared by each script's own exit handler.

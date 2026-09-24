@@ -1,26 +1,25 @@
 # dev/constants/
 
 ## Role
-Byte-identity regression harness for `src/constants.py` and the modules it was split by constant cluster into (`src/colors.py`, `src/core/modes.py`, `src/pane_error_log.py`). Add a script here (or extend this one) when a future split of any of these modules needs a before/after correctness proof.
+Byte-identity regression harness for `src/constants.py` and the modules its constant clusters were split into (`src/colors.py`, `src/core/modes.py`, `src/pane_error_log.py`). Add or extend a script when a further split needs a before/after correctness proof.
 
 ## Public Interface
-No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bin/python dev/constants/split_byte_identity.py`.
+No `__init__.py`. Entry point: `./venv/bin/python dev/constants/split_byte_identity.py`.
 
 ## Flow
-Resolves a fixed list of 44 top-level `UPPER_CASE` names through a `_NEW_LOCATIONS` map to their current module, reads each value via `getattr`, hashes `{name: repr(value)}`, and prints one `HASH:` line to stdout.
+Resolves a fixed list of top-level constant names to their current module, reads each value, hashes the name-to-value mapping and prints one hash line.
 
 ## Modules
 
 ### split_byte_identity.py (68 LOC)
 
-**Purpose:** Byte-identity harness for `src/constants.py`'s constant clusters — resolves 44 fixed names to their current module and hashes `{name: repr(value)}`.
-**Reads:** nothing external.
-**Writes:** nothing — stdout only (`HASH: <hex>`).
-**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Input is the imported constants themselves, so two runs on the same tree give the same hash.
-**Called by:** none — run manually; re-run after any further `src/constants.py` split.
-**Calls out:** `src.constants`, `src.colors`, `src.core.modes`, `src.pane_error_log` — all imported via a dedicated function (`_resolve`, through `importlib`), not a module-level `from src.` line, per `block_dev_imports_src`.
+**Purpose:** Verification aid, not a test: hashes the values of a fixed constant list across the split modules for before/after comparison.
+**Reads:** nothing external; the imported constants themselves.
+**Writes:** stdout only (one hash line).
+**Called by:** none; re-run after any further constants split.
+**Calls out:** `src.constants`, `src.colors`, `src.core.modes`, `src.pane_error_log`, imported lazily to satisfy the dev-imports-src hook.
 
 ---
 
 ## State
-No module-level shared state beyond the two frozen name lists (`_NAMES`, `_NEW_LOCATIONS`) and their derived cluster lists, all module constants read only, never mutated after import.
+No shared state beyond frozen name lists held as module constants.

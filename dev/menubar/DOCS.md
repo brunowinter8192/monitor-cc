@@ -1,84 +1,61 @@
 # dev/menubar/
 
 ## Role
-Byte-identity regression harnesses for `src/menubar/` module splits, plus the `p5_*` parallel strands that prove the phase 5 fallback and tripwire changes (`P5_ROOT` points them at a pristine source tree for before/after comparison). Add a script here when a
-`src/menubar/` refactor (module split, class-attribute split, helper extraction) needs a
-before/after correctness proof that isn't already covered by `dev/model_selector/`,
-`dev/menubar_per_project/`, or `dev/monitor_lifecycle/`'s own behavior probes.
+Byte-identity harnesses for `src/menubar/` module splits, plus parallel strands proving the phase 5 fallback and tripwire changes against a pristine source tree for before/after comparison. Add a script here when a menubar refactor needs a proof not covered by sibling dev areas.
 
 ## Public Interface
-No `__init__.py` in this directory. Entry paths: `./venv/bin/python
-dev/menubar/discover_byte_identity.py`, `./venv/bin/python
-dev/menubar/model_controller_byte_identity.py`, `./venv/bin/python
-dev/menubar/panel_manager_byte_identity.py`; `./venv/bin/python dev/menubar/p5_run_all.py` runs all phase 5 strands in parallel.
+No `__init__.py`. Entry paths: the three `*_byte_identity.py` scripts, and `dev/menubar/p5_run_all.py`, which runs all phase 5 strands in parallel.
 
 ## Flow
-Each script imports its `src/menubar/` target via `importlib` (not a literal `from src.` line),
-drives it against synthetic or monkeypatched-I/O fixtures, and hashes the resulting state
-(tuples, written file bytes, or AppKit subview dumps) to a single stdout `HASH:` line — no
-persistent output files.
+Each identity script imports its `src/menubar/` target via `importlib`, drives it against synthetic or patched-I/O fixtures and hashes the resulting state to one stdout line. Each phase 5 strand asserts its group's behavior and prints pass/fail and digest lines.
 
 ## Modules
 
 ### discover_byte_identity.py (144 LOC)
 
-**Purpose:** Byte-identity harness for `_process_project_dir` in `src/menubar/discover.py` —
-monkeypatches every I/O boundary the function touches and hashes 4 scenarios' results.
-**Reads:** nothing external — all fixtures constructed inline.
-**Writes:** nothing — stdout only (`HASH: <hex>`).
-**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Input is synthetic and built inline, so two runs on the same tree give the same hash.
-**Called by:** none — run manually; re-run after any `_process_project_dir` change.
-**Calls out:** `src.menubar.discover` (`_process_project_dir`, `SessionInfo`) — imported via a
-dedicated function, not a module-level `from src.` line, per `block_dev_imports_src`.
+**Purpose:** Identity harness for the project-directory scan of `discover.py`: patches every I/O boundary and hashes four scenarios.
+**Reads:** nothing external; inline fixtures.
+**Writes:** stdout only (hash line).
+**Called by:** none; verification aid that asserts nothing, run before and after a change.
+**Calls out:** `src.menubar.discover`, imported lazily.
 
 ---
 
 ### model_controller_byte_identity.py (162 LOC)
 
-**Purpose:** Byte-identity harness for `ModelController` — hashes a sandboxed persistence cycle
-(model/effort/max_tokens/thinking) and a headless UI subview dump across `open()`/`handle_cycle_*`.
-**Reads:** `~/.claude/shared-rules/proxy_rules.json` (read-only, to seed the persistence check's
-temp copy).
-**Writes:** nothing outside its own tempdir — stdout only (`PERSISTENCE_HASH: <hex>`, `UI_HASH:
-<hex>`).
-**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. It seeds one check from the real `~/.claude/shared-rules/proxy_rules.json`, with no env seam, so a changed rules file changes the hash.
-**Called by:** none — run manually; re-run after any `model_controller.py`/`model_selection.py`
-change.
-**Calls out:** `src.menubar.model_controller` (`ModelController`), `src.menubar.model_selection`
-(persistence functions) — both imported via dedicated functions, not a module-level `from src.`
-line, per `block_dev_imports_src`.
+**Purpose:** Identity harness for the model controller: hashes a sandboxed persistence cycle and a headless UI subview dump.
+**Reads:** the real proxy rules file under the user's shared-rules directory (read-only seed), so a changed file changes the hash.
+**Writes:** stdout only, plus its own temp dir.
+**Called by:** none; verification aid, run before and after a change.
+**Calls out:** `src.menubar.model_controller`, `src.menubar.model_selection`, imported lazily.
 
 ---
 
 ### panel_manager_byte_identity.py (172 LOC)
 
-**Purpose:** Byte-identity harness for `PanelManager` — hashes a synthetic multi-project
-`rebuild()` and a subsequent `update_inplace()`, dumping every `NSGridView` row/cell and lookup map.
-**Reads:** nothing external — synthetic session/bg-timer data built inline.
-**Writes:** nothing — stdout only (`HASH: <hex>` or `HASH: SKIPPED (...)` + `SMOKE: ...`).
-**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Input is synthetic and built inline, so two runs on the same tree give the same hash.
-**Called by:** none — run manually; re-run after any `PanelManager` internal-attribute change.
-**Calls out:** `src.menubar.panel_manager` (`PanelManager`), `src.menubar.discover`
-(`SessionInfo`) — both imported via dedicated functions, not a module-level `from src.` line, per
-`block_dev_imports_src`.
+**Purpose:** Identity harness for the panel manager: hashes a synthetic multi-project rebuild and an in-place update, dumping every grid row and lookup map.
+**Reads:** nothing external; synthetic session data.
+**Writes:** stdout only (hash line or a skip line plus a smoke line).
+**Called by:** none; verification aid, run before and after a change.
+**Calls out:** `src.menubar.panel_manager`, `src.menubar.discover`, imported lazily.
 
 ---
 
 ### p5_common.py (49 LOC)
 
-**Purpose:** Shared helpers for the phase 5 strands: repo-root switch via `P5_ROOT`, module import through `importlib`, stderr capture, digest and PASS/FAIL check.
-**Reads:** env `P5_ROOT` (optional alternate source tree)
+**Purpose:** Shared helpers of the phase 5 strands: source-tree switch, module import, stderr capture, digest and check.
+**Reads:** an env var selecting an alternate source tree.
 **Writes:** nothing.
 **Called by:** the `p5_g*` strands.
-**Calls out:** `src.menubar.*` via `importlib` (no literal `from src.` line).
+**Calls out:** `src.menubar.*` via `importlib`.
 
 ---
 
 ### p5_g1_log.py (51 LOC)
 
-**Purpose:** Strand for `menubar_log.py`: normal append and retention unchanged, write and cleanup failures reach stderr.
+**Purpose:** Strand for the menubar log module: append and retention unchanged, write and cleanup failures reach stderr.
 **Reads:** a temp directory it creates.
-**Writes:** stdout PASS/FAIL lines.
+**Writes:** stdout pass/fail lines.
 **Called by:** `p5_run_all.py`.
 **Calls out:** `src.menubar.menubar_log`.
 
@@ -86,29 +63,29 @@ line, per `block_dev_imports_src`.
 
 ### p5_g2_state.py (151 LOC)
 
-**Purpose:** Strand for the state and config readers and writers: missing file silent, unreadable file logged, unreadable rules file never overwritten, write order, hook_writer, paths shims gone.
+**Purpose:** Strand for state and config readers and writers: missing file silent, unreadable file logged, unreadable rules file never overwritten.
 **Reads:** temp directories with synthetic JSON.
-**Writes:** stdout PASS/FAIL and `DIFF` digest lines.
+**Writes:** stdout pass/fail and digest lines.
 **Called by:** `p5_run_all.py`.
-**Calls out:** `src.menubar.{app_settings,model_selection,proc_cache,monitor_sweep_scheduler,rag_controller,hook_writer,paths}`.
+**Calls out:** the settings, selection, cache, scheduler, controller, hook writer and paths modules of `src.menubar`.
 
 ---
 
 ### p5_g3_app.py (137 LOC)
 
-**Purpose:** Strand for app wiring, restart route, panel cycle errors and Carbon hotkey status/handler failures, driven by fake carbon objects and fake app objects.
+**Purpose:** Strand for app wiring, restart route, panel cycle errors and Carbon hotkey failures, driven by fake objects.
 **Reads:** nothing external.
-**Writes:** stdout PASS/FAIL lines.
+**Writes:** stdout pass/fail lines.
 **Called by:** `p5_run_all.py`.
-**Calls out:** `src.menubar.{app,panel_lifecycle,hotkey_controller,hotkey_digits,hotkey_arrows}`.
+**Calls out:** the app, panel lifecycle and hotkey modules of `src.menubar`.
 
 ---
 
 ### p5_g4_detection.py (91 LOC)
 
-**Purpose:** Strand for `desktop_detection.py`: CGS key handling, route logging on change, removed last-known-good state; normal results digest-compared.
-**Reads:** nothing external (fake CoreGraphics dicts).
-**Writes:** stdout PASS/FAIL and `DIFF` digest lines.
+**Purpose:** Strand for desktop detection: key handling, route logging on change, removed last-known-good state, digest-compared normal results.
+**Reads:** nothing external; fake CoreGraphics dicts.
+**Writes:** stdout pass/fail and digest lines.
 **Called by:** `p5_run_all.py`.
 **Calls out:** `src.menubar.desktop_detection`.
 
@@ -116,29 +93,29 @@ line, per `block_dev_imports_src`.
 
 ### p5_g5_discover.py (133 LOC)
 
-**Purpose:** Strand for `discover.py`, `discovery_worker.py` and the `panel.py` guard: skipped projects logged once, route lines on change, worker loop error handling, session results digest-compared.
-**Reads:** temp jsonl files.
-**Writes:** stdout PASS/FAIL and `DIFF` digest lines.
+**Purpose:** Strand for session discovery, the discovery worker and a panel guard: skipped projects logged once, worker loop error handling.
+**Reads:** temp JSONL files.
+**Writes:** stdout pass/fail and digest lines.
 **Called by:** `p5_run_all.py`.
-**Calls out:** `src.menubar.{discover,discovery_worker}`; AST read of `panel.py`.
+**Calls out:** `src.menubar.discover`, `src.menubar.discovery_worker`; AST read of `panel.py`.
 
 ---
 
 ### p5_g6_caches.py (287 LOC)
 
-**Purpose:** Strand for `proc_cache.py`, `ghostty.py`, `bg_timer.py`, `bg_task_orphans.py`: subprocess failures logged, unknown tmux activity is None, proxy log dir derived from the project root; normal outputs digest-compared.
+**Purpose:** Strand for the process cache, ghostty, background timer and orphan modules: subprocess failures logged, unknown activity is None.
 **Reads:** temp directories; fake subprocess results.
-**Writes:** stdout PASS/FAIL and `DIFF` digest lines.
+**Writes:** stdout pass/fail and digest lines.
 **Called by:** `p5_run_all.py`.
-**Calls out:** `src.menubar.{proc_cache,ghostty,bg_timer,bg_task_orphans,discover}`.
+**Calls out:** the proc cache, ghostty, timer, orphan and discover modules of `src.menubar`.
 
 ---
 
 ### p5_g7_model.py (69 LOC)
 
-**Purpose:** Strand for `ModelController`: every cycle handler dispatches and refreshes as before, failures and the Apply flash defect land in `menubar.log`.
-**Reads:** nothing external (fake pending selection and buttons).
-**Writes:** stdout PASS/FAIL lines.
+**Purpose:** Strand for the model controller: every cycle handler dispatches and refreshes as before, failures land in the menubar log.
+**Reads:** nothing external; fake selection and buttons.
+**Writes:** stdout pass/fail lines.
 **Called by:** `p5_run_all.py`.
 **Calls out:** `src.menubar.model_controller`.
 
@@ -146,28 +123,23 @@ line, per `block_dev_imports_src`.
 
 ### p5_g8_system.py (109 LOC)
 
-**Purpose:** Strand for `system.py` and `skill_discovery.py`: singleton lock, python3 resolution raising and logging, viewer tty, skill fallback routes.
+**Purpose:** Strand for the system and skill-discovery modules: singleton lock, python resolution, viewer tty, skill fallback routes.
 **Reads:** temp directories.
-**Writes:** stdout PASS/FAIL and `DIFF` digest lines.
+**Writes:** stdout pass/fail and digest lines.
 **Called by:** `p5_run_all.py`.
-**Calls out:** `src.menubar.{system,skill_discovery}`.
+**Calls out:** `src.menubar.system`, `src.menubar.skill_discovery`.
 
 ---
 
 ### p5_run_all.py (37 LOC)
 
-**Purpose:** Runs all `p5_g*` strands in parallel subprocesses; every strand stops at its first failing check, siblings finish, the parent reports which strand aborted.
+**Purpose:** Runs all phase 5 strands in parallel subprocesses; each stops at its first failing check, siblings finish, the parent reports aborted strands.
 **Reads:** nothing.
 **Writes:** stdout summary line per strand.
-**Called by:** none — run manually.
+**Called by:** none; run manually.
 **Calls out:** `subprocess`, `concurrent.futures`.
 
 ---
 
 ## State
-None of the byte-identity modules owns any persistent state — each constructs a fresh throwaway
-`ModelController`/`PanelManager`/fake-`discover` scenario inside its own process, hashes the
-result, and exits; `model_controller_byte_identity.py`'s persistence check is the only one that
-writes files, and only inside a `tempfile.TemporaryDirectory()` it owns and discards on exit.
-
-The `p5_*` strands own no state either: each creates a temp directory, points `menubar_log.MENUBAR_LOG` and the module under test at it, and never touches the real app-support directory.
+No persistent state. Identity scripts build fresh throwaway fixtures per process; only the model-controller script writes files, inside a temp dir it discards. Phase 5 strands point the menubar log and the module under test at a temp dir and never touch the real app-support directory.

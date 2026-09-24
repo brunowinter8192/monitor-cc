@@ -1,34 +1,25 @@
 # dev/nsgridview_migration/
 
 ## Role
-Standalone PyObjC probe verifying `NSGridView` column alignment and click routing before that
-layout was used in a real pane. No `src/` import — a visual/interactive AppKit check, not a
-regression guard. Touch only to re-verify a new `NSGridView` API surface before adopting it
-elsewhere.
+Standalone PyObjC probe verifying NSGridView column alignment and click routing before that layout was used in a real pane. No `src/` import; a visual, interactive AppKit check, not a regression guard. Touch only to re-verify a new NSGridView API surface.
 
 ## Public Interface
-No `__init__.py` in this directory. Entry path: `./venv/bin/python3 dev/nsgridview_migration/probe.py`
-(interactive GUI script — opens a real floating panel, quit with Cmd-Q or close window).
+No `__init__.py`. Entry path: `./venv/bin/python3 dev/nsgridview_migration/probe.py` (interactive GUI; opens a real floating panel, quit with Cmd-Q).
 
 ## Flow
-No data in — all layout values are module constants. Builds a floating `NSPanel` containing a
-5-column `NSGridView`, prints the expected column x-positions to stdout, then blocks in the AppKit
-event loop printing one line per cell click until the window is closed.
+No data in; layout values are module constants. The probe builds a floating panel with a five-column grid, prints the expected column positions, then blocks in the AppKit event loop printing one line per cell click until closed.
 
 ## Modules
 
 ### probe.py (191 LOC)
 
-**Purpose:** Builds a 5-column, 3-row `NSGridView` in a floating `NSPanel` and routes cell clicks
-to a handler that prints the clicked row's tag — a manual visual + click-routing check.
-**Reads:** nothing external — all layout values are module constants.
-**Writes:** stdout (startup report, column x-positions, click log lines); the floating panel itself.
-**Called by:** none — run manually (`./venv/bin/python3 dev/nsgridview_migration/probe.py`); quit with Cmd-Q.
+**Purpose:** Builds a five-column, three-row grid in a floating panel and routes cell clicks to a handler printing the clicked row; a manual visual check.
+**Reads:** nothing external.
+**Writes:** stdout (startup report, column positions, click log); the floating panel.
+**Called by:** none; run manually.
 **Calls out:** `objc`, `AppKit`, `Foundation` (PyObjC).
 
 ---
 
 ## State
-No persistent state — `probe.py` holds its own column-width/panel-geometry constants at module
-scope and its live click-count/tag state only inside the running `_ClickController` instance for
-the duration of one interactive run; nothing is read from or written to disk.
+No persistent state. Geometry constants live at module scope; click state lives only in the running controller instance for one interactive run.

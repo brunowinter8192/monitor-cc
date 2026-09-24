@@ -62,10 +62,4 @@ per-case detail, fidelity, conclusion).
 ---
 
 ## State
-No shared or mutating state across modules. `groundtruth_message_spans_probe.py` and
-`groundtruth_spans_cases.py` each independently resolve `_AREA_ROOT` (by walking up from
-`__file__` until the directory named `proxy_dual_log` is found); the dual-log corpus lookup falls
-back from the project root to the main-checkout root (stripping a trailing
-`.claude/worktrees/<name>` when present) if the direct path doesn't exist. The two hardcoded stems
-are currently rotated off disk — each case loader's `FileNotFoundError` is caught individually and
-reported as a `⚠️ ERROR loading ... case` line rather than crashing the script.
+No shared or mutating state. The entry and cases modules each resolve the area root independently; the corpus lookup falls back to the main checkout because the corpus is gitignored. Both hardcoded stems are rotated off disk; each case loader's failure is caught individually and reported as an error line (see process-docs).

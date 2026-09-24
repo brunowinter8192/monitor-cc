@@ -1,24 +1,16 @@
 # dev/
 
 ## Role
+Development, measurement and regression scripts for `src/`. Every script runs manually; nothing in `src/` imports from `dev/`. Each subdirectory is one area: a regression harness for a `src/` package, a smoke suite, or a standalone probe. Commands assume the project root as working directory.
 
-Development, measurement, and regression scripts for `src/`. Every script here runs manually
-(no `src/` module imports any `dev/` script — `block_dev_imports_src` also blocks the reverse:
-`dev/` scripts may not `import src.` at module level, only via `sys.path.insert` +
-package-relative imports or `importlib`). Each subdirectory is one area: either a byte-identity/
-regression harness for one `src/` package, a smoke-test suite for one class of hook or pane
-feature, or a standalone investigation probe. Touch a `dev/<area>/` directory when adding a new
-regression guard for that area's `src/` package, or when a `src/` refactor in that package needs
-a before/after correctness proof. All commands assume CWD = the project root.
+## Public Interface
+No `__init__.py` at this level. Each area is entered through its own scripts; see the area's own `DOCS.md`.
 
 ## Flow
+A script reads real logs, session JSONLs or live state, or builds synthetic fixtures in-process, drives real `src/` code and either asserts pass/fail to stdout or writes a report under the area's `md/`, `json/` or `reports/` directory. The dev-imports-src hook forbids module-level `src` imports from `dev/`; scripts load `src` lazily or via `importlib` (details in process-docs).
 
-A script reads real logs/session JSONLs/live state or builds synthetic fixtures in-process,
-drives one or more real `src/` functions (via `importlib`, `sys.path.insert`, or package-relative
-import), and either asserts pass/fail to stdout or writes a report under `dev/<area>/md/` (or
-`json/`, `reports/`).
-
-## Areas in scope of this map
+## Modules
+No `.py` files live at this level. The areas below are covered by this map; other `dev/` areas exist and are described in their own `DOCS.md`.
 
 - `bg_wakeup_id_line/` — CC background-launch-ack wording + tmux-Escape-on-launch-ack mechanism verification (`src/proxy/bg_escape.py`, `strip_bg_launch_ack.py`, `strip_interrupt_marker.py`).
 - `ccwrap/` — exit-code check for `src/ccwrap/__main__.py` argument handling.
@@ -46,4 +38,5 @@ import), and either asserts pass/fail to stdout or writes a report under `dev/<a
 - `skill_picker/` — tests and a read-only real-machine probe for the menubar skill dropdown (skill discovery, inserted text, Ghostty AppleScript, menu and grid).
 - `workers/` — regression checks for worker status probes, selection IPC and the `list_workers` shape (fakes only, no tmux).
 
-Other `dev/` areas exist outside this map's scope; see their own `DOCS.md`.
+## State
+None at this level. State ownership is documented per area.
