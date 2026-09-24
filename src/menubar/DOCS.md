@@ -29,13 +29,23 @@ root) — this package only consumes those.
 
 ## Modules
 
-### panel.py (412 LOC)
+### panel.py (276 LOC)
 
-**Purpose:** NSPanel/NSView/NSButton/NSTextField factory helpers, cursor-tracking view subclasses, pure layout-computation helpers for the main sessions panel, the clickable tab-header factory shared by all four panels, and the shared side-panel scaffolding (`_make_tab_nspanel`, `_reposition_tab_panel`) plus the top-preserving `_resize_panel_keep_top` used by all four panel controllers.
+**Purpose:** NSPanel/NSView/NSButton/NSTextField factory helpers, pure layout-computation helpers for the main sessions panel, the clickable tab-header factory shared by all four panels, and the shared side-panel scaffolding (`_make_tab_nspanel`, `_reposition_tab_panel`) plus the top-preserving `_resize_panel_keep_top` used by all four panel controllers.
 **Reads:** function parameters only (sessions, bg_by_project, panel_width passed by callers).
 **Writes:** NSPanel frame (`_reposition_panel`); constructs NSView/NSButton/NSTextField UI objects returned to callers.
 **Called by:** `panel_lifecycle.py` (`_reposition_panel`, `_reposition_tab_panel`), `panel_manager.py` (`_make_nspanel`, `_resize_panel_keep_top`), `rag_controller.py`, `model_controller.py`, `launch_controller.py` (`_make_tab_nspanel`, `_resize_panel_keep_top`), `model_panel_ui.py`, `launch_panel_ui.py`, `app.py` (`_wire_header_buttons`).
-**Calls out:** `AppKit`, `Foundation`, `itertools`, `objc`; `.menubar_log` (`log_menubar`); `.panel_dims` (`PANEL_*`); `.panel_tabs` (`TAB_SEPARATOR`, `header_pieces`).
+**Calls out:** `AppKit`, `Foundation`, `itertools`; `.panel_dims` (`PANEL_*`); `.panel_tabs` (`TAB_SEPARATOR`, `header_pieces`); `.panel_views` (view/panel classes).
+
+---
+
+### panel_views.py (148 LOC)
+
+**Purpose:** NSView/NSPanel subclasses of the panels: the edge-resize cursor-tracking content view, cursorless label/button, and the keyable panel with Cmd-key editing shortcuts.
+**Reads:** `MENUBAR_CURSOR_DEBUG` env var (cursor debug logging switch).
+**Writes:** `menubar.log` (`cursor` category, only with the env var set).
+**Called by:** `panel.py`, `model_panel_ui.py`, `launch_panel_ui.py`.
+**Calls out:** `AppKit`, `objc`; `.menubar_log` (`log_menubar`).
 
 ---
 
@@ -103,13 +113,13 @@ root) — this package only consumes those.
 
 ---
 
-### model_panel_ui.py (24 LOC)
+### model_panel_ui.py (25 LOC)
 
 **Purpose:** Row and Apply button construction factories for the Models panel.
 **Reads:** nothing — pure AppKit object factories.
 **Writes:** nothing — returns constructed NSPanel/NSStackView/NSButton objects to callers.
 **Called by:** `model_controller.py`.
-**Calls out:** `Foundation`; `.panel` (`_ROW_H`, `_CursorlessButton`).
+**Calls out:** `Foundation`; `.panel` (`_ROW_H`); `.panel_views` (`_CursorlessButton`).
 
 ---
 
@@ -238,7 +248,7 @@ root) — this package only consumes those.
 **Purpose:** Unified append-only log sink for all menubar diagnostic categories, with 7-day retention cleanup.
 **Reads:** `_APP_SUPPORT/menubar.log` (`cleanup_old_lines` only).
 **Writes:** `_APP_SUPPORT/menubar.log` (append per call).
-**Called by:** `hotkey_controller.py`, `app.py`, `bg_timer.py`, `panel.py`, `desktop_detection.py`, `system.py`, `monitor_sweep_scheduler.py`, `hotkey_carbon.py`, `hotkey_digits.py`, `hotkey_arrows.py`, `discovery_worker.py`, `launch_controller.py`, `session_launch.py`; `dev/hotkey_latency/analyze_latency.py` (reads the log file, not an import).
+**Called by:** `hotkey_controller.py`, `app.py`, `bg_timer.py`, `panel_views.py`, `desktop_detection.py`, `system.py`, `monitor_sweep_scheduler.py`, `hotkey_carbon.py`, `hotkey_digits.py`, `hotkey_arrows.py`, `discovery_worker.py`, `launch_controller.py`, `session_launch.py`; `dev/hotkey_latency/analyze_latency.py` (reads the log file, not an import).
 **Calls out:** `datetime`; `.paths` (`_APP_SUPPORT`).
 
 ---
@@ -269,13 +279,13 @@ root) — this package only consumes those.
 
 ---
 
-### launch_panel_ui.py (59 LOC)
+### launch_panel_ui.py (60 LOC)
 
 **Purpose:** Button/row factories for the Launch tab (a row of the five desktop buttons without a label, project rows labeled by their last path component).
 **Reads:** nothing — pure AppKit object factories.
 **Writes:** nothing — returns constructed NSPanel/NSView/NSButton objects to callers.
 **Called by:** `launch_controller.py`.
-**Calls out:** `AppKit`, `Foundation`; `.panel` (`_ROW_H`, `_MENLO`, `_CursorlessButton`).
+**Calls out:** `AppKit`, `Foundation`; `.panel` (`_ROW_H`, `_MENLO`); `.panel_views` (`_CursorlessButton`).
 
 ---
 
@@ -487,7 +497,7 @@ root) — this package only consumes those.
 - `desktop_detection.py` needs Screen Recording (TCC) permission for `kCGWindowName` visibility — only effective when the process keeps a stable codesign identity across rebuilds (`setup_py2app.py`'s `monitor-cc Code Signing` identity, not the ad-hoc fallback).
 - `panel_manager.py`'s panel rebuild triggers on exactly two events: session-set change, or an abort-button None↔Some transition (panel open only). A bare working↔idle status flip never rebuilds — open panel updates in place, closed panel only blinks the bar icon.
 - NSGridView (`panel.py`/`panel_manager.py`) disables TAMIC on every cell content view — any `NSView` placed in a grid cell needs an explicit `heightAnchor` AND `widthAnchor` constraint, or it renders at zero size / bleeds out of its row.
-- `_KeyablePanel` (`panel.py`) overrides `canBecomeKeyWindow` to return `True` — `NSWindowStyleMaskNonactivatingPanel` otherwise also blocks key-window status by default, which would silently break keyboard routing to any future editable field.
+- `_KeyablePanel` (`panel_views.py`) overrides `canBecomeKeyWindow` to return `True` — `NSWindowStyleMaskNonactivatingPanel` otherwise also blocks key-window status by default, which would silently break keyboard routing to any future editable field.
 - `proc_cache.py:_PROXY_LOG_DIR` is a hardcoded absolute path, not derived from `MONITOR_CC_ROOT` or an env var — breaks if the checkout moves.
 - `ghostty.py` writes `ghostty_cwd_uuid.json` via its own inline path, not via `paths.py:GHOSTTY_CWD_UUID_FILE` — the constant exists for external/future consumers only, and has no reader inside this package. `paths.py:ORCHESTRATOR_SIGNALS_FILE` is in the same position: written by the iterative-dev plugin's `worker-cli send`, no reader in this package.
 - `system.py:_open_or_focus_monitor` always kills an existing `monitor_cc_*` tmux session before relaunching — there is no focus-only branch, because that session commonly outlives its Ghostty window and a focus-only click would silently no-op on a closed window.
