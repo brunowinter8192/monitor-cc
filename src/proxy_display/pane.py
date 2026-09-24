@@ -270,6 +270,8 @@ def _reset_proxy_session_state(monitor, now: float) -> None:
 
 def _reset_proxy_reparse_state(now: float) -> None:
     _reset_proxy_positions(now)
+    proxy_expand_states.clear()
+    _proxy_undo_stack.clear()
 
 def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global _proxy_fwd_pos, _proxy_acc_fwd, _proxy_log_path, _last_full_parse_ts, _proxy_current_main_session

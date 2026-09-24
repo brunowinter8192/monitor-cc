@@ -153,7 +153,6 @@ def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, messag
     entry['deferred_tools_names'] = []
     entry['stripped_msg_indices'] = []
     entry['cache_breakpoints'] = []
-    entry['messages'] = None
 
     return entry
 
@@ -236,53 +235,49 @@ def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict, kee
         win_entry['messages_total_chars'] = sum(s.get('chars', 0) for s in summaries)
     return entries, new_pos
 
-def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> bool:
+def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> None:
     target_flow_id = entry.get('flow_id')
     if not target_flow_id or fwd_path is None or not fwd_path.exists():
-        return False
+        raise LookupError(f'cannot lazy load messages: flow_id={target_flow_id!r} path={fwd_path}')
     family = _infer_model_family(entry.get('model', ''))
     temp_acc: dict = {}
-    try:
-        with open(fwd_path, 'r', encoding='utf-8') as f:
-            while True:
-                raw_line = f.readline()
-                if not raw_line:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    fwd_e = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if fwd_e.get('type') != 'forwarded_delta':
-                    continue
-                e_family = _infer_model_family(fwd_e.get('model', ''))
-                is_first = fwd_e.get('is_first', False)
-                counts = fwd_e.get('counts', {})
-                msg_cnt = counts.get('messages', 0)
-                if _is_continue_entry(fwd_e):
-                    if fwd_e.get('flow_id') == target_flow_id:
-                        own = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
-                        entry['messages'] = own
-                        entry['messages_total_chars'] = sum(x.get('chars', 0) for x in own)
-                        return True
-                    continue
-                if is_first:
-                    summaries = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
-                else:
-                    prev_summaries = temp_acc.get(e_family, [])
-                    summaries, _ = _apply_messages_delta(prev_summaries, fwd_e.get('messages_delta') or {}, msg_cnt)
-                temp_acc[e_family] = summaries
+    with open(fwd_path, 'r', encoding='utf-8') as f:
+        while True:
+            raw_line = f.readline()
+            if not raw_line:
+                break
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                fwd_e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if fwd_e.get('type') != 'forwarded_delta':
+                continue
+            e_family = _infer_model_family(fwd_e.get('model', ''))
+            is_first = fwd_e.get('is_first', False)
+            counts = fwd_e.get('counts', {})
+            msg_cnt = counts.get('messages', 0)
+            if _is_continue_entry(fwd_e):
                 if fwd_e.get('flow_id') == target_flow_id:
-                    reconstructed = temp_acc.get(family, [])
-                    entry['messages'] = list(reconstructed)
-                    entry['messages_total_chars'] = sum(s.get('chars', 0) for s in reconstructed)
-                    return True
-    except OSError:
-        log_pane_error('forwarded_parser')
-        return False
-    return False
+                    own = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
+                    entry['messages'] = own
+                    entry['messages_total_chars'] = sum(x.get('chars', 0) for x in own)
+                    return
+                continue
+            if is_first:
+                summaries = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
+            else:
+                prev_summaries = temp_acc.get(e_family, [])
+                summaries, _ = _apply_messages_delta(prev_summaries, fwd_e.get('messages_delta') or {}, msg_cnt)
+            temp_acc[e_family] = summaries
+            if fwd_e.get('flow_id') == target_flow_id:
+                reconstructed = temp_acc.get(family, [])
+                entry['messages'] = list(reconstructed)
+                entry['messages_total_chars'] = sum(s.get('chars', 0) for s in reconstructed)
+                return
+    raise LookupError(f'flow_id={target_flow_id!r} not found in {fwd_path}')
 
 def reconstruct_all_messages(fwd_path: Path) -> dict:
     entries, _ = _parse_forwarded_log(fwd_path, 0, {}, keep_last=None)

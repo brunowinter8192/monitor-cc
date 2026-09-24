@@ -22,6 +22,16 @@ and asserts PASS/FAIL against a specific predicate/rendering outcome.
 
 ## Modules
 
+### test_pd10_lazy_messages.py (      95 LOC)
+
+**Purpose:** Four parallel strands proving the PD10 fix: no TypeError for an expanded entry without messages, lazy load raises on an unmatched flow, a failed toggle keeps the state, reparse clears expand states.
+**Reads:** Synthetic entries and temp files only; `MCFIX_TREE` selects the source tree (default: this repo) so the same file also runs against an extracted older tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.proxy_display` (`forwarded_parser`, `proxy_pane_shared`, `format`, `pane`, `worker_proxy_pane`).
+
+---
+
 ### render_byte_identity.py (115 LOC)
 
 **Purpose:** Byte-identity harness for the proxy_display render cluster — see Flow above.
