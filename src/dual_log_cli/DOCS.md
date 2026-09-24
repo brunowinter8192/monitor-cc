@@ -301,17 +301,17 @@ tail when the proxy transformed it.
 
 ---
 
-### render_reqs.py (260 LOC)
+### render_reqs.py (272 LOC)
 
 **Purpose:** `reqs`' turn-grouped, CR/CC-annotated REQ listing — `render_reqs`/`render_reqs_merged`
 share one pipeline (`_session_entries_and_separators`, `_apply_filters`, `_grouped_lines`) that
 turns-groups every session's REQs, then applies `--turn`/`--gap`/`--rebuild`/`--drop` as pure
 filters over that one fixed line form; `--merged` flattens every session into one
-chronologically-sorted, session-tagged chain instead of one listing per session.
-**Reads:** `(session, boundaries)` pairs, `turns_by_stem`, `usage_by_stem` (all from `commands._run_reqs`) — parameters only.
+chronologically-sorted, session-tagged chain instead of one listing per session. In the transcript path a REQ without a transcript match takes its turn from its send time via `proxy_display.format._assign_turns_to_entries`, and the turn separator shows the turn's prompt time.
+**Reads:** `(session, boundaries)` pairs, `turns_by_stem`, `usage_by_stem`, `continues_by_stem`, `pane_turns_by_stem` (all from `commands._run_reqs`) — parameters only.
 **Writes:** Nothing — returns a string; `commands.py` does the `sys.stdout.write`.
 **Called by:** `commands.py` (`_run_reqs`); `dev/dual_log_cli/tests/test_reqs.py`, `test_turns.py`.
-**Calls out:** —
+**Calls out:** `proxy_display.format` (`_assign_turns_to_entries`)
 
 ---
 
@@ -426,3 +426,7 @@ plus what came back). Msgs of unlocated requests sit under the preceding located
 
 **`reqs` lists every create and continue as its own entry (no refire folding) and prints no header for a
 session with no surviving REQ line;** when nothing prints at all, the single line `no REQs to show`.
+
+**A REQ without a transcript match (`REQ ?`) sits in the turn its send time falls in and never forms a `--gap` pair.**
+Its turn comes from the same rule as the proxy pane; a pair member must be a numbered REQ so the chain can
+continue with `expand --req N`. See `process-docs/dual_log_cli/`.
