@@ -24,6 +24,7 @@ from .panel_manager import PanelManager
 from .rag_controller import RagController
 from .model_controller import ModelController
 from .launch_controller import LaunchController
+from .skill_controller import SkillController
 from .monitor_sweep_scheduler import maybe_run_sweep_workflow
 from .system import _focus_session, _focus_worker, _open_or_focus_monitor
 from .sessions_controller import SessionsController
@@ -74,6 +75,13 @@ class _PanelController(NSObject):
         cwd = self._app.panel._lookups.cwd_map.get(sender.tag())
         if cwd:
             _open_or_focus_monitor(cwd)
+
+    def showSkillMenu_(self, sender):
+        cwd = self._app.panel._lookups.cwd_map.get(sender.tag())
+        self._app.skills.show_menu(sender, cwd)
+
+    def insertSkill_(self, sender):
+        self._app.skills.handle_choice(sender)
 
     def selectDesktop_(self, sender):
         self._app.launch.handle_select_desktop(sender.tag())
@@ -205,6 +213,7 @@ class CCMenuBarApp(rumps.App):
         self.rag    = RagController(self)
         self.models = ModelController(self)
         self.launch = LaunchController(self)
+        self.skills = SkillController(self)
         self.sessions = SessionsController(self)
         start_discovery_worker()
 
