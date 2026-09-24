@@ -87,7 +87,7 @@ class ProxyAddon:
             modified_payload = _apply_sys_fixation(self.fixation, model_family, modified_payload, modifications)
 
             modified_payload, modifications = _run_post_fixation_pipeline(
-                modified_payload, modifications, model_family, project_path, self.fixation.model_params_fixated
+                modified_payload, modifications, project_path, self.fixation.model_params_fixated
             )
 
             mc_request_id, mc_timestamp = _stamp_request_metadata(flow, stripped_msg_removed, injected_msg_added, all_ops)
@@ -155,7 +155,7 @@ def _apply_sys_fixation(fixation_state, model_family: str, modified_payload: dic
     return _apply_fixation(modified_payload, modifications, fixation_state.fixated[model_family])
 
 
-def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, model_family: str, project_path: str, fixated_model_override: dict) -> tuple:
+def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, project_path: str, fixated_model_override: dict) -> tuple:
     modified_payload, stripped_count, _ = _strip_unused_tools(modified_payload)
     if stripped_count > 0:
         modifications.append(f"stripped_{stripped_count}_unused_tools")
@@ -171,7 +171,7 @@ def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, mod
     modified_payload, cm_injected = _inject_context_management(modified_payload)
     if cm_injected:
         modifications.append("injected_context_management")
-    modified_payload, model_overridden = _inject_model_override(modified_payload, model_family, fixated_model_override)
+    modified_payload, model_overridden = _inject_model_override(modified_payload, fixated_model_override)
     if model_overridden:
         modifications.append("injected_model_override")
     modified_payload, clear_thinking_stripped = _strip_clear_thinking_edit(modified_payload)

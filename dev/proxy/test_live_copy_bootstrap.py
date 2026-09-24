@@ -71,6 +71,7 @@ def write_mitmproxy_stub(stubs: Path) -> None:
 
 def probe(shim: Path, env: dict, stubs: Path) -> subprocess.CompletedProcess:
     full = {k: v for k, v in os.environ.items() if k not in ('MONITOR_CC_ROOT', 'PYTHONPATH')}
+    full['PROXY_LOG_ID'] = 'opus_probe_0'
     full.update(env)
     full['PYTHONPATH'] = str(stubs)
     return subprocess.run([sys.executable, '-c', _PROBE, str(shim)], capture_output=True, text=True, env=full, cwd='/')

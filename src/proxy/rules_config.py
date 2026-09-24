@@ -2,8 +2,11 @@
 import json
 from pathlib import Path
 
+from .proxy_error_log import clear_proxy_error, log_proxy_error_on_change
+
 _SHARED_RULES_DIR = Path.home() / ".claude" / "shared-rules"
 _PROXY_RULES_CONFIG = _SHARED_RULES_DIR / "proxy_rules.json"
+_CONFIG_SOURCE = "rules_config.load_config"
 _file_cache: dict = {}
 _config_cache: list = [None]
 
@@ -23,8 +26,10 @@ def _load_config() -> dict:
         with open(_PROXY_RULES_CONFIG, encoding="utf-8") as f:
             config = json.load(f)
         _config_cache[0] = (mtime, config)
+        clear_proxy_error(_CONFIG_SOURCE)
         return config
-    except Exception:
+    except Exception as e:
+        log_proxy_error_on_change(_CONFIG_SOURCE, e)
         return {}
 
 
@@ -37,8 +42,10 @@ def _read_rule_file(rel_path: str) -> str:
             return cached[1]
         content = path.read_text(encoding="utf-8")
         _file_cache[rel_path] = (mtime, content)
+        clear_proxy_error(f"rules_config.rule_file {rel_path}")
         return content
-    except Exception:
+    except Exception as e:
+        log_proxy_error_on_change(f"rules_config.rule_file {rel_path}", e)
         return ""
 
 

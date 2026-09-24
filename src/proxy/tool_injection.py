@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-from .proxy_error_log import log_proxy_error, proxy_monitor_root
+from .proxy_error_log import clear_proxy_error, log_proxy_error, log_proxy_error_on_change, proxy_monitor_root
 
 _SCHEMA_STORE_CACHE = None
 _ACTIVE_PLUGINS_CACHE = None
@@ -11,6 +11,8 @@ _ACTIVE_PLUGINS_MTIME = None
 _ACTIVE_PLUGINS_PATH = None
 
 _ALWAYS_INJECTED_PLUGIN = "iterative-dev"
+_PLUGINS_SOURCE = "tool_injection.active_plugins"
+_EXCLUDE_SOURCE = "tool_injection.exclude_projects"
 
 # ORCHESTRATOR
 
@@ -76,7 +78,8 @@ def _load_schema_store() -> dict:
             try:
                 schema = json.loads(json_file.read_text(encoding="utf-8"))
                 schemas.append(schema)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as e:
+                log_proxy_error_on_change(f"tool_injection.schema_file {json_file}", e)
                 continue
         if schemas:
             store[plugin_dir.name] = schemas
@@ -96,19 +99,22 @@ def _load_active_plugins(project_path: str) -> list:
     global _ACTIVE_PLUGINS_CACHE, _ACTIVE_PLUGINS_MTIME, _ACTIVE_PLUGINS_PATH
 
     if not project_path:
+        log_proxy_error_on_change(_PLUGINS_SOURCE, "project path is empty, default plugin list")
         return [_ALWAYS_INJECTED_PLUGIN]
 
     plugins_file = os.path.join(project_path, ".claude", "active_plugins.json")
     _ACTIVE_PLUGINS_PATH = plugins_file
 
     if not os.path.exists(plugins_file):
+        log_proxy_error_on_change(_PLUGINS_SOURCE, f"active_plugins.json missing, default plugin list: {plugins_file}")
         _ACTIVE_PLUGINS_CACHE = [_ALWAYS_INJECTED_PLUGIN]
         _ACTIVE_PLUGINS_MTIME = None
         return _ACTIVE_PLUGINS_CACHE
 
     try:
         mtime = os.path.getmtime(plugins_file)
-    except OSError:
+    except OSError as e:
+        log_proxy_error_on_change(_PLUGINS_SOURCE, e)
         return _ACTIVE_PLUGINS_CACHE if _ACTIVE_PLUGINS_CACHE is not None else [_ALWAYS_INJECTED_PLUGIN]
 
     if _ACTIVE_PLUGINS_CACHE is not None and _ACTIVE_PLUGINS_MTIME == mtime:
@@ -119,12 +125,18 @@ def _load_active_plugins(project_path: str) -> list:
         if isinstance(raw, dict):
             plugins = raw.get("plugins", [_ALWAYS_INJECTED_PLUGIN])
             if not isinstance(plugins, list):
+                log_proxy_error_on_change(_PLUGINS_SOURCE, f"active_plugins.json 'plugins' is not a list, default plugin list: {plugins_file}")
                 plugins = [_ALWAYS_INJECTED_PLUGIN]
+            else:
+                clear_proxy_error(_PLUGINS_SOURCE)
         elif isinstance(raw, list):
             plugins = raw
+            clear_proxy_error(_PLUGINS_SOURCE)
         else:
+            log_proxy_error_on_change(_PLUGINS_SOURCE, f"active_plugins.json has an unexpected shape, default plugin list: {plugins_file}")
             plugins = [_ALWAYS_INJECTED_PLUGIN]
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_proxy_error_on_change(_PLUGINS_SOURCE, e)
         plugins = [_ALWAYS_INJECTED_PLUGIN]
 
     if _ALWAYS_INJECTED_PLUGIN not in plugins:
@@ -144,14 +156,18 @@ def _is_project_excluded(project_path: str) -> bool:
         return False
     config_path = Path.home() / ".claude" / "shared-rules" / "proxy_rules.json"
     if not config_path.exists():
+        log_proxy_error_on_change(_EXCLUDE_SOURCE, f"proxy_rules.json missing, no project excluded: {config_path}")
         return False
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_proxy_error_on_change(_EXCLUDE_SOURCE, e)
         return False
     exclude_list = config.get("tool_injection", {}).get("exclude_projects", [])
     if not isinstance(exclude_list, list):
+        log_proxy_error_on_change(_EXCLUDE_SOURCE, "exclude_projects is not a list, no project excluded")
         return False
+    clear_proxy_error(_EXCLUDE_SOURCE)
     for pattern in exclude_list:
         if pattern and isinstance(pattern, str) and pattern in project_path:
             return True
