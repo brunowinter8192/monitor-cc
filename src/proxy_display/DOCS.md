@@ -46,7 +46,7 @@ populate `messages` for entries the deque window dropped.
 
 ## Modules
 
-### pane.py (342 LOC)
+### pane.py (346 LOC)
 
 **Purpose:** Event loop for the main proxy pane — reads the `_forwarded` dual-log incrementally, handles mouse (click expand/collapse, scroll, hover, copy, search) and keyboard input (search, undo, `n`/`N`), renders on change via the drain-refresh-render pattern.
 **Reads:** Module-level state; active project filter from `core.monitor`; stdin (keypresses, mouse events).
@@ -56,7 +56,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### worker_proxy_pane.py (345 LOC)
+### worker_proxy_pane.py (348 LOC)
 
 **Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate. The worker-switcher header itself is built by the shared `workers.worker_switch_header.format_worker_switch_header` (imported under the alias `_format_worker_proxy_header`, its pre-move name) — `_worker_proxy_workers` is enriched with token/context-% liveness via `worker_tmux.attach_worker_stats(_worker_proxy_workers, _worker_proxy_stats_cache)` before that header renders (incremental, own cache — see `workers/DOCS.md`'s `attach_worker_stats` gotcha for why this must stay incremental).
 **Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_selection.get_selection_file_path`); stdin.
@@ -76,13 +76,33 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### format.py (196 LOC)
+### format.py (149 LOC)
 
-**Purpose:** `format_proxy_block` — groups proxy entries by turn, emits one token-pane-style `Turn n (..)` header row (time right-aligned) per group (`token_format._format_turn_header_line`), applies scroll/viewport windowing, delegates row rendering to `render_turn`, applies the row-background priority chain, returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
+**Purpose:** `format_proxy_block` — orchestrates group assignment and frozen-turn rendering (delegated to `frozen_turns`, which reuses cached turn groups), applies scroll/viewport windowing and the row-background priority chain (the only place hover is applied), returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
 **Writes:** Nothing — returns `(ansi_string, total_lines)` tuple; mutates the `line_map`/`copy_rows_out`/`item_positions_out` arguments when given.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/render_turn.py` (`_is_standalone_entry`, `_shorten_model`, `_format_k`, `_fmt_thinking_budget`, `_fmt_effort`), `src/proxy_display/search.py` (`_is_standalone_entry`), `src/proxy_display/proxy_pane_shared.py` (`_is_standalone_entry`), `src/proxy_display/render_sections.py` (`_format_k`), `src/proxy_display/render_sections_system.py` (`_format_k`), `src/proxy_display/__init__.py`
-**Calls out:** `format.token_format` (`_format_k`, `_format_turn_header_line`, `request_numbers_by_id`, `request_times_by_id`), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`)
+**Calls out:** `format.token_format` (`_format_k`), `frozen_turns` (lazy import), `turn_cache` (`TurnCache`), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`)
+
+---
+
+### frozen_turns.py (185 LOC)
+
+**Purpose:** Frozen-turn rendering for `format_proxy_block` — assigns entries to turns, fingerprints every turn group, re-renders only groups whose fingerprint changed, and returns the flattened lines with positions, collision set and prefix counts.
+**Reads:** Entries, expand states, turns, request-id map, copy feedback, search state, `dual_log_accumulator.overlay_epoch`, the `TurnCache`.
+**Writes:** The `TurnCache` (records, flat result, flow maps, last assignment path); one note line via `pane_error_log.log_pane_note` when the assignment path changes.
+**Called by:** `src/proxy_display/format.py` (lazy import inside `format_proxy_block`)
+**Calls out:** `format.token_format`, `pane_error_log` (`log_pane_note`), `dual_log_accumulator`, `format`, `proxy_badge`, `render_turn`
+
+---
+
+### turn_cache.py (14 LOC)
+
+**Purpose:** `TurnCache` holder for the frozen-turn state of one pane.
+**Reads:** nothing.
+**Writes:** its own fields.
+**Called by:** `src/proxy_display/format.py`, `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`
+**Calls out:** none
 
 ---
 
@@ -116,12 +136,12 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### dual_log_accumulator.py (123 LOC)
+### dual_log_accumulator.py (134 LOC)
 
 **Purpose:** Dual-log overlay accumulation — tails `_stripped`/`_injected`/`_original` and builds the per-family accumulator state both panes' entries hold references into. `accumulate_original_tools` keeps a latest-snapshot `{tool_name -> tool_def}` map per family (the `_original` log is a full-snapshot log, not delta-encoded). `accumulate_dual_log` mutates its accumulator dict in place (`.clear()`+`.update()`, preserving Python references held by pane entries), maintaining per-flow lookup dicts (`_has_content_by_flow_id`, `_msg_idx_by_flow_id`, `_sys_idx_by_flow_id`, `_tool_name_by_flow_id`, `_lag_msg_idx_by_flow_id`) that back the REQ-header badge and the flow-scoped span lookup in `render_messages._lookup_spans`.
 **Reads:** `_stripped`/`_injected`/`_original` dual-log JSONL files (incremental by byte position).
 **Writes:** Nothing — returns the new file position; mutates the `acc_by_family` argument in place; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`, retry-next-poll position unchanged).
-**Called by:** `src/proxy_display/pane.py` (`accumulate_original_tools`), `src/proxy_display/proxy_pane_shared.py` (`accumulate_dual_log`), `src/dual_log_cli/overlay.py` (`accumulate_dual_log`, its own independent accumulator per call — never shares state with the panes')
+**Called by:** `src/proxy_display/pane.py` (`accumulate_original_tools`), `src/proxy_display/proxy_pane_shared.py` (`accumulate_dual_log`), `src/proxy_display/frozen_turns.py` (`overlay_epoch`), `src/dual_log_cli/overlay.py` (`accumulate_dual_log`, its own independent accumulator per call — never shares state with the panes')
 **Calls out:** `pane_error_log` (`log_pane_error`)
 
 ---
@@ -141,7 +161,7 @@ populate `messages` for entries the deque window dropped.
 **Purpose:** Renders all per-request rows for an expanded turn group — REQ-header line (`▶/▼ REQ #N model Nmsg [eff:X] [think:Nk] [mods] [warns] [tag badge]`), request labels (`REQ #N` from the token pane's numbering via the flow-to-request-id join, `REQ #N.M` for a refire sharing a request_id, `REQ #?` when unmapped, `H`/`S` for standalone sidecars); a `[404]` (red) or `[pending]` (dim, no `_response` line yet) marker ends the header row of a non-200 or unfinished request, and the expanded section starts with a `status:` line, and dispatch into the expanded-request section renderers.
 **Reads:** Group dict, all entries, expand states, pane width, the flow-to-REQ-number map.
 **Writes:** Nothing — returns `(lines, keys)` tuple (`label_counts` is mutated in place); `_render_req_expanded` threads its own `copy_feedback` parameter down into `render_messages` unchanged, so message-row copy symbols and REQ-header copy symbols (`_build_req_header_line`) share the same caller-supplied dict.
-**Called by:** `src/proxy_display/format.py`, `src/proxy_display/search.py` (`_render_req_expanded`, `_resolve_prev_same_family`)
+**Called by:** `src/proxy_display/frozen_turns.py`, `src/proxy_display/search.py` (`_render_req_expanded`, `_resolve_prev_same_family`)
 **Calls out:** `render_messages` (`_aggregate_req_buckets`), `render_sections` (`render_fields_delta`, `render_beta`, `render_directives`, `render_tools`), `render_sections_system` (`render_system_blocks`), `format` (`_BG_RESTORE_SENTINEL`), `utils` (`highlight_query_in_line`)
 
 ---
@@ -224,6 +244,8 @@ session/worker change and on the hourly reparse trigger.
 `dual_log_accumulator.accumulate_original_tools`, latest-snapshot overwrite (not merge — tool
 defs are stable within a session). `worker_proxy_pane.py` has no equivalent; a whole-stripped
 tool row there always shows the `(original definition unavailable)` fallback.
+
+**Frozen-turn cache** — each pane owns one `turn_cache.TurnCache` (`_proxy_turn_cache` / `_worker_proxy_turn_cache`), passed to `format_proxy_block`, cleared in the pane's `_reset_*positions`. Details in `process-docs/pane_flicker/`.
 
 **Lazy-reload invariant:** an entry outside the `PROXY_MESSAGES_KEEP_LAST` tail window and not in
 `expand_states` has `messages=None` (stripped by `_parse_forwarded_log`). On expand-click or

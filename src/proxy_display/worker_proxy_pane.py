@@ -11,6 +11,7 @@ from ..constants import (
 from .parser import find_worker_proxy_log, _find_response_log_path
 from .forwarded_parser import _parse_forwarded_log, _infer_model_family
 from .format import format_proxy_block
+from src.proxy_display.turn_cache import TurnCache
 from ..panes.cache_turns import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers, attach_worker_stats
 from ..workers.worker_selection import get_selection_file_path
@@ -55,6 +56,7 @@ _worker_proxy_acc_stripped: dict = {}
 _worker_proxy_acc_injected: dict = {}
 _worker_proxy_header_regions: Dict[Tuple[int, int, int], str] = {}
 _worker_proxy_stats_cache: dict = {}
+_worker_proxy_turn_cache: TurnCache = TurnCache('worker_proxy')
 
 _WP_SEARCH_BAR_LINES = 1
 _WP_SEARCH_BAR_LABEL = 'search: '
@@ -239,6 +241,7 @@ def _handle_worker_proxy_key(char: str, monitor) -> bool:
 def _reset_worker_proxy_positions(now: float) -> None:
     global worker_proxy_log_position, _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_fwd_pos
     global _worker_proxy_last_full_parse_ts, _worker_proxy_stripped_pos, _worker_proxy_injected_pos, _worker_proxy_response_pos
+    _worker_proxy_turn_cache.clear()
     for c in (worker_proxy_entries, worker_proxy_line_map, _worker_proxy_acc_fwd, _worker_proxy_acc_stripped, _worker_proxy_acc_injected, _worker_proxy_request_id_by_flow, _worker_proxy_status_by_flow):
         c.clear()
     worker_proxy_log_position = _worker_proxy_jsonl_position = _worker_proxy_fwd_pos = _worker_proxy_response_pos = 0
@@ -322,7 +325,7 @@ def _render_worker_proxy_body(pane_width: int, content_height: int, total_header
         body, total_lines = format_proxy_block(
             worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, scroll_offset,
             turns=_worker_proxy_cache_turns, item_positions_out=item_positions, copy_feedback=_worker_copy_feedback_until, copy_rows_out=_worker_proxy_copy_rows,
-            search_match_set=_worker_proxy_search.match_set, search_current_entry_idx=current_match_entry_idx, search_query=_worker_proxy_search.query, request_id_by_flow=_worker_proxy_request_id_by_flow)
+            search_match_set=_worker_proxy_search.match_set, search_current_entry_idx=current_match_entry_idx, search_query=_worker_proxy_search.query, request_id_by_flow=_worker_proxy_request_id_by_flow, turn_cache=_worker_proxy_turn_cache)
         return body, total_lines, item_positions
     body, worker_proxy_scroll_offset = _render_and_scroll_body(
         _render, worker_proxy_line_map, _worker_proxy_copy_rows, total_header_lines, _wp_just_expanded, worker_proxy_scroll_offset, viewport_lines_n)

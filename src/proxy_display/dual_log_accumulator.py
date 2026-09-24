@@ -7,7 +7,16 @@ from ..pane_error_log import log_pane_error
 from .forwarded_parser import _infer_model_family
 from .proxy_badge import _is_total_tokens_nuke, _msgs_delta_is_substantial
 
+_overlay_epoch = 0
+
 # FUNCTIONS
+
+def overlay_epoch() -> int:
+    return _overlay_epoch
+
+def _bump_overlay_epoch() -> None:
+    global _overlay_epoch
+    _overlay_epoch += 1
 
 def accumulate_original_tools(path: Optional[Path], last_pos: int, acc_by_family: dict) -> int:
     if path is None or not path.exists():
@@ -30,6 +39,7 @@ def accumulate_original_tools(path: Optional[Path], last_pos: int, acc_by_family
                 if not tools:
                     continue
                 family = _infer_model_family(entry.get('model', ''))
+                _bump_overlay_epoch()
                 fam_map = acc_by_family.setdefault(family, {})
                 fam_map.clear()
                 for t in tools:
@@ -113,6 +123,7 @@ def accumulate_dual_log(path: Optional[Path], last_pos: int, acc_by_family: dict
                         '_has_content_by_flow_id': {}, '_msg_idx_by_flow_id': {},
                     }
                 )
+                _bump_overlay_epoch()
                 _reset_family_acc_if_first(acc, entry)
                 msgs_delta = _merge_dual_log_entry(acc, entry)
                 _record_flow_lookups(acc, entry, msgs_delta)

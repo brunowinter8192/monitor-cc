@@ -140,12 +140,12 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     lines = _mark_search_lines(lines, search_query, is_search_current)
     return lines, keys
 
-def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, number_by_flow: dict, label_counts: dict, time_by_flow: dict = None, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '') -> tuple:
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, number_by_flow: dict, label_counts: dict, time_by_flow: dict = None, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '', labels: list = None) -> tuple:
     lines = []
     keys = []
-    for entry_idx, entry in group['entry_pairs']:
+    for pair_pos, (entry_idx, entry) in enumerate(group['entry_pairs']):
         model_short = _shorten_model(entry.get('model', '?'))
-        num_label = _req_label(entry, model_short, number_by_flow, label_counts)
+        num_label = labels[pair_pos] if labels is not None else _req_label(entry, model_short, number_by_flow, label_counts)
         msg_count = entry.get('message_count', 0)
         warn_parts = []
         is_standalone = _is_standalone_entry(entry)

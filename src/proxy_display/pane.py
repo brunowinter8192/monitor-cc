@@ -17,6 +17,7 @@ from .proxy_pane_shared import (
     _copy_feedback_key, _accumulate_request_ids, _attach_http_status,
 )
 from .format import format_proxy_block
+from src.proxy_display.turn_cache import TurnCache
 from ..panes.cache_turns import build_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
@@ -61,6 +62,7 @@ _proxy_just_expanded = None
 _proxy_current_main_session: Optional[str] = None
 _proxy_session_start_ts: Optional[str] = None
 _proxy_undo_stack: list = []
+_proxy_turn_cache: TurnCache = TurnCache('proxy')
 
 _proxy_search: search_bar.SearchState = search_bar.SearchState()
 
@@ -240,6 +242,7 @@ def _reset_proxy_positions(now: float) -> None:
     global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _last_full_parse_ts, _proxy_response_pos
     proxy_entries.clear()
     proxy_line_map.clear()
+    _proxy_turn_cache.clear()
     proxy_log_position = _proxy_jsonl_position = _proxy_fwd_pos = 0
     _proxy_cache_turns = []
     _proxy_acc_fwd.clear()
@@ -334,6 +337,7 @@ def _build_proxy_output() -> str:
             copy_feedback=_copy_feedback_until, copy_rows_out=_proxy_copy_rows,
             search_match_set=_proxy_search.match_set, search_current_entry_idx=current_match_entry_idx,
             search_query=_proxy_search.query, request_id_by_flow=_proxy_request_id_by_flow,
+            turn_cache=_proxy_turn_cache,
         )
         return body, total_lines, item_positions
     body, proxy_scroll_offset = _render_and_scroll_body(

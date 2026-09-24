@@ -68,9 +68,9 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### pane_error_log.py (30 LOC)
+### pane_error_log.py (38 LOC)
 
-**Purpose:** `log_pane_error(pane_name)` — exception-safe sink every pane's `except Exception:` guard calls; caps the log file at a fixed size.
+**Purpose:** `log_pane_error(pane_name)` — exception-safe sink every pane's `except Exception:` guard calls; `log_pane_note(pane_name, message)` writes a one-line note to the same capped log.
 **Reads:** existing log file size (to decide truncation).
 **Writes:** `/tmp/monitor_cc_error.log` (appends traceback; truncates to a fixed tail once past the max size).
 **Called by:** `gpu_pane/pane.py`, `news_pane/log_pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `workers/worker_tokens_pane.py`.

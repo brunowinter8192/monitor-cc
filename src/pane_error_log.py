@@ -18,6 +18,14 @@ def log_pane_error(pane_name: str) -> None:
     except Exception:
         pass
 
+def log_pane_note(pane_name: str, message: str) -> None:
+    try:
+        _cap_log_size()
+        with open(PANE_ERROR_LOG_PATH, 'a') as f:
+            f.write(f"\n[{datetime.now().isoformat()}] [{pane_name}] note: {message}\n")
+    except Exception:
+        pass
+
 def _cap_log_size() -> None:
     if not os.path.exists(PANE_ERROR_LOG_PATH):
         return
