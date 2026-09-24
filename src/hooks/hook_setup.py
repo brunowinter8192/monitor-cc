@@ -165,6 +165,7 @@ def _sweep_stale_hooks(settings: dict) -> int:
                     tokens = cmd.split()
                     if len(tokens) >= 2 and not os.path.exists(tokens[1]):
                         swept += 1
+                        print(f"Swept stale hook: {event} {cmd}", file=sys.stderr)
                         continue
                 new_hooks.append(h)
             if new_hooks:
