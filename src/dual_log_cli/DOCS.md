@@ -31,7 +31,7 @@ the hardcoded repo root and execs the same module, so `duallog <command>` works 
 symlinked into PATH.
 
 The log directory is resolved from `MONITOR_CC_ROOT`, else the repo root, else the main checkout
-when running inside `.claude/worktrees/<name>/` — the log directory is gitignored and exists only
+when running inside `.claude/worktrees/<name>/`; stderr states the root (`monitor root: ...`) and the branch taken (`dual_log dir: ... (...)`) — the log directory is gitignored and exists only
 in the main checkout.
 
 ## Flow
@@ -113,13 +113,13 @@ against ANY of a msg's block types.
 
 ---
 
-### discovery.py (204 LOC)
+### discovery.py (213 LOC)
 
 **Purpose:** Log-directory resolution, stem grouping, stem parsing (`stem_identity` — the one
 place every stem-derived value starts from), the session inventory (`build_session`), all session
 selection (`filter_sessions` for context/scope/date, `filter_by_family` for `--main`/`--worker`),
 and stem/substring resolution with explicit ambiguity and unknown errors.
-**Reads:** `MONITOR_CC_ROOT`; the dual_log directory listing; each stem's `_forwarded.jsonl` in full; `stat().st_size` of all six streams.
+**Reads:** `MONITOR_CC_ROOT` (via `monitor_root`); the dual_log directory listing; each stem's `_forwarded.jsonl` in full; `stat().st_size` of all six streams.
 **Writes:** Nothing — returns dicts.
 **Called by:** `__main__.py`, `commands.py`, `usage.py` (`stem_identity`), `render_reqs.py` (`stem_identity`); `dev/dual_log_cli/tests/test_local_time.py`, `test_project_display.py`, `test_reqs.py`, `test_sidecar_exclusion.py`.
 **Calls out:** —

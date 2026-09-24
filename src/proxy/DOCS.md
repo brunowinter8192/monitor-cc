@@ -27,11 +27,11 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ## Modules
 
-### addon.py (326 LOC)
+### addon.py (331 LOC)
 
 **Purpose:** mitmproxy addon hook class (`ProxyAddon`) that receives HTTP flows and orchestrates the full request-modification and dual-log pipeline; `count_tokens` requests pass through unmodified.
-**Reads:** mitmproxy `http.HTTPFlow`; env vars `PROXY_PROJECT_PATH`, `MONITOR_CC_ROOT`, `PROXY_LOG_ID`/`PROXY_SESSION_ID`.
-**Writes:** `flow.request.content` (modified payload, in place); `flow.request.headers` (`content-encoding` popped, `accept-encoding: identity` forced via `_request_identity_encoding`); `flow.metadata` (`mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_all_ops`, `mc_request_id`, `mc_answering_model_state`, `mc_response_entry_written`, `mc_model_mismatch_logged` — stashed in `request()`/`responseheaders()`, read/set in `response()`/`error()`). `_response` dual-log entry carries three distinctly-named model fields side by side — `cc_requested_model` (from `mc_original_payload`, what Claude Code asked for), `proxy_forwarded_model` (from `mc_modified_payload`, what the proxy actually sent — can differ under `_inject_model_override`'s legacy-override path), `answering_model` (from the streamed probe state, what the API answered with) — written by `_write_response_entry`, called (via `_write_response_and_mismatch`) from both `response()` and `error()` (mitmproxy fires exactly one of the two per flow, never both) so a client-side mid-stream abort still produces an entry; `mc_response_entry_written` guards against a double write if that invariant is ever violated. When `proxy_forwarded_model` and a non-empty `answering_model` differ, `_write_model_mismatch_entry` additionally writes one `type: model_mismatch` record straight to the session `_errors` dual-log (`paths.errors`, the same file `addon_dual_log._log_errors_entries` writes tool_error records to) in the exact shape `warnings_pane._errors_record_to_display` expects (`tool_name`/`error_full`/`ts`/`worker`/`tool_use_id: ""`) — written independently of that function's `tool_use_id` dedup set, so it can never interact with it; `mc_model_mismatch_logged` guards its own double write. Actual dual-log file writes are delegated to `addon_dual_log.py`.
+**Reads:** mitmproxy `http.HTTPFlow`; env vars `PROXY_PROJECT_PATH`, `PROXY_LOG_ID` (required; a missing one raises at import, a `worker_` id that does not parse raises).
+**Writes:** `flow.request.content` (modified payload, in place); `flow.request.headers` (`content-encoding` popped, `accept-encoding: identity` forced via `_request_identity_encoding`); `flow.metadata` (`mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_all_ops`, `mc_request_id`, `mc_answering_model_state`, `mc_response_entry_written`, `mc_model_mismatch_logged` — stashed in `request()`/`responseheaders()`, read/set in `response()`/`error()`). `_response` dual-log entry carries three distinctly-named model fields side by side — `cc_requested_model` (from `mc_original_payload`, what Claude Code asked for), `proxy_forwarded_model` (from `mc_modified_payload`, what the proxy actually sent — equal to the model Claude Code requested, since the proxy no longer rewrites the model id), `answering_model` (from the streamed probe state, what the API answered with) — written by `_write_response_entry`, called (via `_write_response_and_mismatch`) from both `response()` and `error()` (mitmproxy fires exactly one of the two per flow, never both) so a client-side mid-stream abort still produces an entry; `mc_response_entry_written` guards against a double write if that invariant is ever violated. When `proxy_forwarded_model` and a non-empty `answering_model` differ, `_write_model_mismatch_entry` additionally writes one `type: model_mismatch` record straight to the session `_errors` dual-log (`paths.errors`, the same file `addon_dual_log._log_errors_entries` writes tool_error records to) in the exact shape `warnings_pane._errors_record_to_display` expects (`tool_name`/`error_full`/`ts`/`worker`/`tool_use_id: ""`) — written independently of that function's `tool_use_id` dedup set, so it can never interact with it; `mc_model_mismatch_logged` guards its own double write. Actual dual-log file writes are delegated to `addon_dual_log.py`.
 **Called by:** `src/proxy_addon.py` (imports `ProxyAddon`, `addons`); mitmproxy itself via `addons = [ProxyAddon()]` at module level (hooks: `request`, `responseheaders`, `response`, `error`).
 **Calls out:** `mitmproxy`
 
@@ -47,11 +47,11 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### addon_dual_log.py (143 LOC)
+### addon_dual_log.py (148 LOC)
 
 **Purpose:** Builds and writes the dual-log JSONL entries (`original`, `forwarded`, `errors`, `stripped`/`injected`) and the flat `api_errors.jsonl` for one request/response cycle; keeps the per-model-family `forwarded_hashes_by_model` delta chain from advancing on a zero-tool CC-internal sidecar call (`_is_sidecar_payload`), so the request immediately after one still diffs against the last REAL request, not the sidecar.
-**Reads:** `http.HTTPFlow`-shaped objects and payload dicts passed by `addon.py`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID`/`PROXY_SESSION_ID` (path resolution only).
-**Writes:** `src/logs/dual_log/api_requests_<id>_{original,forwarded,stripped,injected,errors}.jsonl` (or under `/tmp/dual_log/` when `MONITOR_CC_ROOT` is unset); `src/logs/api_errors.jsonl`.
+**Reads:** `http.HTTPFlow`-shaped objects and payload dicts passed by `addon.py`; env var `PROXY_LOG_ID` (required) and the repo root from `proxy_error_log.proxy_monitor_root` (path resolution only).
+**Writes:** `src/logs/dual_log/api_requests_<id>_{original,forwarded,stripped,injected,errors}.jsonl`; `src/logs/api_errors.jsonl`.
 **Called by:** `src/proxy/addon.py` (`__init__`, `request()`, `responseheaders()`, `response()`).
 **Calls out:** —
 
@@ -67,27 +67,37 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### bg_escape.py (105 LOC)
+### proxy_error_log.py (72 LOC)
+
+**Purpose:** The proxy's error channel — appends a timestamped entry with traceback to `src/logs/proxy_error.log` (size-capped), with a log-on-change variant for per-request failures; also hands the repo root to the other proxy modules.
+**Reads:** the repo root via `monitor_root.resolve_monitor_cc_root`.
+**Writes:** `<root>/src/logs/proxy_error.log`; its own failure is swallowed (last-resort sink).
+**Called by:** `addon.py`, `addon_dual_log.py`, `bg_escape.py`, `inject_helpers.py`, `inject_poread.py`, `rules_config.py`, `tool_injection.py`; `dev/proxy/test_proxy_error_log.py`.
+**Calls out:** —
+
+---
+
+### bg_escape.py (102 LOC)
 
 **Purpose:** Sends a tmux Escape into a worker's pane the first time a genuine background-launch ack is detected in stripped content, so the worker doesn't poll the newly-backgrounded task.
-**Reads:** `stripped_msg_removed` dict, `worker_context`, `project_path` (passed by `addon.py`); env var `MONITOR_CC_ROOT`.
-**Writes:** `_escaped_task_ids` (module-global in-memory set); `bg_escape_events.jsonl` (under `MONITOR_CC_ROOT/src/logs/` or `/tmp/`); one `tmux send-keys ... Escape` subprocess call per newly-seen task id.
+**Reads:** `stripped_msg_removed` dict, `worker_context`, `project_path` (passed by `addon.py`); the repo root from `proxy_error_log.proxy_monitor_root`.
+**Writes:** `_escaped_task_ids` (module-global in-memory set); `bg_escape_events.jsonl` (under `<root>/src/logs/`); one `tmux send-keys ... Escape` subprocess call per newly-seen task id.
 **Called by:** `src/proxy/addon.py` (`request()`, own `try/except` wrapper).
 **Calls out:** —
 
 ---
 
-### rules_config.py (87 LOC)
+### rules_config.py (89 LOC)
 
 **Purpose:** Loads and mtime-caches `proxy_rules.json` and system2 rule-text files, assembling role- and project-scoped system2 rule text for a session; owns `is_main_session(worker_context)`, the single "is this the main session" predicate shared with `rules.py` and `bg_escape.py`.
-**Reads:** `proxy_rules.json` and rule files under the shared-rules directory in the user's home folder (mtime-cached).
+**Reads:** `proxy_rules.json` and rule files under the shared-rules directory in the user's home folder (mtime-cached); a failed load returns the default and is noted in `proxy_error.log` (once per changed error).
 **Writes:** — (returns config dict, assembled rule text, or a bool)
 **Called by:** `src/proxy/rules.py`, `src/proxy/message_passes.py`, `src/proxy/inject_helpers.py`, `src/proxy/bg_escape.py` (`is_main_session`).
 **Calls out:** —
 
 ---
 
-### rules.py (148 LOC)
+### rules.py (142 LOC)
 
 **Purpose:** Orchestrates the message-pass pipeline (`apply_modification_rules`) and the system-block replacement pass (sys1 boilerplate strip, sys2 rule injection, sys3 session-guidance/gitStatus/worktree-path cleanup).
 **Reads:** Raw payload dict; system2 rule text via `rules_config._load_system2_rules`.
@@ -137,7 +147,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### cache.py (147 LOC)
+### cache.py (140 LOC)
 
 **Purpose:** Strips all existing `cache_control` markers from a payload and places new breakpoints (system prompt, tools-end anchor, BP3 unchanged-tail, BP4 last message).
 **Reads:** Payload dicts; previous request's message summaries (BP3 unchanged-prefix detection).
@@ -150,7 +160,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 ### strip_sr.py (162 LOC)
 
 **Purpose:** Strips `<system-reminder>` blocks from message content via a catalog of 12 exact-match templates (task-tools-nag, pyright-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, agent-types, plan-mode, git-attribution).
-**Reads:** Message content (string or list of blocks); template catalog (module-local).
+**Reads:** Message content (string or list of blocks); template catalog (module-local); `_strip_system_reminder` raises `ValueError` for a marker with no template.
 **Writes:** — (returns modified content)
 **Called by:** `src/proxy/message_passes.py`.
 **Calls out:** —
@@ -181,7 +191,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 **Purpose:** Recognizes a `<poread-export ...>` marker plus its fixed notice sentence as one whole `tool_result` block, replaces it with the file's full content.
 **Reads:** Message content (string or list of blocks); the named file's bytes from disk, up to its own `POREAD_MAX_BYTES`.
-**Writes:** — (returns `(modified_content, list[str])`); stderr diagnostic (`[proxy_addon] poread: ...`) when a structurally-valid marker fails validation (source changed, vanished, declares a size over the ceiling, or the block is not EXACTLY the marker followed by `POREAD_NOTICE` — a marker with no notice under it, different trailing text, or anything chained after it in one Bash call, leaves the whole block untouched rather than being silently dropped) — never partially expanded, and never cached across requests: size + truncated sha256 are both recomputed from disk on every call. This gives the notice sentence a property for free: when expansion succeeds it disappears along with the marker (both were part of the one matched-and-replaced block); when it doesn't, the notice stays in the agent's own context, which is exactly the case where it needs the explanation. Within one call, the file is opened exactly once — `_inject_poread_content` hands the predicate's own validated bytes to the replacement via a closure-scoped cache keyed by the exact marker text, so there is no second read and no window in which the source could change between validation and use (a benign race there would previously raise inside `_build_poread_replacement` and, uncaught, cause `ProxyAddon.request()`'s outer handler to skip ALL modifications for that request, not just this one marker).
+**Writes:** — (returns `(modified_content, list[str])`); `src/logs/proxy_error.log` diagnostic (source `inject_poread <path>`, logged once per changed reason) when a structurally-valid marker fails validation (source changed, vanished, declares a size over the ceiling, or the block is not EXACTLY the marker followed by `POREAD_NOTICE` — a marker with no notice under it, different trailing text, or anything chained after it in one Bash call, leaves the whole block untouched rather than being silently dropped) — never partially expanded, and never cached across requests: size + truncated sha256 are both recomputed from disk on every call. This gives the notice sentence a property for free: when expansion succeeds it disappears along with the marker (both were part of the one matched-and-replaced block); when it doesn't, the notice stays in the agent's own context, which is exactly the case where it needs the explanation. Within one call, the file is opened exactly once — `_inject_poread_content` hands the predicate's own validated bytes to the replacement via a closure-scoped cache keyed by the exact marker text, so there is no second read and no window in which the source could change between validation and use (a benign race there would previously raise inside `_build_poread_replacement` and, uncaught, cause `ProxyAddon.request()`'s outer handler to skip ALL modifications for that request, not just this one marker).
 **Called by:** `src/proxy/message_passes_simple.py` (`_apply_poread_expand_strip`).
 **Calls out:** none — `POREAD_MAX_BYTES`/`POREAD_HASH_LEN`/`POREAD_MARKER_PREFIX`/`POREAD_NOTICE` are this module's own constants now (see Gotchas), no more `constants`-module `sys.path` bootstrap.
 
@@ -267,7 +277,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### diff_engine.py (273 LOC)
+### diff_engine.py (207 LOC)
 
 **Purpose:** Aligns and classifies strip/inject/equal spans from an original↔forwarded payload diff (system by index, tools by name, messages by index+block, top-level scalar fields), and composes per-block ops into spans for message-level logging.
 **Reads:** — (pure functions over payload dicts/lists passed as arguments)
@@ -297,9 +307,9 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### message_summary.py (181 LOC)
+### message_summary.py (183 LOC)
 
-**Purpose:** Summarizes and classifies message content into compact dicts (role, type, chars, preview, per-block breakdown, `cache_control` presence) for log entries; also owns `_infer_model_family(model)`, the single model-family classifier every proxy-side and display-side model-family check imports.
+**Purpose:** Summarizes and classifies message content into compact dicts (role, type, chars, preview, per-block breakdown, `cache_control` presence) for log entries; also owns `_infer_model_family(model)`, the single model-family classifier every proxy-side and display-side model-family check imports (`haiku`/`sonnet`/`opus`, else `unknown`).
 **Reads:** Raw message dicts from an API payload, or a model id string.
 **Writes:** — (returns summary dicts or a family string)
 **Called by:** `src/proxy/addon.py`, `src/proxy/logging.py`, `src/proxy/cache.py`, `src/proxy_display/forwarded_parser.py` (`_infer_model_family`), `src/dual_log_cli/reader.py` (`_infer_model_family` as `infer_family`).
@@ -307,17 +317,17 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### tool_injection.py (160 LOC)
+### tool_injection.py (174 LOC)
 
 **Purpose:** Deterministically appends MCP tool schemas to `payload["tools"]` in stable order (always-injected plugin slot first, then active plugins in activation order), preventing cache rebuilds caused by alphabetical insertion.
-**Reads:** Schema store at `src/proxy/schemas/<plugin>/*.json` (one-time load); `<project>/.claude/active_plugins.json` (mtime-reloaded); `proxy_rules.json` exclude list.
+**Reads:** Schema store at `src/proxy/schemas/<plugin>/*.json` (one-time load); `<project>/.claude/active_plugins.json` (mtime-reloaded); `proxy_rules.json` exclude list; degraded reads (missing store/file, malformed JSON, wrong shape) are noted in `proxy_error.log`.
 **Writes:** — (returns modified payload)
 **Called by:** `src/proxy/addon.py`; `src/proxy/fixation.py` (`_load_active_plugins`).
 **Calls out:** —
 
 ---
 
-### tools.py (50 LOC)
+### tools.py (45 LOC)
 
 **Purpose:** Two pipeline helpers — `_strip_unused_tools` removes blocklisted tools from `payload["tools"]`; `_extract_deferred_tool_names` reads the deferred-tools list out of the original payload's `<system-reminder>` block before it is stripped.
 **Reads:** Payload dict with `tools` list and (for deferred-tool extraction) `messages`.
@@ -337,10 +347,10 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### inject_helpers.py (149 LOC)
+### inject_helpers.py (127 LOC)
 
-**Purpose:** Injects model parameters (`thinking`/`effort`/`max_tokens`, or the model id itself for the legacy config shape) and the `context_management` block into the payload, snapshotting the resolved value per exact model id for the process lifetime; also reconciles the two — `_strip_clear_thinking_edit` removes a `clear_thinking_20251015` context_management edit whenever the payload's final `thinking` is `{"type": "disabled"}`, whichever path set it, since the two together are a self-contradictory request the API rejects with a 400.
-**Reads:** Payload dict, model_family string, optional fixation dict; `proxy_rules.json` via `rules_config._load_config()` (only on a cache-miss for the request's exact model id).
+**Purpose:** Injects model parameters (`thinking`/`effort`/`max_tokens` from the `model_params` table) and the `context_management` block into the payload, snapshotting the resolved value per exact model id for the process lifetime; also reconciles the two — `_strip_clear_thinking_edit` removes a `clear_thinking_20251015` context_management edit whenever the payload's final `thinking` is `{"type": "disabled"}`, whichever path set it, since the two together are a self-contradictory request the API rejects with a 400.
+**Reads:** Payload dict, optional fixation dict; `proxy_rules.json` via `rules_config._load_config()` (only on a cache-miss for the request's exact model id).
 **Writes:** — on the payload (returns modified payload or `(modified_payload, injected_bool)`); mutates the caller-owned `fixated_model_override` dict in place.
 **Called by:** `src/proxy/addon.py` (`_run_post_fixation_pipeline`).
 **Calls out:** —
@@ -357,7 +367,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### payload_helpers.py (226 LOC)
+### payload_helpers.py (220 LOC)
 
 **Purpose:** Low-level payload content inspection/manipulation — find/strip system-reminder blocks, strip blocklisted tool_reference blocks, replace task-notification tags, and the shared "predicate matches whole text → replace whole text" block walker.
 **Reads:** Message content (string or list), payload dicts.
@@ -371,11 +381,15 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 `tool_injection.py` holds four module-level caches (set once per mitmproxy process): `_SCHEMA_STORE_CACHE` (all plugin schemas from the gitignored schemas directory under `src/proxy/`, populated by `dev/tool_injection/01_extract_schemas.py`); `_ACTIVE_PLUGINS_CACHE`/`_ACTIVE_PLUGINS_MTIME`/`_ACTIVE_PLUGINS_PATH` (active-plugin list, mtime-reloaded).
 
-`addon.py` owns `ProxyAddon` instance state via 4 collaborator objects from `addon_state.py`: `self.delta` (per-model-family delta-chain dicts for BP3 unchanged-prefix detection and the forwarded/stripped/injected/errors dedup chains), `self.fixation` (`fixated` — sys2/msg0 snapshot per model_family; `model_params_fixated` — resolved model-params/legacy-override snapshot per exact model id, owned by `inject_helpers._inject_model_override`), `self.identity` (`session_id`, `worker_context` — computed once at `__init__`, immutable for the process lifetime in production; a few `dev/` probes overwrite `worker_context` directly after construction). All of this state resets on mitmproxy hot-reload.
+`addon.py` owns `ProxyAddon` instance state via 4 collaborator objects from `addon_state.py`: `self.delta` (per-model-family delta-chain dicts for BP3 unchanged-prefix detection and the forwarded/stripped/injected/errors dedup chains), `self.fixation` (`fixated` — sys2/msg0 snapshot per model_family; `model_params_fixated` — resolved model-params snapshot per exact model id, owned by `inject_helpers._inject_model_override`), `self.identity` (`session_id`, `worker_context` — computed once at `__init__`, immutable for the process lifetime in production; a few `dev/` probes overwrite `worker_context` directly after construction). All of this state resets on mitmproxy hot-reload.
 
 `bg_escape.py` owns `_escaped_task_ids` — a module-global (not per-`ProxyAddon`-instance) in-memory set of background-task ids that have already fired an Escape, for this proxy process's lifetime. Resets on hot-reload or a full process restart. `bg_escape_events.jsonl` is append-only across restarts even though `_escaped_task_ids` is memory-only, so a restart-caused extra fire is still visible in the log.
 
 ## Gotchas
+
+**The proxy runs with `mitmdump -q 2>/dev/null`, so nothing printed to stderr survives.** Every swallowed exception and refusal in this package goes through `proxy_error_log.log_proxy_error` into `src/logs/proxy_error.log`; the fail-open behaviour of the handlers is unchanged.
+
+**The live copy resolves code outside `proxy/` from the repo checkout.** `src/proxy_addon.py` puts the repo root on `sys.path` next to the live `proxy/` directory, so `from src.constants import ...` and `from src.monitor_root import ...` load the checkout's files, not copies.
 
 **`_TrailerCrashFilter` drops one specific mitmproxy crash record, not crash logging in general.** It filters the `NotImplementedError: HTTP trailers are not implemented yet` `LogRecord` mitmproxy 12.x raises from `proxy/layers/http/_http1.py`; every other `mitmproxy has crashed!` record still reaches stderr.
 
