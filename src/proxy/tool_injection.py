@@ -120,6 +120,17 @@ def _load_active_plugins(project_path: str) -> list:
     if _ACTIVE_PLUGINS_CACHE is not None and _ACTIVE_PLUGINS_MTIME == mtime:
         return _ACTIVE_PLUGINS_CACHE
 
+    plugins = _read_plugins_file(plugins_file)
+
+    if _ALWAYS_INJECTED_PLUGIN not in plugins:
+        plugins = [_ALWAYS_INJECTED_PLUGIN] + plugins
+
+    _ACTIVE_PLUGINS_CACHE = plugins
+    _ACTIVE_PLUGINS_MTIME = mtime
+    return _ACTIVE_PLUGINS_CACHE
+
+
+def _read_plugins_file(plugins_file: str) -> list:
     try:
         raw = json.loads(Path(plugins_file).read_text(encoding="utf-8"))
         if isinstance(raw, dict):
@@ -138,13 +149,7 @@ def _load_active_plugins(project_path: str) -> list:
     except (json.JSONDecodeError, OSError) as e:
         log_proxy_error_on_change(_PLUGINS_SOURCE, e)
         plugins = [_ALWAYS_INJECTED_PLUGIN]
-
-    if _ALWAYS_INJECTED_PLUGIN not in plugins:
-        plugins = [_ALWAYS_INJECTED_PLUGIN] + plugins
-
-    _ACTIVE_PLUGINS_CACHE = plugins
-    _ACTIVE_PLUGINS_MTIME = mtime
-    return _ACTIVE_PLUGINS_CACHE
+    return plugins
 
 
 def _resolve_schema_store_path() -> Path:

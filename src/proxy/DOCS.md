@@ -317,7 +317,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### tool_injection.py (174 LOC)
+### tool_injection.py (179 LOC)
 
 **Purpose:** Deterministically appends MCP tool schemas to `payload["tools"]` in stable order (always-injected plugin slot first, then active plugins in activation order), preventing cache rebuilds caused by alphabetical insertion.
 **Reads:** Schema store at `src/proxy/schemas/<plugin>/*.json` (one-time load); `<project>/.claude/active_plugins.json` (mtime-reloaded); `proxy_rules.json` exclude list; degraded reads (missing store/file, malformed JSON, wrong shape) are noted in `proxy_error.log`.
