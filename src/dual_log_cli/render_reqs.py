@@ -1,4 +1,6 @@
 # INFRASTRUCTURE
+from src.proxy_display.format import _assign_turns_to_entries
+
 from .discovery import stem_identity
 from .reader import local_datetime
 from .render_format import _clock, _fmt_duration, _skipped_lines
@@ -127,8 +129,16 @@ def _pane_entries_and_separators(boundaries: list, continues: list, pane_turns: 
                                  usage_map: dict, stem: str, tag: str) -> tuple:
     requests = [_request_marker(request) for request in (boundaries or [])]
     requests.extend(_request_marker(request) for request in continues)
+    _assign_unmapped_turns(requests, pane_turns)
     entries = _chronological_entries(requests, usage_map, stem, tag)
     return entries, _pane_turn_separators(entries, pane_turns, stem, tag)
+
+
+def _assign_unmapped_turns(requests: list, pane_turns: list) -> None:
+    unmapped = [request for request in requests if request.get("pane_turn") is None]
+    for group in _assign_turns_to_entries(unmapped, pane_turns):
+        for _position, request in group["entry_pairs"]:
+            request["pane_turn"] = group["turn_idx"] + 1
 
 
 def _request_marker(request: dict) -> dict:
@@ -163,11 +173,13 @@ def _pane_turn_separators(entries: list, pane_turns: list, stem: str, tag: str) 
     tag_part = f"  {tag}" if tag else ""
     for turn_number, times in times_by_turn.items():
         span = (times[-1] - times[0]).total_seconds()
-        prompt = (pane_turns[turn_number - 1].get("prompt", "") if turn_number <= len(pane_turns) else "")
+        turn = pane_turns[turn_number - 1] if turn_number <= len(pane_turns) else {}
+        prompt = turn.get("prompt", "")
+        clock = _clock(turn["timestamp"]) if turn.get("timestamp") else times[0].strftime("%H:%M:%S")
         preview = " ".join(prompt.split())
         preview = preview[:_PREVIEW_CHARS] + ("…" if len(preview) > _PREVIEW_CHARS else "")
         separators[(stem, turn_number)] = (
-            f"── turn {turn_number}  {times[0].strftime('%H:%M:%S')}  {_fmt_duration(span)}{tag_part}  {preview} ──"
+            f"── turn {turn_number}  {clock}  {_fmt_duration(span)}{tag_part}  {preview} ──"
         )
     return separators
 
@@ -195,7 +207,7 @@ def _bracket_gap_positions(entries: list, gap_minutes: int) -> dict:
     last_index_by_turn = {}
     for i, entry in enumerate(entries):
         turn_number = entry[4]
-        if turn_number is None:
+        if turn_number is None or entry[2]["number"] is None:
             continue
         key = (entry[1], turn_number)
         previous = last_index_by_turn.get(key)
