@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
+# INFRASTRUCTURE
 import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'hooks'))
 
 from block_worker_kill_while_working import decide
-
-
-def make_stub(name_to_status: dict):
-    def stub(name: str) -> str:
-        if name == 'raises':
-            raise RuntimeError("simulated status_fn error")
-        return name_to_status.get(name, '')
-    return stub
-
 
 CASES = [
     (
@@ -95,17 +87,44 @@ CASES = [
     ),
 ]
 
-passed = failed = 0
-for label, cmd, stub_map, expect in CASES:
-    block, name = decide(cmd, make_stub(stub_map))
-    ok = (block == expect)
-    mark = "PASS" if ok else "FAIL"
-    blocking_info = f" (blocking: {name})" if block else ""
-    print(f"[{mark}] {label}{blocking_info}")
-    if ok:
-        passed += 1
-    else:
-        failed += 1
 
-print(f"\n{passed}/{passed + failed} passed")
-sys.exit(0 if failed == 0 else 1)
+# ORCHESTRATOR
+
+def test_block_worker_kill_while_working_workflow() -> None:
+    passed, failed = _run_cases()
+    _report_and_exit(passed, failed)
+
+
+# FUNCTIONS
+
+def make_stub(name_to_status: dict):
+    def stub(name: str) -> str:
+        if name == 'raises':
+            raise RuntimeError("simulated status_fn error")
+        return name_to_status.get(name, '')
+    return stub
+
+
+def _run_cases() -> tuple:
+    passed = failed = 0
+    for label, cmd, stub_map, expect in CASES:
+        block, name = decide(cmd, make_stub(stub_map))
+        ok = (block == expect)
+        mark = "PASS" if ok else "FAIL"
+        blocking_info = f" (blocking: {name})" if block else ""
+        print(f"[{mark}] {label}{blocking_info}")
+        if ok:
+            passed += 1
+        else:
+            failed += 1
+            break
+    return passed, failed
+
+
+def _report_and_exit(passed: int, failed: int) -> None:
+    print(f"\n{passed}/{passed + failed} passed")
+    sys.exit(0 if failed == 0 else 1)
+
+
+if __name__ == "__main__":
+    test_block_worker_kill_while_working_workflow()

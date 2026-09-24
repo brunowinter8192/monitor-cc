@@ -1,9 +1,8 @@
 # INFRASTRUCTURE
 import json
 import os
-import subprocess
-import sys
 import tempfile
+from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/block_rag_cli_document_repeat.py"
 
@@ -11,43 +10,30 @@ HOOK = "src/hooks/block_rag_cli_document_repeat.py"
 # ORCHESTRATOR
 
 def test_block_rag_cli_document_repeat_workflow() -> None:
-    failures = []
-
-    failures.extend(_test_single_document_call_allowed())
-    failures.extend(_test_second_call_blocks())
-    failures.extend(_test_collection_wide_always_allowed())
-    failures.extend(_test_different_session_independent())
-    failures.extend(_test_delete_subcommand_also_counts())
-    failures.extend(_test_malformed_stdin_fail_open())
+    _test_single_document_call_allowed()
+    _test_second_call_blocks()
+    _test_collection_wide_always_allowed()
+    _test_different_session_independent()
+    _test_delete_subcommand_also_counts()
+    _test_malformed_stdin_fail_open()
 
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for f in failures:
-            print(f"  - {f}")
-        sys.exit(1)
     print("All rag-cli document-repeat tests passed.")
 
 
 # FUNCTIONS
 
 def _run_hook(command: str, session_id: str, state_path: str) -> int:
-    env = dict(os.environ, MONITOR_CC_RAG_DOC_REPEAT_STATE=state_path)
     payload = json.dumps({
         "session_id": session_id,
         "tool_name": "Bash",
         "tool_input": {"command": command},
     })
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-        env=env,
-    )
+    result = run_hook(HOOK, payload.encode(), extra_env={"MONITOR_CC_RAG_DOC_REPEAT_STATE": state_path})
     return result.returncode
 
 
-def _test_single_document_call_allowed() -> list:
+def _test_single_document_call_allowed() -> None:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
         state = f.name
@@ -60,13 +46,13 @@ def _test_single_document_call_allowed() -> list:
         print(f"  [{status}] single --document call ALLOW: exit={got} (expected 0)")
         if got != 0:
             failures.append("single --document call should pass")
+            abort_if_failed(failures)
     finally:
         if os.path.exists(state):
             os.unlink(state)
-    return failures
 
 
-def _test_second_call_blocks() -> list:
+def _test_second_call_blocks() -> None:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
         state = f.name
@@ -85,15 +71,16 @@ def _test_second_call_blocks() -> list:
         print(f"  [{status2}] 2nd --document call (same collection) BLOCK: exit={second} (expected 2)")
         if first != 0:
             failures.append("1st --document call should pass")
+            abort_if_failed(failures)
         if second != 2:
             failures.append("2nd --document call to same collection should block")
+            abort_if_failed(failures)
     finally:
         if os.path.exists(state):
             os.unlink(state)
-    return failures
 
 
-def _test_collection_wide_always_allowed() -> list:
+def _test_collection_wide_always_allowed() -> None:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
         state = f.name
@@ -106,13 +93,13 @@ def _test_collection_wide_always_allowed() -> list:
         print(f"  [{status}] 3x collection-wide index call ALLOW: exits={exits} (expected all 0)")
         if not all(e == 0 for e in exits):
             failures.append("collection-wide calls should always pass")
+            abort_if_failed(failures)
     finally:
         if os.path.exists(state):
             os.unlink(state)
-    return failures
 
 
-def _test_different_session_independent() -> list:
+def _test_different_session_independent() -> None:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
         state = f.name
@@ -135,13 +122,13 @@ def _test_different_session_independent() -> list:
               f"sess-A#2={a2} (expected 0, 0, 2)")
         if not results_ok:
             failures.append("session B's call should not count toward session A's counter")
+            abort_if_failed(failures)
     finally:
         if os.path.exists(state):
             os.unlink(state)
-    return failures
 
 
-def _test_delete_subcommand_also_counts() -> list:
+def _test_delete_subcommand_also_counts() -> None:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
         state = f.name
@@ -159,25 +146,21 @@ def _test_delete_subcommand_also_counts() -> list:
         print(f"  [{status}] delete subcommand 2nd call BLOCK: exits={first},{second} (expected 0,2)")
         if not results_ok:
             failures.append("delete subcommand should be covered same as index")
+            abort_if_failed(failures)
     finally:
         if os.path.exists(state):
             os.unlink(state)
-    return failures
 
 
-def _test_malformed_stdin_fail_open() -> list:
+def _test_malformed_stdin_fail_open() -> None:
     failures = []
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=b"not json at all {{{",
-        capture_output=True,
-    )
+    result = run_hook(HOOK, b"not json at all {{{")
     got = result.returncode
     status = "OK  " if got == 0 else "FAIL"
     print(f"  [{status}] malformed stdin fail-open: exit={got} (expected 0)")
     if got != 0:
         failures.append("malformed stdin should fail open (exit 0)")
-    return failures
+        abort_if_failed(failures)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 import json
-import subprocess
-import sys
+from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/rewrite_worker_wait.py"
 
@@ -89,12 +88,8 @@ def test_rewrite_worker_wait_workflow() -> None:
             print(f"           got:  exit={exit_code} command={got_cmd!r} "
                   f"run_in_background={got_bg!r}")
             failures.append(desc)
+            abort_if_failed(failures)
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for f in failures:
-            print(f"  - {f}")
-        sys.exit(1)
     print(f"All {len(CASES)} tests passed.")
 
 
@@ -105,11 +100,7 @@ def _run_hook(command: str, run_in_background):
     if run_in_background is not None:
         tool_input["run_in_background"] = run_in_background
     payload = json.dumps({"tool_name": "Bash", "tool_input": tool_input})
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-    )
+    result = run_hook(HOOK, payload.encode())
     if result.returncode == 0 and result.stdout.strip():
         try:
             data = json.loads(result.stdout)
