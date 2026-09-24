@@ -34,7 +34,7 @@ def run_gpu_loop() -> None:
     anomalies: list = []
     today_errors: list = []
     error_counts: dict = {}
-    collections: list = []
+    collections: list | None = []
 
     setup_keyboard_input()
     enable_mouse()

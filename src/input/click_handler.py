@@ -4,9 +4,10 @@ import select
 import subprocess
 import sys
 import termios
-import time
 import tty
 from typing import Any, Dict, Optional, Tuple
+
+from src.pane_error_log import log_pane_error
 
 _original_terminal_settings = None
 _stdin_fd: int = -1
@@ -20,13 +21,10 @@ def setup_keyboard_input() -> bool:
 
 def set_raw_stdin() -> bool:
     global _original_terminal_settings, _stdin_fd
-    try:
-        _stdin_fd = sys.stdin.fileno()
-        _original_terminal_settings = termios.tcgetattr(_stdin_fd)
-        tty.setcbreak(_stdin_fd)
-        return True
-    except Exception:
-        return False
+    _stdin_fd = sys.stdin.fileno()
+    _original_terminal_settings = termios.tcgetattr(_stdin_fd)
+    tty.setcbreak(_stdin_fd)
+    return True
 
 def restore_terminal() -> None:
     global _original_terminal_settings
@@ -35,13 +33,10 @@ def restore_terminal() -> None:
             fd = sys.stdin.fileno()
             termios.tcsetattr(fd, termios.TCSADRAIN, _original_terminal_settings)
         except Exception:
-            pass
+            log_pane_error('input')
 
 def wait_for_input(timeout: float) -> None:
-    if _stdin_fd >= 0:
-        select.select([_stdin_fd], [], [], timeout)
-    else:
-        time.sleep(timeout)
+    select.select([_stdin_fd], [], [], timeout)
 
 def _utf8_continuation_count(lead_byte: int) -> int:
     if lead_byte & 0x80 == 0x00:
@@ -111,7 +106,7 @@ def resolve_parent_key(line_map: Dict[int, Any], hover_row: Optional[int]) -> An
     return None
 
 def copy_to_clipboard(text: str) -> None:
-    subprocess.run(['pbcopy'], input=text, text=True, capture_output=True)
+    subprocess.run(['pbcopy'], input=text, text=True, capture_output=True, check=True)
 
 def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:
     if first_char != '\033':
@@ -124,13 +119,10 @@ def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:
         ready = select.select([_stdin_fd], [], [], 0.005)[0]
         if not ready:
             return None
-        try:
-            data = os.read(_stdin_fd, 1)
-            if not data:
-                return None
-            ch = data.decode('utf-8', errors='replace')
-        except Exception:
+        data = os.read(_stdin_fd, 1)
+        if not data:
             return None
+        ch = data.decode('utf-8', errors='replace')
         if ch in ('M', 'm'):
             terminator = ch
             break
@@ -142,13 +134,5 @@ def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:
     if not seq.startswith('[<'):
         return None
 
-    try:
-        parts = seq[2:].split(';')
-        if len(parts) != 3:
-            return None
-        button = int(parts[0])
-        col = int(parts[1])
-        row = int(parts[2])
-        return (button, col, row)
-    except (ValueError, IndexError):
-        return None
+    button, col, row = (int(part) for part in seq[2:].split(';'))
+    return (button, col, row)

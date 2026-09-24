@@ -71,13 +71,53 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t2_launch_tab.py (442 LOC)
+### t2_launch_tab.py (92 LOC)
 
-**Purpose:** Eleven parallel subprocess cases (each with its own isolated HOME) covering header texts, log isolation, occupied-desktop marking (marked, never refused), project rows, exact start commands, launch workflow failure stages, click handling, the main-thread PostEvent request on tab open, and `space_switch` units.
-**Reads:** real `src/menubar` launch modules with fakes and patches.
+**Purpose:** Runner for eleven parallel subprocess cases (each with its own isolated HOME) that owns the case table and writes the PASS/FAIL report.
+**Reads:** the case functions of the three `t2_*_cases.py` modules.
 **Writes:** `md/t2_launch_tab.md`.
 **Called by:** none — run manually after Launch tab changes; does not move the screen.
-**Calls out:** `src/menubar/launch_controller.py`, `session_launch.py`, `space_switch.py`, `panel_manager.py`, `rag_controller.py`, `model_controller.py` (via `importlib`); `.space_lib`.
+**Calls out:** `t2_launch_cases.py`, `t2_workflow_cases.py`, `t2_space_switch_cases.py`; `.space_lib`, `.test_env`.
+
+---
+
+### t2_fixtures.py (62 LOC)
+
+**Purpose:** Shared fakes and constants for the cases — fake app and sessions, session builder, expected project list, header text reader.
+**Reads:** real `src/menubar/discover.py` (via `importlib`).
+**Writes:** nothing.
+**Called by:** the three `t2_*_cases.py` modules.
+**Calls out:** none.
+
+---
+
+### t2_launch_cases.py (181 LOC)
+
+**Purpose:** Seven cases for header texts, occupied-desktop marking, tick and selection, project rows, click handling, the PostEvent request on tab open, and log isolation.
+**Reads:** real `src/menubar` launch, panel, rag and model controllers with fakes and patches.
+**Writes:** nothing.
+**Called by:** `t2_launch_tab.py`.
+**Calls out:** `t2_fixtures.py`.
+
+---
+
+### t2_workflow_cases.py (73 LOC)
+
+**Purpose:** Four cases for the exact start command and the launch workflow success and failure stages.
+**Reads:** real `src/menubar/session_launch.py` and `space_switch.py` with patches.
+**Writes:** nothing.
+**Called by:** `t2_launch_tab.py`.
+**Calls out:** `t2_fixtures.py`.
+
+---
+
+### t2_space_switch_cases.py (77 LOC)
+
+**Purpose:** The `space_switch` unit case, composed of five check functions (PostEvent access, desktop to space id, hotkey key codes, wait until active).
+**Reads:** real `src/menubar/space_switch.py` with a mocked CoreGraphics layer.
+**Writes:** nothing.
+**Called by:** `t2_launch_tab.py`.
+**Calls out:** `t2_fixtures.py`.
 
 ---
 

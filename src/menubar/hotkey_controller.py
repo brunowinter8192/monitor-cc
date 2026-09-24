@@ -5,7 +5,7 @@ from .menubar_log import log_menubar
 from .system import _focus_session
 from .hotkey_carbon import (
     _EventHotKeyID, _EventHandlerProcPtr, _MBAR_SIG, _HOTKEY_EVENT_SPEC, _get_hkid,
-    _load_carbon, _log_queue_delay, _eventNotHandledErr,
+    _load_carbon, _log_queue_delay, _eventNotHandledErr, _check_status,
 )
 from .hotkey_digits import register_cmd_digits, unregister_hotkeys
 from .hotkey_arrows import (
@@ -31,19 +31,19 @@ def register_cmd_l(callback) -> tuple:
             log_menubar('hotkey', 'cmd+l')
             _log_queue_delay(carbon, event, _entry_t, 'cmd+l')
             callback()
-        except Exception:
-            pass
+        except Exception as exc:
+            log_menubar('hotkey', f'handler failed cmd+l err={exc!r}')
         return 0
 
     cb = _EventHandlerProcPtr(_handler)
     handler_ref = ctypes.c_void_p()
-    carbon.InstallEventHandler(
-        target, cb, 1, ctypes.byref(_HOTKEY_EVENT_SPEC), None, ctypes.byref(handler_ref))
+    _check_status('InstallEventHandler', carbon.InstallEventHandler(
+        target, cb, 1, ctypes.byref(_HOTKEY_EVENT_SPEC), None, ctypes.byref(handler_ref)), 'cmd+l')
     hk_ref = ctypes.c_void_p()
-    carbon.RegisterEventHotKey(
+    _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
         37, 0x0100,
         _EventHotKeyID(_MBAR_SIG, _CMD_L_ID),
-        target, 0, ctypes.byref(hk_ref))
+        target, 0, ctypes.byref(hk_ref)), 'cmd+l')
     return cb, hk_ref
 
 def register_cmd_k(callback) -> tuple:
@@ -59,19 +59,19 @@ def register_cmd_k(callback) -> tuple:
             log_menubar('hotkey', 'cmd+k')
             _log_queue_delay(carbon, event, _entry_t, 'cmd+k')
             callback()
-        except Exception:
-            pass
+        except Exception as exc:
+            log_menubar('hotkey', f'handler failed cmd+k err={exc!r}')
         return 0
 
     cb = _EventHandlerProcPtr(_handler)
     handler_ref = ctypes.c_void_p()
-    carbon.InstallEventHandler(
-        target, cb, 1, ctypes.byref(_HOTKEY_EVENT_SPEC), None, ctypes.byref(handler_ref))
+    _check_status('InstallEventHandler', carbon.InstallEventHandler(
+        target, cb, 1, ctypes.byref(_HOTKEY_EVENT_SPEC), None, ctypes.byref(handler_ref)), 'cmd+k')
     hk_ref = ctypes.c_void_p()
-    carbon.RegisterEventHotKey(
+    _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
         0x28, 0x0100,
         _EventHotKeyID(_MBAR_SIG, _CMD_K_ID),
-        target, 0, ctypes.byref(hk_ref))
+        target, 0, ctypes.byref(hk_ref)), 'cmd+k')
     return cb, hk_ref
 
 

@@ -38,7 +38,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### constants.py (49 LOC)
+### constants.py (50 LOC)
 
 **Purpose:** process-wide timing/size-limit constants and `TOOL_BLOCKLIST`.
 **Reads:** nothing.
@@ -58,9 +58,9 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### monitor_janitor.py (69 LOC)
+### monitor_janitor.py (72 LOC)
 
-**Purpose:** `sweep_workflow()` — kills every `monitor_cc_*` tmux session older than 24h and logs one line per session (name, age, KILLED/SPARED).
+**Purpose:** `sweep_workflow()` — kills every `monitor_cc_*` tmux session older than 24h and logs one line per session (name, age, KILLED/SPARED/KILL_FAILED); a failed `list-sessions` logs `NOSESSIONS rc=<n>`.
 **Reads:** `tmux list-sessions` output.
 **Writes:** kills stale tmux sessions via `tmux_launcher.kill_session`; appends to `<root>/src/logs/monitor_sweep.log`.
 **Called by:** `claude_proxy_start.sh` (detached `python3 -m src.monitor_janitor` on every session start), `menubar/monitor_sweep_scheduler.py` (`sweep_workflow`, its own daily tick), `dev/monitor_lifecycle/tests/test_monitor_sweep.py`.
@@ -118,7 +118,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### tmux_launcher.py (246 LOC)
+### tmux_launcher.py (250 LOC)
 
 **Purpose:** launches the 7-window, 8-pane tmux split-screen layout (`launch_split_screen`) and self-heals missing windows/panes on Ctrl+R (`restart_panes`); owns the window layout table (`_WINDOW_LAYOUT`) and every tmux key-binding/status-bar setup call.
 **Reads:** `tmux list-sessions`/`list-panes`/`list-windows`/`show-options` output.
@@ -128,7 +128,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### utils.py (172 LOC)
+### utils.py (169 LOC)
 
 **Purpose:** shared formatting/rendering primitives with no I/O — timestamp formatting, cell-width-aware truncation/wrapping, ANSI-safe substring highlighting, copy-symbol placement, `right_align_time` (cuts a row to a cell budget, keeps a right-aligned `HH:MM:SS` in a fixed column, 3 cells from the right edge), header-rule sizing.
 **Reads:** nothing (pure functions on passed-in strings/values).
@@ -160,7 +160,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ## State
 
-Runtime state (`file_positions`, `active_project_filter`, `active_mode`) lives in `core/monitor.py`
+Runtime state (`active_project_filter`, `active_mode`) lives in `core/monitor.py`
 as module-level variables — see `core/DOCS.md`. Every pane package reads it via
 `from ..core import monitor as _monitor` (lazy, to avoid circular imports).
 
@@ -169,7 +169,7 @@ as module-level variables — see `core/DOCS.md`. Every pane package reads it vi
 - `search_bar._BG_RESTORE_SENTINEL` (`'\033[999m'`) must be resolved via `resolve_bg_restore` by every renderer that embeds it, or it leaks into terminal output as a literal escape code.
 - `search_bar.KILL_LINE_CHAR` (`'\x15'`, Ctrl-U) is an unconfirmed mapping guess for Cmd+Backspace's terminal encoding — a rebind after live testing is a one-line change.
 - `monitor_janitor.py`'s log path follows `MONITOR_CC_ROOT` if set, else two directories above its own `__file__` — a manual run from a worktree checkout without the env var set writes into that worktree's own `src/logs/`, not the main checkout's.
-- `tmux_launcher.restart_panes`'s split-percentage self-heal is computed against whichever pane in a window currently survives, not the original source pane, when several panes in one window are missing at once — proportions can differ from a fresh launch; the single-missing-pane case is exact.
+- `tmux_launcher.restart_panes` self-heals only a pane whose spec parent pane is present; an unplaceable pane raises `RuntimeError` instead of splitting an arbitrary pane. Structural tmux calls run with `check=True`, so a failed call raises. `get_global_history_limit` returns `None` when tmux has no server (rc != 0) and the launch then skips the history-limit restore.
 - `pane_error_log.log_pane_error` swallows its own write failures silently (`except Exception: pass`) — a full disk or permissions error here never propagates and never kills the calling pane loop.
 - `session_finder.encode_project_path` must stay byte-identical to however Claude Code itself encodes project directory names, or `matches_project_filter` silently matches nothing.
 - `utils._cell_width` treats emoji and CJK ranges as width-2 cells — every truncation/padding function across every pane depends on this being correct, or ANSI row-fill columns drift by one cell per wide character.

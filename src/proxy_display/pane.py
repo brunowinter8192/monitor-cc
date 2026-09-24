@@ -1,9 +1,9 @@
 # INFRASTRUCTURE
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 import time
 
+from ..colors import RESET, YELLOW
 from ..constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
     PROXY_REPARSE_INTERVAL_SECONDS,
@@ -75,8 +75,6 @@ def run_proxy_loop() -> None:
     register_ram_dump('proxy', _proxy_ram_state)
     _proxy_current_main_session = _monitor._get_newest_main_session()
     _proxy_session_start_ts = _monitor._get_session_start_ts()
-    if _proxy_session_start_ts is None:
-        _proxy_session_start_ts = datetime.utcnow().isoformat() + 'Z'
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()
@@ -260,8 +258,6 @@ def _reset_proxy_positions(now: float) -> None:
 def _reset_proxy_session_state(monitor, now: float) -> None:
     global _proxy_session_start_ts, proxy_scroll_offset, proxy_hover_row, _proxy_log_path
     _proxy_session_start_ts = monitor._get_session_start_ts()
-    if _proxy_session_start_ts is None:
-        _proxy_session_start_ts = datetime.utcnow().isoformat() + 'Z'
     _reset_proxy_positions(now)
     proxy_expand_states.clear()
     _proxy_undo_stack.clear()
@@ -270,10 +266,12 @@ def _reset_proxy_session_state(monitor, now: float) -> None:
 
 def _reset_proxy_reparse_state(now: float) -> None:
     _reset_proxy_positions(now)
+    proxy_expand_states.clear()
+    _proxy_undo_stack.clear()
 
 def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global _proxy_fwd_pos, _proxy_acc_fwd, _proxy_log_path, _last_full_parse_ts, _proxy_current_main_session
-    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _proxy_jsonl_position, _proxy_cache_turns, _proxy_response_pos
+    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _proxy_jsonl_position, _proxy_cache_turns, _proxy_response_pos, _proxy_session_start_ts
     if now - last_data_refresh < POLL_INTERVAL:
         return input_changed, last_data_refresh
     newest = monitor._get_newest_main_session()
@@ -281,6 +279,10 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
         _proxy_current_main_session = newest
         _reset_proxy_session_state(monitor, now)
         input_changed = True
+    if _proxy_session_start_ts is None:
+        _proxy_session_start_ts = monitor._get_session_start_ts()
+    if _proxy_session_start_ts is None:
+        return True, now
     if _last_full_parse_ts == 0.0:
         _last_full_parse_ts = now
     elif now - _last_full_parse_ts >= PROXY_REPARSE_INTERVAL_SECONDS:
@@ -313,6 +315,8 @@ def _build_proxy_output() -> str:
     pane_height, pane_width = _terminal_size()
     _proxy_pane_width = pane_width
     header = _render_proxy_search_bar(pane_width)
+    if _proxy_session_start_ts is None:
+        return header + '\n' + f"{YELLOW}Session start unknown: no main session transcript with a timestamp yet{RESET}"
     content_height = max(1, pane_height - _PROXY_HEADER_LINES)
     body_hover = (
         (proxy_hover_row - _PROXY_HEADER_LINES)
@@ -323,7 +327,7 @@ def _build_proxy_output() -> str:
     if not proxy_entries:
         proxy_line_map.clear()
         _proxy_just_expanded = None
-        body, _total_lines = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, body_hover, content_height, pane_width, proxy_scroll_offset)
+        body, _total_lines = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, body_hover, content_height, pane_width, proxy_scroll_offset, turn_cache=_proxy_turn_cache)
         return header + '\n' + body
     current_match_entry_idx = (
         _proxy_search.matches[_proxy_search.current_idx]

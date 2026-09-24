@@ -56,7 +56,7 @@ PNG for visual review.
 
 ---
 
-### A_format_cache_tracker_proof.py (113 LOC)
+### A_format_cache_tracker_proof.py (117 LOC)
 
 **Purpose:** Verification (not a self-contained test): differential proof that `format_cache_tracker`'s serialized
 5-tuple return is byte-identical against a captured baseline. It reads live session JSONLs, so its result depends on the machine and on the date.
@@ -68,7 +68,7 @@ PNG for visual review.
 
 ---
 
-### test_hover_map.py (270 LOC)
+### test_hover_map.py (274 LOC)
 
 **Purpose:** Synthetic and frozen-fixture assertion suite for expand-model `line_map` correctness and the stripped-span dual-color overlay pairing.
 **Reads:** `fixtures/api_requests_fixture_forwarded.jsonl` and its sibling `_stripped.jsonl`, a frozen dual-log pair; the pairing test asserts the fixture yields exactly 5 entries so it cannot pass vacuously.

@@ -1,8 +1,11 @@
 # INFRASTRUCTURE
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from ..pane_error_log import log_pane_error, log_pane_note
 
 _RETENTION = 7 * 86400
 
@@ -149,19 +152,39 @@ def cleanup_old_jsonl(path: Path) -> None:
             return
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=_RETENTION)
         lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
-        kept = []
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                ts_raw = json.loads(line).get('ts', '')
-                if ts_raw:
-                    ts_dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
-                    if ts_dt < cutoff:
-                        continue
-            except Exception:
-                pass
-            kept.append(line)
-        path.write_text(''.join(kept), encoding='utf-8')
+        kept, unparsable = _partition_lines(lines, cutoff)
+        _write_atomic(path, ''.join(kept))
+        if unparsable:
+            log_pane_note('log_janitor', f'{path.name}: kept {unparsable} lines whose ts could not be parsed')
     except Exception:
-        pass
+        log_pane_error('log_janitor')
+
+def _partition_lines(lines: list, cutoff: datetime) -> tuple:
+    kept = []
+    unparsable = 0
+    for line in lines:
+        if not line.strip():
+            continue
+        state = _line_state(line, cutoff)
+        if state == 'expired':
+            continue
+        if state == 'unparsable':
+            unparsable += 1
+        kept.append(line)
+    return kept, unparsable
+
+def _line_state(line: str, cutoff: datetime) -> str:
+    try:
+        ts_raw = json.loads(line).get('ts', '')
+        if ts_raw:
+            ts_dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
+            if ts_dt < cutoff:
+                return 'expired'
+    except (ValueError, TypeError):
+        return 'unparsable'
+    return 'kept'
+
+def _write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + '.tmp')
+    tmp.write_text(text, encoding='utf-8')
+    os.replace(tmp, path)

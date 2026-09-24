@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-import sys
 import threading
 import time
 from typing import Dict, List, NamedTuple
@@ -7,7 +6,7 @@ from typing import Dict, List, NamedTuple
 from .discover import list_alive_sessions, get_last_session_timings, SessionInfo
 from .bg_timer import _scan_bg_sleep_timers, BgSleepInfo
 from .bg_task_orphans import scan_bg_task_orphans
-from .menubar_log import log_menubar
+from .menubar_log import log_menubar, log_menubar_change
 
 REFRESH_INTERVAL = 1.5
 BG_REFRESH_LATENCY_THRESHOLD_MS = 200
@@ -50,8 +49,9 @@ def _worker_loop() -> None:
                 _snapshot = DiscoverySnapshot(sessions=sessions, bg_by_project=bg_by_project,
                                                ts=time.time())
             _log_if_slow(cycle_t0)
+            log_menubar_change('discovery', 'worker_cycle', None)
         except Exception as e:
-            print(f'[menubar] discovery-worker cycle error: {e}', file=sys.stderr)
+            log_menubar_change('discovery', 'worker_cycle', f'worker cycle error err={e!r}')
         elapsed = time.monotonic() - cycle_t0
         time.sleep(max(0.0, REFRESH_INTERVAL - elapsed))
 

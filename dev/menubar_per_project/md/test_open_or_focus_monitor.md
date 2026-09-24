@@ -1,10 +1,10 @@
 # test_open_or_focus_monitor
 
-7/7 strands passed
+6/6 strands passed
 
 ## PASS _test_session_name_reused_not_rederived
 
-  [OK  ] system.generate_session_name IS tmux_launcher.generate_session_name: <function generate_session_name at 0x108055b10>
+  [OK  ] system.generate_session_name IS tmux_launcher.generate_session_name: <function generate_session_name at 0x105d67e20>
   [OK  ] session name for a cwd with a space matches tmux_launcher exactly: got='monitor_cc_cbef93a6' expected='monitor_cc_cbef93a6'
   [OK  ] session name has the monitor_cc_<8-hex> shape: name='monitor_cc_cbef93a6'
 
@@ -23,13 +23,9 @@
   [OK  ] no session → _launch_monitor called with the row cwd: calls={'checked': 'monitor_cc_3d463546', 'kill': None, 'launch': '/tmp/new-project'}
   [OK  ] no session → kill_session NOT called: calls={'checked': 'monitor_cc_3d463546', 'kill': None, 'launch': '/tmp/new-project'}
 
-## PASS _test_empty_cwd_is_noop
-
-  [OK  ] empty cwd short-circuits before any tmux/kill/launch call: calls={'checked': None, 'kill': None, 'launch': None}
-
 ## PASS _test_resolve_python3_uses_plist_path_under_bare_environ
 
-  [OK  ] python3 resolved under a bare PATH comes from the fixture plist PATH: resolved='/var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/tmpx2jew79v/plist_bin/python3' expected='/var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/tmpx2jew79v/plist_bin/python3' stderr=''
+  [OK  ] python3 resolved under a bare PATH comes from the fixture plist PATH: resolved='/var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/tmprhpynaca/plist_bin/python3' expected='/var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/tmprhpynaca/plist_bin/python3' stderr=''
   [OK  ] an empty plist PATH does not resolve to the fixture python3: resolved='/usr/bin/python3' stderr=''
 
 ## PASS _test_launch_monitor_uses_native_path_only

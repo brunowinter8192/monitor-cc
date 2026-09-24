@@ -20,6 +20,14 @@ _TURN_2_START = "2026-09-24T10:10:00.000Z"
 
 # ORCHESTRATOR
 
+def _turn_cache():
+    from src.proxy_display.turn_cache import TurnCache
+    return TurnCache()
+
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
+
 def run_workflow():
     print("=" * 70)
     print("REQ prefix and turn header rows (src/proxy_display/format.py)")
@@ -137,6 +145,9 @@ def _parsed_entries() -> list:
         entries, _ = _parse_forwarded_log(path, 0, {}, keep_last=None)
     finally:
         path.unlink()
+    from src.proxy_display.proxy_pane_shared import _attach_overlay_references
+    from src.proxy_display.forwarded_parser import _infer_model_family
+    _attach_overlay_references(entries, {}, {}, _infer_model_family)
     return entries
 
 
@@ -179,7 +190,7 @@ def test_req_prefix_and_turn_headers():
     from src.proxy_display.format import format_proxy_block
     print("\n[Test 3] format_proxy_block: REQ #n prefix and Turn header rows")
     entries = _parsed_entries()
-    ansi, _ = format_proxy_block(entries, {}, None, None, 200, 120, 0, _turns(), request_id_by_flow=_request_id_by_flow())
+    ansi, _ = format_proxy_block(entries, {}, None, None, 200, 120, 0, _turns(), request_id_by_flow=_request_id_by_flow(), turn_cache=_turn_cache())
     lines = [line for line in _plain_lines(ansi) if line.strip()]
     req_lines = [line for line in lines if "sonnet" in line or "haiku" in line]
     check("every mapped sonnet row starts with 'REQ #<n>'",
@@ -199,12 +210,12 @@ def test_numbering_matches_token_pane():
     from src.proxy_display.format import format_proxy_block
     print("\n[Test 4] proxy numbering and turn headers equal the token pane's for the same requests")
     turns = _turns()
-    token_ansi, _keys, _sticky, _start, _count = format_cache_tracker(turns, {}, 200, 120, 0)
+    token_ansi, _keys, _sticky, _start, _count = format_cache_tracker(turns, {}, 200, 120, 0, turn_cache=_token_turn_cache())
     token_lines = [line for line in _plain_lines("\n".join(token_ansi)) if line.strip()]
     token_numbers = [int(m.group(1)) for line in token_lines for m in [re.search(r"REQ #(\d+)", line)] if m]
     token_headers = [line for line in token_lines if line.startswith("Turn ")]
     entries = _parsed_entries()
-    ansi, _ = format_proxy_block(entries, {}, None, None, 200, 120, 0, turns, request_id_by_flow=_request_id_by_flow())
+    ansi, _ = format_proxy_block(entries, {}, None, None, 200, 120, 0, turns, request_id_by_flow=_request_id_by_flow(), turn_cache=_turn_cache())
     proxy_lines = [line for line in _plain_lines(ansi) if line.strip()]
     proxy_numbers = [int(m.group(1)) for line in proxy_lines for m in [re.search(r"REQ #(\d+)", line)] if m]
     proxy_headers = [line for line in proxy_lines if line.startswith("Turn ")]
@@ -217,7 +228,7 @@ def test_refire_and_unmapped_labels():
     print("\n[Test 5] a refire sharing a request_id shows REQ #n.m")
     entries = _parsed_entries()
     mapping = {"f1": "r1", "f2": "r2", "f3": "r2", "f4": "r4"}
-    ansi, _ = format_proxy_block(entries, {}, None, None, 200, 120, 0, _turns(), request_id_by_flow=mapping)
+    ansi, _ = format_proxy_block(entries, {}, None, None, 200, 120, 0, _turns(), request_id_by_flow=mapping, turn_cache=_turn_cache())
     labels = [" ".join(line.split()[1:3]) for line in _plain_lines(ansi) if "sonnet" in line]
     check("the second entry of one request_id is REQ #2.1", labels[1:3] == ["REQ #2", "REQ #2.1"], labels)
 
@@ -237,10 +248,10 @@ def _pane_rows(pane: str, width: int) -> list:
     from src.proxy_display.format import format_proxy_block
     turns = _turns()
     if pane == "token":
-        ansi = format_cache_tracker(turns, {}, 200, width, 0, copy_feedback={})[0]
+        ansi = format_cache_tracker(turns, {}, 200, width, 0, copy_feedback={}, turn_cache=_token_turn_cache())[0]
         return [line for line in _plain_lines("\n".join(ansi)) if line.strip()]
     ansi, _ = format_proxy_block(_parsed_entries(), {}, None, None, 200, width, 0, turns,
-                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={})
+                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={}, turn_cache=_turn_cache())
     return [line for line in _plain_lines(ansi) if line.strip()]
 
 
@@ -352,7 +363,7 @@ def test_http_status_marker_and_line() -> None:
     entries = _status_entries()
     rejected_idx = next(i for i, e in enumerate(entries) if e["flow_id"] == "f5")
     ansi, _ = format_proxy_block(entries, {("req", rejected_idx): True}, None, None, 200, 120, 0, _turns(),
-                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={})
+                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={}, turn_cache=_turn_cache())
     lines = [line for line in _plain_lines(ansi) if line.strip()]
     rejected = next(l for l in lines if l.strip().startswith("▼"))
     ok_rows = [l for l in lines if "REQ #" in l and "REQ #?" not in l and "▶" in l]
@@ -360,18 +371,18 @@ def test_http_status_marker_and_line() -> None:
     check("200 rows show no marker", ok_rows and all("[200]" not in l and "[pending]" not in l for l in ok_rows), ok_rows)
     check("the expanded section starts with 'status: 404'", any(l.strip() == "status: 404" for l in lines), lines)
     ansi, _ = format_proxy_block(entries, {("req", 3): True}, None, None, 200, 120, 0, _turns(),
-                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={})
+                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={}, turn_cache=_turn_cache())
     check("a finished 200 request shows 'status: 200' when expanded", any(l.strip() == "status: 200" for l in _plain_lines(ansi)))
     pending = _parsed_entries()
     for entry in pending:
         entry["http_status"] = None
     ansi, _ = format_proxy_block(pending, {("req", 1): True}, None, None, 200, 120, 0, _turns(),
-                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={})
+                                 request_id_by_flow=_request_id_by_flow(), copy_feedback={}, turn_cache=_turn_cache())
     plain = _plain_lines(ansi)
     check("a request without a _response line is marked [pending], distinct from finished ones",
           any("[pending]" in l for l in plain) and any("status: pending" in l for l in plain), plain)
     bare = _plain_lines(format_proxy_block(_parsed_entries(), {}, None, None, 200, 120, 0, _turns(),
-                                           request_id_by_flow=_request_id_by_flow(), copy_feedback={})[0])
+                                           request_id_by_flow=_request_id_by_flow(), copy_feedback={}, turn_cache=_turn_cache())[0])
     check("without any response info (no http_status key) nothing changes: no marker at all",
           not any("[" in l and "]" in l and "REQ" in l for l in bare), bare)
     check("REQ numbers and times stay the parity ones from Test 8 (same rows, numbers 1..4)",

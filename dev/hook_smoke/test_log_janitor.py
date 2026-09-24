@@ -5,8 +5,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src' / 'panes'))
-from log_janitor import cleanup_old_jsonl
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 _now = datetime.now(timezone.utc)
 
@@ -56,6 +55,7 @@ def _run_case(input_lines: list, expected: list) -> tuple:
         tmp = Path(fh.name)
         for rec in input_lines:
             fh.write(rec + '\n')
+    from src.panes.log_janitor import cleanup_old_jsonl
     try:
         cleanup_old_jsonl(tmp)
         kept = [ln for ln in tmp.read_text(encoding='utf-8').splitlines() if ln.strip()]

@@ -270,6 +270,15 @@ the expected record, an env-var log-path override is honored, tool-error writer 
 
 ---
 
+### test_hook_trace_lines.py (250 LOC)
+
+**Purpose:** Provokes each observed hook degradation (parse error, log-dir/write failure, raw-text strip fallback, unterminated quote, shlex exemption, unknown-size po block, rag state failures, worker-status degradation, getcwd failure, stale sweep) and asserts the `trace` line while exit semantics stay unchanged.
+**Reads:** nothing. **Writes:** PASS/FAIL to stdout; all hook logs go to temp paths.
+**Called by:** none — manual CLI; cases run in parallel threads.
+**Calls out:** none — drives the hooks via `subprocess` and direct module loads.
+
+---
+
 ### test_log_janitor.py (68 LOC)
 
 **Purpose:** 4-case smoke for `cleanup_old_jsonl` — old record dropped, recent/empty/naive-ts

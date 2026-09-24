@@ -21,7 +21,6 @@ _STRAND_NAMES = [
     '_test_launch_cmd_quotes_cwd_with_space',
     '_test_existing_session_killed_then_relaunched',
     '_test_branch_launches_when_session_absent',
-    '_test_empty_cwd_is_noop',
     '_test_resolve_python3_uses_plist_path_under_bare_environ',
     '_test_launch_monitor_uses_native_path_only',
 ]
@@ -92,11 +91,6 @@ def _test_branch_launches_when_session_absent() -> None:
           calls['launch'] == '/tmp/new-project', f'calls={calls!r}')
     _check('no session → kill_session NOT called',
           calls['kill'] is None, f'calls={calls!r}')
-
-def _test_empty_cwd_is_noop() -> None:
-    calls = _run_open_or_focus_monitor_with_stubs(session_exists=True, cwd='')
-    _check('empty cwd short-circuits before any tmux/kill/launch call',
-          calls == {'checked': None, 'kill': None, 'launch': None}, f'calls={calls!r}')
 
 def _test_resolve_python3_uses_plist_path_under_bare_environ() -> None:
     repo_root = Path(__file__).resolve().parent.parent.parent

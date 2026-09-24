@@ -202,8 +202,8 @@ def test_flow_id_lazy_load_fix():
     all_ok = True
     for e in batch2:
         truth = truth_by_flow[e['flow_id']]
-        ok = mod_fwd._lazy_load_messages_forwarded(e, full_path)
-        matched = ok and e.get('messages_total_chars') == truth['messages_total_chars']
+        mod_fwd._lazy_load_messages_forwarded(e, full_path)
+        matched = e.get('messages_total_chars') == truth['messages_total_chars']
         all_ok = all_ok and matched
     check("every batch2 entry lazy-loads its OWN content (flow_id-correct, not index-collided)", all_ok)
 

@@ -50,6 +50,7 @@ def _render_once(sim, mode: str, row: int) -> None:
         return
     from src.proxy_display import pane
     pane.proxy_hover_row = row
+    pane._proxy_session_start_ts = '2000-01-01T00:00:00Z'
     pane._build_proxy_output()
 
 

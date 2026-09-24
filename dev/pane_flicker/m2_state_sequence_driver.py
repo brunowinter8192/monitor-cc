@@ -152,6 +152,14 @@ def grow_last_turn(turns: list) -> list:
     return turns[:-1] + [last]
 
 def run_sequence(pane: SimpleNamespace, records: list) -> None:
+    hover_scroll_and_expand(pane, records)
+    copy_feedback_phase(pane, records)
+    response_entry_phase(pane, records)
+    search_phase(pane, records)
+    width_phase(pane, records)
+    growth_and_reset_phase(pane, records)
+
+def hover_scroll_and_expand(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'initial', records)
     for row in (3, 4, 5, 6, 7, 8, 9):
         hover(pane, row)
@@ -178,6 +186,8 @@ def run_sequence(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'hover_in_oldest_turn', records)
     pane.mouse(0, 10, key_rows(pane)[0])
     snapshot(pane, 'collapse_call_in_oldest_turn', records)
+
+def copy_feedback_phase(pane: SimpleNamespace, records: list) -> None:
     copy_rows = sorted(pane.copy_rows())
     pane.mouse(0, pane.width() - 1, copy_rows[0])
     key = pane.line_map()[copy_rows[0]]
@@ -189,6 +199,8 @@ def run_sequence(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'copy_feedback_expired', records)
     pane.set_scroll(0)
     snapshot(pane, 'scroll_bottom', records)
+
+def response_entry_phase(pane: SimpleNamespace, records: list) -> None:
     expanded_key = expand_call_with_request_id(pane)
     snapshot(pane, 'expand_call_with_request_id', records)
     turn_idx, call_idx = expanded_key
@@ -205,6 +217,8 @@ def run_sequence(pane: SimpleNamespace, records: list) -> None:
         snapshot(pane, 'response_entry_mutated_in_place', records)
         pane.rid_map()[rid] = dict(entry, answering_model='model-c')
         snapshot(pane, 'response_entry_replaced', records)
+
+def search_phase(pane: SimpleNamespace, records: list) -> None:
     query = first_call_word(pane.turns())
     type_query(pane, query)
     snapshot(pane, 'search_committed', records)
@@ -221,6 +235,8 @@ def run_sequence(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'search_no_match', records)
     pane.search_cancel()
     snapshot(pane, 'search_cancelled_again', records)
+
+def width_phase(pane: SimpleNamespace, records: list) -> None:
     _TERM['cols'] = 50
     snapshot(pane, 'width_50', records)
     hover(pane, 6)
@@ -229,6 +245,8 @@ def run_sequence(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'width_120_again', records)
     hover(pane, 6)
     snapshot(pane, 'hover_width_120', records)
+
+def growth_and_reset_phase(pane: SimpleNamespace, records: list) -> None:
     pane.set_scroll(0)
     turns = pane.turns()
     pane.set_turns(turns + [make_new_turn(turns)])

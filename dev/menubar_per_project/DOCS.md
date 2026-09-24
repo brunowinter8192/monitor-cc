@@ -19,7 +19,7 @@ call records, and one real subprocess's stdout — output is PASS/FAIL lines to 
 
 ## Modules
 
-### test_open_or_focus_monitor.py (165 LOC)
+### test_open_or_focus_monitor.py (159 LOC)
 
 **Purpose:** Proves session-name derivation is reused (never re-derived), an existing tmux session
 is always killed then relaunched, the launch command quotes its cwd via `shlex`, `python3`

@@ -29,7 +29,7 @@ no queue-file side effect.
 
 ---
 
-### verify_model_cycle_and_io.py (311 LOC)
+### verify_model_cycle_and_io.py (315 LOC)
 
 **Purpose:** Regression guard for `model_selection.py`'s cycle logic (model/effort/max_tokens/
 thinking) and its `model_selection.json`/`proxy_rules.json` read-modify-write I/O.

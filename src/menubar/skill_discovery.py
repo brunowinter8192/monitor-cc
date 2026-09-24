@@ -82,6 +82,8 @@ def _install_path(key: str, installed: dict) -> Path:
     if not entries:
         raise PluginProblem('not_installed')
     user_entries = [e for e in entries if e.get('scope') == 'user']
+    if not user_entries:
+        log_menubar('skill', f'plugin={key} has no user-scope install entry, using first entry')
     return Path((user_entries or entries)[0]['installPath'])
 
 def _skills_of_plugin(key: str, installed: dict) -> List[Skill]:
@@ -104,7 +106,10 @@ def _skills_of_plugin(key: str, installed: dict) -> List[Skill]:
         if not skill_file.is_file():
             log_menubar('skill', f'FAILED plugin={key} reason=skill_file_missing entry={entry}')
             continue
-        short = _frontmatter_name(skill_file) or skill_file.parent.name
+        short = _frontmatter_name(skill_file)
+        if not short:
+            short = skill_file.parent.name
+            log_menubar('skill', f'plugin={key} skill={short} has no frontmatter name, using directory name')
         skills.append(Skill(short, f'{plugin_name}:{short}', _SOURCE_PLUGIN))
     return skills
 

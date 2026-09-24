@@ -35,7 +35,8 @@ def rewrite_path_typo_workflow() -> None:
 def _parse_payload():
     try:
         payload = json.loads(sys.stdin.read())
-    except Exception:
+    except Exception as e:
+        log_fire("block_path_typo", "trace", "Bash/Read/Write/Edit", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None
     tool_name = payload.get("tool_name", "")
     inp = payload.get("tool_input", {})
@@ -97,6 +98,8 @@ def _strip_quoted(s: str) -> str:
                     i += 2
                 else:
                     i += 1
+            if i >= n:
+                log_fire("block_path_typo", "trace", "Bash", s, reason="unterminated quote: remainder dropped")
             i += 1
         else:
             out.append(c)

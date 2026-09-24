@@ -30,7 +30,8 @@ def block_worker_send_while_working_workflow() -> None:
             log_fire("block_worker_send_while_working", "block", "Bash", command,
                      reason=msg, session_id=session_id)
             sys.exit(2)
-    except Exception:
+    except Exception as e:
+        log_fire("block_worker_send_while_working", "trace", "Bash", "", reason=f"workflow failed, allowing: {type(e).__name__}: {e}")
         sys.exit(0)
     sys.exit(0)
 
@@ -44,7 +45,8 @@ def decide(command: str, status_fn) -> tuple:
     for name in names:
         try:
             status = status_fn(name)
-        except Exception:
+        except Exception as e:
+            log_fire("block_worker_send_while_working", "trace", "Bash", command, reason=f"status check failed for {name}: {type(e).__name__}: {e}")
             status = ''
         first = status.split()[0] if status.strip() else ''
         if first == 'working':
@@ -64,13 +66,18 @@ def _live_worker_status(name: str) -> str:
     try:
         binary = _resolve_worker_cli()
         if binary is None:
+            log_fire("block_worker_send_while_working", "trace", "Bash", name, reason=f"worker-cli not found, status check skipped for {name}")
             return ''
         result = subprocess.run(
             [binary, 'status', name],
             capture_output=True, text=True, timeout=3,
         )
-        return result.stdout.strip() if result.returncode == 0 else ''
-    except Exception:
+        if result.returncode != 0:
+            log_fire("block_worker_send_while_working", "trace", "Bash", name, reason=f"worker-cli status {name} rc={result.returncode}, status check skipped")
+            return ''
+        return result.stdout.strip()
+    except Exception as e:
+        log_fire("block_worker_send_while_working", "trace", "Bash", name, reason=f"status subprocess failed for {name}: {type(e).__name__}: {e}")
         return ''
 
 def _parse_command():
@@ -78,7 +85,8 @@ def _parse_command():
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
         return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("block_worker_send_while_working", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None
 
 

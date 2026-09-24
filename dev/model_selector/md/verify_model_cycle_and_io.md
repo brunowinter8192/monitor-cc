@@ -77,6 +77,7 @@ No leftover .tmp file: True
 ## PASS _strand_proxy_rules_malformed_fallback
 
 
-## 9. proxy_rules.json malformed-file fallback
-Write from malformed file did not raise; result parses as valid JSON: True
-Fresh model_params created for both selected models, thinking states applied: ['claude-opus-5', 'claude-sonnet-5']
+## 9. proxy_rules.json malformed file is never overwritten
+Write from malformed file raised JSONDecodeError: True
+Malformed file left byte-identical on disk: True
+No leftover .tmp file: True

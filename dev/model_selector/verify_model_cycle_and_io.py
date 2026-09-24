@@ -289,22 +289,26 @@ def _check_proxy_rules_touched_and_created(written, lines) -> None:
 
 def _verify_proxy_rules_malformed_fallback(ms, lines, tmp) -> None:
     lines.append("")
-    lines.append("## 9. proxy_rules.json malformed-file fallback")
+    lines.append("## 9. proxy_rules.json malformed file is never overwritten")
     path = Path(tmp) / "proxy_rules_malformed.json"
-    path.write_text("{not valid json", encoding="utf-8")
+    malformed = "{not valid json"
+    path.write_text(malformed, encoding="utf-8")
 
-    ms._write_proxy_rules_model_params(
-        "claude-opus-5", "high", 64000, ms._THINKING_OFF,
-        "claude-sonnet-5", "high", 64000, ms._DEFAULT_THINKING,
-        path=path)
-
-    written = json.loads(path.read_text(encoding="utf-8"))
-    lines.append(f"Write from malformed file did not raise; result parses as valid JSON: True")
-    assert written["model_params"]["claude-opus-5"]["effort"] == "high"
-    assert written["model_params"]["claude-opus-5"]["thinking"] == {"type": "disabled"}
-    assert written["model_params"]["claude-sonnet-5"]["max_tokens"] == 64000
-    lines.append(f"Fresh model_params created for both selected models, thinking states applied: "
-                f"{list(written['model_params'].keys())}")
+    raised = False
+    try:
+        ms._write_proxy_rules_model_params(
+            "claude-opus-5", "high", 64000, ms._THINKING_OFF,
+            "claude-sonnet-5", "high", 64000, ms._DEFAULT_THINKING,
+            path=path)
+    except json.JSONDecodeError:
+        raised = True
+    assert raised, "write over an unreadable proxy_rules.json must raise, not persist defaults"
+    lines.append("Write from malformed file raised JSONDecodeError: True")
+    assert path.read_text(encoding="utf-8") == malformed
+    lines.append("Malformed file left byte-identical on disk: True")
+    tmp_leftover = path.with_name(path.name + ".tmp")
+    assert not tmp_leftover.exists()
+    lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
 
 
 if __name__ == "__main__":

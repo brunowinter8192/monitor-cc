@@ -17,7 +17,7 @@ diffs against a prior baseline.
 
 ## Modules
 
-### A_render_refactor_proof.py (111 LOC)
+### A_render_refactor_proof.py (115 LOC)
 
 **Purpose:** CLI harness (capture/verify modes) for the byte-identical differential test of the
 proxy_display render cluster.

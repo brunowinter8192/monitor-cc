@@ -11,7 +11,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ## Modules
 
-### m1_frame_e2e_driver.py (141 LOC)
+### m1_frame_e2e_driver.py (143 LOC)
 
 **Purpose:** Runs one real pane loop against seeded synthetic state with refresh patched out, inside the caller's tmux pane.
 **Reads:** argv (source root, pane name, project filter).
@@ -41,7 +41,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m2_state_sequence_driver.py (252 LOC)
+### m2_state_sequence_driver.py (270 LOC)
 
 **Purpose:** Replays a scripted state sequence (hover, expand, scroll, search, width change, feedback, growth, reset) on the tokens or worker-tokens pane and dumps output, line map, copy rows and nav per step.
 **Reads:** argv (root, pane, session JSONL, output path).
@@ -101,7 +101,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### bench_hover_render.py (81 LOC)
+### bench_hover_render.py (82 LOC)
 
 **Purpose:** Times hover renders (`--mode block` for `format_proxy_block`, `--mode pane` for `_build_proxy_output`, needs a tty), optional `--scale` replicates entries.
 **Reads:** argv; the real log via `scenario_lib.py`.

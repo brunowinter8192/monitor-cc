@@ -5,7 +5,7 @@ import subprocess
 import time
 from typing import Dict, List, Optional, Set, Tuple
 
-from .menubar_log import log_menubar
+from .menubar_log import log_menubar, log_menubar_change
 
 _GHOSTTY_DET_PREFIX = '__DET_'
 _CGS_SPACE_MASK     = 0x7
@@ -49,7 +49,6 @@ _det_cache_ts: float = 0.0
 _det_cache_cwds: frozenset = frozenset()
 _cgw_title_diag_logged: bool = False
 _last_result: Dict[str, Optional[int]] = {}
-_cwd_desktop_lkg: Dict[str, dict] = {}
 
 # ORCHESTRATOR
 
@@ -78,8 +77,6 @@ def _resolve_cwds_to_desktops(
 ) -> Tuple[Dict[str, Optional[int]], Dict[str, dict]]:
     cwds = frozenset(cwd_uuid_map.keys())
     result: Dict[str, Optional[int]] = {cwd: None for cwd in cwds}
-    for gone in [c for c in _cwd_desktop_lkg if c not in cwds]:
-        del _cwd_desktop_lkg[gone]
     cwd_ctx: Dict[str, dict] = {}
     try:
         ghostty_pid_int = _ghostty_pid_int()
@@ -106,7 +103,6 @@ def _resolve_cwds_to_desktops(
                             _, desktop_no = info
                             result[cwd] = desktop_no
                             claimed.add(space_id)
-                            _cwd_desktop_lkg[cwd] = {"space_id": space_id, "desktop_no": desktop_no}
             if cwds and all(v is None for v in result.values()):
                 log_menubar('detection', f'all_failed n_mains={len(cwds)} reason=all_no_match')
         else:
@@ -252,21 +248,26 @@ def _build_space_map(cid: int) -> Dict[int, Tuple[str, int]]:
     dsp_arr    = _CG.CGSCopyManagedDisplaySpaces(cid)
     n_displays = _cf_count(dsp_arr)
     space_map: Dict[int, Tuple[str, int]] = {}
+    problems: List[str] = []
     for di in range(n_displays):
         d_dict     = _cf_at(dsp_arr, di)
-        disp_id    = (_dict_str(d_dict, 'Display Identifier') or
-                      _dict_str(d_dict, 'DisplayIdentifier') or 'unknown')
+        disp_id    = _dict_str(d_dict, 'Display Identifier')
+        if disp_id is None:
+            problems.append(f'display {di}: key Display Identifier missing')
+            continue
         abbrev     = disp_id[:8]
-        spaces_val = _dict_val(d_dict, 'Spaces') or _dict_val(d_dict, 'spaces')
+        spaces_val = _dict_val(d_dict, 'Spaces')
         if not spaces_val:
+            problems.append(f'display {di}: key Spaces missing')
             continue
         for si in range(_cf_count(spaces_val)):
             sp_dict = _cf_at(spaces_val, si)
-            sid = (_dict_long(sp_dict, 'ManagedSpaceID') or
-                   _dict_long(sp_dict, 'id') or
-                   _dict_long(sp_dict, 'ID'))
-            if sid is not None:
-                space_map[sid] = (abbrev, si + 1)
+            sid = _dict_long(sp_dict, 'ManagedSpaceID')
+            if sid is None:
+                problems.append(f'display {di} space {si}: key ManagedSpaceID missing')
+                continue
+            space_map[sid] = (abbrev, si + 1)
+    log_menubar_change('detection', 'space_map', '; '.join(problems) if problems else None)
     return space_map
 
 def _spaces_for_wid(cid: int, wid: int) -> List[int]:
@@ -324,6 +325,7 @@ def _resolve_cgwindow_id(
         log_menubar('detection', f'resolve_no_name_match window_name={repr(window_name)[:60]}')
         return None
     if len(candidates) == 1:
+        _log_route(window_name, 'single_name_match', candidates[0])
         return candidates[0]
     unclaimed: List[int] = []
     for wid in candidates:
@@ -331,8 +333,13 @@ def _resolve_cgwindow_id(
         if spaces and not set(spaces).intersection(claimed_space_ids):
             unclaimed.append(wid)
     if len(unclaimed) == 1:
+        _log_route(window_name, 'unclaimed_space', unclaimed[0])
         return unclaimed[0]
     if tty:
         return _osc2_inject_match(tty, ghostty_pid_int, candidates, cid)
     log_menubar('detection', f'resolve_no_tty candidates={len(candidates)} unclaimed={len(unclaimed)}')
     return None
+
+def _log_route(window_name: str, route: str, wid: int) -> None:
+    log_menubar_change('detection', f'route:{window_name}',
+                       f'route={route} window_name={repr(window_name)[:60]} wid={wid}')

@@ -2,7 +2,8 @@
 from typing import List, Optional
 import os
 
-from ..jsonl import read_new_lines, parse_jsonl_lines, get_current_position, get_message_content, is_tool_use
+from src.jsonl.jsonl_parser import get_message_content, is_tool_use
+from src.jsonl.jsonl_reader import read_json_records
 
 _WORKER_CONTEXT_WINDOW = 1000000
 
@@ -16,10 +17,9 @@ def get_worker_project_name(project_path: str) -> str:
 
 def parse_worker_stats_delta(jsonl_path, last_position: int, running_output: int,
                               running_context_pct: Optional[int]) -> tuple:
-    lines = read_new_lines(jsonl_path, last_position)
-    if not lines:
+    messages, new_position = read_json_records(jsonl_path, last_position)
+    if new_position == last_position:
         return running_output, running_context_pct, last_position
-    messages, _ = parse_jsonl_lines(lines)
     total_output = running_output
     context_pct = running_context_pct
     for message in messages:
@@ -30,11 +30,10 @@ def parse_worker_stats_delta(jsonl_path, last_position: int, running_output: int
         cr = usage.get('cache_read_input_tokens')
         if cr is not None:
             context_pct = (100 * (_WORKER_CONTEXT_WINDOW - cr)) // _WORKER_CONTEXT_WINDOW
-    return total_output, context_pct, get_current_position(jsonl_path)
+    return total_output, context_pct, new_position
 
 def extract_worker_tool_calls(jsonl_path) -> List[dict]:
-    lines = read_new_lines(jsonl_path, 0)
-    messages, _ = parse_jsonl_lines(lines)
+    messages, _ = read_json_records(jsonl_path, 0)
     calls = []
     call_number = 0
     for message in messages:
