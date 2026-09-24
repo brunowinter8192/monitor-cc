@@ -16,7 +16,7 @@ from .panel import (
     _make_grid_cell_btn, _format_bg_badge)
 from .panel_tabs import tab_header_text
 from .panel_grid import (_GRID_COL0_W, _GRID_COL1_W, _GRID_COL3_W, _GRID_COL4_W,
-                         _GRID_COL5_W, _GRID_COL_SPC)
+                         _GRID_COL5_W, _GRID_COL6_W, _GRID_COL_SPC)
 
 # FUNCTIONS
 
@@ -51,16 +51,17 @@ def _sorted_sessions(sessions):
     )
 
 def _make_session_grid() -> NSGridView:
-    grid = NSGridView.gridViewWithNumberOfColumns_rows_(6, 0)
+    grid = NSGridView.gridViewWithNumberOfColumns_rows_(7, 0)
     grid.setColumnSpacing_(float(_GRID_COL_SPC))
     grid.setRowSpacing_(1.0)
-    for i in range(6):
+    for i in range(7):
         grid.columnAtIndex_(i).setXPlacement_(NSGridCellPlacementLeading)
     grid.columnAtIndex_(0).setWidth_(float(_GRID_COL0_W))
     grid.columnAtIndex_(1).setWidth_(float(_GRID_COL1_W))
     grid.columnAtIndex_(3).setWidth_(float(_GRID_COL3_W))
     grid.columnAtIndex_(4).setWidth_(float(_GRID_COL4_W))
     grid.columnAtIndex_(5).setWidth_(float(_GRID_COL5_W))
+    grid.columnAtIndex_(6).setWidth_(float(_GRID_COL6_W))
     grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
     return grid
 
@@ -130,10 +131,10 @@ class PanelManager:
         pw = self.app.settings.panel_width
         sep_view, abort_btn = _make_separator_view(
             project_name, pw, proj_bg.min_remaining if proj_bg else None)
-        grid.addRowWithViews_([sep_view, empty, empty, empty, empty, empty])
+        grid.addRowWithViews_([sep_view, empty, empty, empty, empty, empty, empty])
         row_idx = grid.numberOfRows() - 1
         grid.rowAtIndex_(row_idx).setHeight_(float(_LABEL_H - 1))
-        grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 6), NSRange(row_idx, 1))
+        grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 7), NSRange(row_idx, 1))
         if abort_btn is not None:
             abort_btn.setTag_(abort_tag[0])
             abort_btn.setTarget_(self.app._panel_controller)
@@ -174,8 +175,12 @@ class PanelManager:
         monitor_btn.setTag_(tag)
         monitor_btn.setTarget_(self.app._panel_controller)
         monitor_btn.setAction_(b'openMonitor:')
+        skill_btn = _make_grid_cell_btn('skill', NSColor.systemGreenColor())
+        skill_btn.setTag_(tag)
+        skill_btn.setTarget_(self.app._panel_controller)
+        skill_btn.setAction_(b'showSkillMenu:')
         views = [slot_btn, star_btn, name_btn, dot_btn,
-                 badge_btn if badge_btn is not None else empty, monitor_btn]
+                 badge_btn if badge_btn is not None else empty, monitor_btn, skill_btn]
         grid.addRowWithViews_(views)
         grid.rowAtIndex_(grid.numberOfRows() - 1).setHeight_(float(_ROW_H - 1))
         self._lookups.displayed_items[s.name] = (dot_btn, badge_btn)
@@ -189,7 +194,7 @@ class PanelManager:
             btn.setTarget_(self.app._panel_controller)
             btn.setAction_(b'focusWorker:')
         self._lookups.worker_tag_map[tag] = s.tmux_session_name
-        grid.addRowWithViews_([empty, empty, name_btn, dot_btn, empty, empty])
+        grid.addRowWithViews_([empty, empty, name_btn, dot_btn, empty, empty, empty])
         grid.rowAtIndex_(grid.numberOfRows() - 1).setHeight_(float(_ROW_H - 1))
         self._lookups.displayed_items[s.name] = (dot_btn, None)
 
