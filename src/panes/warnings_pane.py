@@ -32,7 +32,7 @@ _warnings_header_regions: Dict[Tuple[int, int, int], str] = {}
 _last_project_filter: Optional[str] = None
 _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
-_monitor_start_ts: float = 0.0
+_monitor_start_ts: Optional[float] = None
 _errors_log_pos: int = 0
 _errors_log_path: Optional[Path] = None
 _worker_errors_positions: Dict[str, int] = {}
@@ -51,7 +51,6 @@ def run_warnings_loop() -> None:
     global _monitor_start_ts, _errors_log_pos, _errors_log_path, _worker_errors_positions
 
     register_ram_dump('warnings', _warnings_ram_state)
-    _monitor_start_ts = time.time()
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()
@@ -256,7 +255,7 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
         _errors_log_pos = 0
         _errors_log_path = errors_path
         _worker_errors_positions.clear()
-        _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else time.time()
+        _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else None
         tool_errors = []
         error_expand_states.clear()
         error_scroll_offset = 0
@@ -268,15 +267,22 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
         raw_recs, _errors_log_pos = _read_errors_log(errors_path, _errors_log_pos)
         new_errors.extend(_errors_record_to_display(r) for r in raw_recs)
 
-    _worker_sid = proxy_session_id_for_project(project_filter) if project_filter else ''
-    worker_recs, _worker_errors_positions = scan_worker_errors_logs(
-        _worker_errors_positions, _worker_sid, min_mtime=_monitor_start_ts,
-    )
-    new_errors.extend(_errors_record_to_display(r) for r in worker_recs)
+    if project_filter and _monitor_start_ts is not None:
+        worker_recs, _worker_errors_positions = scan_worker_errors_logs(
+            _worker_errors_positions, proxy_session_id_for_project(project_filter), _monitor_start_ts,
+        )
+        new_errors.extend(_errors_record_to_display(r) for r in worker_recs)
 
     tool_errors.extend(new_errors)
     _last_refresh_ts = now
     return True, now
+
+def _worker_errors_notice() -> str:
+    if _last_project_filter is None:
+        return 'worker errors: no project'
+    if _monitor_start_ts is None:
+        return 'worker errors: no proxy session marker'
+    return ''
 
 def _build_warnings_output() -> tuple:
     global error_line_map, error_copy_rows, _error_pane_width, _warnings_header_regions
@@ -284,7 +290,7 @@ def _build_warnings_output() -> tuple:
     pane_height = term.lines - 1
     pane_width = term.columns
     _error_pane_width = pane_width
-    refresh_header = _format_warnings_header(_last_refresh_ts, pane_width, _warnings_header_regions)
+    refresh_header = _format_warnings_header(_last_refresh_ts, pane_width, _warnings_header_regions, _worker_errors_notice())
     if _warnings_header_regions:
         shifted = {
             (sc, ec, er + _WARNINGS_SEARCH_BAR_LINES): action

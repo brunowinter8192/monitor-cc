@@ -60,7 +60,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_pane.py (309 LOC)
+### warnings_pane.py (315 LOC)
 
 **Purpose:** Warnings pane event loop and module-level state owner. Reads tool errors from the current session's `_errors` dual-log plus every worker's own `_errors` dual-log, converts raw records to display dicts, and drives the same drain-refresh-render loop shape as every other pane. On project/session change, resets all state and read positions.
 **Reads:** `_errors` dual-log (incremental via `_errors_log_pos`); worker `_errors` dual-logs (incremental via `_worker_errors_positions`); shared state `monitor.active_project_filter`.
@@ -70,7 +70,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_render.py (192 LOC)
+### warnings_render.py (193 LOC)
 
 **Purpose:** Pure rendering helpers for the warnings pane — `_format_warnings_pane` returns `(rendered_str, new_error_line_map)` from caller-supplied state with no globals touched; `_format_warnings_header` builds the header line (including the `[refresh]` button and its clickable region); `_serialize_warnings` formats clipboard text for one error entry; `build_warnings_search_matches` matches directly against the underlying error dicts.
 **Reads:** all pane state passed as function arguments.

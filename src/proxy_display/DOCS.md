@@ -46,7 +46,7 @@ populate `messages` for entries the deque window dropped.
 
 ## Modules
 
-### pane.py (350 LOC)
+### pane.py (352 LOC)
 
 **Purpose:** Event loop for the main proxy pane — reads the `_forwarded` dual-log incrementally, handles mouse (click expand/collapse, scroll, hover, copy, search) and keyboard input (search, undo, `n`/`N`), renders on change via the drain-refresh-render pattern.
 **Reads:** Module-level state; active project filter from `core.monitor`; stdin (keypresses, mouse events).
@@ -116,11 +116,11 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### parser.py (93 LOC)
+### parser.py (88 LOC)
 
 **Purpose:** Proxy log path resolution — marker-file-based resolution of the current proxy session's `_forwarded`/`_stripped`/`_injected`/`_original`/`_errors`/`_response` log paths (`_find_response_log_path` derives the `_response` sibling of a main-log path), and worker log discovery via glob. The marker-file → log_id resolution itself lives in `forwarded_parser._resolve_log_id`, shared by every `find_*_log_path` function here.
 **Reads:** `.proxy_session_*` marker files under the runtime log directory (src/logs/, gitignored).
-**Writes:** Nothing — returns path objects, a session-id string, or a marker mtime/`time.time()` float; an unreadable marker file's `OSError` propagates to the caller (every pane loop already catches and logs via `pane_error_log`).
+**Writes:** Nothing — returns path objects, a session-id string, or a marker mtime float, or `None` when no marker exists; an unreadable marker file's `OSError` propagates to the caller (every pane loop already catches and logs via `pane_error_log`).
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/proxy_pane_shared.py` (`_find_dual_log_paths`), `src/proxy_display/__init__.py` (`find_worker_proxy_log`), `src/panes/warnings_pane.py` (`find_errors_log_path`, `proxy_session_id_for_project`, `get_proxy_session_start_ts`), `src/panes/token_pane.py` (`find_response_log_path`)
 **Calls out:** `forwarded_parser` (`_proxy_session_id_for_project`, `_resolve_log_id`)
 
@@ -146,11 +146,11 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### side_logs.py (60 LOC)
+### side_logs.py (57 LOC)
 
 **Purpose:** `_response`/`_errors` side-log readers. `read_response_log` reads `_response` entries incrementally (`{request_id: full entry dict}` — headers plus `cc_requested_model`/`proxy_forwarded_model`/`answering_model`, whatever the on-disk entry carries). `scan_worker_errors_logs` globs worker `_errors` dual-logs and reads them incrementally by byte position.
 **Reads:** `_response`/`_errors` dual-log JSONL files (incremental by byte position).
-**Writes:** Nothing — returns tuples; `/tmp/monitor_cc_error.log` on `read_response_log`'s `OSError` (via `pane_error_log`, retry-next-poll position unchanged).
+**Writes:** Nothing — returns tuples; `/tmp/monitor_cc_error.log` on `read_response_log`'s `OSError` and on each skipped `scan_worker_errors_logs` file (via `pane_error_log`, retry-next-poll position unchanged). `scan_worker_errors_logs` requires the project session id and `min_mtime`; without a project there is no worker-errors scan.
 **Called by:** `src/panes/token_pane.py` (`read_response_log`, lazy import), `src/panes/warnings_pane.py` (`scan_worker_errors_logs`, lazy import)
 **Calls out:** `pane_error_log` (`log_pane_error`)
 
@@ -293,4 +293,4 @@ stream from byte 0, matched by `flow_id`, to repopulate it.
   silently absorbed as quiet.
 - `parser.get_proxy_session_start_ts` always returns an existing marker file's mtime, however old —
   a warnings-pane session-start filter keyed off this can reach back arbitrarily far if the marker
-  itself is stale (no marker at all falls back to `time.time()`).
+  itself is stale (no marker at all returns `None`; the warnings pane then shows a header notice and scans no worker errors).

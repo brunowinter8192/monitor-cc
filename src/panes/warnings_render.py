@@ -35,7 +35,7 @@ def build_warnings_search_matches(query: str, tool_errors: list) -> List[int]:
     q = query.lower()
     return [i for i, err in enumerate(tool_errors) if _error_matches_query(err, q)]
 
-def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, regions_out: Optional[dict] = None) -> str:
+def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, regions_out: Optional[dict] = None, notice: str = '') -> str:
     if regions_out is not None:
         regions_out.clear()
     if last_refresh_ts:
@@ -43,7 +43,8 @@ def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, region
         last_str = last_dt.strftime('%H:%M:%S')
     else:
         last_str = '--:--:--'
-    text = f"{DIM}[r]efresh · last: {last_str} · polling: {int(WARNINGS_POLL_INTERVAL)}s{RESET}"
+    notice_part = f" · {notice}" if notice else ''
+    text = f"{DIM}[r]efresh · last: {last_str} · polling: {int(WARNINGS_POLL_INTERVAL)}s{notice_part}{RESET}"
     if regions_out is None:
         return text
     label = '[refresh]'

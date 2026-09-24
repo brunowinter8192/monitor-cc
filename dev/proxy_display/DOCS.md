@@ -32,6 +32,16 @@ and asserts PASS/FAIL against a specific predicate/rendering outcome.
 
 ---
 
+### test_session_marker_states.py (     102 LOC)
+
+**Purpose:** Four parallel strands for the session-marker states: absent marker is `None`, worker error scan scope and skip logging, proxy pane without session start, warnings refresh without marker.
+**Reads:** Temp directories via `MONITOR_CC_ROOT`; `MCFIX_TREE` selects the source tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.proxy_display` (`parser`, `side_logs`, `pane`), `src.panes` (`warnings_pane`, `warnings_render`), `src.core.monitor`.
+
+---
+
 ### render_byte_identity.py (115 LOC)
 
 **Purpose:** Byte-identity harness for the proxy_display render cluster — see Flow above.
