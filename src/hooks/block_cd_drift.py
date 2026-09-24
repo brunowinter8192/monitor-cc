@@ -41,7 +41,8 @@ def _parse_command():
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
         return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("block_cd_drift", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None
 
 
@@ -56,6 +57,8 @@ def _strip_quoted(s: str) -> str:
                     i += 2
                 else:
                     i += 1
+            if i >= n:
+                log_fire("block_cd_drift", "trace", "Bash", s, reason="unterminated quote: remainder dropped")
             i += 1
         else:
             out.append(c)

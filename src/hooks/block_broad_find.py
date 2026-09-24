@@ -49,7 +49,8 @@ def _parse_command():
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
         return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("block_broad_find", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None
 
 def _find_segment(command: str):
@@ -85,14 +86,11 @@ def _extract_roots(segment: str) -> list:
     return roots
 
 def _resolve_root(token: str) -> str:
-    try:
-        if token.startswith('${HOME}'):
-            token = '~' + token[7:]
-        elif token.startswith('$HOME'):
-            token = '~' + token[5:]
-        return os.path.normpath(os.path.expanduser(token))
-    except Exception:
-        return token
+    if token.startswith('${HOME}'):
+        token = '~' + token[7:]
+    elif token.startswith('$HOME'):
+        token = '~' + token[5:]
+    return os.path.normpath(os.path.expanduser(token))
 
 def _is_broad_root(token: str) -> bool:
     resolved = _resolve_root(token)
