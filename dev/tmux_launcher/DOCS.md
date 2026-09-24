@@ -12,14 +12,13 @@ readable checks over a single opaque digest.
 No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bin/python dev/tmux_launcher/layout_regression_checks.py`.
 
 ## Flow
-Monkeypatches `subprocess.run` to record every argv list issued and return scenario-appropriate
-canned output via a stateful fake tmux, drives `launch_split_screen`/`restart_panes` through three
-scenarios, and asserts named, human-readable properties of the recorded argv sequences (creation
+Runs each of three scenarios as its own parallel fail-fast strand (one subprocess via `dev/refactoring/strand_runner.py`), in which it monkeypatches `subprocess.run` to record every argv list issued and return scenario-appropriate
+canned output via a stateful fake tmux, drives `launch_split_screen`/`restart_panes` through the strand's scenario, and asserts named, human-readable properties of the recorded argv sequences (creation
 order and targets, pane titles, `M-*` binding targets, zero-create invariants, self-heal argv).
 
 ## Modules
 
-### layout_regression_checks.py (276 LOC)
+### layout_regression_checks.py (287 LOC)
 
 **Purpose:** Regression checks for `launch_split_screen`/`restart_panes` across three scenarios:
 fresh-session launch (asserts the exact 7-window/8-pane creation sequence, pane-title map, and
@@ -28,8 +27,7 @@ fresh-session launch (asserts the exact 7-window/8-pane creation sequence, pane-
 entirely plus another window missing one pane (asserts the exact recreate-from-scratch and
 single-missing-pane split argv, and that healing lands on exactly 8 respawned panes).
 **Reads:** nothing external — all fixtures are constructed inline.
-**Writes:** nothing — stdout only (one `PASS`/`FAIL` line per check plus a summary); exits 1 if any
-check fails.
+**Writes:** stdout (one `PASS`/`FAIL` line per check inside a strand, one verdict per strand) and `md/layout_regression_checks.md` (fixed name); exits 1 if any strand aborts.
 **Called by:** none — manual regression harness, run before and after a `tmux_launcher.py` refactor.
 **Calls out:** `src.tmux_launcher` (`launch_split_screen`, `restart_panes`, `_build_mode_commands`)
 — imported via a dedicated function, not a module-level `from src.` line, per the
@@ -38,7 +36,7 @@ check fails.
 ---
 
 ## State
-No persistent state. `_FakeTmux` instances are created fresh per scenario call and discarded; `subprocess.run` is monkeypatched and restored within each `_capture_*` function's own `try`/`finally`.
+No persistent state. `_FakeTmux` instances are created fresh per scenario call and discarded; `subprocess.run` is monkeypatched and restored within each `_capture_*` function's own `try`/`finally`; since every scenario runs in its own process, neither the patch nor the `TMUX` env pop is visible to another scenario.
 
 ## Gotchas
 - Before the 2-window-split layout change (window `workers` -> `w-tokens`/`w-proxy`), the "every
