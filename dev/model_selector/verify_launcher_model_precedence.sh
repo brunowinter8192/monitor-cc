@@ -1,14 +1,4 @@
 #!/bin/bash
-# Dry-run for the --model/--project/config-file precedence chain in src/claude_proxy_start.sh, as
-# of the 2026-09-23 shortcut removal (--fable/--opus dropped — the menubar is now the only way to
-# steer the model). Mirrors the exact parse loop + precedence resolution from that script — keep
-# in sync when editing either. A narrower, config-file-unaware version of the pre-shortcut-removal
-# parse loop is also mirrored in dev/native-model-start/p1_arg_parse_dry_run.sh (milestone-native-
-# model-start's own dry run, predates the config tier and stays valid for the tiers it covers).
-# Pure argument-parsing simulation: never starts the proxy or claude, never touches the real
-# ~/.claude/shared-rules/model_selection.json — all config-file cases use a temp path.
-#
-# Usage (from project root or worktree root): bash dev/model_selector/verify_launcher_model_precedence.sh
 
 WORKTREE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
@@ -16,8 +6,6 @@ PASS=0
 FAIL=0
 FAILURES=()
 RESULT_ROWS=()
-
-# ---- Parse loop + precedence resolution mirrored from src/claude_proxy_start.sh ----
 
 _parse_args() {
     PROJECT=""
@@ -49,8 +37,6 @@ _parse_args() {
     fi
 }
 
-# ---- Test infrastructure ----
-
 _join() { local IFS='|'; echo "$*"; }
 
 _assert_args() {
@@ -79,8 +65,6 @@ echo
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# ---- Tier 1 sanity re-checks (no config file in play) ----
-
 MODEL_SELECTION_FILE="$TMP_DIR/does_not_exist.json"
 
 _assert_args "no flag, no config -> byte-identical (nothing injected)" \
@@ -94,8 +78,6 @@ _assert_args "explicit --model, no config -> explicit passed through" \
 _assert_args "--project alone, no config -> --project extracted, nothing injected" \
     "" \
     --project /some/path
-
-# ---- Tier 2: config file (main key) ----
 
 VALID_CONFIG="$TMP_DIR/valid.json"
 echo '{"main": "claude-opus-5-5", "worker": "claude-sonnet-5"}' > "$VALID_CONFIG"
@@ -116,8 +98,6 @@ _assert_args "--project + other passthrough, valid config -> --project extracted
 _assert_args "explicit --model + valid config -> explicit wins, config never consulted" \
     "--model|claude-custom" \
     --model claude-custom
-
-# ---- Tier 3: degradation cases (config present but unusable, or absent) -> nothing injected ----
 
 MODEL_SELECTION_FILE="$TMP_DIR/missing.json"
 _assert_args "missing config file -> nothing injected (falls through to no-injection case)" \
@@ -152,8 +132,6 @@ if [ "$FAIL" -gt 0 ]; then
     for f in "${FAILURES[@]}"; do echo "  - $f"; done
 fi
 echo "$PASS/$total passed."
-
-# ---- Report ----
 
 MD_DIR="$WORKTREE_ROOT/dev/model_selector/md"
 mkdir -p "$MD_DIR"

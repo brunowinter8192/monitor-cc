@@ -331,7 +331,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_version_purge.sh (140 LOC)
+### test_version_purge.sh (120 LOC)
 
 **Purpose:** Smoke for the version-aware dual-log purge, mirroring the launcher shell functions inline; keep in sync by hand.
 **Reads:** nothing; own temp dir per case.

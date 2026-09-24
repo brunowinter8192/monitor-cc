@@ -11,7 +11,7 @@ A running pane process registers a SIGUSR1 handler at startup. Sending the signa
 
 ## Modules
 
-### dump_all.sh (44 LOC)
+### dump_all.sh (41 LOC)
 
 **Purpose:** Triggers a RAM dump on every running monitor pane in one shot, then lists the fresh dump files.
 **Reads:** the per-pane PID files under the temp dir, written by each pane at startup and removed on exit.

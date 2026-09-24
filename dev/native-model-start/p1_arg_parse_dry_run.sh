@@ -1,15 +1,4 @@
 #!/bin/bash
-# Dry-run for the --fable/--opus/--model argument-parsing logic in src/claude_proxy_start.sh.
-# Mirrors the exact parse loop from that script — keep in sync when editing either.
-# Pure argument-parsing simulation: never starts the proxy or claude.
-#
-# 2026-08 (model-selector milestone 3): the real script grew a THIRD, lower-precedence tier
-# (config-file fallback via ~/.claude/shared-rules/model_selection.json) below the two tiers
-# this file covers. This file's own tiers and assertions are still accurate as-is; the full
-# current precedence chain (all 4 tiers) is covered by
-# dev/model_selector/verify_launcher_model_precedence.sh instead of duplicating it here.
-#
-# Usage (from project root or worktree root): bash dev/native-model-start/p1_arg_parse_dry_run.sh
 
 WORKTREE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
@@ -17,8 +6,6 @@ PASS=0
 FAIL=0
 FAILURES=()
 RESULT_ROWS=()
-
-# ---- Parse loop mirrored from src/claude_proxy_start.sh ----
 
 _parse_args() {
     PROJECT=""
@@ -55,8 +42,6 @@ _parse_args() {
         CLAUDE_ARGS+=("--model" "$SHORTCUT_MODEL")
     fi
 }
-
-# ---- Test infrastructure ----
 
 _join() { local IFS='|'; echo "$*"; }
 
@@ -122,8 +107,6 @@ if [ "$FAIL" -gt 0 ]; then
     for f in "${FAILURES[@]}"; do echo "  - $f"; done
 fi
 echo "$PASS/$total passed."
-
-# ---- Report ----
 
 MD_DIR="$WORKTREE_ROOT/dev/native-model-start/md"
 mkdir -p "$MD_DIR"

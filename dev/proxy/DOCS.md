@@ -201,13 +201,13 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### marker_race_repro.sh (225 LOC)
+### marker_race_repro.sh (174 LOC)
 
 **Purpose:** Deterministic repro and regression for proxy marker-file lifecycle races: restart, parallel session, crash, PID reuse, heartbeat reclaim.
-**Reads:** the live-check shell function, sourced from `src/claude_proxy_start.sh`.
+**Reads:** the live-check shell function, extracted from `src/proxy_start_markers.sh`.
 **Writes:** stdout only.
 **Called by:** none; run via `bash dev/proxy/marker_race_repro.sh`.
-**Calls out:** `src/claude_proxy_start.sh`.
+**Calls out:** `src/proxy_start_markers.sh`.
 
 ---
 
@@ -268,6 +268,36 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 **Writes:** stdout pass/fail and case count; parallel subprocesses.
 **Called by:** none; run after a proxy change.
 **Calls out:** `src.proxy.*`.
+
+---
+
+### proxy_start_sandbox.py (229 LOC)
+
+**Purpose:** Shared sandbox builder that runs the base-ref and the working-tree proxy launcher against stubbed mitmdump, claude, lsof and worker-cli in a temp HOME.
+**Reads:** the base-ref launcher via `git show`, the working-tree launcher scripts, `src/proxy_addon.py`, `src/proxy/`.
+**Writes:** temp case directories and one `/tmp/.monitor_cc_proxy_<hash>` marker per run, removed afterwards; returns normalized result snapshots.
+**Called by:** `verify_proxy_start_equivalence.py`, `test_proxy_start_fallbacks.py`.
+**Calls out:** none.
+
+---
+
+### verify_proxy_start_equivalence.py (68 LOC)
+
+**Purpose:** Verification that the launcher behaves identically to the base ref across argument, model-config, port, marker and janitor cases; one parallel strand per case.
+**Reads:** the sandbox module.
+**Writes:** stdout verdicts and `md/verify_proxy_start_equivalence.md`.
+**Called by:** none; run after a launcher change.
+**Calls out:** `dev/refactoring/strand_runner.py`.
+
+---
+
+### test_proxy_start_fallbacks.py (92 LOC)
+
+**Purpose:** Cases proving the logged model-config fall-throughs (jq missing, unreadable, malformed) and the abort after a failed mitmdump start; one parallel strand per case.
+**Reads:** the sandbox module.
+**Writes:** stdout verdicts and `md/test_proxy_start_fallbacks.md`.
+**Called by:** none; run after a launcher change.
+**Calls out:** `dev/refactoring/strand_runner.py`.
 
 ---
 

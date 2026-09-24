@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Auto-run hook_setup.py when src/hooks/* files change on merge.
-# Fail-silent — git merge must not fail due to this hook.
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
