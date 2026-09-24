@@ -29,7 +29,7 @@ path + write, imported by both this package and `proxy_display`.
 
 ## Modules
 
-### worker_tmux.py (109 LOC)
+### worker_tmux.py (111 LOC)
 
 **Purpose:** Discover active Claude Code worker sessions via `tmux list-sessions`, detect per-worker status, locate each worker's most recent session JSONL file, and attach token/context-% liveness stats to a worker list — incrementally, via a caller-owned cache.
 **Reads:** tmux session list (subprocess); tmux pane/window state for status detection; worker CWD from tmux env; worker JSONL, incrementally by byte position (via `worker_format.parse_worker_stats_delta`, inside `attach_worker_stats`).
@@ -39,7 +39,7 @@ path + write, imported by both this package and `proxy_display`.
 
 ---
 
-### worker_format.py (52 LOC)
+### worker_format.py (51 LOC)
 
 **Purpose:** Pure JSONL extraction for one worker — `parse_worker_stats_delta` (incremental token-sum + last-known context-% over new lines only) and `extract_worker_tool_calls` (full read, tool-call list). `_WORKER_CONTEXT_WINDOW = 1000000` — a flat 1M window, since the worker fleet runs exclusively on 1M-context models.
 **Reads:** worker JSONL file — incrementally (`parse_worker_stats_delta`, from a caller-supplied byte position) or fully (`extract_worker_tool_calls`).
@@ -49,7 +49,7 @@ path + write, imported by both this package and `proxy_display`.
 
 ---
 
-### worker_selection.py (25 LOC)
+### worker_selection.py (27 LOC)
 
 **Purpose:** Selection IPC — `get_selection_file_path(project_filter)` builds the `/tmp/monitor_cc_selected_worker_<hash>.txt` path (md5 of the normalized project path, or `'global'` when absent); `_write_selection(project_filter, name)` writes the selected worker name there, or removes the file when `name` is falsy.
 **Reads:** nothing.

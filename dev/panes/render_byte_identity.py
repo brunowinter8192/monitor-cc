@@ -16,6 +16,10 @@ _CHUNK_SIZE = 40
 # ORCHESTRATOR
 
 
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
+
 def main():
     build_cache_turns, format_warnings_pane, format_cache_tracker = _import_panes()
     digest = hashlib.sha256()
@@ -162,7 +166,7 @@ def _hash_format_cache_tracker(digest, format_cache_tracker) -> None:
             turns, expand_states=expand_states, pane_height=30, pane_width=pane_width,
             scroll_offset=0, response_rid_map=response_rid_map, copy_feedback=copy_feedback,
             search_match_set={(0, 0), ('turn', 0)}, search_current_key=(0, 0),
-            search_query='rate limit', nav_out=nav_out,
+            search_query='rate limit', nav_out=nav_out, turn_cache=_token_turn_cache()
         )
         digest.update(f'cache_tracker|{pane_width}|'.encode())
         digest.update(json.dumps(result, default=str, sort_keys=True).encode())

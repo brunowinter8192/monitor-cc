@@ -3,6 +3,8 @@ from typing import Optional
 import hashlib
 import os
 
+from ..pane_error_log import log_pane_error
+
 # FUNCTIONS
 
 def get_selection_file_path(project_filter: Optional[str]) -> str:
@@ -22,4 +24,4 @@ def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None
         elif os.path.exists(path):
             os.remove(path)
     except OSError:
-        return None
+        log_pane_error('worker_selection')

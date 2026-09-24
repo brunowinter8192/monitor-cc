@@ -30,11 +30,14 @@ def detect_worker_status(session: str) -> str:
         return "unknown"
 
     now = int(time.time())
-    last_activity = subprocess.run(
+    activity = subprocess.run(
         ["tmux", "list-panes", "-t", session, "-F", "#{window_activity}"],
         capture_output=True, text=True
-    ).stdout.strip().split('\n')[0]
-    delta = now - int(last_activity or "0")
+    )
+    last_activity = activity.stdout.strip().split('\n')[0]
+    if activity.returncode != 0 or not last_activity:
+        return "unknown"
+    delta = now - int(last_activity)
 
     if delta > 10:
         return "idle"
@@ -63,7 +66,6 @@ def list_workers(project_path: str) -> List[dict]:
             'status': detect_worker_status(session),
             'spawned': get_tmux_env(session, 'WORKER_SPAWNED'),
             'purpose': get_tmux_env(session, 'WORKER_PURPOSE'),
-            'model': get_tmux_env(session, 'WORKER_MODEL') or 'sonnet',
         })
     return workers
 

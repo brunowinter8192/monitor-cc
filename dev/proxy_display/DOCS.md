@@ -22,7 +22,37 @@ and asserts PASS/FAIL against a specific predicate/rendering outcome.
 
 ## Modules
 
-### render_byte_identity.py (115 LOC)
+### test_pd10_lazy_messages.py (      95 LOC)
+
+**Purpose:** Four parallel strands proving the PD10 fix: no TypeError for an expanded entry without messages, lazy load raises on an unmatched flow, a failed toggle keeps the state, reparse clears expand states.
+**Reads:** Synthetic entries and temp files only; `MCFIX_TREE` selects the source tree (default: this repo) so the same file also runs against an extracted older tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.proxy_display` (`forwarded_parser`, `proxy_pane_shared`, `format`, `pane`, `worker_proxy_pane`).
+
+---
+
+### test_session_marker_states.py (     102 LOC)
+
+**Purpose:** Four parallel strands for the session-marker states: absent marker is `None`, worker error scan scope and skip logging, proxy pane without session start, warnings refresh without marker.
+**Reads:** Temp directories via `MONITOR_CC_ROOT`; `MCFIX_TREE` selects the source tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.proxy_display` (`parser`, `side_logs`, `pane`), `src.panes` (`warnings_pane`, `warnings_render`), `src.core.monitor`.
+
+---
+
+### test_forwarded_tripwires.py (      86 LOC)
+
+**Purpose:** Four parallel strands for the forwarded-log tripwires: missing marker noted once, short or empty marker raises, marker log id used, delta request without earlier state raises.
+**Reads:** Temp directories only; `MCFIX_TREE` selects the source tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.proxy_display.forwarded_parser`.
+
+---
+
+### render_byte_identity.py (116 LOC)
 
 **Purpose:** Byte-identity harness for the proxy_display render cluster — see Flow above.
 **Reads:** forwarded/stripped/injected/original dual-log JSONL quartets under the resolved log
@@ -56,7 +86,7 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 
 ---
 
-### test_req_prefix_turn_headers.py (382 LOC)
+### test_req_prefix_turn_headers.py (393 LOC)
 
 **Purpose:** Regression test for the `REQ #n` row prefix, `Turn` header rows, right-aligned times (one column, truncation, same time in both panes), the HTTP status marker and `status:` line, continue-safe forwarded parsing and REQ-number/turn-header parity with `format_cache_tracker`, on synthetic forwarded lines and turns.
 **Reads:** nothing external — a temp forwarded JSONL and in-process turns.
@@ -66,7 +96,7 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 
 ---
 
-### verify_req_numbering.py (152 LOC)
+### verify_req_numbering.py (160 LOC)
 
 **Purpose:** Side-by-side check of one turn: proxy pane rows versus token pane rows for a real dual-log session, plus a pairwise (number, turn, time) equality verdict, rendered at width 62.
 **Reads:** `_forwarded`/`_response` under the main checkout's `src/logs/dual_log`, the matching transcript under `~/.claude/projects` (found by request_id).

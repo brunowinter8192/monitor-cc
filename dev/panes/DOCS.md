@@ -18,7 +18,7 @@ exact returned lines.
 
 ## Modules
 
-### render_byte_identity.py (174 LOC)
+### render_byte_identity.py (178 LOC)
 
 **Purpose:** Byte-identity harness for the panes-split module boundaries: `build_cache_turns`,
 `_format_warnings_pane`, and `format_cache_tracker`, hashed together into one value.
@@ -44,6 +44,16 @@ equal/mismatch/missing-field/missing-entry cases and the exact rendered ANSI lin
 `_render_rate_limit_lines`, or `src/proxy_display/side_logs.py::read_response_log`.
 **Calls out:** `src.format.token_format`, `src.colors` — imported via a function, not a module-level
 `from src.` line, per the `block_dev_imports_src` hook.
+
+---
+
+### test_display_tripwires.py (     112 LOC)
+
+**Purpose:** Five parallel strands: janitor partition and atomic write, janitor failure logged, synthetic-user fallback noted once per turn, `format_timestamp` states, rate-limit header states.
+**Reads:** Temp files only; `MCFIX_TREE` selects the source tree so the same file runs against an extracted older tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.panes` (`log_janitor`, `cache_turns`), `src.utils`, `src.constants`, `src.format.token_format`.
 
 ---
 

@@ -32,7 +32,7 @@ via `importlib.import_module`.
 
 ---
 
-### p2_copy_click_probe.py (220 LOC)
+### p2_copy_click_probe.py (224 LOC)
 
 **Purpose:** Proves each pane's copy-row registry has an entry per copyable row and a click on
 the symbol column copies exactly what the `y` key copies.
@@ -48,7 +48,7 @@ pane's `_handle_*_mouse`/`_handle_*_key`.
 
 ---
 
-### p3_button_click_probe.py (219 LOC)
+### p3_button_click_probe.py (220 LOC)
 
 **Purpose:** Proves the warnings `[refresh]` chrome button and the proxy pane's permanent
 search-bar header both dispatch clicks identically to their keyboard equivalents.
@@ -87,7 +87,7 @@ sites or `proxy_pane_shared`'s serializer functions.
 
 ---
 
-### proxy_copy_probe_shared.py (54 LOC)
+### proxy_copy_probe_shared.py (58 LOC)
 
 **Purpose:** Shared fixtures for the P5 suite — module handles, `check()`/`_RESULTS`,
 `_patch_clipboard`, `_make_entry`, `_render_expanded`.

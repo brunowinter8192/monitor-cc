@@ -5,7 +5,7 @@ from collections import Counter
 from ..colors import (
     SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, DIM_GREEN_BG, LIGHT_RED_BG, RESET,
 )
-from ..proxy.strip_vocab import attribute_chunk, classify_req
+from ..proxy.strip_vocab import classify_req
 from ..utils import wrap_visible, append_copy_symbol
 
 _BLOCK_CONTENT_INDENT = "        "
@@ -30,52 +30,6 @@ def _append_msg_copy_symbol(line: str, key: tuple, copy_feedback, pane_width: in
     is_flash = copy_feedback.get(key, 0) > time.time()
     return append_copy_symbol(line, '✓' if is_flash else '⎘', pane_width)
 
-
-def _render_stripped_block(entry: dict, msg_idx: int, msg: dict, show_chars: bool = True) -> tuple:
-    lines = []
-    keys = []
-    role = msg.get('role', '?')[:4]
-    msg_type = msg.get('type', 'text')
-    removed_map = entry.get('stripped_msg_removed')
-    removed_chunks = removed_map.get(str(msg_idx), []) if removed_map is not None else []
-    if removed_chunks:
-        if show_chars:
-            chars_fmt = f"{msg.get('chars', 0):,}c"
-            lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
-        else:
-            lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{SOFT_RESET}")
-        for chunk in removed_chunks:
-            rule_code = attribute_chunk(chunk)
-            label = f'EFF:{rule_code}' if rule_code else 'EFF:?'
-            lines.append(f"      {WHITE}{label}{SOFT_RESET}")
-            keys.append(None)
-            for raw_line in chunk.split('\n'):
-                raw_line = raw_line.expandtabs(8)
-                if not raw_line:
-                    lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                    keys.append(None)
-                    continue
-                lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                keys.append(None)
-    else:
-        originals = entry.get('stripped_msg_originals', {})
-        orig_text = originals.get(str(msg_idx), '')
-        if show_chars:
-            chars_fmt = f"{msg.get('chars', 0):,}c"
-            lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]  IDX{SOFT_RESET}")
-        else:
-            lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]  IDX{SOFT_RESET}")
-        if orig_text:
-            for raw_line in orig_text.split('\n'):
-                raw_line = raw_line.expandtabs(8)
-                if not raw_line:
-                    lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                    keys.append(None)
-                    continue
-                lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                keys.append(None)
-    keys.append(None)
-    return lines, keys
 
 def _render_span_content(full_text: str, i_blk: list, s_blk: list, indent: str, highlight_suspect: bool = True) -> tuple:
     lines = []
@@ -125,9 +79,7 @@ def _render_span_content(full_text: str, i_blk: list, s_blk: list, indent: str, 
                 keys.append(None)
     return lines, keys
 
-def _lookup_spans(entry: dict, msg_idx: int, bidx, use_dual: bool) -> tuple:
-    if not use_dual:
-        return [], []
+def _lookup_spans(entry: dict, msg_idx: int, bidx) -> tuple:
     msg_key = str(msg_idx)
     i_blk = entry['_injected_spans']['messages'].get(msg_key, {}).get(str(bidx)) or []
     s_blk = entry['_stripped_spans']['messages'].get(msg_key, {}).get(str(bidx)) or []
@@ -146,7 +98,7 @@ def _wrap_thinking_text(full_text: str, indent: str, pane_width: int) -> str:
         out_lines.extend(wrap_visible(para.expandtabs(8), width_cells))
     return '\n'.join(out_lines)
 
-def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entry: dict, use_dual: bool, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:
+def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entry: dict, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:
     lines = []
     keys = []
     btype = blk.get('type', 'text')
@@ -162,7 +114,7 @@ def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entr
         lines.append(_append_msg_copy_symbol(row_line, think_key, copy_feedback, pane_width))
         keys.append(think_key)
         if is_think_expanded:
-            i_blk, s_blk = _lookup_spans(entry, msg_idx, bidx, use_dual)
+            i_blk, s_blk = _lookup_spans(entry, msg_idx, bidx)
             wrapped_text = _wrap_thinking_text(full_text, _BLOCK_CONTENT_INDENT, pane_width)
             content_lines, content_keys = _render_span_content(wrapped_text, i_blk, s_blk, _BLOCK_CONTENT_INDENT)
             lines.extend(content_lines)
@@ -172,49 +124,34 @@ def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entr
     row_line = f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}"
     lines.append(_append_msg_copy_symbol(row_line, block_key, copy_feedback, pane_width))
     keys.append(block_key)
-    i_blk, s_blk = _lookup_spans(entry, msg_idx, bidx, use_dual)
+    i_blk, s_blk = _lookup_spans(entry, msg_idx, bidx)
     content_lines, content_keys = _render_span_content(full_text, i_blk, s_blk, _BLOCK_CONTENT_INDENT)
     lines.extend(content_lines)
     keys.extend(content_keys)
     return lines, keys
 
-def _render_prestripped_range(entry: dict, messages: list, fdi: int, upper: int, stripped_indices: set, use_dual: bool, show_chars: bool) -> tuple:
+def _render_new_messages(entry_idx: int, entry: dict, messages: list, prev_msg_count: int, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:
     lines = []
     keys = []
-    if fdi >= 0 and not use_dual:
-        for msg_idx in sorted(s for s in stripped_indices if fdi <= s < upper):
-            s_lines, s_keys = _render_stripped_block(entry, msg_idx, messages[msg_idx], show_chars=show_chars)
-            lines.extend(s_lines)
-            keys.extend(s_keys)
-    return lines, keys
-
-def _render_new_messages(entry_idx: int, entry: dict, messages: list, prev_msg_count: int, fdi: int, stripped_indices: set, use_dual: bool, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:
-    lines, keys = _render_prestripped_range(entry, messages, fdi, prev_msg_count, stripped_indices, use_dual, show_chars=True)
     for msg_idx in range(prev_msg_count, len(messages)):
         msg = messages[msg_idx]
-        is_stripped = msg_idx in stripped_indices
         blocks = msg.get('blocks', [])
-        if is_stripped and not use_dual:
-            s_lines, s_keys = _render_stripped_block(entry, msg_idx, msg, show_chars=True)
-            lines.extend(s_lines)
-            keys.extend(s_keys)
-        else:
-            role = msg.get('role', '?')[:4]
-            msg_type = msg.get('type', 'text')
-            chars_fmt = f"{msg.get('chars', 0):,}c"
-            type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
-            msg_key = _msg_row_key(entry_idx, msg_idx)
-            row_line = f"    {WHITE}[{msg_idx:3d}] {role:<4}  {type_label:<20} {chars_fmt:>8}{SOFT_RESET}"
-            lines.append(_append_msg_copy_symbol(row_line, msg_key, copy_feedback, pane_width))
-            keys.append(msg_key)
+        role = msg.get('role', '?')[:4]
+        msg_type = msg.get('type', 'text')
+        chars_fmt = f"{msg.get('chars', 0):,}c"
+        type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
+        msg_key = _msg_row_key(entry_idx, msg_idx)
+        row_line = f"    {WHITE}[{msg_idx:3d}] {role:<4}  {type_label:<20} {chars_fmt:>8}{SOFT_RESET}"
+        lines.append(_append_msg_copy_symbol(row_line, msg_key, copy_feedback, pane_width))
+        keys.append(msg_key)
         if blocks:
             for bidx, blk in enumerate(blocks):
-                b_lines, b_keys = _render_block_spans(entry_idx, msg_idx, bidx, blk, entry, use_dual, expand_states, pane_width, copy_feedback)
+                b_lines, b_keys = _render_block_spans(entry_idx, msg_idx, bidx, blk, entry, expand_states, pane_width, copy_feedback)
                 lines.extend(b_lines)
                 keys.extend(b_keys)
         else:
             preview = msg.get('content_preview', '')
-            i_blk, s_blk = _lookup_spans(entry, msg_idx, 0, use_dual)
+            i_blk, s_blk = _lookup_spans(entry, msg_idx, 0)
             content_lines, content_keys = _render_span_content(preview, i_blk, s_blk, "      ", highlight_suspect=False)
             lines.extend(content_lines)
             keys.extend(content_keys)
@@ -244,34 +181,29 @@ def _render_removed_tail(messages: list, prev_messages: list) -> tuple:
         keys.append(None)
     return lines, keys
 
-def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_entry_for_delta, fdi: int, stripped_indices: set, use_dual: bool, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:
+def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_entry_for_delta, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:
     prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
     diff_start = _compute_diff_start(messages, prev_messages)
-    lines, keys = _render_prestripped_range(entry, messages, fdi, diff_start, stripped_indices, use_dual, show_chars=False)
+    lines = []
+    keys = []
     for msg_idx in range(diff_start, len(messages)):
         msg = messages[msg_idx]
-        is_stripped = msg_idx in stripped_indices
         blocks = msg.get('blocks', [])
-        if is_stripped and not use_dual:
-            s_lines, s_keys = _render_stripped_block(entry, msg_idx, msg, show_chars=False)
-            lines.extend(s_lines)
-            keys.extend(s_keys)
-        else:
-            role = msg.get('role', '?')[:4]
-            msg_type = msg.get('type', 'text')
-            type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
-            msg_key = _msg_row_key(entry_idx, msg_idx)
-            row_line = f"    {DIM}[{msg_idx:3d}] {role:<4}  {type_label:<20}{SOFT_RESET}"
-            lines.append(_append_msg_copy_symbol(row_line, msg_key, copy_feedback, pane_width))
-            keys.append(msg_key)
+        role = msg.get('role', '?')[:4]
+        msg_type = msg.get('type', 'text')
+        type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
+        msg_key = _msg_row_key(entry_idx, msg_idx)
+        row_line = f"    {DIM}[{msg_idx:3d}] {role:<4}  {type_label:<20}{SOFT_RESET}"
+        lines.append(_append_msg_copy_symbol(row_line, msg_key, copy_feedback, pane_width))
+        keys.append(msg_key)
         if blocks:
             for bidx, blk in enumerate(blocks):
-                b_lines, b_keys = _render_block_spans(entry_idx, msg_idx, bidx, blk, entry, use_dual, expand_states, pane_width, copy_feedback)
+                b_lines, b_keys = _render_block_spans(entry_idx, msg_idx, bidx, blk, entry, expand_states, pane_width, copy_feedback)
                 lines.extend(b_lines)
                 keys.extend(b_keys)
         else:
             tail = msg.get('content_tail', '')
-            i_blk, s_blk = _lookup_spans(entry, msg_idx, 0, use_dual)
+            i_blk, s_blk = _lookup_spans(entry, msg_idx, 0)
             content_lines, content_keys = _render_span_content(tail, i_blk, s_blk, "      ", highlight_suspect=False)
             lines.extend(content_lines)
             keys.extend(content_keys)
@@ -282,16 +214,10 @@ def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_
 
 def render_messages(entry_idx: int, entry: dict, prev_entry_for_delta, entries: list, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:
     messages = entry.get('messages', [])
-    stripped_indices = set(entry.get('stripped_msg_indices', []))
     prev_msg_count = prev_entry_for_delta.get('message_count', 0) if prev_entry_for_delta is not None else 0
-    diff = entry.get('diff_from_prev') or {}
-    fdi = diff.get('first_diff_index')
-    if fdi is None:
-        fdi = 0
-    use_dual = '_stripped_spans' in entry
     if prev_msg_count < len(messages):
-        return _render_new_messages(entry_idx, entry, messages, prev_msg_count, fdi, stripped_indices, use_dual, expand_states, pane_width, copy_feedback)
-    return _render_modified_messages(entry_idx, entry, messages, prev_entry_for_delta, fdi, stripped_indices, use_dual, expand_states, pane_width, copy_feedback)
+        return _render_new_messages(entry_idx, entry, messages, prev_msg_count, expand_states, pane_width, copy_feedback)
+    return _render_modified_messages(entry_idx, entry, messages, prev_entry_for_delta, expand_states, pane_width, copy_feedback)
 
 
 def _aggregate_req_buckets(entry: dict, prev_entry) -> dict:

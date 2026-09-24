@@ -228,7 +228,7 @@ def _read_selected_worker_name(monitor) -> Optional[str]:
     try:
         with open(sel_path, 'r', encoding='utf-8') as f:
             return f.read().strip() or None
-    except OSError:
+    except FileNotFoundError:
         return None
 
 def _handle_worker_proxy_key(char: str, monitor) -> bool:
@@ -260,6 +260,7 @@ def _reset_worker_proxy_selection_state(now: float, worker_name: Optional[str]) 
 
 def _reset_worker_proxy_reparse_state(now: float) -> None:
     _reset_worker_proxy_positions(now)
+    worker_proxy_expand_states.clear()
 
 def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_fwd_pos, _worker_proxy_log_path
