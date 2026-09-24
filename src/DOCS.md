@@ -48,9 +48,9 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### frame_writer.py (30 LOC)
+### frame_writer.py (38 LOC)
 
-**Purpose:** `write_frame(output)` writes one pane frame in place (cursor home, per-row erase-to-EOL, erase below) wrapped in synchronized output (mode 2026), replacing clear-then-print.
+**Purpose:** `write_frame(output)` writes one pane frame in place (cursor home, per-row erase-to-EOL, erase below) wrapped in synchronized output (mode 2026), replacing clear-then-print; every frame also hides the terminal cursor, and `hide_cursor`/`show_cursor` bracket a pane loop.
 **Reads:** nothing (the built frame string is passed in).
 **Writes:** stdout (one write and flush per frame).
 **Called by:** `panes/token_pane.py`, `workers/worker_tokens_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`.

@@ -46,7 +46,7 @@ populate `messages` for entries the deque window dropped.
 
 ## Modules
 
-### pane.py (346 LOC)
+### pane.py (348 LOC)
 
 **Purpose:** Event loop for the main proxy pane — reads the `_forwarded` dual-log incrementally, handles mouse (click expand/collapse, scroll, hover, copy, search) and keyboard input (search, undo, `n`/`N`), renders on change via the drain-refresh-render pattern.
 **Reads:** Module-level state; active project filter from `core.monitor`; stdin (keypresses, mouse events).
@@ -56,7 +56,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### worker_proxy_pane.py (348 LOC)
+### worker_proxy_pane.py (350 LOC)
 
 **Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate. The worker-switcher header itself is built by the shared `workers.worker_switch_header.format_worker_switch_header` (imported under the alias `_format_worker_proxy_header`, its pre-move name) — `_worker_proxy_workers` is enriched with token/context-% liveness via `worker_tmux.attach_worker_stats(_worker_proxy_workers, _worker_proxy_stats_cache)` before that header renders (incremental, own cache — see `workers/DOCS.md`'s `attach_worker_stats` gotcha for why this must stay incremental).
 **Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_selection.get_selection_file_path`); stdin.

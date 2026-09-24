@@ -1,12 +1,22 @@
 # m1_frame_e2e_test report
 
-Run: 2026-09-24T18:23:24
+Run: 2026-09-24T18:38:43
 Old tree: git archive 0ce370df (0ce370df); new tree: /Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/flicker
 Terminal: 100x30 private tmux sockets flk_m1_<pane>_<tree>
 
-Result: 92/92 checks passed
+Result: 132/132 checks passed
 
 - PASS  tokens: harness sanity, old tree emits clear-screen
+- PASS  tokens: harness sanity, shell cursor visible before the pane starts
+- PASS  tokens: harness sanity, old tree never hides the cursor  (['1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
+- PASS  tokens: hide sequence reaches the pane before the first frame
+- PASS  tokens: every frame carries the hide sequence (20 frames)
+- PASS  tokens: cursor hidden after boot
+- PASS  tokens: cursor hidden after every step  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- PASS  tokens: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- PASS  tokens: respawn-pane resets to visible cursor
+- PASS  tokens: cursor hidden again after the pane restarts
+- PASS  tokens: cursor visible again after the pane exits (Ctrl+C)
 - PASS  tokens: new tree emits no 2J
 - PASS  tokens: new tree emits no 3J
 - PASS  tokens: new tree frames wrapped in 2026 pairs (20 begin / 20 end)
@@ -29,6 +39,16 @@ Result: 92/92 checks passed
 - PASS  tokens: screen identical at step search_commit
 - PASS  tokens: screen identical at step hover_after_all
 - PASS  worker_tokens: harness sanity, old tree emits clear-screen
+- PASS  worker_tokens: harness sanity, shell cursor visible before the pane starts
+- PASS  worker_tokens: harness sanity, old tree never hides the cursor  (['1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
+- PASS  worker_tokens: hide sequence reaches the pane before the first frame
+- PASS  worker_tokens: every frame carries the hide sequence (22 frames)
+- PASS  worker_tokens: cursor hidden after boot
+- PASS  worker_tokens: cursor hidden after every step  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- PASS  worker_tokens: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- PASS  worker_tokens: respawn-pane resets to visible cursor
+- PASS  worker_tokens: cursor hidden again after the pane restarts
+- PASS  worker_tokens: cursor visible again after the pane exits (Ctrl+C)
 - PASS  worker_tokens: new tree emits no 2J
 - PASS  worker_tokens: new tree emits no 3J
 - PASS  worker_tokens: new tree frames wrapped in 2026 pairs (22 begin / 22 end)
@@ -53,6 +73,16 @@ Result: 92/92 checks passed
 - PASS  worker_tokens: screen identical at step switch_worker_1_longer_frame
 - PASS  worker_tokens: screen identical at step hover_after_all
 - PASS  proxy: harness sanity, old tree emits clear-screen
+- PASS  proxy: harness sanity, shell cursor visible before the pane starts
+- PASS  proxy: harness sanity, old tree never hides the cursor  (['1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
+- PASS  proxy: hide sequence reaches the pane before the first frame
+- PASS  proxy: every frame carries the hide sequence (20 frames)
+- PASS  proxy: cursor hidden after boot
+- PASS  proxy: cursor hidden after every step  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- PASS  proxy: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- PASS  proxy: respawn-pane resets to visible cursor
+- PASS  proxy: cursor hidden again after the pane restarts
+- PASS  proxy: cursor visible again after the pane exits (Ctrl+C)
 - PASS  proxy: new tree emits no 2J
 - PASS  proxy: new tree emits no 3J
 - PASS  proxy: new tree frames wrapped in 2026 pairs (20 begin / 20 end)
@@ -75,6 +105,16 @@ Result: 92/92 checks passed
 - PASS  proxy: screen identical at step search_commit
 - PASS  proxy: screen identical at step hover_after_all
 - PASS  worker_proxy: harness sanity, old tree emits clear-screen
+- PASS  worker_proxy: harness sanity, shell cursor visible before the pane starts
+- PASS  worker_proxy: harness sanity, old tree never hides the cursor  (['1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
+- PASS  worker_proxy: hide sequence reaches the pane before the first frame
+- PASS  worker_proxy: every frame carries the hide sequence (22 frames)
+- PASS  worker_proxy: cursor hidden after boot
+- PASS  worker_proxy: cursor hidden after every step  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- PASS  worker_proxy: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- PASS  worker_proxy: respawn-pane resets to visible cursor
+- PASS  worker_proxy: cursor hidden again after the pane restarts
+- PASS  worker_proxy: cursor visible again after the pane exits (Ctrl+C)
 - PASS  worker_proxy: new tree emits no 2J
 - PASS  worker_proxy: new tree emits no 3J
 - PASS  worker_proxy: new tree frames wrapped in 2026 pairs (22 begin / 22 end)

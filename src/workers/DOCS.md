@@ -69,7 +69,7 @@ path + write, imported by both this package and `proxy_display`.
 
 ---
 
-### worker_tokens_pane.py (368 LOC)
+### worker_tokens_pane.py (370 LOC)
 
 **Purpose:** Worker-tokens pane event loop — the tokens-pane analog for a single selected worker. 2-row header (search bar + worker-switch header), keyboard/mouse input, periodic data refresh (worker list + liveness stats, IPC-selected worker, incremental cache-turn build), viewport-clipped rendering via `format.token_format.format_cache_tracker`, and the IPC selection-file write when the switch header or a digit key changes the selected worker. Structured drain-refresh-render, mirroring `panes/token_pane.py`'s own shape for the body and `proxy_display/worker_proxy_pane.py`'s own shape for the header/switch mechanics.
 **Reads:** the IPC selection file (via `worker_selection.get_selection_file_path`); the selected worker's JSONL (via `worker_tmux.find_worker_jsonl` + `panes.cache_turns.build_cache_turns`); every listed worker's JSONL incrementally, for header liveness (via `worker_tmux.attach_worker_stats` + its own `_worker_tokens_stats_cache`); stdin (keyboard/mouse).

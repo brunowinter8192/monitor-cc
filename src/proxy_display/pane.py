@@ -23,7 +23,7 @@ from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard, wait_for_input,
 )
-from ..frame_writer import write_frame
+from ..frame_writer import write_frame, hide_cursor, show_cursor
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
 from .. import search_bar
@@ -81,6 +81,7 @@ def run_proxy_loop() -> None:
     last_data_refresh = 0.0
     setup_keyboard_input()
     enable_mouse()
+    hide_cursor()
     try:
         while True:
             try:
@@ -107,6 +108,7 @@ def run_proxy_loop() -> None:
                 wait_for_input(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
+        show_cursor()
         restore_terminal()
 
 # FUNCTIONS
