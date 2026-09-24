@@ -15,7 +15,7 @@ Loads each configured MCP plugin server in an isolated subprocess with its own v
 
 **Purpose:** Extracts tool schemas from the configured FastMCP plugin servers into the proxy schema store in Anthropic API format.
 **Reads:** each plugin's server file in a sibling checkout outside this project, loaded in its own venv.
-**Writes:** `src/proxy/schemas/<plugin>/<tool_name>.json` (gitignored generated data).
+**Writes:** one JSON file per tool in the proxy schema store under `src/proxy/` (gitignored generated data).
 **Called by:** none; manual CLI, re-run when plugin tools change.
 **Calls out:** the plugin servers' own venvs, subprocess-isolated.
 
@@ -26,4 +26,4 @@ Loads each configured MCP plugin server in an isolated subprocess with its own v
 ---
 
 ## State
-None owned. Output goes to `src/proxy/schemas/`, owned and read at runtime by the proxy tool-injection module.
+None owned. Output goes to the proxy schema store under `src/proxy/`, owned and read at runtime by the proxy tool-injection module.

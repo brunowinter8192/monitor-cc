@@ -52,6 +52,4 @@ dual-span formats, tools, system blocks, expand-all fixpoint).
 ---
 
 ## State
-No shared or mutating state across modules. `A_render_refactor_proof.py` resolves `_AREA_ROOT`
-(by walking up from `__file__` until the directory named `proxy_dual_log` is found) and
-`_PROJECT_ROOT` (`_AREA_ROOT.parent.parent`) once at import time; nothing else is mutable.
+No shared or mutating state. The entry script resolves the area and project roots once at import time by walking up from its own file; nothing else is mutable.

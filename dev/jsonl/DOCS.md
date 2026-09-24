@@ -21,11 +21,11 @@ The proof script loads recent real session JSONLs, runs the cache-turn extractio
 
 ---
 
-### test_jsonl_reader.py (     100 LOC)
+### test_jsonl_reader.py (100 LOC)
 
 **Purpose:** Five parallel strands proving the shared JSONL reader: partial tail kept, interior corruption raises, downstream readers follow it.
 **Reads:** temp files only; an env var selects the source tree so the file can run against an older tree.
-**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Writes:** stdout only (pass or fail per strand).
 **Called by:** none; manual test.
 **Calls out:** `src.jsonl`, `src.panes.cache_turns`, `src.gpu_pane.errors`.
 

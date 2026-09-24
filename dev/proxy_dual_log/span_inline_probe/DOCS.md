@@ -65,9 +65,4 @@ analysis, storage-cost table, design-tension and recommendation sections.
 ---
 
 ## State
-No shared or mutating state across modules. `span_inline_probe.py` resolves `_AREA_ROOT`/
-`_PROJECT_ROOT` (by walking up from `__file__` until the directory named `proxy_dual_log` is
-found) once at import time; its dual-log corpus lookup always derives the main-checkout root
-(stripping a trailing `.claude/worktrees/<name>` when present), matching its pre-move behavior,
-which never had a worktree-local candidate to try first. The hardcoded session stem is currently
-rotated off disk — the script raises `FileNotFoundError` on load, uncaught.
+No shared or mutating state. The entry script resolves the area and project roots once at import time and always derives the main-checkout root for the corpus lookup. Its hardcoded session stem is rotated off disk, so the script raises on load (see process-docs).
