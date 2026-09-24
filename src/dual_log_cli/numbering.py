@@ -32,10 +32,7 @@ def build_session_numbering(session: dict, boundaries: list, continues: list, pr
 
 def _annotate_status(main_thread: list, session: dict) -> None:
     response_path = (session.get("streams") or {}).get("response")
-    try:
-        statuses = flow_status_ids(response_path) if response_path is not None else {}
-    except Exception:
-        statuses = {}
+    statuses = flow_status_ids(response_path) if response_path is not None else {}
     for request in main_thread:
         request["http_status"] = statuses.get(request.get("flow_id", ""), ("", None))[1]
 
