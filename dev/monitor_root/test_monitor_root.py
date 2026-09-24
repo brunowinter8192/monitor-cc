@@ -169,19 +169,23 @@ def case_dual_log_dir_branches() -> None:
 
 
 def case_menubar_report_root() -> None:
-    package = types.ModuleType('fakepkg')
-    package.__path__ = []
-    logged = []
-    fake_log = types.ModuleType('fakepkg.menubar_log')
-    fake_log.log_menubar = lambda category, message: logged.append((category, message))
-    sys.modules['fakepkg'] = package
-    sys.modules['fakepkg.menubar_log'] = fake_log
-    spec = importlib.util.spec_from_file_location('fakepkg.root_report', _ROOT / 'src' / 'menubar' / 'root_report.py')
+    spec = importlib.util.spec_from_file_location('root_report_probe', _ROOT / 'src' / 'menubar' / 'root_report.py')
     module = importlib.util.module_from_spec(spec)
-    sys.modules['fakepkg.root_report'] = module
     spec.loader.exec_module(module)
-    module.report_root(Path('/probe'), 'env')
-    assert logged == [('paths', 'PROJECT_ROOT resolved: source=env root=/probe')], logged
+    with tempfile.TemporaryDirectory() as tmp:
+        log = Path(tmp) / 'nested' / 'menubar.log'
+        module.report_root(log, Path('/probe'), 'env')
+        text = log.read_text()
+        assert text.endswith(' [paths] PROJECT_ROOT resolved: source=env root=/probe\n') and text[4] == '-', text
+        module.report_root(Path(tmp) / 'file' / 'x.log', Path('/probe'), 'env')
+        (Path(tmp) / 'blocker').write_text('x')
+        module.report_root(Path(tmp) / 'blocker' / 'x.log', Path('/probe'), 'env')
+
+
+def case_menubar_import_has_no_cycle() -> None:
+    for entry in ('src.menubar', 'src.menubar.menubar_log', 'src.menubar.paths'):
+        done = subprocess.run([sys.executable, '-c', f'import {entry}'], capture_output=True, text=True, cwd=_ROOT)
+        assert done.returncode == 0, (entry, done.stderr[-200:])
 
 
 def case_menubar_sources_no_local_root_logic() -> None:
@@ -191,7 +195,7 @@ def case_menubar_sources_no_local_root_logic() -> None:
         assert 'environ' not in source and '__file__' not in source.replace("_PLIST_TMPL      = Path(__file__)", ''), name
         imported = {alias.name for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) for alias in node.names}
         assert expected_import in imported, (name, imported)
-    assert 'resolve_monitor_cc_root(report_root, "PROJECT_ROOT")' in (_ROOT / 'src' / 'menubar' / 'paths.py').read_text()
+    assert 'resolve_monitor_cc_root(partial(report_root, _APP_SUPPORT / "menubar.log"), "PROJECT_ROOT")' in (_ROOT / 'src' / 'menubar' / 'paths.py').read_text()
 
 
 if __name__ == '__main__':

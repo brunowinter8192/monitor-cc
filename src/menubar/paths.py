@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+from functools import partial
 from pathlib import Path
 
 from ..monitor_root import resolve_monitor_cc_root
@@ -17,6 +18,6 @@ MONITOR_SWEEP_STATE_FILE  = _APP_SUPPORT / "monitor_sweep_state.json"
 MODEL_SELECTION_FILE      = _SHARED_RULES / "model_selection.json"
 PROXY_RULES_FILE          = _SHARED_RULES / "proxy_rules.json"
 
-MONITOR_CC_ROOT = resolve_monitor_cc_root(report_root, "PROJECT_ROOT")
+MONITOR_CC_ROOT = resolve_monitor_cc_root(partial(report_root, _APP_SUPPORT / "menubar.log"), "PROJECT_ROOT")
 
 _APP_SUPPORT.mkdir(parents=True, exist_ok=True)
