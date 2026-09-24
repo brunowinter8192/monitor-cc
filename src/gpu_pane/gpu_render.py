@@ -150,7 +150,7 @@ def _render_anomalies_line(anomalies: list) -> list:
     if not anomalies:
         return []
     n = len(anomalies)
-    return [f"  {YELLOW}⚠ {n} anomal{'y' if n == 1 else 'ies'} "
+    return [f"  {YELLOW}! {n} anomal{'y' if n == 1 else 'ies'} "
             f"(see logs/gpu_pane.log){RESET}"]
 
 

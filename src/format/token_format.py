@@ -35,7 +35,7 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bo
             think_color = YELLOW
         else:
             think_color = GREEN
-        think_indicator = f' {think_color}🧠{_format_k(sig_chars)}{SOFT_RESET}'
+        think_indicator = f' {think_color}th{_format_k(sig_chars)}{SOFT_RESET}'
     else:
         think_indicator = ''
     if wide:
@@ -264,7 +264,7 @@ def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
     truncated = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
     api_calls = turn.get('api_calls', [])
     thinking_calls = sum(1 for call in api_calls if _call_thinking_meta(call)[0])
-    think_str = f" ({thinking_calls}/{len(api_calls)} 🧠)" if thinking_calls > 0 else ""
+    think_str = f" ({thinking_calls}/{len(api_calls)} th)" if thinking_calls > 0 else ""
     row = f"{PASTEL_PURPLE}Turn {turn_idx + 1}{think_str}: \"{truncated}\"{SOFT_RESET}"
     return right_align_time(row, timestamp, pane_width)
 
