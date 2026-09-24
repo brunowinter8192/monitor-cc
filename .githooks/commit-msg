@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Global commit guard — enforces a single author identity and a trailer-free commit message.
-# Installed machine-wide via `git config --global core.hooksPath ~/.githooks`.
-#
-# Rejects (never silently rewrites — a visible abort shows that something TRIED to write it):
-#   1. Co-Authored-By / Signed-off-by-style attribution trailers, and "Generated with" tool banners
-#   2. An author or committer identity other than the expected one
-#
-# A repo with its own core.hooksPath overrides this file — such repos need their own copy.
 
 set -u
 
@@ -20,7 +12,6 @@ fail() {
     exit 1
 }
 
-# 1. Attribution trailers / tool banners in the message body
 if grep -qiE '^[[:space:]]*co-authored-by:' "$MSG_FILE"; then
     fail "Co-Authored-By trailer found ($(grep -icE '^[[:space:]]*co-authored-by:' "$MSG_FILE") line(s))"
 fi
@@ -28,9 +19,6 @@ if grep -qiE '(generated with|🤖 generated|created with) .*(claude|copilot|cur
     fail "tool-attribution banner found in commit message"
 fi
 
-# 2. Identity — `git var` resolves the same values git will actually record,
-#    including env overrides (GIT_AUTHOR_NAME etc.) that a plain config read would miss.
-# macOS ships bash 3.2 — no ${var,,}; label is passed explicitly instead.
 check_ident() {
     role="$1"; label="$2"
     ident="$(git var "GIT_${role}_IDENT" 2>/dev/null)" || return 0

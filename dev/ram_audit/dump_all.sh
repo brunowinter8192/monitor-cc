@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Trigger SIGUSR1 RAM dump on all running monitor_cc panes.
-# PID files: /tmp/.monitor_cc_pid_<pane>  (written by register_ram_dump at loop entry)
-# Dumps land in: dev/ram_audit/dumps/<YYYYmmdd_HHMMSS>_<pane>.txt
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DUMPS_DIR="$SCRIPT_DIR/dumps"
