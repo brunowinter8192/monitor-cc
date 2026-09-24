@@ -13,7 +13,7 @@ A fake `rag-cli` on PATH and a temp pane error log drive the count fetchers, the
 
 ### fetch_and_running_checks.py (115 LOC)
 
-**Purpose:** Proves rag-cli failures return None with one note per state change, a missing file alone reads as no last run, running state comes from the handle.
+**Purpose:** Proves rag-cli failures return None with one note per state change, only a missing file means no last run, running state comes from the handle.
 **Reads:** nothing external; fake `rag-cli` and log in a temp dir.
 **Writes:** temp dir only; stdout pass/fail lines, exit 1 on failure.
 **Called by:** none; run manually.
