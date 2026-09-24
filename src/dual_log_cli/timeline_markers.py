@@ -27,6 +27,7 @@ def request_markers(boundaries: list) -> dict:
             "timestamp": boundaries[owner]["timestamp"],
             "clock_timestamp": boundaries[owner].get("pane_time") or boundaries[owner]["timestamp"],
             "pane_turn": boundaries[owner].get("pane_turn"),
+            "http_status": boundaries[owner].get("http_status"),
             "refires": len(positions) - 1,
             "flow_id": boundaries[owner].get("flow_id", ""),
             "sys_lines": boundaries[owner].get("sys_lines", []),

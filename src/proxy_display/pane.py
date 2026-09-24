@@ -14,7 +14,7 @@ from .dual_log_accumulator import accumulate_original_tools
 from .proxy_pane_shared import (
     _entry_idx_from_key, _terminal_size, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body, _accumulate_dual_logs_and_attach,
-    _copy_feedback_key, _accumulate_request_ids,
+    _copy_feedback_key, _accumulate_request_ids, _attach_http_status,
 )
 from .format import format_proxy_block
 from ..panes.cache_turns import build_cache_turns
@@ -49,6 +49,7 @@ _proxy_acc_injected: dict = {}
 _proxy_original_pos: int = 0
 _proxy_response_pos: int = 0
 _proxy_request_id_by_flow: dict = {}
+_proxy_status_by_flow: dict = {}
 _proxy_acc_original: dict = {}
 _proxy_log_path: Optional[Path] = None
 _proxy_pane_width: int = 80
@@ -249,6 +250,7 @@ def _reset_proxy_positions(now: float) -> None:
     _proxy_acc_injected.clear()
     _proxy_acc_original.clear()
     _proxy_request_id_by_flow.clear()
+    _proxy_status_by_flow.clear()
     _proxy_response_pos = 0
 
 def _reset_proxy_session_state(monitor, now: float) -> None:
@@ -286,7 +288,9 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
     filtered = [e for e in new_entries if e.get('timestamp', '') >= _proxy_session_start_ts]
     proxy_entries.extend(filtered)
     _proxy_log_path = find_proxy_log_path(monitor.active_project_filter)
-    _proxy_response_pos = _accumulate_request_ids(_find_response_log_path(_proxy_log_path), _proxy_response_pos, _proxy_request_id_by_flow)
+    _proxy_response_pos = _accumulate_request_ids(
+        _find_response_log_path(_proxy_log_path), _proxy_response_pos, _proxy_request_id_by_flow, _proxy_status_by_flow)
+    _attach_http_status(proxy_entries, _proxy_status_by_flow)
     original_path = _find_original_log_path(_proxy_log_path)
     _proxy_original_pos = accumulate_original_tools(original_path, _proxy_original_pos, _proxy_acc_original)
     _proxy_stripped_pos, _proxy_injected_pos = _accumulate_dual_logs_and_attach(

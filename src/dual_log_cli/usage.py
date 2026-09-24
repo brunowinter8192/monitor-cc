@@ -11,7 +11,7 @@ _PROJECTS_ROOT = Path("~/.claude/projects").expanduser()
 # FUNCTIONS
 
 
-def _flow_status_ids(response_path: Path) -> dict:
+def flow_status_ids(response_path: Path) -> dict:
     result = {}
     for entry in iter_jsonl(response_path):
         flow_id = entry.get("flow_id")
@@ -106,7 +106,7 @@ def resolve_transcript(session: dict, boundaries: list, projects_root: Path = No
     if response_path is None:
         return None, {}
     try:
-        flow_status = _flow_status_ids(response_path)
+        flow_status = flow_status_ids(response_path)
     except Exception:
         return None, {}
     anchor_request_id = None

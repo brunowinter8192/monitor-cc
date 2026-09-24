@@ -63,7 +63,10 @@ def _no_reqs_output(skipped: int) -> str:
 def _req_line(marker: dict, tag: str, usage, cr_width: int) -> str:
     tag_part = f"  {tag}" if tag else ""
     number = "?" if marker["number"] is None else marker["number"]
-    return f"REQ {number:<{_REQ_NUMBER_WIDTH}}{_clock(_clock_source(marker))}{tag_part}{_usage_part(usage, cr_width)}"
+    status = marker.get("http_status")
+    status_part = f"  {status}" if status not in (None, 200) else ""
+    return (f"REQ {number:<{_REQ_NUMBER_WIDTH}}{_clock(_clock_source(marker))}{tag_part}"
+            f"{status_part}{_usage_part(usage, cr_width)}")
 
 
 def _clock_source(marker: dict) -> str:
@@ -147,6 +150,7 @@ def _request_marker(request: dict) -> dict:
         "timestamp": request["timestamp"],
         "clock_timestamp": request.get("pane_time") or request["timestamp"],
         "pane_turn": request.get("pane_turn"),
+        "http_status": request.get("http_status"),
         "flow_id": request["flow_id"],
         "refires": 0,
     }

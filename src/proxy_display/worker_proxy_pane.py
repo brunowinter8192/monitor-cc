@@ -26,7 +26,7 @@ from ..pane_error_log import log_pane_error
 from .proxy_pane_shared import (
     _entry_idx_from_key, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _terminal_size, _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body,
-    _accumulate_dual_logs_and_attach, _copy_feedback_key, _accumulate_request_ids,
+    _accumulate_dual_logs_and_attach, _copy_feedback_key, _accumulate_request_ids, _attach_http_status,
 )
 from .. import search_bar
 
@@ -39,6 +39,7 @@ _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_workers, 
 _worker_proxy_fwd_pos: int = 0
 _worker_proxy_response_pos: int = 0
 _worker_proxy_request_id_by_flow: dict = {}
+_worker_proxy_status_by_flow: dict = {}
 _worker_proxy_acc_fwd: dict = {}
 _worker_proxy_log_path: Optional[Path] = None
 _worker_proxy_pane_width: int = 80
@@ -240,7 +241,7 @@ def _handle_worker_proxy_key(char: str, monitor) -> bool:
 def _reset_worker_proxy_positions(now: float) -> None:
     global worker_proxy_log_position, _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_fwd_pos
     global _worker_proxy_last_full_parse_ts, _worker_proxy_stripped_pos, _worker_proxy_injected_pos, _worker_proxy_response_pos
-    for c in (worker_proxy_entries, worker_proxy_line_map, _worker_proxy_acc_fwd, _worker_proxy_acc_stripped, _worker_proxy_acc_injected, _worker_proxy_request_id_by_flow):
+    for c in (worker_proxy_entries, worker_proxy_line_map, _worker_proxy_acc_fwd, _worker_proxy_acc_stripped, _worker_proxy_acc_injected, _worker_proxy_request_id_by_flow, _worker_proxy_status_by_flow):
         c.clear()
     worker_proxy_log_position = _worker_proxy_jsonl_position = _worker_proxy_fwd_pos = _worker_proxy_response_pos = 0
     _worker_proxy_cache_turns = []
@@ -289,7 +290,9 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
             _worker_proxy_stripped_pos, _worker_proxy_injected_pos = _accumulate_dual_logs_and_attach(
                 new_entries, worker_proxy_entries, worker_proxy_expand_states, log_path,
                 _worker_proxy_acc_stripped, _worker_proxy_acc_injected, _worker_proxy_stripped_pos, _worker_proxy_injected_pos, _infer_model_family)
-            _worker_proxy_response_pos = _accumulate_request_ids(_find_response_log_path(log_path), _worker_proxy_response_pos, _worker_proxy_request_id_by_flow)
+            _worker_proxy_response_pos = _accumulate_request_ids(
+                _find_response_log_path(log_path), _worker_proxy_response_pos, _worker_proxy_request_id_by_flow, _worker_proxy_status_by_flow)
+            _attach_http_status(worker_proxy_entries, _worker_proxy_status_by_flow)
             _worker_proxy_log_path = log_path
             if new_entries:
                 input_changed = True

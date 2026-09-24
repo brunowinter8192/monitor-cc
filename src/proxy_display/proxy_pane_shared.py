@@ -184,13 +184,21 @@ def _attach_overlay_references(entries: list, acc_stripped: dict, acc_injected: 
         if original_tools_by_family is not None:
             entry['_original_tools_by_name'] = original_tools_by_family.setdefault(family, {})
 
-def _accumulate_request_ids(response_path, position: int, request_id_by_flow: dict) -> int:
+def _accumulate_request_ids(response_path, position: int, request_id_by_flow: dict, status_by_flow: dict = None) -> int:
     by_request_id, new_position = read_response_log(response_path, position)
     for request_id, entry in by_request_id.items():
         flow_id = entry.get('flow_id')
         if flow_id:
             request_id_by_flow[flow_id] = request_id
+            if status_by_flow is not None:
+                status_by_flow[flow_id] = entry.get('status_code')
     return new_position
+
+def _attach_http_status(entries: list, status_by_flow: dict) -> None:
+    if not status_by_flow:
+        return
+    for entry in entries:
+        entry['http_status'] = status_by_flow.get(entry.get('flow_id'))
 
 def _shift_line_map_and_copy_rows(line_map: dict, copy_rows: set, shift: int) -> None:
     shifted = {r + shift: k for r, k in line_map.items()}

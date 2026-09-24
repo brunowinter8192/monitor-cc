@@ -47,6 +47,24 @@ def _compute_req_mods_str(entry: dict, prev_same) -> str:
         return f" {YELLOW}🔧-{removed}{SOFT_RESET}"
     return ''
 
+def _status_marker(entry: dict) -> str:
+    if 'http_status' not in entry:
+        return ''
+    status = entry['http_status']
+    if status is None:
+        return f" {DIM}[pending]{SOFT_RESET}{WHITE}"
+    if status == 200:
+        return ''
+    return f" {RED}[{status}]{SOFT_RESET}{WHITE}"
+
+def _status_line(entry: dict) -> list:
+    if 'http_status' not in entry:
+        return []
+    status = entry['http_status']
+    text = 'pending (no _response line yet)' if status is None else str(status)
+    color = DIM if status in (None, 200) else RED
+    return [f"    {color}status: {text}{SOFT_RESET}"]
+
 def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symbol: str, model_short: str, msg_count: int, mods_str: str, warn_str: str, pane_width: int, copy_feedback, is_search_match: bool = False, is_search_current: bool = False, time_str: str = '') -> str:
     e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
@@ -63,7 +81,7 @@ def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symb
     if _has_inj:   _badge_parts.append(f'{GREEN}inject{SOFT_RESET}')
     if _has_think: _badge_parts.append(f'{GREEN}🧠{SOFT_RESET}')
     tag_badge = (' ' + ' '.join(_badge_parts)) if _badge_parts else ''
-    body = f"{WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{mods_str}{warn_str}{haiku_info}{tag_badge}{SOFT_RESET}"
+    body = f"{WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{mods_str}{warn_str}{haiku_info}{tag_badge}{_status_marker(entry)}{SOFT_RESET}"
     if is_search_match:
         search_marker = SEARCH_CURRENT_BG if is_search_current else SEARCH_MATCH_BG
         body = f"{search_marker}{body}{_BG_RESTORE_SENTINEL}"
@@ -89,8 +107,8 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     from .render_sections import render_tools, render_fields_delta, render_beta, render_directives
     from .render_sections_system import render_system_blocks
     from .render_messages import render_messages
-    lines = []
-    keys = []
+    lines = _status_line(entry)
+    keys = [None] * len(lines)
     mods = entry.get('modifications', [])
     _section_ref = None if is_standalone else prev_same
     buckets = _aggregate_req_buckets(entry, _section_ref)
