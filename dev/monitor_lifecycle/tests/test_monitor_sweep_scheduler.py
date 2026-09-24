@@ -8,39 +8,37 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
+_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_ROOT))
+from dev.refactoring.strand_runner import strand_workflow
 from src.menubar import monitor_sweep_scheduler as sched
 
 _NOW = 1_000_000_000.0
 _WAIT_DEADLINE_SECS = 3.0
 _WAIT_INTERVAL_SECS = 0.01
 _SWEEP_THREAD_NAME = 'monitor-sweep'
+_STRAND_NAMES = [
+    '_test_pure_gate_boundaries',
+    '_test_fresh_state_runs',
+    '_test_run_1h_ago_does_not_run',
+    '_test_run_25h_ago_runs',
+    '_test_reentry_guard_blocks_concurrent_trigger',
+    '_test_attempt_timestamp_persisted_before_sweep_completes',
+]
+_TITLE = 'test_monitor_sweep_scheduler'
+_REPORT_PATH = Path(__file__).resolve().parents[1] / 'md' / 'test_monitor_sweep_scheduler.md'
 
 # ORCHESTRATOR
 
 def test_monitor_sweep_scheduler_workflow() -> None:
-    failures = []
-    _test_pure_gate_boundaries(failures)
-    _test_fresh_state_runs(failures)
-    _test_run_1h_ago_does_not_run(failures)
-    _test_run_25h_ago_runs(failures)
-    _test_reentry_guard_blocks_concurrent_trigger(failures)
-    _test_attempt_timestamp_persisted_before_sweep_completes(failures)
-
-    print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for desc in failures:
-            print(f"  - {desc}")
-        sys.exit(1)
-    print("All checks passed.")
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, _REPORT_PATH, _TITLE))
 
 # FUNCTIONS
 
-def _check(failures: list, desc: str, ok: bool) -> None:
+def _check(desc: str, ok: bool) -> None:
     print(f"  [{'OK  ' if ok else 'FAIL'}] {desc}")
     if not ok:
-        failures.append(desc)
+        raise AssertionError(desc)
 
 @contextmanager
 def _isolated_scheduler(run_sweep_stub, seed_last_run_ts=None):
@@ -68,29 +66,29 @@ def _wait_until(predicate, timeout: float) -> bool:
         time.sleep(_WAIT_INTERVAL_SECS)
     return predicate()
 
-def _test_pure_gate_boundaries(failures: list) -> None:
-    _check(failures, "fresh state (last_ts=0.0) is due",
+def _test_pure_gate_boundaries() -> None:
+    _check("fresh state (last_ts=0.0) is due",
           sched._is_sweep_due(0.0, _NOW))
-    _check(failures, "a run 1h ago is NOT due",
+    _check("a run 1h ago is NOT due",
           not sched._is_sweep_due(_NOW - 3600, _NOW))
-    _check(failures, "a run 25h ago IS due",
+    _check("a run 25h ago IS due",
           sched._is_sweep_due(_NOW - 25 * 3600, _NOW))
-    _check(failures, "exactly 24h ago IS due (>= boundary, not >)",
+    _check("exactly 24h ago IS due (>= boundary, not >)",
           sched._is_sweep_due(_NOW - sched.SWEEP_INTERVAL_SECS, _NOW))
 
-def _test_fresh_state_runs(failures: list) -> None:
+def _test_fresh_state_runs() -> None:
     fired = _invoke_with_isolated_state(seed_last_run_ts=None, now=_NOW)
-    _check(failures, "fresh state (no state file) triggers a sweep attempt", fired)
+    _check("fresh state (no state file) triggers a sweep attempt", fired)
 
-def _test_run_1h_ago_does_not_run(failures: list) -> None:
+def _test_run_1h_ago_does_not_run() -> None:
     fired = _invoke_with_isolated_state(seed_last_run_ts=_NOW - 3600, now=_NOW)
-    _check(failures, "a run 1h ago does NOT trigger a sweep attempt", not fired)
+    _check("a run 1h ago does NOT trigger a sweep attempt", not fired)
 
-def _test_run_25h_ago_runs(failures: list) -> None:
+def _test_run_25h_ago_runs() -> None:
     fired = _invoke_with_isolated_state(seed_last_run_ts=_NOW - 25 * 3600, now=_NOW)
-    _check(failures, "a run 25h ago DOES trigger a sweep attempt", fired)
+    _check("a run 25h ago DOES trigger a sweep attempt", fired)
 
-def _test_reentry_guard_blocks_concurrent_trigger(failures: list) -> None:
+def _test_reentry_guard_blocks_concurrent_trigger() -> None:
     release = threading.Event()
     calls = []
 
@@ -104,12 +102,12 @@ def _test_reentry_guard_blocks_concurrent_trigger(failures: list) -> None:
             sched.maybe_run_sweep_workflow(_NOW)
             _wait_until(lambda: len(calls) == 1, _WAIT_DEADLINE_SECS)
             sched.maybe_run_sweep_workflow(_NOW + 1)
-            _check(failures, "a concurrent tick while a sweep is in-progress does not re-trigger",
+            _check("a concurrent tick while a sweep is in-progress does not re-trigger",
                   len(calls) == 1 and len(_sweep_threads()) == 1)
         finally:
             release.set()
 
-def _test_attempt_timestamp_persisted_before_sweep_completes(failures: list) -> None:
+def _test_attempt_timestamp_persisted_before_sweep_completes() -> None:
     release = threading.Event()
 
     def _slow_stub():
@@ -120,7 +118,7 @@ def _test_attempt_timestamp_persisted_before_sweep_completes(failures: list) -> 
         try:
             sched.maybe_run_sweep_workflow(_NOW)
             recorded = json.loads(state_file.read_text(encoding='utf-8'))['last_run_ts']
-            _check(failures, "attempt timestamp is on disk before the sweep itself finishes",
+            _check("attempt timestamp is on disk before the sweep itself finishes",
                   recorded == _NOW and bool(_sweep_threads()))
         finally:
             release.set()
