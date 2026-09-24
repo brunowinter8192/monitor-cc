@@ -16,7 +16,10 @@ def main() -> None:
 
     i = 0
     while i < len(args):
-        if args[i] == '--project' and i + 1 < len(args):
+        if args[i] == '--project':
+            if i + 1 >= len(args):
+                print('--project requires a value', file=sys.stderr)
+                sys.exit(2)
             project = args[i + 1]
             i += 2
         else:
