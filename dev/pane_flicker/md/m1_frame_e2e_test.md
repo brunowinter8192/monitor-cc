@@ -1,10 +1,10 @@
 # m1_frame_e2e_test report
 
-Run: 2026-09-24T18:06:20
+Run: 2026-09-24T18:17:47
 Old tree: git archive integration (0ce370df); new tree: /Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/flicker
 Terminal: 100x30 private tmux sockets flk_m1_<pane>_<tree>
 
-Result: 75/92 checks passed
+Result: 92/92 checks passed
 
 - PASS  tokens: harness sanity, old tree emits clear-screen
 - PASS  tokens: new tree emits no 2J
@@ -49,7 +49,7 @@ Result: 75/92 checks passed
 - PASS  worker_tokens: screen identical at step search_type
 - PASS  worker_tokens: screen identical at step search_backspace
 - PASS  worker_tokens: screen identical at step search_commit
-- FAIL  worker_tokens: screen identical at step switch_worker_2_shorter_frame  (row 5 token 0/1vs322: old='' new="'T'(('fg',")
+- PASS  worker_tokens: screen identical at step switch_worker_2_shorter_frame
 - PASS  worker_tokens: screen identical at step switch_worker_1_longer_frame
 - PASS  worker_tokens: screen identical at step hover_after_all
 - PASS  proxy: harness sanity, old tree emits clear-screen
@@ -67,13 +67,13 @@ Result: 75/92 checks passed
 - PASS  proxy: screen identical at step hover_row_9
 - PASS  proxy: screen identical at step click_expand_row_5
 - PASS  proxy: screen identical at step hover_row_8_after_expand
-- FAIL  proxy: screen identical at step click_collapse_row_5  (row 14 token 0/1vs701: old='' new="'")
-- FAIL  proxy: screen identical at step scroll_up  (row 14 token 0/1vs701: old='' new="'")
-- FAIL  proxy: screen identical at step scroll_down_past_end  (row 14 token 0/1vs701: old='' new="'")
-- FAIL  proxy: screen identical at step search_type  (row 14 token 0/1vs701: old='' new="'")
-- FAIL  proxy: screen identical at step search_backspace  (row 14 token 0/1vs701: old='' new="'")
-- FAIL  proxy: screen identical at step search_commit  (row 14 token 0/1vs701: old='' new="'")
-- FAIL  proxy: screen identical at step hover_after_all  (row 14 token 0/1vs701: old='' new="'")
+- PASS  proxy: screen identical at step click_collapse_row_5
+- PASS  proxy: screen identical at step scroll_up
+- PASS  proxy: screen identical at step scroll_down_past_end
+- PASS  proxy: screen identical at step search_type
+- PASS  proxy: screen identical at step search_backspace
+- PASS  proxy: screen identical at step search_commit
+- PASS  proxy: screen identical at step hover_after_all
 - PASS  worker_proxy: harness sanity, old tree emits clear-screen
 - PASS  worker_proxy: new tree emits no 2J
 - PASS  worker_proxy: new tree emits no 3J
@@ -89,14 +89,14 @@ Result: 75/92 checks passed
 - PASS  worker_proxy: screen identical at step hover_row_9
 - PASS  worker_proxy: screen identical at step click_expand_row_5
 - PASS  worker_proxy: screen identical at step hover_row_8_after_expand
-- FAIL  worker_proxy: screen identical at step click_collapse_row_5  (row 15 token 0/1vs701: old='' new="'")
-- FAIL  worker_proxy: screen identical at step scroll_up  (row 15 token 0/1vs701: old='' new="'")
-- FAIL  worker_proxy: screen identical at step scroll_down_past_end  (row 15 token 0/1vs701: old='' new="'")
-- FAIL  worker_proxy: screen identical at step search_type  (row 15 token 0/1vs701: old='' new="'")
-- FAIL  worker_proxy: screen identical at step search_backspace  (row 15 token 0/1vs701: old='' new="'")
-- FAIL  worker_proxy: screen identical at step search_commit  (row 15 token 0/1vs701: old='' new="'")
-- FAIL  worker_proxy: screen identical at step switch_worker_2_shorter_frame  (row 5 token 0/1vs275: old='' new="'")
-- FAIL  worker_proxy: screen identical at step switch_worker_1_longer_frame  (row 15 token 0/1vs701: old='' new="'")
-- FAIL  worker_proxy: screen identical at step hover_after_all  (row 15 token 0/1vs701: old='' new="'")
+- PASS  worker_proxy: screen identical at step click_collapse_row_5
+- PASS  worker_proxy: screen identical at step scroll_up
+- PASS  worker_proxy: screen identical at step scroll_down_past_end
+- PASS  worker_proxy: screen identical at step search_type
+- PASS  worker_proxy: screen identical at step search_backspace
+- PASS  worker_proxy: screen identical at step search_commit
+- PASS  worker_proxy: screen identical at step switch_worker_2_shorter_frame
+- PASS  worker_proxy: screen identical at step switch_worker_1_longer_frame
+- PASS  worker_proxy: screen identical at step hover_after_all
 
 Frames written by new tree per pane: tokens=20, worker_tokens=22, proxy=20, worker_proxy=22
