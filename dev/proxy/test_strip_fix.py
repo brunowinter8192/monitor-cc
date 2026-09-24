@@ -33,6 +33,11 @@ from test_strip_fix_cases_env_context import (
     t50_env_context_gitstatus_issue86891_shape_stripped,
     t51_env_context_gitstatus_issue43250_shape_stripped,
 )
+from test_strip_fix_cases_git_attribution import (
+    ga01_observed_block_stripped_env_stripped_task_untouched, ga02_model_name_not_matched,
+    ga03_quoted_copy_in_tool_result_preserved, ga04_full_pipeline_main_and_worker_context,
+    ga05_mid_text_mention_preserved,
+)
 from test_strip_fix_cases_wakeup import (
     w01_tn_in_tool_result_str, w02_tn_in_tool_result_list, w03_bgk_in_tool_result_str,
     w04_genuine_tn_completed_plain_string, w05_genuine_tn_failed_plain_string,
@@ -128,6 +133,14 @@ def _seq_env_context() -> list:
     ]
 
 
+def _seq_git_attribution() -> list:
+    return [
+        ga01_observed_block_stripped_env_stripped_task_untouched, ga02_model_name_not_matched,
+        ga03_quoted_copy_in_tool_result_preserved, ga04_full_pipeline_main_and_worker_context,
+        ga05_mid_text_mention_preserved,
+    ]
+
+
 def _seq_wakeup() -> list:
     return [
         w01_tn_in_tool_result_str, w02_tn_in_tool_result_list, w03_bgk_in_tool_result_str,
@@ -190,7 +203,7 @@ def _seq_pasted_content() -> list:
 
 def _test_sequence() -> list:
     return (
-        _seq_templates() + _seq_env_context() + _seq_wakeup() + _seq_launch_ack_interrupt()
+        _seq_templates() + _seq_env_context() + _seq_git_attribution() + _seq_wakeup() + _seq_launch_ack_interrupt()
         + _seq_wrapped_tn() + _seq_badge() + _seq_pasted_content()
     )
 
