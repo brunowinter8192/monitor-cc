@@ -8,15 +8,18 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 _bg_timer_mod = importlib.import_module('src.menubar.bg_timer')
 _abort_bg_sleep_timers = _bg_timer_mod._abort_bg_sleep_timers
-_paths_mod = importlib.import_module('src.menubar.paths')
-_MENUBAR_LOG = _paths_mod._APP_SUPPORT / 'menubar.log'
+_resolve_pid_output_file = _bg_timer_mod._resolve_pid_output_file
+_menubar_log_mod = importlib.import_module('src.menubar.menubar_log')
 
 _HOLD_DURATION = 20
+_POLL_DEADLINE_SECS = 10.0
+_POLL_INTERVAL_SECS = 0.05
 
 
 # ORCHESTRATOR
@@ -26,10 +29,11 @@ def test_abort_stamp_scope_workflow() -> None:
     tmp = Path(tempfile.mkdtemp(prefix='abort_stamp_scope_'))
     proc_killed = None
     proc_live = None
+    scratch_log = tmp / 'menubar.log'
     try:
-        paths, proc_killed, proc_live = _spawn_test_fixtures(tmp)
-        log_size_before = _MENUBAR_LOG.stat().st_size if _MENUBAR_LOG.exists() else 0
-        _run_abort_and_checks(failures, proc_killed, proc_live, paths, log_size_before)
+        with patch.object(_menubar_log_mod, 'MENUBAR_LOG', scratch_log):
+            paths, proc_killed, proc_live = _spawn_test_fixtures(tmp)
+            _run_abort_and_checks(failures, proc_killed, proc_live, paths, scratch_log)
     finally:
         _teardown_fixtures(tmp, proc_killed, proc_live)
     _print_summary(failures)
@@ -58,13 +62,23 @@ def _spawn_test_fixtures(tmp: Path):
 
     proc_killed = _spawn_holding_output(killed_file)
     proc_live = _spawn_holding_output(live_file)
-    time.sleep(0.3)
+    _wait_until_resolvable(proc_killed.pid)
+    _wait_until_resolvable(proc_live.pid)
 
     paths = {'killed_file': killed_file, 'foreign_file': foreign_file, 'live_file': live_file}
     return paths, proc_killed, proc_live
 
 
-def _run_abort_and_checks(failures, proc_killed, proc_live, paths, log_size_before):
+def _wait_until_resolvable(pid: int) -> None:
+    deadline = time.monotonic() + _POLL_DEADLINE_SECS
+    while time.monotonic() < deadline:
+        if _resolve_pid_output_file(pid) is not None:
+            return
+        time.sleep(_POLL_INTERVAL_SECS)
+    raise RuntimeError(f'output file of pid {pid} not visible to lsof within {_POLL_DEADLINE_SECS}s')
+
+
+def _run_abort_and_checks(failures, proc_killed, proc_live, paths, scratch_log):
     killed_file = paths['killed_file']
     foreign_file = paths['foreign_file']
     live_file = paths['live_file']
@@ -87,7 +101,7 @@ def _run_abort_and_checks(failures, proc_killed, proc_live, paths, log_size_befo
     _check(failures, "live wait's process in another session still alive",
            proc_live.poll() is None, f"poll={proc_live.poll()}")
 
-    new_log_tail = _MENUBAR_LOG.read_text()[log_size_before:] if _MENUBAR_LOG.exists() else ''
+    new_log_tail = scratch_log.read_text() if scratch_log.exists() else ''
     _check(failures, "[abort] log line lists only the stamped file",
            str(killed_file) in new_log_tail
            and str(foreign_file) not in new_log_tail
