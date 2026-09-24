@@ -6,8 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dev.proxy.proxy_start_sandbox import diff_report, drop_launcher_log_lines, make_case_dir, run_variant  # noqa: E402
-from dev.refactoring.strand_runner import strand_workflow  # noqa: E402
+from dev.proxy.proxy_start_sandbox import diff_report, drop_launcher_log_lines, make_case_dir, run_variant
+from dev.refactoring.strand_runner import strand_workflow
 
 REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'verify_proxy_start_equivalence.md'
 CASES = {

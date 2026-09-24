@@ -62,17 +62,7 @@ def scan_all_files(jsonl_files):
                 parse_errors += 1
                 continue
 
-            msg_type = msg.get('type', 'missing')
-            top_level_types[msg_type] += 1
-
-            if msg_type not in KNOWN_TOP_LEVEL_TYPES and msg_type not in unknown_top:
-                unknown_top[msg_type] = {
-                    'file': filepath.name,
-                    'example': line[:200],
-                }
-
-            extract_content_block_types(msg, msg_type, content_block_types, unknown_content, filepath)
-            collect_version(msg, version_counter)
+            _record_message(msg, line, filepath, top_level_types, unknown_top, content_block_types, unknown_content, version_counter)
 
     return {
         'files_scanned': len(jsonl_files),
@@ -85,6 +75,20 @@ def scan_all_files(jsonl_files):
         'unknown_content': unknown_content,
         'versions': version_counter,
     }
+
+
+def _record_message(msg, line, filepath, top_level_types, unknown_top, content_block_types, unknown_content, version_counter):
+    msg_type = msg.get('type', 'missing')
+    top_level_types[msg_type] += 1
+
+    if msg_type not in KNOWN_TOP_LEVEL_TYPES and msg_type not in unknown_top:
+        unknown_top[msg_type] = {
+            'file': filepath.name,
+            'example': line[:200],
+        }
+
+    extract_content_block_types(msg, msg_type, content_block_types, unknown_content, filepath)
+    collect_version(msg, version_counter)
 
 
 def extract_content_block_types(msg, msg_type, counter, unknown_dict, filepath):
