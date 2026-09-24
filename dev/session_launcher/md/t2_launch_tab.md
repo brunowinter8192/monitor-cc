@@ -1,13 +1,13 @@
 # t2_launch_tab report
 
-- time: 2026-09-24 20:39:50
+- time: 2026-09-24 20:42:34
 - every case ran in its own subprocess, all cases in parallel
 
 | case | result | detail |
 |---|---|---|
 | click_handling | PASS | no desktop -> ignored; busy -> ignored; occupied desktop 2 -> launched; free desktop 4 -> launch(4, '/Users/brunowinter2000/Documents/wise2627'), panel closed; bad index ignored |
 | headers | PASS | {"sessions": "[Sessions] · RAG · Models · Launch", "rag": "Sessions · [RAG] · Models · Launch", "models": "Sessions · RAG · [Models] · Launch", "launch": "Sessions · RAG · Models · [Launch]"} |
-| occupied_marking | PASS | enabled {1: True, 2: True, 3: True, 4: True, 5: True}, titles {1: ' 1* ', 2: ' 2 ', 3: ' 3* ', 4: ' 4 ', 5: ' 5 '}, select occupied 1 -> [1*], select 2 -> [2], select 7 ignored |
+| occupied_marking | PASS | enabled {1: True, 2: True, 3: True, 4: True, 5: True}, titles {1: ' 1* ', 2: ' 2 ', 3: ' 3* ', 4: ' 4 ', 5: ' 5 '}, row = 5 buttons only at x=0..160, select occupied 1 -> [1*], select 2 -> [2], select 7 ignored |
 | project_rows | PASS | 10 rows in order: ['gh-cli', 'reddit-cli', 'websearch', 'rag-cli', 'iterative-dev', 'trading', 'trading_ai', 'monitor-cc', 'general', 'wise2627'] |
 | request_on_open | PASS | open() requests once on the main thread and logs when missing; granted -> silent; click/launch path never requests |
 | space_switch_units | PASS | no PostEvent -> switch path raises without requesting; request function requests once and returns False | PostEvent granted -> no request, returns True | desktop -> space id for 1..5; missing and ambiguous desktop raise | hotkey key codes 18,19,20,21,23 down+up | wait_until_active: returns on target, raises switch_timeout otherwise |

@@ -135,6 +135,9 @@ def _case_occupied_marking() -> str:
     titles = {d: _title(b) for d, b in ctl._desktop_btns.items()}
     assert enabled == {1: True, 2: True, 3: True, 4: True, 5: True}, f'enabled {enabled}'
     assert titles == {1: ' 1* ', 2: ' 2 ', 3: ' 3* ', 4: ' 4 ', 5: ' 5 '}, f'titles {titles}'
+    row = ctl._desktop_btns[1].superview()
+    assert len(row.subviews()) == 5, f'desktop row has {len(row.subviews())} subviews, want only the 5 buttons'
+    assert sorted(round(v.frame().origin.x) for v in row.subviews()) == [0, 40, 80, 120, 160], 'buttons not starting at x=0'
     ctl.handle_select_desktop(1)
     assert ctl._selected_desktop == 1, 'occupied desktop was refused'
     assert _title(ctl._desktop_btns[1]) == '[1*]', _title(ctl._desktop_btns[1])
@@ -144,7 +147,7 @@ def _case_occupied_marking() -> str:
     assert _title(ctl._desktop_btns[1]) == ' 1* ', 'star lost after deselect'
     ctl.handle_select_desktop(7)
     assert ctl._selected_desktop == 2, 'desktop outside 1-5 changed the selection'
-    return f'enabled {enabled}, titles {titles}, select occupied 1 -> [1*], select 2 -> [2], select 7 ignored'
+    return f'enabled {enabled}, titles {titles}, row = 5 buttons only at x=0..160, select occupied 1 -> [1*], select 2 -> [2], select 7 ignored'
 
 def _case_tick_and_selection() -> str:
     lc = _imp('launch_controller')

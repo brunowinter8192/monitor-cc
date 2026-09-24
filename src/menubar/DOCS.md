@@ -269,9 +269,9 @@ root) — this package only consumes those.
 
 ---
 
-### launch_panel_ui.py (116 LOC)
+### launch_panel_ui.py (110 LOC)
 
-**Purpose:** NSPanel factory, reposition helper and button/row factories for the Launch tab (desktop selector row, project rows labeled by their last path component).
+**Purpose:** NSPanel factory, reposition helper and button/row factories for the Launch tab (a row of the five desktop buttons without a label, project rows labeled by their last path component).
 **Reads:** nothing — pure AppKit object factories.
 **Writes:** nothing — returns constructed NSPanel/NSView/NSButton objects to callers.
 **Called by:** `launch_controller.py`, `panel_lifecycle.py`.

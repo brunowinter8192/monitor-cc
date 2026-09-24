@@ -11,11 +11,9 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
 from Foundation import NSMakeRect, NSMakeSize
 
 from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
-from .panel import _TOP_BAR_H, _ROW_H, _MENLO, _CursorlessButton, _CursorlessLabel, _KeyablePanel
+from .panel import _TOP_BAR_H, _ROW_H, _MENLO, _CursorlessButton, _KeyablePanel
 
-_DESKTOP_LABEL_W = 170
 _DESKTOP_BTN_W   = 40
-_DESKTOP_LABEL   = 'Desktop (* = main session)'
 
 # FUNCTIONS
 
@@ -90,14 +88,10 @@ def _make_desktop_button(desktop: int, occupied: bool, selected: bool, x: float,
 def _make_desktop_row(pw: int, desktops, occupied, selected, target):
     row = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw - 22, _ROW_H))
     row.heightAnchor().constraintEqualToConstant_(float(_ROW_H)).setActive_(True)
-    label = _CursorlessLabel.labelWithString_('')
-    label.setFrame_(NSMakeRect(0, 0, _DESKTOP_LABEL_W, _ROW_H - 3))
-    label.setAttributedStringValue_(_styled_title(_DESKTOP_LABEL))
-    row.addSubview_(label)
     buttons = {}
     for i, desktop in enumerate(desktops):
         btn = _make_desktop_button(desktop, desktop in occupied, desktop == selected,
-                                   _DESKTOP_LABEL_W + i * _DESKTOP_BTN_W, target)
+                                   i * _DESKTOP_BTN_W, target)
         row.addSubview_(btn)
         buttons[desktop] = btn
     return row, buttons

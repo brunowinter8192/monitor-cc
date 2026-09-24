@@ -190,19 +190,23 @@ What is known and unknown about the prompt:
   That the thread was the cause is a HYPOTHESIS; the main-thread call was chosen because it is the conventional
   and safest place, not because it was shown to matter.
 - Not testable in the dev process: `python` holds all four grants (Run 0), so the request returns immediately without a prompt.
-- A probe is prepared but NOT run (needs the user watching the screen and no other permission work in progress):
-  `dev/session_launcher/s3_postevent_prompt_probe.py` builds two ad-hoc signed accessory NSApplication stub bundles with
-  their own bundle ids (`com.brunowinter.spaceprobe.postevent.main` / `.bg`), starts each via `open -n` for 55 s, and each
-  calls the request once (main thread vs global queue) and logs preflight state. The user reports whether a prompt appeared
-  per stub; the report shows return values and preflight over time; `tccutil reset` cleans both stub ids afterwards.
-  `--build-only` compiles both stubs without running them (verified to build, 2026-09-24).
-- Result to expect if the hypothesis is wrong (also a hypothesis): neither stub prompts, then PostEvent cannot be requested
-  programmatically for such a bundle and the user has to add the app under Privacy & Security -> Accessibility by hand
-  (the user was doing exactly that at 2026-09-24 20:38).
+- A probe (two stub apps calling the request from the main thread vs a background queue) was written and then DELETED
+  unrun on the user's decision (the user grants the permission manually). The question stays open; no evidence exists
+  either way about the thread.
+- Possible outcome (hypothesis): PostEvent cannot be requested programmatically for such a bundle and the user has to add the app
+  under Privacy & Security -> Accessibility by hand (the user was doing exactly that at 2026-09-24 20:38).
 
 Tests updated (`t2_launch_tab.py`, now ten cases, all PASS on 2026-09-24): occupied desktops are enabled and selectable
 (titles above), selection survives an occupied-set change, a click on an occupied desktop launches, project rows are basenames,
 `open()` requests exactly once on the main thread and logs when missing (silent when granted), the click/launch path never
 requests, the switch path raises without requesting. `t1_autojump_removal.py` still 7/7 PASS. Not re-run this time:
 `dev/model_selector/verify_four_tab_ring.py` (it builds real NSPanels; its DOCS caveat says do not run it unannounced).
+
+## Second follow-up (2026-09-24)
+
+- Prompt probe deleted (`s3_postevent_prompt_probe.py` and its `.m` stub, plus the DOCS entries); nothing was ever run from it.
+- The label `Desktop (* = main session)` in front of the desktop buttons is removed; the row is only the buttons 1-5, starting at x=0
+  (40 px each). The `*` meaning is no longer explained in the UI. `t2` occupied_marking asserts the row has exactly five subviews at x=0,40,80,120,160.
+- Tool guard lesson: a shell call containing a recursive grep without `--include` is rejected as a whole, so earlier commands in the
+  same call did not run either. After any rejected call, re-check what actually landed (`git status`).
 
