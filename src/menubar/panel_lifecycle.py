@@ -7,8 +7,9 @@ from .panel import _reposition_panel
 from .rag_controller import _reposition_rag_panel
 from .model_panel_ui import _reposition_models_panel
 from .launch_panel_ui import _reposition_launch_panel
+from .panel_tabs import TAB_KEYS
 
-_RING = ('main', 'rag', 'models', 'launch')
+_RING = TAB_KEYS
 
 # FUNCTIONS
 

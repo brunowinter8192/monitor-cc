@@ -14,10 +14,9 @@ from AppKit import (NSAttributedString, NSFontAttributeName,
                     NSWindowStyleMaskNonactivatingPanel, NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSMakeSize
 
-from .panel_tabs import tab_header_text
 from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
 from .panel import (_TOP_BAR_H, _LABEL_H, _MENLO,
-                    _CursorlessButton, _KeyablePanel,
+                    _KeyablePanel, _make_tab_header,
                     _make_line_separator, _make_header_label)
 
 _RAG_LOCK    = Path.home() / '.rag-locks' / 'rag.lock'
@@ -42,12 +41,8 @@ def _make_rag_nspanel():
     top_bar = NSView.alloc().initWithFrame_(
         NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
     top_bar.setAutoresizingMask_(10)
-    header_btn = _CursorlessButton.alloc().initWithFrame_(
-        NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
-    header_btn.setBordered_(False)
-    header_btn.setButtonType_(7)
-    header_btn.setAutoresizingMask_(2)
-    top_bar.addSubview_(header_btn)
+    header = _make_tab_header('RAG', PANEL_WIDTH)
+    top_bar.addSubview_(header)
     cv.addSubview_(top_bar)
     stack_h = PANEL_HEIGHT - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, stack_h))
@@ -57,7 +52,7 @@ def _make_rag_nspanel():
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)
     cv.addSubview_(stack)
-    return panel, stack, header_btn
+    return panel, stack, header
 
 def _reposition_rag_panel(panel, nsstatusitem) -> None:
     btn_win = nsstatusitem.button().window()
@@ -129,7 +124,7 @@ class RagController:
     def __init__(self, app) -> None:
         self.app = app
         self._rag_open: bool = False
-        self._rag_panel, self._rag_sv, self._rag_header_btn = _make_rag_nspanel()
+        self._rag_panel, self._rag_sv, self._rag_header = _make_rag_nspanel()
         self._rag_status_label = None
 
     def tick(self, sessions) -> None:
@@ -146,10 +141,6 @@ class RagController:
             self._rag_sv.removeView_(sv)
             sv.removeFromSuperview()
         pw = app.settings.panel_width
-        self._rag_header_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                tab_header_text('RAG'),
-                {NSFontAttributeName: _MENLO()}))
         required_h = _TOP_BAR_H + _LABEL_H + _LABEL_H
         self._resize_rag_panel(max(app.settings.panel_min_height, required_h))
         self._rag_sv.addView_inGravity_(_make_line_separator(pw), 1)

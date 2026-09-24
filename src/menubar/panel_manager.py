@@ -14,18 +14,17 @@ from .panel import (
     _project_desktop_no, _compute_required_height,
     _make_line_separator, _make_header_label, _make_separator_view,
     _make_grid_cell_btn, _format_bg_badge)
-from .panel_tabs import tab_header_text
 from .panel_grid import (_GRID_COL0_W, _GRID_COL1_W, _GRID_COL3_W, _GRID_COL4_W,
                          _GRID_COL5_W, _GRID_COL6_W, _GRID_COL_SPC)
 
 # FUNCTIONS
 
 class _PanelWidgets:
-    def __init__(self, panel, stack, quit_btn, header_btn, kill_btn):
+    def __init__(self, panel, stack, quit_btn, header_view, kill_btn):
         self.panel = panel
         self.stack = stack
         self.quit_btn = quit_btn
-        self.header_btn = header_btn
+        self.header_view = header_view
         self.kill_btn = kill_btn
 
 class _PanelLookups:
@@ -94,7 +93,6 @@ class PanelManager:
         sorted_sessions = _sorted_sessions(sessions)
         required_h = _compute_required_height(sorted_sessions)
         self._resize_panel(max(self.app.settings.panel_min_height, required_h))
-        self._set_header_title()
         stack.addView_inGravity_(_make_line_separator(pw), 1)
         if not sorted_sessions:
             stack.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
@@ -103,12 +101,6 @@ class PanelManager:
         self._populate_grid(grid, sorted_sessions, bg_by_project)
         stack.addView_inGravity_(grid, 1)
         grid.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
-
-    def _set_header_title(self) -> None:
-        self._widgets.header_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                tab_header_text('Sessions'),
-                {NSFontAttributeName: _MENLO()}))
 
     def _populate_grid(self, grid, sorted_sessions, bg_by_project) -> None:
         empty = NSGridCell.emptyContentView()

@@ -29,7 +29,6 @@ def main() -> None:
         ('save writes only panel_width and panel_min_height', _check_save_drops_key),
         ('FocusController keeps status tracking, has no tick', _check_focus_controller),
         ('PanelSettings has two fields, controller has no toggle action', _check_app_surface),
-        ('header buttons carry no target and no action', _check_header_buttons_static),
     ]
     results = [_run_check(name, fn) for name, fn in checks]
     path = write_report(__file__, _build_report(results))
@@ -119,25 +118,6 @@ def _check_app_surface() -> str:
     assert fields == ['panel_min_height', 'panel_width'], f'fields {fields}'
     assert not hasattr(mod._PanelController, 'toggle' + 'AutoJump_'), 'toggle action still present'
     return f'PanelSettings fields {fields}'
-
-def _check_header_buttons_static() -> str:
-    pm = importlib.import_module('src.menubar.panel_manager')
-    rc = importlib.import_module('src.menubar.rag_controller')
-    mc = importlib.import_module('src.menubar.model_controller')
-    app = _FakeApp()
-    widgets = pm.PanelManager(app)._widgets
-    rag = rc.RagController(app)
-    models = mc.ModelController(app)
-    for name, btn in (('sessions', widgets.header_btn), ('rag', rag._rag_header_btn), ('models', models._models_header_btn)):
-        assert btn.target() is None, f'{name} header has a target'
-        assert btn.action() is None, f'{name} header has an action'
-    return 'sessions, rag, models header buttons: target None, action None'
-
-class _FakeApp:
-    def __init__(self):
-        from types import SimpleNamespace
-        self.settings = SimpleNamespace(panel_width=380, panel_min_height=460)
-        self._panel_controller = None
 
 def _build_report(results) -> str:
     lines = ['# t1_autojump_removal report', '', f'- time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', '',

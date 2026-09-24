@@ -11,7 +11,7 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
 from Foundation import NSMakeRect, NSMakeSize
 
 from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
-from .panel import _TOP_BAR_H, _ROW_H, _MENLO, _CursorlessButton, _KeyablePanel
+from .panel import _TOP_BAR_H, _ROW_H, _MENLO, _CursorlessButton, _KeyablePanel, _make_tab_header
 
 _DESKTOP_BTN_W   = 40
 
@@ -34,12 +34,8 @@ def _make_launch_nspanel():
     top_bar = NSView.alloc().initWithFrame_(
         NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
     top_bar.setAutoresizingMask_(10)
-    header_btn = _CursorlessButton.alloc().initWithFrame_(
-        NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
-    header_btn.setBordered_(False)
-    header_btn.setButtonType_(7)
-    header_btn.setAutoresizingMask_(2)
-    top_bar.addSubview_(header_btn)
+    header = _make_tab_header('Launch', PANEL_WIDTH)
+    top_bar.addSubview_(header)
     cv.addSubview_(top_bar)
     stack_h = PANEL_HEIGHT - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, stack_h))
@@ -49,7 +45,7 @@ def _make_launch_nspanel():
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)
     cv.addSubview_(stack)
-    return panel, stack, header_btn
+    return panel, stack, header
 
 def _reposition_launch_panel(panel, nsstatusitem) -> None:
     btn_win = nsstatusitem.button().window()
