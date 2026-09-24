@@ -14,7 +14,7 @@ _EXPECTED_PROJECTS = [
     '/Users/brunowinter2000/Documents/general',
     '/Users/brunowinter2000/Documents/wise2627',
 ]
-_ROOT_DIR = '/Users/brunowinter2000/Documents/ai/monitor-cc'
+_ROOT_DIR = '/fake/monitor-cc-root'
 
 # FUNCTIONS
 

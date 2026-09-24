@@ -106,4 +106,4 @@ def _case_isolation() -> str:
     sd.discover_skills_workflow('/nonexistent/project')
     text = log_mod.MENUBAR_LOG.read_text() if log_mod.MENUBAR_LOG.exists() else ''
     assert 'settings_unreadable' in text, f'log {text!r}'
-    return f'CLAUDE_DIR={sd.CLAUDE_DIR} and MENUBAR_LOG under the isolated home; discovery log line landed there'
+    return f'CLAUDE_DIR=<home>/{sd.CLAUDE_DIR.relative_to(home)} and MENUBAR_LOG under the isolated home; discovery log line landed there'

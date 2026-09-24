@@ -1,6 +1,5 @@
 # t3_tab_click report
 
-- time: 2026-09-24 22:33:38
 - every case ran in its own subprocess with an isolated HOME, all cases in parallel
 - no panel is shown and no real mouse event is sent; clicks use NSButton.performClick_ on unshown panels
 

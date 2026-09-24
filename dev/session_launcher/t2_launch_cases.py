@@ -178,4 +178,4 @@ def _case_log_isolation() -> str:
     ctl.handle_select_desktop(7)
     text = log_mod.MENUBAR_LOG.read_text()
     assert 'reason=not_a_launch_desktop' in text, f'log text {text!r}'
-    return f'launch log line landed in {log_mod.MENUBAR_LOG}'
+    return f'launch log line landed in <home>/{log_mod.MENUBAR_LOG.relative_to(home)}'
