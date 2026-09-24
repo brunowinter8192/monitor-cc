@@ -63,7 +63,7 @@ def _bg_by_project():
 
 class _FakeApp:
     def __init__(self):
-        self.settings = SimpleNamespace(panel_width=422, panel_min_height=460, auto_focus=False)
+        self.settings = SimpleNamespace(panel_width=422, panel_min_height=460)
         from Foundation import NSObject
 
         class _FakePanelController(NSObject):

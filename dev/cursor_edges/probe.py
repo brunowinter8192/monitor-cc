@@ -118,7 +118,7 @@ def _log_signal_guide() -> None:
             _log('  StackView   : LEFT + RIGHT (full local height)')
             _log('  FooterView  : LEFT + RIGHT (full local height) + BOTTOM (full width)')
             _log('  TopBarView  : LEFT + RIGHT (full local height, no top)')
-            _log('  Button      : LEFT if frame.origin.x < EDGE (Auto-Jump, session rows)')
+            _log('  Button      : LEFT if frame.origin.x < EDGE (header, session rows)')
         _log('Signals to watch (cursor-rect mode):')
         _log('  resetCursorRects — which views install rects (fires on activate + resize)')
         _log('  cursorUpdate_    — which view WINS the cursor race (fires last)')

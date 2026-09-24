@@ -93,7 +93,7 @@ def _add_top_bar(cv):
         NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
     toggle_btn.setBordered_(False)
     toggle_btn.setButtonType_(7)
-    toggle_btn.setTitle_('Auto-Jump: ON')
+    toggle_btn.setTitle_('Header')
     toggle_btn.setAutoresizingMask_(2)
     top_bar.addSubview_(toggle_btn)
 

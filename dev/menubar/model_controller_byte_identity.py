@@ -121,7 +121,7 @@ def _hash_ui(mc) -> str:
 
     class _FakeApp:
         def __init__(self):
-            self.settings = SimpleNamespace(panel_width=422, panel_min_height=460, auto_focus=False)
+            self.settings = SimpleNamespace(panel_width=422, panel_min_height=460)
             self._panel_controller = _FakePanelController.alloc().init()
 
     digest = hashlib.sha256()
@@ -150,7 +150,7 @@ def _smoke_import_and_open(mc) -> None:
 
     class _FakeApp:
         def __init__(self):
-            self.settings = SimpleNamespace(panel_width=422, panel_min_height=460, auto_focus=False)
+            self.settings = SimpleNamespace(panel_width=422, panel_min_height=460)
             self._panel_controller = _FakePanelController.alloc().init()
 
     controller = mc.ModelController(_FakeApp())

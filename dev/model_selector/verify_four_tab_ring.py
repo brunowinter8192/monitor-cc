@@ -11,26 +11,27 @@ from Foundation import NSMakeRect
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_three_tab_ring.md"
+REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_four_tab_ring.md"
 
 # ORCHESTRATOR
 
-def verify_three_tab_ring_workflow() -> None:
+def verify_four_tab_ring_workflow() -> None:
     panel_manager   = _imp('src.menubar.panel_manager')
     rag_controller  = _imp('src.menubar.rag_controller')
     model_controller = _imp('src.menubar.model_controller')
+    launch_controller = _imp('src.menubar.launch_controller')
     panel_lifecycle = _imp('src.menubar.panel_lifecycle')
 
-    lines = [f"# Models tab — three-tab ring verification — {datetime.now().isoformat(timespec='seconds')}", ""]
+    lines = [f"# Four-tab ring verification — {datetime.now().isoformat(timespec='seconds')}", ""]
 
-    app = _FakeApp(panel_manager, rag_controller, model_controller)
+    app = _FakeApp(panel_manager, rag_controller, model_controller, launch_controller)
 
     with patch('src.menubar.panel_lifecycle.NSOperationQueue', _SyncOperationQueue):
         _verify_forward_ring(app, panel_lifecycle, lines)
         _verify_reverse_ring(app, panel_lifecycle, lines)
 
     lines.append("")
-    lines.append("RESULT: PASS — three-tab ring (Sessions/RAG/Models) correct in both directions, "
+    lines.append("RESULT: PASS — four-tab ring (Sessions/RAG/Models/Launch) correct in both directions, "
                 "against the real _open_*_panel/_close_*_panel/_deferred_close_open functions.")
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -39,39 +40,30 @@ def verify_three_tab_ring_workflow() -> None:
 
 # FUNCTIONS
 
+def _only_open(app, name) -> bool:
+    flags = {'main': app.panel._panel_open, 'rag': app.rag._rag_open,
+             'models': app.models._models_open, 'launch': app.launch._launch_open}
+    return flags[name] and sum(flags.values()) == 1
+
 def _verify_forward_ring(app, panel_lifecycle, lines) -> None:
-    lines.append("## Forward: Sessions -> RAG -> Models -> Sessions (Cmd+->)")
+    lines.append("## Forward: Sessions -> RAG -> Models -> Launch -> Sessions (Cmd+->)")
     panel_lifecycle._open_main_panel(app)
-    assert app.panel._panel_open and not app.rag._rag_open and not app.models._models_open
-    lines.append(f"open main: panel_open={app.panel._panel_open}")
+    assert _only_open(app, 'main')
+    lines.append("open main: only main open")
 
-    app.hotkey.right()
-    assert not app.panel._panel_open and app.rag._rag_open and not app.models._models_open
-    lines.append("Cmd+-> from main: now on rag")
-
-    app.hotkey.right()
-    assert not app.rag._rag_open and app.models._models_open
-    lines.append("Cmd+-> from rag: now on models")
-
-    app.hotkey.right()
-    assert app.panel._panel_open and not app.models._models_open
-    lines.append("Cmd+-> from models: back on main (ring closes)")
+    for src, dst in (('main', 'rag'), ('rag', 'models'), ('models', 'launch'), ('launch', 'main')):
+        app.hotkey.right()
+        assert _only_open(app, dst), f"Cmd+-> from {src} did not land on {dst}"
+        lines.append(f"Cmd+-> from {src}: now on {dst}")
 
     lines.append("")
 
 def _verify_reverse_ring(app, panel_lifecycle, lines) -> None:
-    lines.append("## Reverse: Sessions -> Models -> RAG -> Sessions (Cmd+<-)")
-    app.hotkey.left()
-    assert app.models._models_open and not app.panel._panel_open
-    lines.append("Cmd+<- from main: now on models")
-
-    app.hotkey.left()
-    assert app.rag._rag_open and not app.models._models_open
-    lines.append("Cmd+<- from models: now on rag")
-
-    app.hotkey.left()
-    assert app.panel._panel_open and not app.rag._rag_open
-    lines.append("Cmd+<- from rag: back on main (ring closes)")
+    lines.append("## Reverse: Sessions -> Launch -> Models -> RAG -> Sessions (Cmd+<-)")
+    for src, dst in (('main', 'launch'), ('launch', 'models'), ('models', 'rag'), ('rag', 'main')):
+        app.hotkey.left()
+        assert _only_open(app, dst), f"Cmd+<- from {src} did not land on {dst}"
+        lines.append(f"Cmd+<- from {src}: now on {dst}")
 
 def _imp(module_name: str):
     return importlib.import_module(module_name)
@@ -117,8 +109,8 @@ class _SyncOperationQueue:
         block()
 
 class _FakeApp:
-    def __init__(self, panel_manager, rag_controller, model_controller):
-        self.settings = SimpleNamespace(panel_width=380, panel_min_height=460, auto_focus=False)
+    def __init__(self, panel_manager, rag_controller, model_controller, launch_controller):
+        self.settings = SimpleNamespace(panel_width=380, panel_min_height=460)
         self._panel_controller = None
         self._nsapp = _FakeNSApp()
         self.hotkey = _FakeHotkey()
@@ -126,7 +118,8 @@ class _FakeApp:
         self.panel  = panel_manager.PanelManager(self)
         self.rag    = rag_controller.RagController(self)
         self.models = model_controller.ModelController(self)
+        self.launch = launch_controller.LaunchController(self)
 
 
 if __name__ == "__main__":
-    verify_three_tab_ring_workflow()
+    verify_four_tab_ring_workflow()

@@ -7,6 +7,7 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
 from Foundation import NSMakeRect, NSOperationQueue
 
 from .panel import _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator
+from .panel_tabs import tab_header_text
 from .model_selection import _PendingSelection, _thinking_is_enabled
 from .model_panel_ui import (_make_models_nspanel, _make_model_row_btn, _make_apply_btn,
                              _APPLY_BTN_W, _APPLY_SUCCESS_TITLE, _APPLY_SUCCESS_W,
@@ -94,7 +95,7 @@ class ModelController:
     def __init__(self, app) -> None:
         self.app = app
         self._models_open: bool = False
-        self._models_panel, self._models_sv, self._models_toggle_btn = _make_models_nspanel()
+        self._models_panel, self._models_sv, self._models_header_btn = _make_models_nspanel()
         self._pending = _PendingSelection()
         self._pending.load()
         self._buttons = _ModelRowButtons()
@@ -108,11 +109,10 @@ class ModelController:
         for sv in list(self._models_sv.arrangedSubviews()):
             self._models_sv.removeView_(sv)
             sv.removeFromSuperview()
-        pw    = app.settings.panel_width
-        state = 'ON' if app.settings.auto_focus else 'OFF'
-        self._models_toggle_btn.setAttributedTitle_(
+        pw = app.settings.panel_width
+        self._models_header_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
-                f'Sessions · RAG · [Models]     Auto-Jump: {state}',
+                tab_header_text('Models'),
                 {NSFontAttributeName: _MENLO()}))
         required_h = _TOP_BAR_H + _LABEL_H + 8 * _ROW_H + 22
         self._resize_models_panel(max(app.settings.panel_min_height, required_h))

@@ -20,18 +20,16 @@ from .hotkey_controller import HotkeyController, register_cmd_l, register_cmd_k
 from .menubar_log import log_menubar
 from .bar_icons import ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET
 from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
-from .panel import _MENLO
 from .panel_manager import PanelManager
 from .rag_controller import RagController
 from .model_controller import ModelController
+from .launch_controller import LaunchController
 from .monitor_sweep_scheduler import maybe_run_sweep_workflow
 from .system import _focus_session, _focus_worker, _open_or_focus_monitor
 from .sessions_controller import SessionsController
 from .app_settings import _load_settings, _save_settings
-from .panel_lifecycle import (_open_main_panel, _close_main_panel,
-                               _open_rag_panel, _close_rag_panel,
-                               _open_models_panel, _close_models_panel,
-                               _deferred_close_open, _background_panel)
+from .panel_lifecycle import (_open_main_panel, _open_tab_name, _close_panel,
+                               _panel_of, _background_panel)
 
 BLINK_DURATION = 0.2
 POLL_INTERVAL  = 1.5
@@ -49,27 +47,18 @@ class _PanelController(NSObject):
 
     def togglePanel_(self, sender):
         app = self._app
+        open_tab = _open_tab_name(app)
         if app.panel._panel_backgrounded:
-            if app.panel._panel_open:
-                app.panel._widgets.panel.orderFrontRegardless()
-            elif app.rag._rag_open:
-                app.rag._rag_panel.orderFrontRegardless()
-            elif app.models._models_open:
-                app.models._models_panel.orderFrontRegardless()
+            if open_tab is not None:
+                _panel_of(app, open_tab).orderFrontRegardless()
             app.panel._panel_backgrounded = False
             return
-        if app.rag._rag_open:
-            _close_rag_panel(app)
+        if open_tab is not None:
+            _close_panel(app, open_tab)
             return
-        if app.models._models_open:
-            _close_models_panel(app)
-            return
-        if app.panel._panel_open:
-            _close_main_panel(app)
-        else:
-            app.settings.panel_width = PANEL_WIDTH
-            app.settings.panel_min_height = PANEL_HEIGHT
-            _open_main_panel(app)
+        app.settings.panel_width = PANEL_WIDTH
+        app.settings.panel_min_height = PANEL_HEIGHT
+        _open_main_panel(app)
 
     def focusSession_(self, sender):
         cwd = self._app.panel._lookups.cwd_map.get(sender.tag())
@@ -86,23 +75,11 @@ class _PanelController(NSObject):
         if cwd:
             _open_or_focus_monitor(cwd)
 
-    def toggleAutoJump_(self, sender):
-        app = self._app
-        app.settings.auto_focus = not app.settings.auto_focus
-        _save_settings(app.settings.auto_focus, app.settings.panel_width, app.settings.panel_min_height)
-        state = 'ON' if app.settings.auto_focus else 'OFF'
-        app.panel._widgets.toggle_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'[Sessions] \u00b7 RAG \u00b7 Models     Auto-Jump: {state}',
-                {NSFontAttributeName: _MENLO()}))
-        app.rag._rag_toggle_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'Sessions \u00b7 [RAG] \u00b7 Models     Auto-Jump: {state}',
-                {NSFontAttributeName: _MENLO()}))
-        app.models._models_toggle_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'Sessions \u00b7 RAG \u00b7 [Models]     Auto-Jump: {state}',
-                {NSFontAttributeName: _MENLO()}))
+    def selectDesktop_(self, sender):
+        self._app.launch.handle_select_desktop(sender.tag())
+
+    def launchProject_(self, sender):
+        self._app.launch.handle_launch_project(sender.tag())
 
     def killApp_(self, sender):
         uid = os.getuid()
@@ -174,7 +151,7 @@ class _PanelController(NSObject):
         app   = self._app
         app.settings.panel_width      = int(max(frame.size.width,  PANEL_MIN_WIDTH))
         app.settings.panel_min_height = int(max(frame.size.height, PANEL_MIN_HEIGHT))
-        _save_settings(app.settings.auto_focus, app.settings.panel_width, app.settings.panel_min_height)
+        _save_settings(app.settings.panel_width, app.settings.panel_min_height)
 
     def windowDidEndLiveResize_(self, notification):
         app = self._app
@@ -182,6 +159,8 @@ class _PanelController(NSObject):
             app.rag.rebuild()
         elif app.models._models_open:
             app.models.rebuild()
+        elif app.launch._launch_open:
+            app.launch.rebuild()
         elif app.panel._panel_open:
             sessions = app.sessions.refresh()
             bg_by_project = app.sessions.bg_by_project
@@ -190,8 +169,7 @@ class _PanelController(NSObject):
 
 
 class PanelSettings:
-    def __init__(self, auto_focus: bool, panel_width: int, panel_min_height: int):
-        self.auto_focus = auto_focus
+    def __init__(self, panel_width: int, panel_min_height: int):
         self.panel_width = panel_width
         self.panel_min_height = panel_min_height
 
@@ -226,6 +204,7 @@ class CCMenuBarApp(rumps.App):
         self.hotkey.global_handles = (cmd_l_cb, cmd_l_ref, cmd_k_cb, cmd_k_ref)
         self.rag    = RagController(self)
         self.models = ModelController(self)
+        self.launch = LaunchController(self)
         self.sessions = SessionsController(self)
         start_discovery_worker()
 
@@ -241,15 +220,10 @@ class CCMenuBarApp(rumps.App):
             self.panel._widgets.quit_btn.setAction_(b'restartApp:')
             self.panel._widgets.kill_btn.setTarget_(self._panel_controller)
             self.panel._widgets.kill_btn.setAction_(b'killApp:')
-            self.panel._widgets.toggle_btn.setTarget_(self._panel_controller)
-            self.panel._widgets.toggle_btn.setAction_(b'toggleAutoJump:')
             self.panel._widgets.panel.setDelegate_(self._panel_controller)
             self.rag._rag_panel.setDelegate_(self._panel_controller)
-            self.rag._rag_toggle_btn.setTarget_(self._panel_controller)
-            self.rag._rag_toggle_btn.setAction_(b'toggleAutoJump:')
             self.models._models_panel.setDelegate_(self._panel_controller)
-            self.models._models_toggle_btn.setTarget_(self._panel_controller)
-            self.models._models_toggle_btn.setAction_(b'toggleAutoJump:')
+            self.launch._launch_panel.setDelegate_(self._panel_controller)
             _set_bar_icon(self, ICON_NORMAL)
             self.panel._initialized = True
             return True
@@ -302,11 +276,11 @@ class CCMenuBarApp(rumps.App):
             bg_by_project = {}
         phases['snapshot_consume'] = time.monotonic() - _p0
         _p0 = time.monotonic()
-        self.focus.tick(sessions, now)
-        phases['focus_tick'] = time.monotonic() - _p0
-        _p0 = time.monotonic()
         self.rag.tick(sessions)
         phases['rag_tick'] = time.monotonic() - _p0
+        _p0 = time.monotonic()
+        self.launch.tick(sessions)
+        phases['launch_tick'] = time.monotonic() - _p0
         _p0 = time.monotonic()
         if self.panel._panel_open:
             self._tick_panel_open(sessions, bg_by_project)

@@ -37,5 +37,6 @@ import), and either asserts pass/fail to stdout or writes a report under `dev/<a
 - `menubar/` — byte-identity harnesses for `src/menubar/` module splits.
 - `model_selector/` — regression coverage for the menubar Models tab and the launcher/hook precedence chain that applies it.
 - `monitor_lifecycle/` — load probe + regression/gate tests for `monitor_cc_*` tmux-session lifecycle (`src/monitor_janitor.py`, `src/menubar/monitor_sweep_scheduler.py`).
+- `session_launcher/` — desktop-switch and Ghostty-window-placement probes (macOS 26.6.2) plus regression tests for the menubar Launch tab and the Auto-Jump removal.
 
 Other `dev/` areas exist outside this map's scope; see their own `DOCS.md`.
