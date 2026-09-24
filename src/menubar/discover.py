@@ -191,7 +191,7 @@ def _worker_session_info(jsonl: Path, mtime: float, encoded_dir: str, project_na
         status_route = 'hook'
         if status == 'working' and tmux_session:
             wa = _tmux_window_activity(tmux_session)
-            if wa == 0 or (now - wa) > WORKING_THRESHOLD_SECS:
+            if wa is not None and (wa == 0 or (now - wa) > WORKING_THRESHOLD_SECS):
                 status = 'idle'
                 status_route = 'hook_tmux_demote'
     else:

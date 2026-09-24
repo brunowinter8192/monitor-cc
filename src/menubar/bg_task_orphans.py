@@ -5,7 +5,7 @@ import subprocess
 from typing import Dict, List, Tuple
 
 from .proc_cache import _cc_proc_cache, bg_task_holder_pids_snapshot
-from .menubar_log import log_menubar
+from .menubar_log import log_menubar, log_menubar_change
 
 _ANCESTRY_MAX_HOPS = 5
 _ORPHAN_SCAN_INTERVAL = 10.0
@@ -52,8 +52,10 @@ def _build_ppid_map() -> Dict[str, str]:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,ppid='],
                             capture_output=True, text=True,
                             encoding='utf-8', errors='replace', timeout=3)
-    except Exception:
+    except Exception as exc:
+        log_menubar_change('bg_orphan', 'ps_ppid_map', f'ps failed err={exc!r}')
         return {}
+    log_menubar_change('bg_orphan', 'ps_ppid_map', None)
     ppid_map: Dict[str, str] = {}
     for line in r.stdout.splitlines():
         parts = line.split()
