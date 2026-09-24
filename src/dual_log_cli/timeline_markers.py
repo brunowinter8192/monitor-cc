@@ -111,6 +111,25 @@ def resolve_req_range_with_next(requests: list, req_from: int, req_to: int, last
     return min(starts), end
 
 
+def resolve_req_output_range(requests: list, req_number: int, last_msg_index: int) -> tuple:
+    markers = request_markers(requests or [])
+    starts_by_number = {marker["number"]: index for index, marker in markers.items() if marker["number"] is not None}
+    chain = sorted({request["pane_number"] for request in requests if request.get("pane_number") is not None})
+    if req_number not in chain:
+        raise UnknownRequestNumberError(f"REQ {req_number} not found")
+    following = [n for n in chain if n > req_number]
+    if not following:
+        raise UnknownRequestNumberError(f"REQ {req_number}'s reply is not recorded (no later request in the log)")
+    successor = following[0]
+    if successor not in starts_by_number:
+        raise UnknownRequestNumberError(
+            f"REQ {req_number}'s reply could not be located: the next request, REQ {successor}, "
+            f"is a turn opener or newer than the last recorded payload")
+    start = starts_by_number[successor]
+    later_starts = sorted(idx for idx in markers if idx > start)
+    return start, (later_starts[0] - 1 if later_starts else last_msg_index)
+
+
 def resolve_req_range(boundaries: list, req_from: int, req_to: int, last_msg_index: int) -> tuple:
     markers = request_markers(boundaries or [])
     return request_msg_range(markers, req_from, req_to, last_msg_index)

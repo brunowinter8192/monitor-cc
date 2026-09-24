@@ -10,14 +10,17 @@ from pathlib import Path
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
-from src.dual_log_cli.commands import _report_numbering_paths, _req_error_text, _resolve_range
+from src.dual_log_cli.cli_args import _parse_args
+from src.dual_log_cli.commands import _report_numbering_paths, _req_error_text, _req_output_window, _resolve_range
 from src.dual_log_cli.numbering import build_session_numbering
 from src.dual_log_cli.reader import local_datetime
+from src.dual_log_cli.render_expand import render_expand_full
 from src.dual_log_cli.render_msgs import render_msgs
 from src.dual_log_cli.render_reqs import render_reqs, render_reqs_merged
 from src.dual_log_cli.timeline_boundaries import continue_requests, request_boundaries
 from src.dual_log_cli.timeline_markers import (
-    UnknownRequestNumberError, request_markers, resolve_req_range, resolve_req_range_with_next,
+    UnknownRequestNumberError, request_markers, resolve_req_output_range, resolve_req_range,
+    resolve_req_range_with_next,
 )
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
 
@@ -47,6 +50,8 @@ def test_reqs_pane_numbering_workflow() -> None:
     test_req_range_covers_own_group_and_next()
     test_unlocated_continues_own_no_msgs()
     test_msgs_prints_continue_separators()
+    test_expand_req_selects_reply_and_returned_result()
+    test_expand_req_errors_and_cli()
 
     total = len(PASS_LIST) + len(FAIL_LIST)
     print(f"{len(PASS_LIST)}/{total} checks passed")
@@ -468,6 +473,49 @@ def test_msgs_prints_continue_separators() -> None:
     check("msgs 1..6 print the continue separators REQ 2 and REQ 3 with their response-end times",
           [x.split()[2] for x in seps] == ["2", "3"] and _clock("2026-09-04T10:01:05Z") in seps[0] and _clock("2026-09-04T10:02:05Z") in seps[1], seps)
     check("the tool_use msg 4 sits under REQ 3's separator", out.index("── REQ 3") < out.index("[  4]"), out)
+
+
+def _raises_text(call) -> str:
+    try:
+        call()
+    except UnknownRequestNumberError as exc:
+        return str(exc)
+    return ""
+
+
+def test_expand_req_selects_reply_and_returned_result() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    requests = numbering["requests"]
+    check("expand --req 1 (a create) = the next request's group: reply msg 1 plus the result that came back",
+          resolve_req_output_range(requests, 1, 12) == (1, 3), resolve_req_output_range(requests, 1, 12))
+    check("expand --req 2 (a continue) = msgs 4..6, the tool_use it produced and the tool_result REQ 3 sent",
+          resolve_req_output_range(requests, 2, 12) == (4, 6))
+    check("expand --req 3 = msgs 7..9 (the next request is a create)", resolve_req_output_range(requests, 3, 12) == (7, 9))
+    check("expand --req 4 = msgs 10..12", resolve_req_output_range(requests, 4, 12) == (10, 12))
+    data = {"requests": requests}
+    check("the command layer resolves the same window on the transcript path",
+          _req_output_window(data, numbering, 2, 12) == (4, 6))
+
+
+def test_expand_req_errors_and_cli() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    requests = numbering["requests"]
+    text = _raises_text(lambda: resolve_req_output_range(requests, 5, 12))
+    check("REQ 5: the next request is an unlocated opener -> 'could not be located'", "could not be located" in text and "REQ 6" in text, text)
+    text = _raises_text(lambda: resolve_req_output_range(requests, 6, 12))
+    check("the last request's reply is not recorded", "reply is not recorded" in text, text)
+    check("an unknown number stays 'not found'", _raises_text(lambda: resolve_req_output_range(requests, 99, 12)) == "REQ 99 not found")
+    buffer = io.StringIO()
+    with redirect_stderr(buffer):
+        window = _req_output_window({"requests": requests}, {"path": "boundaries"}, 2, 12)
+    check("without the transcript path expand --req refuses and says why", window is None and "transcript numbering" in buffer.getvalue(), buffer.getvalue())
+    by_req = _parse_args(["expand", "s", "--req", "3"], "")
+    by_msg = _parse_args(["expand", "s", "5"], "")
+    check("argparse: --req replaces the msg argument, a bare msg still parses",
+          (by_req.msg, by_req.req) == (None, 3) and (by_msg.msg, by_msg.req) == (5, None), (by_req, by_msg))
+    out = render_expand_full({"turns": [{}] * 13, "turn_times": {}, "session": {"stem": "s", "project": "p", "start": "2026-09-04T10:00:00Z"}},
+                             None, 4, 6, "", [], None, "what REQ 2 produced")
+    check("the header names the REQ instead of an anchor msg", "what REQ 2 produced" in out and "anchor" not in out, out)
 
 
 if __name__ == "__main__":

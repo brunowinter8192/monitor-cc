@@ -25,7 +25,8 @@ from .render_sessions import render_sessions
 from .search import find_matches
 from .timeline import load_timeline
 from .timeline_markers import (
-    AmbiguousRequestNumberError, UnknownRequestNumberError, resolve_req_range, resolve_req_range_with_next,
+    AmbiguousRequestNumberError, UnknownRequestNumberError, resolve_req_output_range, resolve_req_range,
+    resolve_req_range_with_next,
 )
 from .timeline_turns import full_turn
 
@@ -225,8 +226,8 @@ def _run_expand(dual_log_dir, args: argparse.Namespace) -> int:
     if data is None:
         return code
     msgs = data["turns"]
-    if args.msg < 0 or args.msg >= len(msgs):
-        print(f"msg {args.msg} out of range (0..{len(msgs) - 1})", file=sys.stderr)
+    if (args.msg is None) == (args.req is None):
+        print("expand takes exactly one of: a msg index, or --req N", file=sys.stderr)
         return 2
     try:
         wanted = parse_only(args.only)
@@ -236,16 +237,38 @@ def _run_expand(dual_log_dir, args: argparse.Namespace) -> int:
     if args.before < 0 or args.after < 0:
         print("--before and --after must be 0 or greater", file=sys.stderr)
         return 2
-    start, end = _window(args.msg, args.before, args.after, len(msgs))
+    numbering = _numbered_view(data)
+    if args.req is not None:
+        window = _req_output_window(data, numbering, args.req, len(msgs) - 1)
+        if window is None:
+            return 2
+        start, end = max(0, window[0] - args.before), min(len(msgs) - 1, window[1] + args.after)
+        anchor, scope_label = None, f"what REQ {args.req} produced"
+    else:
+        if args.msg < 0 or args.msg >= len(msgs):
+            print(f"msg {args.msg} out of range (0..{len(msgs) - 1})", file=sys.stderr)
+            return 2
+        start, end = _window(args.msg, args.before, args.after, len(msgs))
+        anchor, scope_label = args.msg, ""
     dumped = [
         (msg, full_turn(data["payload"], msg["index"]))
         for msg in msgs[start:end + 1]
         if matches_only(msg["role"], [b["type"] for b in msg["blocks"]], wanted)
     ]
-    _numbered_view(data)
     overlay = build_overlay(data["session"], data["family"], data["requests"])
-    sys.stdout.write(render_expand_full(data, args.msg, start, end, args.only, dumped, overlay))
+    sys.stdout.write(render_expand_full(data, anchor, start, end, args.only, dumped, overlay, scope_label))
     return 0
+
+
+def _req_output_window(data: dict, numbering: dict, req_number: int, last: int):
+    if numbering["path"] != "transcript":
+        print("expand --req needs the transcript numbering, which did not resolve for this session", file=sys.stderr)
+        return None
+    try:
+        return resolve_req_output_range(data["requests"], req_number, last)
+    except UnknownRequestNumberError as exc:
+        print(str(exc), file=sys.stderr)
+        return None
 
 
 def _window(anchor: int, before: int, after: int, total: int) -> tuple:

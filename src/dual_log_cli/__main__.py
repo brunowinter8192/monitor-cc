@@ -56,6 +56,8 @@ Commands:
                              msg-index range that covers them; mutually exclusive with F T above
     expand <s> <msg>         full content of that msg, plus what the proxy stripped/injected there
     expand <s> <msg> [--before N] [--after N] [--only X]   full content of the window around it
+    expand <s> --req N       full content of what REQ N produced: its assistant reply (the tool_use)
+                             plus the tool_result that came back — the command that ran after REQ N
 
 Usage (from project root, or via bin/duallog once symlinked into PATH):
     ./venv/bin/python -m src.dual_log_cli sessions
@@ -73,6 +75,7 @@ Usage (from project root, or via bin/duallog once symlinked into PATH):
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 --req 259 261
     ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 721
     ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 721 --before 2 --after 1
+    ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 --req 259
 
 <session> is a full stem or any unambiguous substring of one. The log directory is resolved from
 MONITOR_CC_ROOT, else from the repo root, else from the main checkout when run inside a worktree.
