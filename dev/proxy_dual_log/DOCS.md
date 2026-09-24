@@ -63,53 +63,16 @@ Converted suites run as parallel strands through the strand runner in `dev/refac
 
 ---
 
-### A_render_refactor_proof/ (see its own `DOCS.md`)
+## Sub-directories
 
-Byte-identical differential harness for the proxy_display render cluster.
-
----
-
-### attribution_coverage/ (see its own `DOCS.md`)
-
-Read-only coverage analysis: can every stripped or injected entry be attributed to a proxy function?
-
----
-
-### green_overlay_probe/ (see its own `DOCS.md`)
-
-Reproduces a green-overlay false-injection bug and validates a char-level diff fix.
-
----
-
-### groundtruth_message_spans_probe/ (see its own `DOCS.md`)
-
-Validates the ground-truth span-construction algorithm that replaces blind diffing for messages.
-
----
-
-### main_log_elimination_probe/ (see its own `DOCS.md`)
-
-Feasibility probe on eliminating the main proxy log in favor of the dual-log quartet.
-
----
-
-### proxy_176_bg_launch_ack_tests/ (see its own `DOCS.md`)
-
-Unit tests for the CC 2.1.176 background-launch-ack strip across all observed wordings.
-
----
-
-### span_inline_probe/ (see its own `DOCS.md`)
-
-Compares two inline-render data models on one fixed recorded session.
-
----
-
-### test_composition_invariant/ (see its own `DOCS.md`)
-
-CI-style regression test plus the span-composition probe it imports.
-
----
+- `A_render_refactor_proof/`: Byte-identical differential harness for the proxy_display render cluster. See its own `DOCS.md`.
+- `attribution_coverage/`: Read-only coverage analysis: can every stripped or injected entry be attributed to a proxy function? See its own `DOCS.md`.
+- `green_overlay_probe/`: Reproduces a green-overlay false-injection bug and validates a char-level diff fix. See its own `DOCS.md`.
+- `groundtruth_message_spans_probe/`: Validates the ground-truth span-construction algorithm that replaces blind diffing for messages. See its own `DOCS.md`.
+- `main_log_elimination_probe/`: Feasibility probe on eliminating the main proxy log in favor of the dual-log quartet. See its own `DOCS.md`.
+- `proxy_176_bg_launch_ack_tests/`: Unit tests for the CC 2.1.176 background-launch-ack strip across all observed wordings. See its own `DOCS.md`.
+- `span_inline_probe/`: Compares two inline-render data models on one fixed recorded session. See its own `DOCS.md`.
+- `test_composition_invariant/`: CI-style regression test plus the span-composition probe it imports. See its own `DOCS.md`.
 
 ## State
 No shared or mutating state across modules or subfolders. Each entry point owns its report writing, always anchored at this area's root; helper modules are pure. One replay script patches and restores an accumulator predicate within a single comparison call. The `md/`, `json/`, `fixtures/` and report directories are this area's shared bus and never move.

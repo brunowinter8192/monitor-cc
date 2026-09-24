@@ -2,7 +2,7 @@
 
 ## Role
 
-mitmproxy addon package that intercepts every Messages request from Claude Code, applies a deterministic modification pipeline (rule injection, content stripping, tool injection, fixation, cache breakpoints), logs the exchange and forwards the result. Touch it to change what gets injected, stripped, cached or logged. Do not edit during a live proxy session; the running proxy uses a frozen copy.
+mitmproxy addon package that intercepts every Claude Code Messages request, applies a modification pipeline (injection, stripping, fixation, cache breakpoints), logs the exchange and forwards it. Touch it to change what is injected, stripped, cached or logged. Do not edit during a live proxy session; the proxy runs a frozen copy.
 
 ## Public Interface
 

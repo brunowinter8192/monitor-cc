@@ -21,25 +21,9 @@ The probe reads live tmux and process state and prints a per-pane table plus a d
 
 ---
 
-### tests/test_monitor_sweep.py (101 LOC)
+## Sub-directories
 
-**Purpose:** Regression test for the janitor: throwaway tmux sessions on a private server, asserts kill, spare and untouched outcomes.
-**Reads:** the private tmux server only.
-**Writes:** the private tmux server and a scratch sweep log, both removed on exit.
-**Called by:** none; run manually.
-**Calls out:** `src.monitor_janitor`.
-
----
-
-### tests/test_monitor_sweep_scheduler.py (144 LOC)
-
-**Purpose:** Gate-only regression test for the scheduler's at-most-once-per-day check, re-entry guard and attempt-timestamp ordering.
-**Reads:** nothing outside its own temp state files.
-**Writes:** isolated temp state files, removed on exit.
-**Called by:** none; run manually.
-**Calls out:** `src.menubar.monitor_sweep_scheduler`.
-
----
+- `tests/`: Regression tests for the janitor sweep and its scheduler gate. See its own `DOCS.md`.
 
 ## State
 `reports/` holds dated probe output, one file per run, owned solely by the probe. The tests own only their isolated temp files and private tmux server; neither touches the default tmux server or the live sweep log.

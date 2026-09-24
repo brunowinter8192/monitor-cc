@@ -21,9 +21,9 @@ Loads each configured MCP plugin server in an isolated subprocess with its own v
 
 ---
 
-### ToolsSystemPrompts/ (reference corpus, no `.py` modules; see its own `DOCS.md`)
+## Sub-directories
 
----
+- `ToolsSystemPrompts/`: captured reference corpus, no `.py` modules. See its own `DOCS.md`.
 
 ## State
 None owned. Output goes to the proxy schema store under `src/proxy/`, owned and read at runtime by the proxy tool-injection module.

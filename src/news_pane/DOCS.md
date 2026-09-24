@@ -2,7 +2,7 @@
 
 ## Role
 
-Standalone tmux pane pair that controls and observes the CoinDesk news ingestion pipeline of the websearch project. The left pane shows collection stats and a run button; the right pane tails the pipeline log. Both reference the same log file. No dependency on `core/monitor.py`. Do not touch for the pipeline itself.
+Standalone tmux pane pair that controls and observes the CoinDesk news ingestion pipeline of the websearch project. The left pane shows collection stats and a run button; the right pane tails the pipeline log. No dependency on `core/monitor.py`. Do not touch for the pipeline itself.
 
 ## Public Interface
 
