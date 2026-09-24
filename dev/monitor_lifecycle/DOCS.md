@@ -16,7 +16,8 @@ dev/monitor_lifecycle/tests/test_monitor_sweep_scheduler.py`.
 `probe_monitor_load.py`: live tmux/`ps` state in -> one row per pane (mode/PID/age/CPU) -> stdout
 table + dated report under `reports/`. The two `tests/` scripts: synthetic or throwaway-fixture
 input in -> real `src.monitor_janitor`/`src.menubar.monitor_sweep_scheduler` functions under
-test -> PASS/FAIL lines to stdout, `sys.exit(1)` on any failure.
+test -> one strand per case group (`dev/refactoring/strand_runner.py`), each strand fails at its
+first failed check, verdicts to stdout and `md/<script>.md`.
 
 ## Modules
 
@@ -31,25 +32,26 @@ and saves the same data as a dated markdown report.
 
 ---
 
-### tests/test_monitor_sweep.py (90 LOC)
+### tests/test_monitor_sweep.py (101 LOC)
 
-**Purpose:** Regression test for `src/monitor_janitor.py` — creates three real throwaway tmux
-sessions, sweeps only the fixture pair, and asserts kill/spare/untouched outcomes.
-**Reads:** live tmux state.
-**Writes:** three throwaway tmux sessions (removed in a `finally`); appends to this checkout's
-real sweep log via `monitor_janitor._log_path()`.
+**Purpose:** Regression test for `src/monitor_janitor.py` — creates three throwaway tmux sessions
+on a private tmux server, sweeps only the fixture pair with a backdated age, and asserts
+kill/spare/untouched outcomes.
+**Reads:** the private tmux server only (`TMUX_TMPDIR` scratch dir, `TMUX` unset).
+**Writes:** the private tmux server (killed in a `finally`); the sweep log in a scratch
+`MONITOR_CC_ROOT`, both removed on exit.
 **Called by:** none — run manually; regression guard for `monitor_janitor.py`.
 **Calls out:** `src.monitor_janitor` (`/tests/` + `test_*.py` naming exempts this file from the
 `block_dev_imports_src` hook).
 
 ---
 
-### tests/test_monitor_sweep_scheduler.py (158 LOC)
+### tests/test_monitor_sweep_scheduler.py (144 LOC)
 
 **Purpose:** Gate-only regression test for `src/menubar/monitor_sweep_scheduler.py`'s
 at-most-once-per-24h check, the re-entry guard, and the attempt-timestamp-persisted ordering.
 **Reads:** nothing outside its own isolated temp state files.
-**Writes:** isolated temp state files (own tempdir per case, not explicitly cleaned up).
+**Writes:** isolated temp state files (own tempdir per case, removed on exit).
 **Called by:** none — run manually; regression guard for `monitor_sweep_scheduler.py`.
 **Calls out:** `src.menubar.monitor_sweep_scheduler` (`/tests/` + `test_*.py` naming exempts this
 file from the `block_dev_imports_src` hook).
@@ -59,5 +61,5 @@ file from the `block_dev_imports_src` hook).
 ## State
 `reports/` holds dated `probe_monitor_load.py` output, one file per run, owned solely by that
 script (`write_report`) — no other module reads or mutates it. Both `tests/` scripts own and
-mutate only their own isolated temp files / throwaway tmux sessions per run; neither persists
-state across runs.
+mutate only their own isolated temp files / private tmux server per run; neither persists
+state across runs, and neither touches the default tmux server or the live sweep log.
