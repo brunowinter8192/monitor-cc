@@ -19,15 +19,15 @@ call records, and one real subprocess's stdout — output is PASS/FAIL lines to 
 
 ## Modules
 
-### test_open_or_focus_monitor.py (138 LOC)
+### test_open_or_focus_monitor.py (165 LOC)
 
 **Purpose:** Proves session-name derivation is reused (never re-derived), an existing tmux session
 is always killed then relaunched, the launch command quotes its cwd via `shlex`, `python3`
 resolution reads the launchd plist's PATH, and `_launch_monitor` has no Ghostty-fallback path.
 **Reads:** nothing external — monkeypatches `system.py`'s own module-level functions
 (`check_session_exists`, `kill_session`, `_launch_monitor`, `_launch_monitor_ghostty_native`) and
-restores them after each case; one case spawns a real subprocess with a bare launchd-shaped `PATH`.
-**Writes:** stdout (`[OK]`/`[FAIL]` per check, final summary); exits 1 on any failure.
+restores them after each case; one case spawns a real subprocess with a bare launchd-shaped `PATH` and a temp fixture plist.
+**Writes:** stdout (`[OK]`/`[FAIL]` per check inside each strand, one verdict per strand), `md/test_open_or_focus_monitor.md` (fixed name); exits 1 if any strand aborts. The seven `_test_*` functions run as parallel fail-fast strands via `dev/refactoring/strand_runner.py`.
 **Called by:** none — run manually (`python3 dev/menubar_per_project/test_open_or_focus_monitor.py`).
 **Calls out:** `src.menubar.system`, `src.tmux_launcher` — loaded via `importlib.import_module`
 (not `from src.` — see `src/hooks/block_dev_imports_src.py`).
