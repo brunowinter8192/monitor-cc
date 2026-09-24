@@ -1,4 +1,8 @@
 # INFRASTRUCTURE
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fire_log import log_fire
 
 
 # FUNCTIONS
@@ -13,7 +17,8 @@ _CMD_SUBST = '$('
 def _strip_non_shell_active(command: str) -> str:
     try:
         return _strip_impl(command)
-    except Exception:
+    except _StripError as e:
+        log_fire("_shell_strip", "trace", "Bash", command, reason=f"raw-text fallback: {e}")
         return command
 
 

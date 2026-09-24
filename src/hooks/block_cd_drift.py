@@ -57,6 +57,8 @@ def _strip_quoted(s: str) -> str:
                     i += 2
                 else:
                     i += 1
+            if i >= n:
+                log_fire("block_cd_drift", "trace", "Bash", s, reason="unterminated quote: remainder dropped")
             i += 1
         else:
             out.append(c)
