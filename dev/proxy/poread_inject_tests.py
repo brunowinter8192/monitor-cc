@@ -4,6 +4,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from proxy.rules import apply_modification_rules
 from proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX

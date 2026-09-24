@@ -6,6 +6,7 @@ from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+sys.path.insert(0, str(WORKTREE_ROOT))
 
 from proxy.addon_dual_log import _is_sidecar_payload, _write_request_dual_logs
 from proxy.addon_state import DeltaState, DualLogPaths, SessionIdentity

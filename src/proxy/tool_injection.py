@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 
+from .proxy_error_log import proxy_monitor_root
+
 _SCHEMA_STORE_CACHE = None
 _ACTIVE_PLUGINS_CACHE = None
 _ACTIVE_PLUGINS_MTIME = None
@@ -135,10 +137,7 @@ def _load_active_plugins(project_path: str) -> list:
 
 
 def _resolve_schema_store_path() -> Path:
-    root = os.environ.get("MONITOR_CC_ROOT")
-    if root:
-        return Path(root) / "src" / "proxy" / "schemas"
-    return Path(__file__).parent / "schemas"
+    return proxy_monitor_root() / "src" / "proxy" / "schemas"
 
 
 def _is_project_excluded(project_path: str) -> bool:

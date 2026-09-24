@@ -59,7 +59,7 @@ OPTIONS = {
     # from constants.py, unaffected by the split.
     # tmux_launcher: system.py's per-project monitor button (generate_session_name,
     # check_session_exists). monitor_janitor: monitor_sweep_scheduler.py's daily tmux sweep.
-    'includes': ['src.session_finder', 'src.colors', 'src.constants', 'src.tmux_launcher', 'src.monitor_janitor'],
+    'includes': ['src.session_finder', 'src.colors', 'src.constants', 'src.tmux_launcher', 'src.monitor_janitor', 'src.monitor_root'],
 
     # Exclude heavy non-menubar packages present in the venv.
     # modulegraph won't trace them from our entry chain, but belt-and-suspenders.
@@ -110,7 +110,7 @@ OPTIONS = {
 # landed under the bundle's src/, so a module missing here gets deleted post-build even if
 # modulegraph did trace it.
 _BUNDLE_SRC_KEEP = {'menubar', 'session_finder.py', 'colors.py', 'constants.py', 'tmux_launcher.py',
-                    'monitor_janitor.py', '__init__.py', '__pycache__'}
+                    'monitor_janitor.py', 'monitor_root.py', '__init__.py', '__pycache__'}
 
 
 # Prune the bundle's src/ to whitelist only — prevents copy_package_data() from

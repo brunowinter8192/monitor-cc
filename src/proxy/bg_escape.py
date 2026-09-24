@@ -6,6 +6,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .proxy_error_log import proxy_monitor_root
 from .rules_config import is_main_session
 from .strip_bg_launch_ack import _is_bg_launch_ack, _ACK_ID_RE
 
@@ -99,7 +100,4 @@ def _log_bg_escape_event(event: str, worker_context: str, task_id: str, tmux_ses
 
 
 def _resolve_bg_escape_log_file() -> Path:
-    root = os.environ.get("MONITOR_CC_ROOT")
-    if root:
-        return Path(root) / "src" / "logs" / "bg_escape_events.jsonl"
-    return Path("/tmp") / "bg_escape_events.jsonl"
+    return proxy_monitor_root() / "src" / "logs" / "bg_escape_events.jsonl"

@@ -1,11 +1,5 @@
 # INFRASTRUCTURE
-import os
 import re
-import sys
-from pathlib import Path
-
-_src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
-sys.path.insert(0, _src_dir)
 
 from .payload_helpers import _strip_blocked_tool_references
 from .content_strip import _strip_session_guidance, _strip_git_status

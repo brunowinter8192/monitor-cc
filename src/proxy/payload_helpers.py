@@ -1,13 +1,7 @@
 # INFRASTRUCTURE
 import re
-import sys
-import os
-from pathlib import Path
 
-_src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
-from constants import TOOL_BLOCKLIST
+from src.constants import TOOL_BLOCKLIST
 
 # FUNCTIONS
 

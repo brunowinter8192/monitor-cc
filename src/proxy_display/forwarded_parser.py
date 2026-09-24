@@ -7,18 +7,25 @@ from pathlib import Path
 from typing import Optional
 
 from ..constants import PROXY_MESSAGES_KEEP_LAST
-from ..pane_error_log import log_pane_error
+from ..monitor_root import resolve_monitor_cc_root
+from ..pane_error_log import log_pane_error, log_pane_note
 from ..proxy.message_summary import _infer_model_family, _summarize_message
 from ..proxy.logging import _compute_diff
 
 # FUNCTIONS
 
+def _monitor_root() -> Path:
+    return resolve_monitor_cc_root(_report_root)
+
+def _report_root(root: Path, source: str) -> None:
+    log_pane_note('monitor_root', f'source={source} root={root}')
+
 def _proxy_session_id_for_project(project_path: str) -> str:
     normalized_path = os.path.normpath(os.path.expanduser(project_path))
     return hashlib.md5(normalized_path.encode()).hexdigest()[:8]
 
-def _resolve_log_id(root: str, session_id: str) -> str:
-    marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
+def _resolve_log_id(root: Path, session_id: str) -> str:
+    marker_file = root / 'src' / 'logs' / f'.proxy_session_{session_id}'
     log_id = session_id
     if marker_file.exists():
         lines = marker_file.read_text(encoding='utf-8').splitlines()
@@ -289,12 +296,12 @@ def reconstruct_all_messages(fwd_path: Path) -> dict:
     return {e['flow_id']: e['messages'] for e in entries if e.get('flow_id')}
 
 def parse_proxy_log_forwarded(project_filter: Optional[str], last_pos: int, acc_by_family: dict) -> tuple:
-    root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
     if not project_filter:
         return [], last_pos
+    root = _monitor_root()
     session_id = _proxy_session_id_for_project(project_filter)
     log_id = _resolve_log_id(root, session_id)
-    fwd_path = Path(root) / 'src' / 'logs' / 'dual_log' / f'api_requests_{log_id}_forwarded.jsonl'
+    fwd_path = root / 'src' / 'logs' / 'dual_log' / f'api_requests_{log_id}_forwarded.jsonl'
     entries, new_pos = _parse_forwarded_log(fwd_path, last_pos, acc_by_family)
     for entry in entries:
         entry['_source_file'] = fwd_path.name

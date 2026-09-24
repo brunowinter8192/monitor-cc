@@ -1,11 +1,6 @@
 # INFRASTRUCTURE
 import json
-import os
-import sys
 from pathlib import Path
-
-_src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
-sys.path.insert(0, _src_dir)
 
 _SHARED_RULES_DIR = Path.home() / ".claude" / "shared-rules"
 _PROXY_RULES_CONFIG = _SHARED_RULES_DIR / "proxy_rules.json"

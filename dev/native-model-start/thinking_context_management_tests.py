@@ -5,6 +5,7 @@ from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+sys.path.insert(0, str(WORKTREE_ROOT))
 
 from proxy.inject_helpers import _inject_model_override, _strip_clear_thinking_edit
 from proxy.logging import _build_forwarded_delta

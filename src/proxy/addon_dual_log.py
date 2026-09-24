@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from .proxy_error_log import proxy_monitor_root
 from .logging import _build_forwarded_delta, _build_errors_entries
 from .strip_inject_delta import _build_stripped_injected_deltas
 
@@ -13,12 +14,9 @@ from .strip_inject_delta import _build_stripped_injected_deltas
 
 
 def _resolve_dual_log_file(suffix: str) -> Path:
-    root = os.environ.get("MONITOR_CC_ROOT")
     log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID")
     filename = f"api_requests_{log_id}_{suffix}.jsonl" if log_id else f"api_requests_{suffix}.jsonl"
-    if root:
-        return Path(root) / "src" / "logs" / "dual_log" / filename
-    return Path("/tmp") / "dual_log" / filename
+    return proxy_monitor_root() / "src" / "logs" / "dual_log" / filename
 
 
 def _write_entry(log_file: Path, entry: dict) -> None:

@@ -1,10 +1,10 @@
 # INFRASTRUCTURE
 import json
-import os
 from pathlib import Path
 from typing import Optional
 
 from ..pane_error_log import log_pane_error
+from .forwarded_parser import _monitor_root
 
 # FUNCTIONS
 
@@ -36,8 +36,7 @@ def read_response_log(path: Optional[Path], last_pos: int) -> tuple:
 
 def scan_worker_errors_logs(last_positions: dict, project_session_id: str = '',
                             min_mtime: float = 0) -> tuple:
-    root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
-    dual_dir = Path(root) / 'src' / 'logs' / 'dual_log'
+    dual_dir = _monitor_root() / 'src' / 'logs' / 'dual_log'
     if not dual_dir.exists():
         return [], dict(last_positions)
     new_positions = dict(last_positions)
