@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -24,18 +23,14 @@ def find_worker_proxy_log(worker_name: str, project_filter: Optional[str] = None
     stem = best.stem[:-len("_forwarded")]
     return logs_dir / f"{stem}.jsonl"
 
-def get_proxy_session_start_ts(project_filter: str) -> float:
+def get_proxy_session_start_ts(project_filter: str) -> Optional[float]:
     root = _monitor_root()
     session_id = _proxy_session_id_for_project(project_filter)
     marker_file = root / "src" / "logs" / f".proxy_session_{session_id}"
-    if marker_file.exists():
-        try:
-            mtime = marker_file.stat().st_mtime
-        except OSError:
-            mtime = None
-        if mtime is not None:
-            return mtime
-    return time.time()
+    try:
+        return marker_file.stat().st_mtime
+    except FileNotFoundError:
+        return None
 
 def find_proxy_log_path(project_filter: Optional[str]) -> Optional[Path]:
     if not project_filter:

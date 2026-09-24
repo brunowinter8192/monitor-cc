@@ -61,13 +61,14 @@ def _attach_overlays(entries: list, fwd_path: Path) -> None:
 
 def _grow_expand_states(entries: list) -> dict:
     from src.proxy_display.format import format_proxy_block
+    from src.proxy_display.turn_cache import TurnCache
     expand_states = {}
     prev_count = -1
     while len(expand_states) != prev_count:
         prev_count = len(expand_states)
         for width in _PANE_WIDTHS:
             item_positions = {}
-            format_proxy_block(entries, expand_states, None, None, 50, width, 0, None, item_positions)
+            format_proxy_block(entries, expand_states, None, None, 50, width, 0, None, item_positions, turn_cache=TurnCache())
             for key in item_positions:
                 if key not in expand_states:
                     expand_states[key] = True
@@ -76,13 +77,14 @@ def _grow_expand_states(entries: list) -> dict:
 
 def _hash_format_proxy_block(entries: list, expand_states: dict, digest) -> None:
     from src.proxy_display.format import format_proxy_block
+    from src.proxy_display.turn_cache import TurnCache
     for width in _PANE_WIDTHS:
         item_positions = {}
         line_map = {}
         ansi, total_lines = format_proxy_block(
             entries, expand_states, line_map, None,
             pane_height=100000, pane_width=width, scroll_offset=0,
-            turns=None, item_positions_out=item_positions,
+            turns=None, item_positions_out=item_positions, turn_cache=TurnCache(),
         )
         digest.update(f'fpb|{width}|{total_lines}|'.encode())
         digest.update(ansi.encode())
@@ -98,9 +100,8 @@ def _hash_section_functions(entries: list, expand_states: dict, digest) -> None:
         is_standalone = _is_standalone_entry(entry)
         prev_same = _resolve_prev_same_family(entries, entry_idx)
         ref = None if is_standalone else prev_same
-        mods = entry.get('modifications', [])
         for width in _PANE_WIDTHS:
-            s_lines, s_keys = render_system_blocks(entry_idx, entry, ref, expand_states, width, mods)
+            s_lines, s_keys = render_system_blocks(entry_idx, entry, ref, expand_states, width)
             t_lines, t_keys = render_tools(entry_idx, entry, ref, expand_states, width)
             m_lines, m_keys = render_messages(entry_idx, entry, ref, entries, expand_states, width)
             digest.update(f'sys|{entry_idx}|{width}|'.encode())

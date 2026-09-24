@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from .proc_cache import _cc_proc_cache
-from .menubar_log import log_menubar
+from .menubar_log import log_menubar, log_menubar_change
 
 # ORCHESTRATOR
 
@@ -30,7 +30,7 @@ def _parse_etime(etime: str) -> Optional[int]:
         weights = (1, 60, 3600)
         return d + sum(int(v) * w for v, w in zip(reversed(parts), weights))
     except (ValueError, IndexError):
-        pass
+        log_menubar_change('bg_timer', 'etime', f'unparseable etime={etime!r}')
     return None
 
 def _is_bare_sleep(tokens: List[str]) -> bool:
@@ -68,8 +68,10 @@ def _scan_bg_sleep_timers(cwd_to_project: Dict[str, str]) -> Dict[str, BgSleepIn
             ['ps', '-A', '-o', 'pid=,ppid=,etime=,args='],
             capture_output=True, text=True,
             encoding='utf-8', errors='replace', timeout=3)
-    except Exception:
+    except Exception as exc:
+        log_menubar_change('bg_timer', 'ps_scan', f'ps failed err={exc!r}')
         return {}
+    log_menubar_change('bg_timer', 'ps_scan', None)
     pid_info: Dict[str, Tuple[str, str, str]] = {}
     for line in r.stdout.splitlines():
         parts = line.split(None, 3)
@@ -120,8 +122,10 @@ def _resolve_pid_output_file(pid: int) -> Optional[str]:
             ['lsof', '-p', str(pid), '-a', '-d', '1,2', '-Fn'],
             capture_output=True, text=True,
             encoding='utf-8', errors='replace', timeout=2)
-    except Exception:
+    except Exception as exc:
+        log_menubar_change('bg_timer', 'lsof_output', f'lsof failed pid={pid} err={exc!r}')
         return None
+    log_menubar_change('bg_timer', 'lsof_output', None)
     for line in r.stdout.splitlines():
         if line.startswith('n') and line.endswith('.output'):
             return line[1:]
@@ -149,7 +153,7 @@ def _abort_bg_sleep_timers(sleep_pids: List[int]) -> int:
                 p.write_text('aborted\n')
                 stamped.append(output_file)
         except OSError as e:
-            print(f'[abort-stamp] write error for {output_file}: {e}', file=sys.stderr)
+            log_menubar('abort', f'stamp write error file={output_file} err={e!r}')
     try:
         ts = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f')[:23]
         pids_str = ','.join(str(p) for p in sleep_pids)

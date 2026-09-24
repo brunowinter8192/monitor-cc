@@ -54,7 +54,8 @@ def _parse_command():
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
         return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("block_rag_docs_layer", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None
 
 
@@ -71,6 +72,7 @@ def _segment_violates(original_segment: str) -> bool:
     try:
         tokens = shlex.split(original_segment)
     except ValueError:
+        log_fire("block_rag_docs_layer", "trace", "Bash", original_segment, reason="shlex ValueError: segment exempt")
         return False
     collection = _find_collection(tokens)
     if collection is None or not collection.endswith('-docs'):

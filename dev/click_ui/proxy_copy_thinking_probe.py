@@ -17,7 +17,7 @@ def _make_entry_with_thinking():
                 {'type': 'text', 'chars': 19, 'full_text': 'Here is my answer.'},
             ]},
         ],
-        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [],
+        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [], '_stripped_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}, '_injected_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}},
         'timestamp': '2026-04-21T10:00:00Z',
     }
 

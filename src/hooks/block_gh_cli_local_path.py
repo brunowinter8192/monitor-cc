@@ -53,7 +53,8 @@ def _parse_command():
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
         return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("block_gh_cli_local_path", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None
 
 
@@ -66,6 +67,7 @@ def _find_local_path(subcommand: str, segment: str):
     try:
         tokens = shlex.split(segment)
     except ValueError:
+        log_fire("block_gh_cli_local_path", "trace", "Bash", segment, reason="shlex ValueError: segment exempt")
         return None
     value_flags = _VALUE_FLAGS.get(subcommand, set())
     positionals = []

@@ -114,7 +114,7 @@ function from the sibling fixture/cases modules.
 
 ---
 
-### test_strip_fix_fixtures.py (83 LOC)
+### test_strip_fix_fixtures.py (92 LOC)
 
 **Purpose:** Loads the `src.proxy` strip/pass modules under test and builds the shared
 `check()`/content fixtures every case module uses.

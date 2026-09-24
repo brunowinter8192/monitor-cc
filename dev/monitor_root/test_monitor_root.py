@@ -133,7 +133,7 @@ def case_proxy_display_reports_once() -> None:
         path = parser.find_errors_log_path('/probe/project')
         parser.find_response_log_path('/probe/project')
         assert str(path).startswith(str(Path(tmp) / 'src' / 'logs' / 'dual_log')), path
-        assert notes == [('monitor_root', f'source=env root={tmp}')], notes
+        assert [n for n in notes if n[0] == 'monitor_root'] == [('monitor_root', f'source=env root={tmp}')], notes
         side_logs = importlib.import_module('src.proxy_display.side_logs')
         assert side_logs._monitor_root() == Path(tmp)
 

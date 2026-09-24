@@ -29,7 +29,7 @@ root) — this package only consumes those.
 
 ## Modules
 
-### panel.py (276 LOC)
+### panel.py (274 LOC)
 
 **Purpose:** NSPanel/NSView/NSButton/NSTextField factory helpers, pure layout-computation helpers for the main sessions panel, the clickable tab-header factory shared by all four panels, and the shared side-panel scaffolding (`_make_tab_nspanel`, `_reposition_tab_panel`) plus the top-preserving `_resize_panel_keep_top` used by all four panel controllers.
 **Reads:** function parameters only (sessions, bg_by_project, panel_width passed by callers).
@@ -83,7 +83,7 @@ root) — this package only consumes those.
 
 ---
 
-### rag_controller.py (101 LOC)
+### rag_controller.py (112 LOC)
 
 **Purpose:** Per-concern controller for the RAG status side panel — reads the RAG indexing lock file and renders a single status label.
 **Reads:** `~/.rag-locks/rag.lock`; `app.settings.panel_width`/`.panel_min_height`.
@@ -93,7 +93,7 @@ root) — this package only consumes those.
 
 ---
 
-### model_controller.py (208 LOC)
+### model_controller.py (183 LOC)
 
 **Purpose:** Per-concern controller for the Models side panel — main/worker model plus effort plus max_tokens plus thinking cycle rows, and the Apply action.
 **Reads:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (via `model_selection.py`, on open and after each cycle click); `app.settings.panel_width`/`.panel_min_height`.
@@ -103,7 +103,7 @@ root) — this package only consumes those.
 
 ---
 
-### model_selection.py (162 LOC)
+### model_selection.py (176 LOC)
 
 **Purpose:** Pure file-I/O persistence for model/effort/max_tokens/thinking selection — cycle-value tuples, a custom `proxy_rules.json` serializer, and the `_PendingSelection` state object.
 **Reads:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (`path=` parameters, defaulting to the real files).
@@ -123,11 +123,11 @@ root) — this package only consumes those.
 
 ---
 
-### paths.py (54 LOC)
+### paths.py (22 LOC)
 
-**Purpose:** Single source of truth for on-disk path constants (per-machine app-support dir and cross-repo shared-rules dir) plus one-time legacy-location migration.
-**Reads:** old dotfile/bundle-id locations under `~` (migration, first import only); `PROJECT_ROOT` env var via `monitor_root.resolve_monitor_cc_root` (`MONITOR_CC_ROOT` is the resolved path; the winning source goes to `menubar.log` through `root_report.py`).
-**Writes:** creates `_APP_SUPPORT` dir; moves legacy runtime files to their new paths on first import (idempotent — new wins, no clobber).
+**Purpose:** Single source of truth for on-disk path constants (per-machine app-support dir and cross-repo shared-rules dir).
+**Reads:** `PROJECT_ROOT` env var via `monitor_root.resolve_monitor_cc_root` (`MONITOR_CC_ROOT` is the resolved path; the winning source goes to `menubar.log` through `root_report.py`).
+**Writes:** creates `_APP_SUPPORT` dir at import.
 **Called by:** `app.py` (`SETTINGS_FILE`), `proc_cache.py` (`HOOKS_FILE`), `system.py` (`PID_FILE`, `MONITOR_CC_ROOT`), `session_launch.py` (`MONITOR_CC_ROOT`), `ghostty.py` (`_APP_SUPPORT`), `model_selection.py` (`MODEL_SELECTION_FILE`, `PROXY_RULES_FILE`), `monitor_sweep_scheduler.py` (`MONITOR_SWEEP_STATE_FILE`, `MONITOR_CC_ROOT`), `menubar_log.py` (`_APP_SUPPORT`), `app_settings.py` (`SETTINGS_FILE`).
 **Calls out:** `pathlib`, `os`.
 
@@ -143,7 +143,7 @@ root) — this package only consumes those.
 
 ---
 
-### app.py (340 LOC)
+### app.py (345 LOC)
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) — owns the per-concern controllers, the `_tick` timer loop, and `_PanelController` (the NSObject target for every button/hotkey action, including `selectTab_` for the header tab buttons and `showSkillMenu_`/`insertSkill_`).
 **Reads:** `sessions.refresh()` + `sessions.bg_by_project` (via `SessionsController`, backed by `discovery_worker.py`'s background snapshot) every tick; `SETTINGS_FILE` on launch.
@@ -153,7 +153,7 @@ root) — this package only consumes those.
 
 ---
 
-### app_settings.py (31 LOC)
+### app_settings.py (34 LOC)
 
 **Purpose:** Settings load/save for the panel-preference pair (`panel_width`, `panel_min_height`).
 **Reads:** `SETTINGS_FILE`.
@@ -163,7 +163,7 @@ root) — this package only consumes those.
 
 ---
 
-### panel_lifecycle.py (137 LOC)
+### panel_lifecycle.py (136 LOC)
 
 **Purpose:** Four-panel (Sessions/RAG/Models/Launch) open/close/background/cycle lifecycle driven by one ring order — reposition, show/hide, hotkey (re)registration.
 **Reads:** `app.panel`/`.rag`/`.models`/`.launch`/`.hotkey`/`.sessions` state; `app._nsapp.nsstatusitem`.
@@ -193,7 +193,7 @@ root) — this package only consumes those.
 
 ---
 
-### monitor_sweep_scheduler.py (60 LOC)
+### monitor_sweep_scheduler.py (63 LOC)
 
 **Purpose:** At-most-once-per-24h tick-driven sweep of stale `monitor_cc_*` tmux sessions, gated by an on-disk survives-a-restart timestamp.
 **Reads:** `paths.py:MONITOR_SWEEP_STATE_FILE` (lazy, once per process).
@@ -223,7 +223,7 @@ root) — this package only consumes those.
 
 ---
 
-### hotkey_carbon.py (65 LOC)
+### hotkey_carbon.py (72 LOC)
 
 **Purpose:** Shared Carbon FFI plumbing (CDLL bindings, structures, constants) used by all 4 hotkey registration paths.
 **Reads:** nothing.
@@ -253,17 +253,17 @@ root) — this package only consumes those.
 
 ---
 
-### menubar_log.py (35 LOC)
+### menubar_log.py (48 LOC)
 
-**Purpose:** Unified append-only log sink for all menubar diagnostic categories, with 7-day retention cleanup.
+**Purpose:** Unified append-only log sink for all menubar diagnostic categories, with 7-day retention cleanup and a log-on-change helper for per-cycle conditions.
 **Reads:** `_APP_SUPPORT/menubar.log` (`cleanup_old_lines` only).
 **Writes:** `_APP_SUPPORT/menubar.log` (append per call).
-**Called by:** `hotkey_controller.py`, `app.py`, `bg_timer.py`, `panel_views.py`, `desktop_detection.py`, `system.py`, `monitor_sweep_scheduler.py`, `hotkey_carbon.py`, `hotkey_digits.py`, `hotkey_arrows.py`, `discovery_worker.py`, `launch_controller.py`, `session_launch.py`; `dev/hotkey_latency/analyze_latency.py` (reads the log file, not an import).
+**Called by:** `hotkey_controller.py`, `app.py`, `bg_timer.py`, `panel_views.py`, `desktop_detection.py`, `system.py`, `monitor_sweep_scheduler.py`, `hotkey_carbon.py`, `hotkey_digits.py`, `hotkey_arrows.py`, `discovery_worker.py`, `launch_controller.py`, `session_launch.py`, `app_settings.py`, `model_selection.py`, `model_controller.py`, `proc_cache.py`, `ghostty.py`, `bg_task_orphans.py`, `discover.py`, `panel_lifecycle.py`, `rag_controller.py`, `skill_discovery.py`, `skill_insert.py`, `skill_controller.py`; `hook_writer.py` (lazy import on failure only); `dev/hotkey_latency/analyze_latency.py` (reads the log file, not an import).
 **Calls out:** `datetime`; `.paths` (`_APP_SUPPORT`).
 
 ---
 
-### system.py (226 LOC)
+### system.py (234 LOC)
 
 **Purpose:** Process entry point (`run()`), singleton lock, and Ghostty click-to-focus/monitor-launch routing for main sessions, worker viewers, and per-project monitors — every successful focus AppleScript now also activates Ghostty app-wide (one combined osascript call, `focus` before `activate`, never on a failed/MISS attempt); worker-viewer focus self-heals one stale-id failure via a single reprobe-and-retry, main-session focus unchanged otherwise.
 **Reads:** `PID_FILE` (lock); `get_ghostty_terminal_id(cwd)`/`get_ghostty_terminal_id_for_tty(tty)` from `ghostty.py` on click; `ps -A` output (worker-viewer tty lookup); the plist template (PATH source for `_resolve_launch_python3`); `MONITOR_CC_ROOT`; `tmux has-session` (via `tmux_launcher.py`).
@@ -329,7 +329,7 @@ root) — this package only consumes those.
 
 ---
 
-### skill_discovery.py (120 LOC)
+### skill_discovery.py (125 LOC)
 
 **Purpose:** Discovers the skills offered for one main session — project, personal and enabled-plugin skills — with short and full invocation names.
 **Reads:** `~/.claude/settings.json` (`enabledPlugins`), `~/.claude/plugins/installed_plugins.json`, each plugin's `.claude-plugin/plugin.json` and skill files, `<cwd>/.claude/skills/*/SKILL.md`, `~/.claude/skills/*/SKILL.md`.
@@ -359,7 +359,7 @@ root) — this package only consumes those.
 
 ---
 
-### discover.py (218 LOC)
+### discover.py (234 LOC)
 
 **Purpose:** Session discovery — scans `~/.claude/projects/*/` and returns the list of live main/worker `SessionInfo`, with status, background-task flag, and (for mains) Mission Control desktop number.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates process/tmux/hook state to `proc_cache.py`, Ghostty mapping to `ghostty.py`, desktop numbers to `desktop_detection.py`.
@@ -369,17 +369,17 @@ root) — this package only consumes those.
 
 ---
 
-### desktop_detection.py (338 LOC)
+### desktop_detection.py (345 LOC)
 
 **Purpose:** Batch detection of macOS Mission Control desktop numbers for all main sessions via private CoreGraphics Services (CGS) APIs plus one AppleScript round-trip.
 **Reads:** CGS APIs (`CGSCopyManagedDisplaySpaces`, `CGSCopySpacesForWindows`, `CGWindowListCopyWindowInfo`) via ctypes; `osascript` (Ghostty window name/list); `cwd_uuid_map` + `cwd_tty_map` from caller.
-**Writes:** module-level caches (`_det_cache`, `_det_cache_ts`, `_det_cache_cwds`, `_last_result`, `_cwd_desktop_lkg`); `[detection]` lines to `menubar.log`.
+**Writes:** module-level caches (`_det_cache`, `_det_cache_ts`, `_det_cache_cwds`, `_last_result`); `[detection]` lines to `menubar.log`.
 **Called by:** `discover.py:list_alive_sessions`; `space_switch.py` (`_build_space_map`).
 **Calls out:** `ctypes` (CoreGraphics + libobjc), `subprocess` (osascript); `.menubar_log` (`log_menubar`).
 
 ---
 
-### proc_cache.py (184 LOC)
+### proc_cache.py (204 LOC)
 
 **Purpose:** Process and state caches shared by discovery — CC process pid→(tty,cwd) map, tmux session-name set, background-task open-handle snapshot (plus per-file holder pids), proxy-log mtime lookup, hook-state reader.
 **Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `lsof +D _TASKS_BASE -Fpn` (bg-task open-handle + holder-pid cache); `tmux list-sessions`; `tmux display-message #{window_activity}` (per-session, on demand); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE`.
@@ -389,7 +389,7 @@ root) — this package only consumes those.
 
 ---
 
-### ghostty.py (182 LOC)
+### ghostty.py (195 LOC)
 
 **Purpose:** Ghostty terminal UUID mapping via an OSC 2 title-marker probe — maps every Ghostty child tty (main sessions and worker viewers alike) to its terminal UUID for click-to-focus; also exposes a scoped single-tty reprobe (query immediately, one retry on a miss, no fixed sleep — see Gotchas) for repairing one stale entry without a full re-scan.
 **Reads:** `ps -A` (Ghostty PID + child ttys); `/dev/ttys<NNN>` (OSC 2 marker writes); `osascript` (terminal `id|||name` pairs for the batch refresh; `id of (first terminal whose name is ...)` for the scoped single-tty reprobe, up to twice per call).
@@ -399,7 +399,7 @@ root) — this package only consumes those.
 
 ---
 
-### bg_timer.py (163 LOC)
+### bg_timer.py (167 LOC)
 
 **Purpose:** Orchestrator wake-up-process scanning (`worker-cli wait` plus legacy `sleep` timers), per-project attribution, and manual abort.
 **Reads:** `ps -A -o pid=,ppid=,etime=,args=` (wake-up-process detection); `_cc_proc_cache` (ancestry→cwd attribution); `lsof -p <pid> -a -d 1,2 -Fn` per killed PID (own-output-file resolution).
@@ -409,7 +409,7 @@ root) — this package only consumes those.
 
 ---
 
-### bg_task_orphans.py (115 LOC)
+### bg_task_orphans.py (117 LOC)
 
 **Purpose:** Detects `*.output` task-file handle holders whose ancestry chain contains no live Claude process, freshly reconfirms each one immediately before acting, and SIGTERMs the confirmed orphans — the subprocesses that poison `worker-cli wait` forever.
 **Reads:** `proc_cache.py:bg_task_holder_pids_snapshot()` (file path -> holder pids); `_cc_proc_cache` (live-Claude membership test); `ps -A -o pid=,ppid=` (ancestry walk, own probe, up to 5 hops per holder); `lsof -p <pid> -Fn` per orphan candidate, immediately before any kill (fresh pid-still-holds-this-exact-file reconfirmation — the 10s-old cache alone is not trusted for a kill decision).
@@ -419,13 +419,13 @@ root) — this package only consumes those.
 
 ---
 
-### hook_writer.py (65 LOC)
+### hook_writer.py (76 LOC)
 
 **Purpose:** CC hook handler (stdin JSON) writing working/idle status to `hooks.json` — `proc_cache.py`'s primary status signal.
 **Reads:** stdin (CC hook JSON); `APP_SUPPORT/hooks.json` (inside flock).
-**Writes:** `APP_SUPPORT/hooks.json` (atomic, inside flock).
+**Writes:** `APP_SUPPORT/hooks.json` (atomic, inside flock); failures via `menubar.log` (`hook_writer` category).
 **Called by:** CC hook system (async subprocess, `python3 src/menubar/hook_writer.py`); `dev/model_selector/verify_hook_writer_split.py` (dynamic import, test). Never imported as a package module.
-**Calls out:** `fcntl`, `json`, `os`, `sys`, `time` (stdlib only).
+**Calls out:** `fcntl`, `json`, `os`, `sys`, `time` (stdlib); `.menubar_log` via lazy absolute import in the failure path only.
 
 ---
 
@@ -488,7 +488,7 @@ root) — this package only consumes those.
 | `_ghostty_tty_to_id` | ghostty.py | ghostty.py (discovery-worker thread) | `Dict[tty, uuid]`, populated incrementally by the OSC 2 probe; read on the main thread via `get_ghostty_terminal_id(_for_tty)`. |
 | `_DIGIT_CALLBACKS`/`_DIGIT_HANDLER_CB`/`_DIGIT_HANDLER_REF` | hotkey_digits.py | hotkey_digits.py | Cmd+1..9 dispatch table plus the persistent Carbon handler anchors — installed once, never dropped. |
 | `_ARROW_CALLBACKS`/`_ARROW_HANDLER_CB`/`_ARROW_HANDLER_REF` | hotkey_arrows.py | hotkey_arrows.py | Cmd+→/← dispatch table plus the persistent Carbon handler anchors — same pattern as the digit module. |
-| `_det_cache`/`_det_cache_ts`/`_det_cache_cwds`/`_last_result`/`_cwd_desktop_lkg` | desktop_detection.py | desktop_detection.py | Desktop-number result cache (`_DET_CACHE_TTL=10s`) plus the last-known-good per-cwd desktop map used across detection failures. |
+| `_det_cache`/`_det_cache_ts`/`_det_cache_cwds`/`_last_result` | desktop_detection.py | desktop_detection.py | Desktop-number result cache (`_DET_CACHE_TTL=10s`) and the previous result used for transition logging. |
 
 ## Gotchas
 - Singleton lock (`system.py:_acquire_singleton_lock`) MUST exit 0 on failure — launchd `KeepAlive=true` only respawns on non-zero exit.

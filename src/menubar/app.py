@@ -17,7 +17,7 @@ from .bg_timer import _abort_bg_sleep_timers
 from .discovery_worker import start_discovery_worker
 from .focus_controller import FocusController
 from .hotkey_controller import HotkeyController, register_cmd_l, register_cmd_k
-from .menubar_log import log_menubar
+from .menubar_log import log_menubar, log_menubar_change
 from .bar_icons import ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET
 from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
 from .panel_manager import PanelManager
@@ -33,6 +33,7 @@ from .panel_lifecycle import (_open_main_panel, _open_tab_name, _close_panel,
                                _panel_of, _background_panel, _deferred_close_open)
 from .panel import _wire_header_buttons
 from .panel_tabs import TAB_KEYS
+from .setup_menubar import write_plist, write_plist_py2app
 
 BLINK_DURATION = 0.2
 POLL_INTERVAL  = 1.5
@@ -110,22 +111,12 @@ class _PanelController(NSObject):
     def restartApp_(self, sender):
         uid = os.getuid()
         label = 'com.brunowinter.monitor-cc-menubar'
-        if getattr(sys, 'frozen', False):
-            from .setup_menubar import write_plist_py2app
-            write_plist_py2app()
-            dest = str(Path.home() / 'Library' / 'LaunchAgents' / f'{label}.plist')
-            cmd = (
-                f'sleep 0.5 && launchctl bootout gui/{uid}/{label} 2>/dev/null ; '
-                f'launchctl bootstrap gui/{uid} "{dest}"'
-            )
-        else:
-            from .setup_menubar import write_plist
-            write_plist()
-            dest = str(Path.home() / 'Library' / 'LaunchAgents' / f'{label}.plist')
-            cmd = (
-                f'sleep 0.5 && launchctl bootout gui/{uid}/{label} 2>/dev/null ; '
-                f'launchctl bootstrap gui/{uid} "{dest}"'
-            )
+        _write_launch_plist(getattr(sys, 'frozen', False))
+        dest = str(Path.home() / 'Library' / 'LaunchAgents' / f'{label}.plist')
+        cmd = (
+            f'sleep 0.5 && launchctl bootout gui/{uid}/{label} 2>/dev/null ; '
+            f'launchctl bootstrap gui/{uid} "{dest}"'
+        )
         subprocess.Popen(['sh', '-c', cmd], start_new_session=True)
         rumps.quit_application()
 
@@ -212,8 +203,8 @@ class CCMenuBarApp(rumps.App):
         def _on_hotkey():
             try:
                 self._nsapp.nsstatusitem.button().performClick_(None)
-            except Exception:
-                pass
+            except Exception as exc:
+                log_menubar('hotkey', f'cmd+l status item click failed err={exc!r}')
 
         self.hotkey = HotkeyController(self)
         cmd_l_cb, cmd_l_ref = register_cmd_l(_on_hotkey)
@@ -231,27 +222,38 @@ class CCMenuBarApp(rumps.App):
     def _ensure_wired(self) -> bool:
         if self.panel._initialized:
             return True
-        try:
-            self._nsapp.nsstatusitem.setMenu_(None)
-            btn = self._nsapp.nsstatusitem.button()
-            btn.setTarget_(self._panel_controller)
-            btn.setAction_(b'togglePanel:')
-            self.panel._widgets.quit_btn.setTarget_(self._panel_controller)
-            self.panel._widgets.quit_btn.setAction_(b'restartApp:')
-            self.panel._widgets.kill_btn.setTarget_(self._panel_controller)
-            self.panel._widgets.kill_btn.setAction_(b'killApp:')
-            for header in (self.panel._widgets.header_view, self.rag._rag_header,
-                           self.models._models_header, self.launch._launch_header):
-                _wire_header_buttons(header, self._panel_controller)
-            self.panel._widgets.panel.setDelegate_(self._panel_controller)
-            self.rag._rag_panel.setDelegate_(self._panel_controller)
-            self.models._models_panel.setDelegate_(self._panel_controller)
-            self.launch._launch_panel.setDelegate_(self._panel_controller)
-            _set_bar_icon(self, ICON_NORMAL)
-            self.panel._initialized = True
-            return True
-        except AttributeError:
+        btn = self._status_item_button()
+        if btn is None:
             return False
+        btn.setTarget_(self._panel_controller)
+        btn.setAction_(b'togglePanel:')
+        self.panel._widgets.quit_btn.setTarget_(self._panel_controller)
+        self.panel._widgets.quit_btn.setAction_(b'restartApp:')
+        self.panel._widgets.kill_btn.setTarget_(self._panel_controller)
+        self.panel._widgets.kill_btn.setAction_(b'killApp:')
+        for header in (self.panel._widgets.header_view, self.rag._rag_header,
+                       self.models._models_header, self.launch._launch_header):
+            _wire_header_buttons(header, self._panel_controller)
+        self.panel._widgets.panel.setDelegate_(self._panel_controller)
+        self.rag._rag_panel.setDelegate_(self._panel_controller)
+        self.models._models_panel.setDelegate_(self._panel_controller)
+        self.launch._launch_panel.setDelegate_(self._panel_controller)
+        _set_bar_icon(self, ICON_NORMAL)
+        self.panel._initialized = True
+        log_menubar_change('wiring', 'status_item_wait', None)
+        return True
+
+    def _status_item_button(self):
+        try:
+            item = self._nsapp.nsstatusitem
+            item.setMenu_(None)
+            btn = item.button()
+        except AttributeError as exc:
+            log_menubar_change('wiring', 'status_item_wait', f'status item not ready err={exc!r}')
+            return None
+        if btn is None:
+            log_menubar_change('wiring', 'status_item_wait', 'status item button is None')
+        return btn
 
     def _tick_panel_open(self, sessions, bg_by_project) -> None:
         session_names = {s.name for s in sessions}
@@ -291,12 +293,8 @@ class CCMenuBarApp(rumps.App):
         now = time.time()
         maybe_run_sweep_workflow(now)
         _p0 = time.monotonic()
-        try:
-            sessions = self.sessions.refresh()
-            bg_by_project = self.sessions.bg_by_project
-        except Exception:
-            sessions = []
-            bg_by_project = {}
+        sessions = self.sessions.refresh()
+        bg_by_project = self.sessions.bg_by_project
         phases['snapshot_consume'] = time.monotonic() - _p0
         _p0 = time.monotonic()
         self.rag.tick(sessions)
@@ -323,6 +321,13 @@ def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) ->
             f'sessions={sorted(s.name for s in sessions)} '
             f'displayed={sorted(displayed_items)} action={action}')
     log_menubar('tick', line)
+
+def _write_launch_plist(frozen: bool) -> None:
+    log_menubar('restart', f'route={"py2app" if frozen else "source"}')
+    if frozen:
+        write_plist_py2app()
+    else:
+        write_plist()
 
 def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:
     astr = NSAttributedString.alloc().initWithString_attributes_(

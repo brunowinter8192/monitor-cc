@@ -4,7 +4,7 @@ import ctypes
 from .menubar_log import log_menubar
 from .hotkey_carbon import (
     _EventHotKeyID, _EventHandlerProcPtr, _MBAR_SIG, _HOTKEY_EVENT_SPEC, _get_hkid,
-    _load_carbon, _log_queue_delay, _eventNotHandledErr,
+    _load_carbon, _log_queue_delay, _eventNotHandledErr, _check_status,
 )
 
 _CMD_RIGHT_ID        = 20
@@ -34,15 +34,15 @@ def _ensure_arrow_handler():
             log_menubar('hotkey', name)
             _log_queue_delay(carbon, event, _entry_t, name)
             fn()
-        except Exception:
-            pass
+        except Exception as exc:
+            log_menubar('hotkey', f'handler failed arrow err={exc!r}')
         return 0
 
     _ARROW_HANDLER_CB = _EventHandlerProcPtr(_handler)
     handler_ref = ctypes.c_void_p()
-    carbon.InstallEventHandler(
+    _check_status('InstallEventHandler', carbon.InstallEventHandler(
         target, _ARROW_HANDLER_CB, 1, ctypes.byref(_HOTKEY_EVENT_SPEC),
-        None, ctypes.byref(handler_ref))
+        None, ctypes.byref(handler_ref)), 'arrows')
     _ARROW_HANDLER_REF = handler_ref
 
 def register_cmd_arrow_right(callback) -> tuple:
@@ -51,10 +51,10 @@ def register_cmd_arrow_right(callback) -> tuple:
     carbon = _load_carbon()
     target = carbon.GetApplicationEventTarget()
     hk_ref = ctypes.c_void_p()
-    carbon.RegisterEventHotKey(
+    _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
         0x7C, 0x0100,
         _EventHotKeyID(_MBAR_SIG, _CMD_RIGHT_ID),
-        target, 0, ctypes.byref(hk_ref))
+        target, 0, ctypes.byref(hk_ref)), 'cmd+right')
     return None, hk_ref
 
 def register_cmd_arrow_left(callback) -> tuple:
@@ -63,10 +63,10 @@ def register_cmd_arrow_left(callback) -> tuple:
     carbon = _load_carbon()
     target = carbon.GetApplicationEventTarget()
     hk_ref = ctypes.c_void_p()
-    carbon.RegisterEventHotKey(
+    _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
         0x7B, 0x0100,
         _EventHotKeyID(_MBAR_SIG, _CMD_LEFT_ID),
-        target, 0, ctypes.byref(hk_ref))
+        target, 0, ctypes.byref(hk_ref)), 'cmd+left')
     return None, hk_ref
 
 def unregister_cmd_arrow_right(hk_ref) -> None:

@@ -1,11 +1,11 @@
 # INFRASTRUCTURE
-import sys
 import threading
 
 from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSForegroundColorAttributeName)
 from Foundation import NSMakeRect, NSOperationQueue
 
+from .menubar_log import log_menubar
 from .panel import (_TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator,
                     _make_tab_nspanel, _resize_panel_keep_top)
 from .model_selection import _PendingSelection, _thinking_is_enabled
@@ -117,67 +117,42 @@ class ModelController:
         self._buttons.refresh_titles(self._pending)
 
     def handle_cycle_main(self) -> None:
-        try:
-            self._pending.cycle_main()
-            self._buttons.refresh_titles(self._pending)
-        except Exception as exc:
-            print(f'[menubar] model cycle (main) failed: {exc}', file=sys.stderr)
+        self._guarded_cycle('model cycle (main)', self._pending.cycle_main)
 
     def handle_cycle_worker(self) -> None:
-        try:
-            self._pending.cycle_worker()
-            self._buttons.refresh_titles(self._pending)
-        except Exception as exc:
-            print(f'[menubar] model cycle (worker) failed: {exc}', file=sys.stderr)
+        self._guarded_cycle('model cycle (worker)', self._pending.cycle_worker)
 
     def handle_cycle_main_effort(self) -> None:
-        try:
-            self._pending.cycle_main_effort()
-            self._buttons.refresh_titles(self._pending)
-        except Exception as exc:
-            print(f'[menubar] model effort cycle (main) failed: {exc}', file=sys.stderr)
+        self._guarded_cycle('model effort cycle (main)', self._pending.cycle_main_effort)
 
     def handle_cycle_main_max_tokens(self) -> None:
-        try:
-            self._pending.cycle_main_max_tokens()
-            self._buttons.refresh_titles(self._pending)
-        except Exception as exc:
-            print(f'[menubar] model max_tokens cycle (main) failed: {exc}', file=sys.stderr)
+        self._guarded_cycle('model max_tokens cycle (main)', self._pending.cycle_main_max_tokens)
 
     def handle_cycle_worker_effort(self) -> None:
-        try:
-            self._pending.cycle_worker_effort()
-            self._buttons.refresh_titles(self._pending)
-        except Exception as exc:
-            print(f'[menubar] model effort cycle (worker) failed: {exc}', file=sys.stderr)
+        self._guarded_cycle('model effort cycle (worker)', self._pending.cycle_worker_effort)
 
     def handle_cycle_worker_max_tokens(self) -> None:
-        try:
-            self._pending.cycle_worker_max_tokens()
-            self._buttons.refresh_titles(self._pending)
-        except Exception as exc:
-            print(f'[menubar] model max_tokens cycle (worker) failed: {exc}', file=sys.stderr)
+        self._guarded_cycle('model max_tokens cycle (worker)', self._pending.cycle_worker_max_tokens)
 
     def handle_cycle_main_thinking(self) -> None:
-        try:
-            self._pending.cycle_main_thinking()
-            self._buttons.refresh_titles(self._pending)
-        except Exception as exc:
-            print(f'[menubar] model thinking cycle (main) failed: {exc}', file=sys.stderr)
+        self._guarded_cycle('model thinking cycle (main)', self._pending.cycle_main_thinking)
 
     def handle_cycle_worker_thinking(self) -> None:
-        try:
-            self._pending.cycle_worker_thinking()
-            self._buttons.refresh_titles(self._pending)
-        except Exception as exc:
-            print(f'[menubar] model thinking cycle (worker) failed: {exc}', file=sys.stderr)
+        self._guarded_cycle('model thinking cycle (worker)', self._pending.cycle_worker_thinking)
 
     def handle_apply(self) -> None:
         try:
             self._pending.write()
             self._show_apply_success()
         except Exception as exc:
-            print(f'[menubar] model selection apply failed: {exc}', file=sys.stderr)
+            log_menubar('model', f'model selection apply failed: {exc!r}')
+
+    def _guarded_cycle(self, label: str, cycle) -> None:
+        try:
+            cycle()
+            self._buttons.refresh_titles(self._pending)
+        except Exception as exc:
+            log_menubar('model', f'{label} failed: {exc!r}')
 
     def _show_apply_success(self) -> None:
         try:
@@ -190,7 +165,7 @@ class ModelController:
             btn.setTitle_(_APPLY_SUCCESS_TITLE)
             threading.Timer(_APPLY_SUCCESS_DURATION, self._schedule_apply_revert).start()
         except Exception as exc:
-            print(f'[menubar] apply success flash failed: {exc}', file=sys.stderr)
+            log_menubar('model', f'apply success flash failed: {exc!r}')
 
     def _schedule_apply_revert(self) -> None:
         NSOperationQueue.mainQueue().addOperationWithBlock_(self._revert_apply_button)
@@ -205,4 +180,4 @@ class ModelController:
                 NSMakeRect(frame.origin.x, frame.origin.y, _APPLY_BTN_W, frame.size.height), True)
             btn.setTitle_('Apply')
         except Exception as exc:
-            print(f'[menubar] apply success revert failed: {exc}', file=sys.stderr)
+            log_menubar('model', f'apply success revert failed: {exc!r}')

@@ -53,3 +53,7 @@ Intended behaviour changes are shown by new tests (all run cases as parallel sub
 
 - Amplifier (a) of X9 stays by decision: a transient empty config at the first request of a model freezes a no-op for that model for the whole proxy session, now visible as a `rules_config.load_config` line but not self-healing.
 - `_load_active_plugins` and `_is_project_excluded` read their files on every request; only the log side is deduplicated.
+
+## Merge of integration (later the same day)
+
+Conflicts in `setup_py2app.py`, `src/proxy_display/{forwarded_parser,parser,side_logs}.py` and four DOCS.md files. Integration had rewritten the three proxy_display modules (missing-marker note, `get_proxy_session_start_ts` returning `None`, `JsonlReader`, required arguments of `scan_worker_errors_logs`) and removed the `setup_py2app` comment block. Resolution: take integration's version of each file and re-apply only the root resolution (`_monitor_root()` from `forwarded_parser`, `monitor_root` in the py2app includes and `_BUNDLE_SRC_KEEP`). `_resolve_log_id` keeps integration's `root: str` signature because `dev/proxy_display/test_forwarded_tripwires.py` calls it with a string. `dev/monitor_root/test_monitor_root.py` now filters the pane notes for `monitor_root`, since integration's parser also notes a missing marker. Hashes after the merge equal the earlier baselines (hook 54e29128..., pipeline 59a043de..., ram 84cd08ee...).

@@ -36,7 +36,7 @@ def _make_proxy_entry(idx, model='claude-sonnet', msg_count=3, bp=2):
         'tools_names': [f'tool_{j}' for j in range(10)] if bp > 0 else [], 'tools_defs': [],
         'system_blocks': [{'idx': 0, 'chars': 10000, 'preview': 'sys content'}] if bp > 0 else [],
         'messages': [{'role': 'user', 'type': 'text', 'chars': 500, 'blocks': []} for _ in range(msg_count)],
-        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [],
+        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [], '_stripped_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}, '_injected_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}},
         'timestamp': f'2026-04-21T10:0{idx}:00Z',
     }
 
@@ -87,6 +87,7 @@ def test_proxy_pane_permanent_search_bar_header():
 
 def _reset_and_render_proxy_pane():
     mod_proxy.proxy_entries.clear()
+    mod_proxy._proxy_session_start_ts = '2000-01-01T00:00:00Z'
     mod_proxy.proxy_expand_states.clear()
     mod_proxy.proxy_line_map.clear()
     mod_proxy.proxy_hover_row = None

@@ -20,7 +20,8 @@ _PRUNE_AFTER_SECS = 7200
 def hook_writer_workflow() -> None:
     try:
         payload = json.loads(sys.stdin.read())
-    except Exception:
+    except Exception as exc:
+        _log_failure(f'stdin parse failed err={exc!r}')
         return
     event = payload.get("hook_event_name", "")
     if event in _WORKING_EVENTS:
@@ -52,14 +53,24 @@ def _write_state(session_id: str, status: str, cwd: str) -> None:
             tmp = _HOOK_STATE_FILE.with_suffix(".tmp")
             tmp.write_text(json.dumps(state), encoding="utf-8")
             os.replace(tmp, _HOOK_STATE_FILE)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_failure(f'state write skipped session={session_id} err={exc!r}')
 
 def _load_state() -> dict:
     try:
         return json.loads(_HOOK_STATE_FILE.read_text(encoding="utf-8"))
-    except Exception:
+    except FileNotFoundError:
         return {}
+
+def _log_failure(message: str) -> None:
+    try:
+        root = str(Path(__file__).resolve().parents[2])
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from src.menubar.menubar_log import log_menubar
+        log_menubar('hook_writer', message)
+    except Exception as exc:
+        print(f'[hook_writer] {message}; log unavailable: {exc!r}', file=sys.stderr)
 
 if __name__ == "__main__":
     hook_writer_workflow()

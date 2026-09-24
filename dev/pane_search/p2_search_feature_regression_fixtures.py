@@ -57,7 +57,7 @@ def _make_entry(idx: int, marker: str = None, model: str = 'claude-sonnet') -> d
         'tools_defs': [{'name': 'tool_a', 'description': 'd', 'input_schema': {}, 'stripped_original': None}],
         'system_blocks': [{'idx': 0, 'chars': 3, 'preview': 'sys', 'has_cc': False}],
         'messages': messages,
-        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [],
+        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [], '_stripped_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}, '_injected_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}},
         'anthropic_beta': [], 'context_management': None, 'diagnostics': None,
         'effort_value': None, 'max_tokens': 0,
         'diff_from_prev': {'messages_added': 1},
@@ -66,6 +66,7 @@ def _make_entry(idx: int, marker: str = None, model: str = 'claude-sonnet') -> d
 
 
 def _reset_pane_state():
+    mod_pane._proxy_session_start_ts = '2000-01-01T00:00:00Z'
     mod_pane.proxy_entries.clear()
     mod_pane.proxy_expand_states.clear()
     mod_pane.proxy_line_map.clear()

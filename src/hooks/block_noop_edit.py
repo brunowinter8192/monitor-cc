@@ -32,7 +32,8 @@ def _parse_input():
         new = new if isinstance(new, str) else None
         fp = fp if isinstance(fp, str) else None
         return old, new, fp, payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("block_noop_edit", "trace", "Edit", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None, None, None
 
 

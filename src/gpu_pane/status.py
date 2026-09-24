@@ -8,26 +8,16 @@ import time
 import urllib.request
 from pathlib import Path
 
+from src.pane_error_log import log_pane_error, log_pane_note
+
 RAG_LOCKS_DIR = Path.home() / '.rag-locks'
 
 
-def _discover_preset_names() -> list[str]:
-    try:
-        r = subprocess.run(
-            ['rag-cli', 'server', 'presets', '--json'],
-            capture_output=True, text=True, timeout=3,
-        )
-        if r.returncode == 0:
-            payload = json.loads(r.stdout)
-            return [p['name'] for p in payload]
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
-        pass
-    return []
-
-
-PRESET_NAMES = _discover_preset_names()
+PRESET_NAMES: list[str] = []
 
 _last_anomalies: list[dict] = []
+_preset_failure: str | None = None
+_collections_failure: str | None = None
 _legacy_warned: bool = False
 
 _logger = logging.getLogger('gpu_pane')
@@ -39,7 +29,7 @@ if not _logger.handlers:
         _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
         _logger.addHandler(_fh)
     except OSError:
-        pass
+        log_pane_error('gpu_status')
     _logger.setLevel(logging.WARNING)
 
 
@@ -50,6 +40,7 @@ def all_statuses() -> tuple[list[dict], list[dict]]:
     _last_anomalies = []
 
     _check_legacy_files()
+    _ensure_preset_names()
 
     states_by_name: dict[str, dict] = {}
     arbitrary: list[dict] = []
@@ -59,6 +50,10 @@ def all_statuses() -> tuple[list[dict], list[dict]]:
             state = json.loads(sf.read_text())
         except (json.JSONDecodeError, OSError):
             _warn('malformed_json', f'malformed state file: {sf}', str(sf))
+            continue
+
+        if not isinstance(state.get('port'), int):
+            _warn('missing_port', f'state file without integer port: {sf}', str(sf))
             continue
 
         pid = state.get('pid')
@@ -134,7 +129,7 @@ def _state_file_idle(port: int | None) -> float | None:
         return None
     try:
         return time.time() - (RAG_LOCKS_DIR / f'server-port-{port}.json').stat().st_mtime
-    except (FileNotFoundError, OSError):
+    except FileNotFoundError:
         return None
 
 
@@ -162,17 +157,49 @@ def _read_rss_mb(pid: int | None) -> int | None:
     return None
 
 
-def _fetch_collections() -> list[dict]:
+def _discover_preset_names() -> list[str]:
+    r = subprocess.run(
+        ['rag-cli', 'server', 'presets', '--json'],
+        capture_output=True, text=True, timeout=3,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f'rc={r.returncode}')
+    return [p['name'] for p in json.loads(r.stdout)]
+
+
+def _ensure_preset_names() -> None:
+    global _preset_failure
+    if PRESET_NAMES:
+        return
+    try:
+        PRESET_NAMES[:] = _discover_preset_names()
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, KeyError, RuntimeError) as exc:
+        cause = f'{type(exc).__name__}: {exc}'
+        _last_anomalies.append({'kind': 'presets_unavailable', 'message': f'preset discovery failed: {cause}',
+                                'source': 'rag-cli server presets'})
+        if cause != _preset_failure:
+            _logger.warning(f'preset discovery failed: {cause}')
+        _preset_failure = cause
+        return
+    _preset_failure = None
+
+
+def _fetch_collections() -> list[dict] | None:
+    global _collections_failure
     try:
         r = subprocess.run(
             ['rag-cli', 'list_collections', '--json'],
             capture_output=True, text=True, timeout=5,
         )
-        if r.returncode == 0:
-            return json.loads(r.stdout)
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
-        pass
-    return []
+        cause = None if r.returncode == 0 else f'rc={r.returncode}'
+        collections = json.loads(r.stdout) if cause is None else None
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        cause = type(exc).__name__
+        collections = None
+    if cause != _collections_failure and cause is not None:
+        log_pane_note('gpu', f'collections unavailable: {cause}')
+    _collections_failure = cause
+    return collections
 
 
 def _warn(kind: str, message: str, source: str) -> None:

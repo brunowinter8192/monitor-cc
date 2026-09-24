@@ -38,7 +38,8 @@ def _parse_content():
         else:
             return None, None, None
         return (content if isinstance(content, str) else None), file_path, sid
-    except Exception:
+    except Exception as e:
+        log_fire("block_except_pass", "trace", "Write/Edit", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None, None
 
 
