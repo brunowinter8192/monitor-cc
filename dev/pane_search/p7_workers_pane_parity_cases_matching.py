@@ -21,7 +21,7 @@ def test_call_level_match_collapsed_container_marked():
         changed = mod_wt._handle_worker_tokens_search_input('\r')
         check("Enter reports a change", changed)
         check("real search found the call", mod_wt._worker_tokens_search.matches == [(0, 0)])
-        output, _ = mod_wt._build_worker_tokens_output(_MONITOR)
+        output = mod_wt._build_worker_tokens_output(_MONITOR)
         row = next(r for r, k in mod_wt.worker_tokens_line_map.items() if k == (0, 0))
         header_line = output.splitlines()[row - 1]
         check("collapsed call header line is container-marked (SEARCH_CURRENT_BG present)",
@@ -42,7 +42,7 @@ def test_call_level_match_expanded_substring_marked():
         mod_wt.worker_tokens_expand_states[(0, 0)] = True
         mod_wt._handle_worker_tokens_search_input('\r')
         check("real search found the call", mod_wt._worker_tokens_search.matches == [(0, 0)])
-        output, _ = mod_wt._build_worker_tokens_output(_MONITOR)
+        output = mod_wt._build_worker_tokens_output(_MONITOR)
         header_row = next(r for r, k in mod_wt.worker_tokens_line_map.items() if k == (0, 0))
         header_line = output.splitlines()[header_row - 1]
         check("header line STILL container-marked when expanded", mod_colors.SEARCH_CURRENT_BG in header_line)
@@ -63,7 +63,7 @@ def test_turn_level_match():
         changed = mod_wt._handle_worker_tokens_search_input('\r')
         check("Enter reports a change", changed)
         check("real search found the turn", mod_wt._worker_tokens_search.matches == [('turn', 0)])
-        output, _ = mod_wt._build_worker_tokens_output(_MONITOR)
+        output = mod_wt._build_worker_tokens_output(_MONITOR)
         check("turn header is container-marked in the rendered output",
               mod_colors.SEARCH_CURRENT_BG in output and 'unique_turn_marker' in output)
         check("no ('turn', 0) key leaked into worker_tokens_line_map (turn headers stay non-interactive)",
@@ -83,7 +83,7 @@ def test_light_red_bg_still_detected_when_call_is_also_a_match():
         check("real search found the call", mod_wt._worker_tokens_search.matches == [(0, 0)])
         mod_wt._worker_tokens_turns[0]['api_calls'][0]['cache_creation'] = 5000
         mod_wt._worker_tokens_turns[0]['api_calls'][0]['cache_read'] = 100
-        output, _ = mod_wt._build_worker_tokens_output(_MONITOR)
+        output = mod_wt._build_worker_tokens_output(_MONITOR)
         row = next(r for r, k in mod_wt.worker_tokens_line_map.items() if k == (0, 0))
         header_line = output.splitlines()[row - 1]
         check("row's OUTER chosen_bg is still LIGHT_RED_BG despite the search-marker wrap preceding it",
@@ -116,7 +116,7 @@ def test_sentinel_resolves_to_default_bg_not_empty_string():
         _load_turns_via_refresh(worker)
         mod_wt.worker_tokens_expand_states[(0, 0)] = True
         mod_wt._handle_worker_tokens_search_input('\r')
-        output, _ = mod_wt._build_worker_tokens_output(_MONITOR)
+        output = mod_wt._build_worker_tokens_output(_MONITOR)
         check("an explicit \\033[49m appears right after the highlighted detail-line text",
               f"unique_marker_z\033[49m" in output)
         check("no raw _BG_RESTORE_SENTINEL leaked into the final output",

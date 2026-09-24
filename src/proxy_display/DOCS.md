@@ -46,21 +46,21 @@ populate `messages` for entries the deque window dropped.
 
 ## Modules
 
-### pane.py (343 LOC)
+### pane.py (342 LOC)
 
 **Purpose:** Event loop for the main proxy pane — reads the `_forwarded` dual-log incrementally, handles mouse (click expand/collapse, scroll, hover, copy, search) and keyboard input (search, undo, `n`/`N`), renders on change via the drain-refresh-render pattern.
 **Reads:** Module-level state; active project filter from `core.monitor`; stdin (keypresses, mouse events).
-**Writes:** ANSI output to stdout (direct tmux pane write); clipboard via `copy_to_clipboard`; `/tmp/monitor_cc_error.log` on caught exception (via `pane_error_log`); mutates its own module-level state (entries, expand states, scroll/hover, search state, undo stack, dual-log accumulators).
+**Writes:** frames to stdout via `frame_writer.write_frame`; clipboard via `copy_to_clipboard`; `/tmp/monitor_cc_error.log` on caught exception (via `pane_error_log`); mutates its own module-level state (entries, expand states, scroll/hover, search state, undo stack, dual-log accumulators).
 **Called by:** `src/proxy_display/__init__.py`, `src/core/monitor.py` (lazy import, mode dispatch)
 **Calls out:** `input.click_handler` (keypress/mouse/clipboard primitives), `panes.cache_turns` (`build_cache_turns`), `ram_audit` (`register_ram_dump`), `pane_error_log` (`log_pane_error`), `search_bar` (`SearchState` and search-bar mechanics)
 
 ---
 
-### worker_proxy_pane.py (347 LOC)
+### worker_proxy_pane.py (345 LOC)
 
 **Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate. The worker-switcher header itself is built by the shared `workers.worker_switch_header.format_worker_switch_header` (imported under the alias `_format_worker_proxy_header`, its pre-move name) — `_worker_proxy_workers` is enriched with token/context-% liveness via `worker_tmux.attach_worker_stats(_worker_proxy_workers, _worker_proxy_stats_cache)` before that header renders (incremental, own cache — see `workers/DOCS.md`'s `attach_worker_stats` gotcha for why this must stay incremental).
 **Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_selection.get_selection_file_path`); stdin.
-**Writes:** ANSI output to stdout (overdraw pattern: body print + header overdraw); clipboard via `copy_to_clipboard`; worker selection IPC file via `workers.write_selection`; `/tmp/monitor_cc_error.log` on caught exception; mutates its own module-level state (including `_worker_proxy_stats_cache`, the per-session incremental read state `attach_worker_stats` owns — never reset on worker switch, same as `worker_tokens_pane.py`'s own copy).
+**Writes:** frames to stdout via `frame_writer.write_frame` (header is the first rows of the built output); clipboard via `copy_to_clipboard`; worker selection IPC file via `workers.write_selection`; `/tmp/monitor_cc_error.log` on caught exception; mutates its own module-level state (including `_worker_proxy_stats_cache`, the per-session incremental read state `attach_worker_stats` owns — never reset on worker switch, same as `worker_tokens_pane.py`'s own copy).
 **Called by:** `src/proxy_display/__init__.py`, `src/core/monitor.py` (lazy import, mode dispatch)
 **Calls out:** `input.click_handler`, `workers.worker_tmux` (`find_worker_jsonl`, `list_workers`, `attach_worker_stats`), `workers.worker_selection` (`get_selection_file_path`), `workers` (`write_selection`), `workers.worker_switch_header` (`format_worker_switch_header`), `panes.cache_turns` (`build_cache_turns`), `utils` (`visual_line_count`), `ram_audit` (`register_ram_dump`), `pane_error_log` (`log_pane_error`), `search_bar`
 
