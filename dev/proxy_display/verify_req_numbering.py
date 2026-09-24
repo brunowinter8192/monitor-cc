@@ -101,12 +101,27 @@ def _token_numbering(lines: list) -> list:
     return rows
 
 
+def _cut_cells(text: str, width: int) -> str:
+    from src.utils import _cell_width
+    used = 0
+    for i, ch in enumerate(text):
+        used += _cell_width(ch)
+        if used > width:
+            return text[:i]
+    return text
+
+
+def _pad_cells(text: str, width: int) -> str:
+    from src.utils import _cell_width
+    return text + " " * (width - sum(_cell_width(ch) for ch in text))
+
+
 def _side_by_side(left: list, right: list) -> list:
     rows = []
     for i in range(max(len(left), len(right))):
         l = left[i] if i < len(left) else ""
         r = right[i] if i < len(right) else ""
-        rows.append(f"{l[:_COLUMN_WIDTH]:<{_COLUMN_WIDTH}} | {r[:_COLUMN_WIDTH]}")
+        rows.append(f"{_pad_cells(_cut_cells(l, _COLUMN_WIDTH), _COLUMN_WIDTH)} | {_cut_cells(r, _COLUMN_WIDTH)}")
     return rows
 
 
