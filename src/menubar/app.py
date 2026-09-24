@@ -23,14 +23,13 @@ from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HE
 from .panel_manager import PanelManager
 from .rag_controller import RagController
 from .model_controller import ModelController
+from .launch_controller import LaunchController
 from .monitor_sweep_scheduler import maybe_run_sweep_workflow
 from .system import _focus_session, _focus_worker, _open_or_focus_monitor
 from .sessions_controller import SessionsController
 from .app_settings import _load_settings, _save_settings
-from .panel_lifecycle import (_open_main_panel, _close_main_panel,
-                               _open_rag_panel, _close_rag_panel,
-                               _open_models_panel, _close_models_panel,
-                               _deferred_close_open, _background_panel)
+from .panel_lifecycle import (_open_main_panel, _open_tab_name, _close_panel,
+                               _panel_of, _background_panel)
 
 BLINK_DURATION = 0.2
 POLL_INTERVAL  = 1.5
@@ -48,27 +47,18 @@ class _PanelController(NSObject):
 
     def togglePanel_(self, sender):
         app = self._app
+        open_tab = _open_tab_name(app)
         if app.panel._panel_backgrounded:
-            if app.panel._panel_open:
-                app.panel._widgets.panel.orderFrontRegardless()
-            elif app.rag._rag_open:
-                app.rag._rag_panel.orderFrontRegardless()
-            elif app.models._models_open:
-                app.models._models_panel.orderFrontRegardless()
+            if open_tab is not None:
+                _panel_of(app, open_tab).orderFrontRegardless()
             app.panel._panel_backgrounded = False
             return
-        if app.rag._rag_open:
-            _close_rag_panel(app)
+        if open_tab is not None:
+            _close_panel(app, open_tab)
             return
-        if app.models._models_open:
-            _close_models_panel(app)
-            return
-        if app.panel._panel_open:
-            _close_main_panel(app)
-        else:
-            app.settings.panel_width = PANEL_WIDTH
-            app.settings.panel_min_height = PANEL_HEIGHT
-            _open_main_panel(app)
+        app.settings.panel_width = PANEL_WIDTH
+        app.settings.panel_min_height = PANEL_HEIGHT
+        _open_main_panel(app)
 
     def focusSession_(self, sender):
         cwd = self._app.panel._lookups.cwd_map.get(sender.tag())
@@ -84,6 +74,12 @@ class _PanelController(NSObject):
         cwd = self._app.panel._lookups.cwd_map.get(sender.tag())
         if cwd:
             _open_or_focus_monitor(cwd)
+
+    def selectDesktop_(self, sender):
+        self._app.launch.handle_select_desktop(sender.tag())
+
+    def launchProject_(self, sender):
+        self._app.launch.handle_launch_project(sender.tag())
 
     def killApp_(self, sender):
         uid = os.getuid()
@@ -163,6 +159,8 @@ class _PanelController(NSObject):
             app.rag.rebuild()
         elif app.models._models_open:
             app.models.rebuild()
+        elif app.launch._launch_open:
+            app.launch.rebuild()
         elif app.panel._panel_open:
             sessions = app.sessions.refresh()
             bg_by_project = app.sessions.bg_by_project
@@ -206,6 +204,7 @@ class CCMenuBarApp(rumps.App):
         self.hotkey.global_handles = (cmd_l_cb, cmd_l_ref, cmd_k_cb, cmd_k_ref)
         self.rag    = RagController(self)
         self.models = ModelController(self)
+        self.launch = LaunchController(self)
         self.sessions = SessionsController(self)
         start_discovery_worker()
 
@@ -224,6 +223,7 @@ class CCMenuBarApp(rumps.App):
             self.panel._widgets.panel.setDelegate_(self._panel_controller)
             self.rag._rag_panel.setDelegate_(self._panel_controller)
             self.models._models_panel.setDelegate_(self._panel_controller)
+            self.launch._launch_panel.setDelegate_(self._panel_controller)
             _set_bar_icon(self, ICON_NORMAL)
             self.panel._initialized = True
             return True
@@ -278,6 +278,9 @@ class CCMenuBarApp(rumps.App):
         _p0 = time.monotonic()
         self.rag.tick(sessions)
         phases['rag_tick'] = time.monotonic() - _p0
+        _p0 = time.monotonic()
+        self.launch.tick(sessions)
+        phases['launch_tick'] = time.monotonic() - _p0
         _p0 = time.monotonic()
         if self.panel._panel_open:
             self._tick_panel_open(sessions, bg_by_project)

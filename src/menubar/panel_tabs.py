@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-TABS = ('Sessions', 'RAG', 'Models')
+TABS = ('Sessions', 'RAG', 'Models', 'Launch')
 
 # FUNCTIONS
 

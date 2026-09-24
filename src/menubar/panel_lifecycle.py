@@ -6,52 +6,70 @@ from Foundation import NSOperationQueue
 from .panel import _reposition_panel
 from .rag_controller import _reposition_rag_panel
 from .model_panel_ui import _reposition_models_panel
+from .launch_panel_ui import _reposition_launch_panel
+
+_RING = ('main', 'rag', 'models', 'launch')
 
 # FUNCTIONS
 
+def _panel_of(app: 'CCMenuBarApp', name: str):
+    if name == 'main':   return app.panel._widgets.panel
+    if name == 'rag':    return app.rag._rag_panel
+    if name == 'models': return app.models._models_panel
+    return app.launch._launch_panel
+
+def _open_tab_name(app: 'CCMenuBarApp'):
+    if app.panel._panel_open:      return 'main'
+    if app.rag._rag_open:          return 'rag'
+    if app.models._models_open:    return 'models'
+    if app.launch._launch_open:    return 'launch'
+    return None
+
+def _close_panel(app: 'CCMenuBarApp', name: str) -> None:
+    if name == 'main':     _close_main_panel(app)
+    elif name == 'rag':    _close_rag_panel(app)
+    elif name == 'models': _close_models_panel(app)
+    else:                  _close_launch_panel(app)
+
+def _open_panel(app: 'CCMenuBarApp', name: str) -> None:
+    if name == 'main':     _open_main_panel(app)
+    elif name == 'rag':    _open_rag_panel(app)
+    elif name == 'models': _open_models_panel(app)
+    else:                  _open_launch_panel(app)
+
+def _neighbor(name: str, step: int) -> str:
+    return _RING[(_RING.index(name) + step) % len(_RING)]
+
+def _register_ring_arrows(app: 'CCMenuBarApp', name: str) -> None:
+    app.hotkey.register_arrow_right(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, name, _neighbor(name, 1))))
+    app.hotkey.register_arrow_left(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, name, _neighbor(name, -1))))
+
 def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) -> None:
     try:
-        if from_panel == 'main':  from_obj = app.panel._widgets.panel
-        elif from_panel == 'rag': from_obj = app.rag._rag_panel
-        else:                     from_obj = app.models._models_panel
-        from_frame = from_obj.frame()
-        if from_panel == 'main':  _close_main_panel(app)
-        elif from_panel == 'rag': _close_rag_panel(app)
-        else:                     _close_models_panel(app)
-        if to_panel == 'main':    _open_main_panel(app)
-        elif to_panel == 'rag':   _open_rag_panel(app)
-        else:                     _open_models_panel(app)
-        if to_panel == 'main':    to_obj = app.panel._widgets.panel
-        elif to_panel == 'rag':   to_obj = app.rag._rag_panel
-        else:                     to_obj = app.models._models_panel
-        to_obj.setFrame_display_(from_frame, True)
+        from_frame = _panel_of(app, from_panel).frame()
+        _close_panel(app, from_panel)
+        _open_panel(app, to_panel)
+        _panel_of(app, to_panel).setFrame_display_(from_frame, True)
     except Exception as e:
         print(f'[menubar] cycling {from_panel}→{to_panel} error: {e}', file=sys.stderr)
 
 def _background_panel(app: 'CCMenuBarApp') -> None:
     try:
+        open_tab = _open_tab_name(app)
         if app.panel._panel_backgrounded:
-            if app.panel._panel_open:
-                app.panel._widgets.panel.setLevel_(25)
-                app.panel._widgets.panel.orderFrontRegardless()
-            elif app.rag._rag_open:
-                app.rag._rag_panel.setLevel_(25)
-                app.rag._rag_panel.orderFrontRegardless()
-            elif app.models._models_open:
-                app.models._models_panel.setLevel_(25)
-                app.models._models_panel.orderFrontRegardless()
+            if open_tab is not None:
+                panel = _panel_of(app, open_tab)
+                panel.setLevel_(25)
+                panel.orderFrontRegardless()
             app.panel._panel_backgrounded = False
-        elif app.panel._panel_open:
-            app.panel._widgets.panel.setLevel_(0)
-            app.panel._widgets.panel.orderBack_(None)
-            app.panel._panel_backgrounded = True
-        elif app.rag._rag_open:
-            app.rag._rag_panel.setLevel_(0)
-            app.rag._rag_panel.orderBack_(None)
-            app.panel._panel_backgrounded = True
-        elif app.models._models_open:
-            app.models._models_panel.setLevel_(0)
-            app.models._models_panel.orderBack_(None)
+        elif open_tab is not None:
+            panel = _panel_of(app, open_tab)
+            panel.setLevel_(0)
+            panel.orderBack_(None)
             app.panel._panel_backgrounded = True
     except Exception as e:
         print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
@@ -65,12 +83,7 @@ def _open_main_panel(app: 'CCMenuBarApp') -> None:
     app.panel._widgets.panel.enableCursorRects()
     app.panel._panel_open = True
     app.hotkey.reregister_digits(app.panel._lookups.desktop_to_cwd)
-    app.hotkey.register_arrow_right(
-        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_close_open(app, 'main', 'rag')))
-    app.hotkey.register_arrow_left(
-        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_close_open(app, 'main', 'models')))
+    _register_ring_arrows(app, 'main')
 
 def _close_main_panel(app: 'CCMenuBarApp') -> None:
     app.panel._widgets.panel.orderOut_(None)
@@ -86,12 +99,7 @@ def _open_rag_panel(app: 'CCMenuBarApp') -> None:
     app.rag._rag_panel.orderFrontRegardless()
     app.rag._rag_panel.enableCursorRects()
     app.rag._rag_open = True
-    app.hotkey.register_arrow_right(
-        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_close_open(app, 'rag', 'models')))
-    app.hotkey.register_arrow_left(
-        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_close_open(app, 'rag', 'main')))
+    _register_ring_arrows(app, 'rag')
 
 def _close_rag_panel(app: 'CCMenuBarApp') -> None:
     app.rag._rag_panel.orderOut_(None)
@@ -106,16 +114,26 @@ def _open_models_panel(app: 'CCMenuBarApp') -> None:
     app.models._models_panel.orderFrontRegardless()
     app.models._models_panel.enableCursorRects()
     app.models._models_open = True
-    app.hotkey.register_arrow_right(
-        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_close_open(app, 'models', 'main')))
-    app.hotkey.register_arrow_left(
-        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_close_open(app, 'models', 'rag')))
+    _register_ring_arrows(app, 'models')
 
 def _close_models_panel(app: 'CCMenuBarApp') -> None:
     app.models._models_panel.orderOut_(None)
     app.models._models_open = False
+    app.panel._panel_backgrounded = False
+    app.hotkey.unregister_arrow_right()
+    app.hotkey.unregister_arrow_left()
+
+def _open_launch_panel(app: 'CCMenuBarApp') -> None:
+    app.launch.open()
+    _reposition_launch_panel(app.launch._launch_panel, app._nsapp.nsstatusitem)
+    app.launch._launch_panel.orderFrontRegardless()
+    app.launch._launch_panel.enableCursorRects()
+    app.launch._launch_open = True
+    _register_ring_arrows(app, 'launch')
+
+def _close_launch_panel(app: 'CCMenuBarApp') -> None:
+    app.launch._launch_panel.orderOut_(None)
+    app.launch._launch_open = False
     app.panel._panel_backgrounded = False
     app.hotkey.unregister_arrow_right()
     app.hotkey.unregister_arrow_left()
