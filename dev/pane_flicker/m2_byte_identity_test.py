@@ -1,11 +1,9 @@
 # INFRASTRUCTURE
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 
 AREA_DIR = Path(__file__).resolve().parent
@@ -13,25 +11,22 @@ WORKTREE_ROOT = AREA_DIR.parents[1]
 DRIVER = AREA_DIR / 'm2_state_sequence_driver.py'
 REPORT_DIR = AREA_DIR / 'md'
 OLD_REF = '0ce370df'
-PROJECTS = Path.home() / '.claude' / 'projects'
+FIXTURES = AREA_DIR / 'fixtures'
 SESSIONS = {
-    'many_calls': PROJECTS / '-Users-brunowinter2000-Documents-ai-Meta-ClaudeCode-cli-rag-cli--claude-worktrees-builder' / 'b390fcfd-d2ca-41a6-8dff-d35174c717d1.jsonl',
-    'many_turns': PROJECTS / '-Users-brunowinter2000-Documents-wise2627' / 'ae01f367-f15e-4c85-97ea-bc68d91d3446.jsonl',
+    'many_calls': FIXTURES / 'many_calls.jsonl',
+    'many_turns': FIXTURES / 'many_turns.jsonl',
 }
 PANES = ['tokens', 'worker_tokens']
 
 # ORCHESTRATOR
 
 def test_workflow() -> int:
-    work_dir = Path(tempfile.mkdtemp(prefix='flicker_m2_'))
-    old_root = extract_old_tree(work_dir)
-    jobs = [(pane, session, tree) for pane in PANES for session in SESSIONS for tree in ('old', 'new')]
-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-        futures = {j: pool.submit(run_driver, j, old_root, work_dir) for j in jobs}
-        outputs = {j: f.result() for j, f in futures.items()}
+    with tempfile.TemporaryDirectory(prefix='flicker_m2_') as tmp:
+        work_dir = Path(tmp)
+        old_root = extract_old_tree(work_dir)
+        outputs = run_all_drivers(old_root, work_dir)
     verdicts = evaluate(outputs)
     write_report(verdicts, old_root)
-    shutil.rmtree(work_dir, ignore_errors=True)
     return 0 if all(ok for _, ok, _ in verdicts) else 1
 
 # FUNCTIONS
@@ -42,6 +37,12 @@ def extract_old_tree(work_dir: Path) -> Path:
     archive = subprocess.run(['git', '-C', str(WORKTREE_ROOT), 'archive', OLD_REF], capture_output=True, check=True).stdout
     subprocess.run(['tar', '-x', '-C', str(old_root)], input=archive, check=True)
     return old_root
+
+def run_all_drivers(old_root: Path, work_dir: Path) -> dict:
+    jobs = [(pane, session, tree) for pane in PANES for session in SESSIONS for tree in ('old', 'new')]
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        futures = {j: pool.submit(run_driver, j, old_root, work_dir) for j in jobs}
+        return {j: f.result() for j, f in futures.items()}
 
 def run_driver(job: tuple, old_root: Path, work_dir: Path):
     pane, session, tree = job
@@ -77,8 +78,8 @@ def write_report(verdicts: list, old_root: Path) -> None:
     REPORT_DIR.mkdir(exist_ok=True)
     ref = subprocess.run(['git', '-C', str(WORKTREE_ROOT), 'rev-parse', '--short', OLD_REF], capture_output=True, text=True).stdout.strip()
     passed = sum(1 for _, ok, _ in verdicts if ok)
-    lines = ['# m2_byte_identity_test report', '', f'Run: {datetime.now().isoformat(timespec="seconds")}',
-             f'Old: git archive {OLD_REF} ({ref}); new: {WORKTREE_ROOT}',
+    lines = ['# m2_byte_identity_test report', '',
+             f'Old: git archive {OLD_REF} ({ref}); new: working tree',
              'Sessions: ' + ', '.join(f'{k}={v.name}' for k, v in SESSIONS.items()), '',
              f'Result: {passed}/{len(verdicts)} checks passed', '']
     for label, ok, hint in verdicts:

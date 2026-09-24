@@ -1,7 +1,6 @@
 # m1_frame_e2e_test report
 
-Run: 2026-09-24T18:38:43
-Old tree: git archive 0ce370df (0ce370df); new tree: /Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/flicker
+Old tree: git archive 0ce370df (0ce370df); new tree: working tree
 Terminal: 100x30 private tmux sockets flk_m1_<pane>_<tree>
 
 Result: 132/132 checks passed
