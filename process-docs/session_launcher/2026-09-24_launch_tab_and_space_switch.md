@@ -7,7 +7,7 @@ new Launch tab (M2). Everything below was observed on 2026-09-24 unless marked a
 ## Goal and decisions made by the user
 
 - Menubar loses Auto-Jump completely and gains a 4th tab "Launch" (ring: Sessions, RAG, Models, Launch).
-- Launch: pick desktop 1-5 (desktops that host a main session cannot be picked), click one of 10
+- Launch: pick desktop 1-5 (as first decided, desktops hosting a main session could not be picked; reversed after live verification 1, see the last section), click one of 10
   fixed projects. The menubar switches to that desktop, opens a Ghostty window and starts the main
   session with `cd <monitor-cc> && PATH="$HOME/.local/bin:$PATH" ./src/claude_proxy_start.sh --project <path>`.
 - Switch mechanism chosen by the user: CGEventPost of Ctrl+N (variant a1 below).
@@ -106,16 +106,16 @@ Behavior decisions (each has a reason):
 - Failure policy: any failure logs `[launch] FAILED desktop=.. project=.. stage=<validate|switch|open_window> <detail>`
   to `menubar.log` and stops. No window is opened after a failed switch. No fallback (System Events,
   swipe) exists in production, because nothing was observed for the bundle; those were only measured in the dev process.
-- Missing PostEvent: `CGPreflightPostEventAccess` false -> `CGRequestPostEventAccess()` once ->
-  `SpaceSwitchError('postevent_not_granted')`. Without the preflight the events would be dropped silently
-  and the only symptom would be a 3 s timeout.
+- Missing PostEvent: `CGPreflightPostEventAccess` false -> `SpaceSwitchError('postevent_not_granted')`. Without the
+  preflight the events would be dropped silently and the only symptom would be a 3 s timeout. (First version also called
+  `CGRequestPostEventAccess()` here on the launch thread; moved to the tab open on the main thread, see the last section.)
 - 1 s settle between "space active" and "new window" is the condition Run 2 was observed under; it was not shortened.
 - The launch runs on a daemon thread (about 1.5 s blocking). A busy flag drops further clicks.
 - The Launch panel closes on the click (it is CanJoinAllSpaces and would otherwise float over the new session).
-- Selection resets on every open of the tab; the occupied check is repeated at click time.
-- Occupied = `SessionInfo.desktop_no` of main sessions. A main whose desktop was not detected has
-  `desktop_no=None`, its desktop therefore looks free (accepted by the user, no warning).
-- Project rows show the path after `/Documents/` (e.g. `ai/Meta/ClaudeCode/cli/gh-cli`).
+- Selection resets on every open of the tab. (A click-time occupied recheck existed in the first version; removed, see the last section.)
+- Occupied = `SessionInfo.desktop_no` of main sessions, shown as `*` (information only after the follow-up).
+  A main whose desktop was not detected has `desktop_no=None` and gets no star (accepted by the user, no warning).
+- Project rows first showed the path after `/Documents/`; now only the last path component (see the last section).
 
 ## Tests (none of them move the screen)
 
@@ -139,9 +139,8 @@ Behavior decisions (each has a reason):
 - Build only from the MAIN checkout after merging: `./venv/bin/python setup_py2app.py py2app` (build, install, sign,
   write plist, bootstrap). The plist's `PROJECT_ROOT` is the build directory and becomes `MONITOR_CC_ROOT`;
   built from a worktree, every Launch command would `cd` into the worktree. Build output must say `signed-with: monitor-cc Code Signing`.
-- PostEvent must be granted to the bundle. UNVERIFIED for the bundle: the pane (expected Privacy & Security ->
-  Accessibility), whether the prompt from `CGRequestPostEventAccess` appears when called from the launch thread, and
-  that ad-hoc dev runs behave the same. If no prompt appears the user adds the app manually in that pane.
+- PostEvent must be granted to the bundle. Live verification 1 showed no prompt appeared (see the last section). The pane
+  (expected Privacy & Security -> Accessibility) is still unverified; the user adds the app manually in that pane.
   Check `menubar.log` for `[launch]` lines.
 - Ghostty Automation and Screen Recording come from the existing mon button and desktop detection.
 
@@ -163,3 +162,47 @@ Behavior decisions (each has a reason):
 - The Launch panel factory is a third near-copy of the RAG and Models panel factories; not consolidated.
 - Multi-display is unsupported: `space_switch` raises when two displays map to the same desktop number.
 - Layout (desktop row widths, project label width) was only checked headless.
+
+## Live verification 1 and follow-up changes (2026-09-24, after the first bundle rebuild)
+
+Observed by the user in the rebuilt bundle (built from the main checkout, 20:36): three project clicks on
+desktop 4 each logged `[launch] FAILED desktop=4 project=... stage=switch SpaceSwitchError('postevent_not_granted')`
+(20:36:10, 20:36:29, 20:36:47). No macOS permission prompt appeared. The `menubar.log` also holds two
+`select ignored desktop=1 occupied=[1, 3]` lines from the user's earlier clicks on an occupied desktop.
+
+Changes made (commit `33c0016d`):
+- Occupied desktops are selectable and launchable. The `*` is information only. Removed: the refusal in
+  `handle_select_desktop`, the click-time recheck in `handle_launch_project`, clearing the selection when its desktop
+  becomes occupied, and the disabled state of occupied buttons. Titles: free ` 1 `, occupied ` 1* `, selected `[1]`,
+  selected and occupied `[1*]`. `tick` still rebuilds when the occupied set changes so the stars stay current; the selection survives that.
+  Only a desktop outside 1-5 is ignored (logged as `reason=not_a_launch_desktop`).
+- Project rows show only the last path component (gh-cli, reddit-cli, websearch, rag-cli, iterative-dev, trading,
+  trading_ai, monitor-cc, general, wise2627).
+- PostEvent request: `space_switch.request_post_event_access_if_missing()` (preflight, then `CGRequestPostEventAccess`)
+  is called from `LaunchController.open()`, i.e. on the main thread when the Launch tab opens, and logs
+  `[launch] postevent_not_granted: access requested from main thread on tab open` when access is missing. The switch
+  path (`_require_post_event_access`) now only checks the preflight and raises; it no longer requests, so a click without
+  the grant still logs FAILED and nothing else happens (no fallback).
+
+What is known and unknown about the prompt:
+- The SDK header (`CGEvent.h`) says `CGRequestPostEventAccess` "Requests event synthesizing access if absent, potentially prompting". It says nothing about threads.
+- Before this change the only call ran on the launch daemon thread (from `session_launch`/`space_switch`), and no prompt appeared in the bundle.
+  That the thread was the cause is a HYPOTHESIS; the main-thread call was chosen because it is the conventional
+  and safest place, not because it was shown to matter.
+- Not testable in the dev process: `python` holds all four grants (Run 0), so the request returns immediately without a prompt.
+- A probe is prepared but NOT run (needs the user watching the screen and no other permission work in progress):
+  `dev/session_launcher/s3_postevent_prompt_probe.py` builds two ad-hoc signed accessory NSApplication stub bundles with
+  their own bundle ids (`com.brunowinter.spaceprobe.postevent.main` / `.bg`), starts each via `open -n` for 55 s, and each
+  calls the request once (main thread vs global queue) and logs preflight state. The user reports whether a prompt appeared
+  per stub; the report shows return values and preflight over time; `tccutil reset` cleans both stub ids afterwards.
+  `--build-only` compiles both stubs without running them (verified to build, 2026-09-24).
+- Result to expect if the hypothesis is wrong (also a hypothesis): neither stub prompts, then PostEvent cannot be requested
+  programmatically for such a bundle and the user has to add the app under Privacy & Security -> Accessibility by hand
+  (the user was doing exactly that at 2026-09-24 20:38).
+
+Tests updated (`t2_launch_tab.py`, now ten cases, all PASS on 2026-09-24): occupied desktops are enabled and selectable
+(titles above), selection survives an occupied-set change, a click on an occupied desktop launches, project rows are basenames,
+`open()` requests exactly once on the main thread and logs when missing (silent when granted), the click/launch path never
+requests, the switch path raises without requesting. `t1_autojump_removal.py` still 7/7 PASS. Not re-run this time:
+`dev/model_selector/verify_four_tab_ring.py` (it builds real NSPanels; its DOCS caveat says do not run it unannounced).
+

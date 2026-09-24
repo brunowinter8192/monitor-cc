@@ -61,13 +61,33 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t2_launch_tab.py (369 LOC)
+### t2_launch_tab.py (414 LOC)
 
-**Purpose:** Nine parallel subprocess cases covering header texts, occupied-desktop marking, project rows, exact start commands, launch workflow failure stages, click handling and `space_switch` units.
+**Purpose:** Ten parallel subprocess cases covering header texts, occupied-desktop marking (marked, never refused), project rows, exact start commands, launch workflow failure stages, click handling, the main-thread PostEvent request on tab open, and `space_switch` units.
 **Reads:** real `src/menubar` launch modules with fakes and patches.
 **Writes:** `md/t2_launch_tab.md`.
 **Called by:** none — run manually after Launch tab changes; does not move the screen.
 **Calls out:** `src/menubar/launch_controller.py`, `session_launch.py`, `space_switch.py`, `panel_manager.py`, `rag_controller.py`, `model_controller.py` (via `importlib`); `.space_lib`.
+
+---
+
+### s3_postevent_prompt_probe.py (97 LOC)
+
+**Purpose:** Builds two ad-hoc signed stub apps and runs each for 55 s so the user can observe whether `CGRequestPostEventAccess` produces a macOS prompt when called from the main thread versus a background thread.
+**Reads:** `s3_postevent_stub.m`; the stubs' logs under `/tmp/s3_postevent_<mode>.log`.
+**Writes:** `md/s3_postevent_prompt_probe.md`; stub bundles under `/tmp/s3_postevent_stubs/`; TCC entries for the two stub bundle ids (reset with `tccutil` at the end); may show system permission prompts.
+**Called by:** none — run manually, only with the user's go and the user watching the screen; `--build-only` builds without running.
+**Calls out:** `.space_lib` (`write_report`); `clang`, `codesign`, `open`, `tccutil`.
+
+---
+
+### s3_postevent_stub.m (63 LOC)
+
+**Purpose:** Objective-C accessory-policy NSApplication that calls `CGRequestPostEventAccess` once, on the main thread (`main`) or a global queue (`bg`), and logs preflight state every 2 s.
+**Reads:** argv mode.
+**Writes:** `/tmp/s3_postevent_<mode>.log`.
+**Called by:** `s3_postevent_prompt_probe.py` (compiled into the stub bundles).
+**Calls out:** `AppKit`, `ApplicationServices`.
 
 ---
 
