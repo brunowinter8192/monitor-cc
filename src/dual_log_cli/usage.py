@@ -60,7 +60,8 @@ def _find_transcript(request_id: str, directories: list, since_epoch=None) -> Pa
                 try:
                     if path.stat().st_mtime < since_epoch:
                         continue
-                except OSError:
+                except OSError as exc:
+                    report_skip("usage", str(path), f"{type(exc).__name__}: {exc}")
                     continue
             candidates.append(path)
     for path in candidates:
@@ -85,6 +86,7 @@ def _transcript_usage(transcript_path: Path) -> dict:
                 try:
                     entry = json.loads(line)
                 except json.JSONDecodeError:
+                    report_skip("usage", str(transcript_path), "JSONDecodeError: malformed line skipped")
                     continue
                 if entry.get("type") != "assistant":
                     continue

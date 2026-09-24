@@ -166,7 +166,7 @@ Read-only command-line inspector for the dual-log streams the proxy writes to th
 
 ---
 
-### usage.py (154 LOC)
+### usage.py (156 LOC)
 
 **Purpose:** Builds the per-flow cache read and creation figures by joining the response stream with Claude Code's transcript usage records.
 **Reads:** the session's response stream; a stem-scoped subset of the transcript store.

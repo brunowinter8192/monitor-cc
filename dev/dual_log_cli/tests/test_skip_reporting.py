@@ -19,7 +19,7 @@ from src.dual_log_cli.commands import _report_numbering_paths
 from src.dual_log_cli.project_map import build_project_index
 from src.dual_log_cli.reader import load_last_request, local_datetime
 from src.dual_log_cli.render_reqs import _entries_for_session
-from src.dual_log_cli.usage import resolve_transcript
+from src.dual_log_cli.usage import _find_transcript, _transcript_usage, resolve_transcript
 
 PASS_LIST = []
 FAIL_LIST = []
@@ -29,7 +29,8 @@ FAIL_LIST = []
 def _strand_cases() -> dict:
     return {fn.__name__: fn for fn in (
         test_report_skip_dedup, test_project_map_reports, test_load_last_request_reports_malformed_line,
-        test_resolve_transcript_reasons, test_numbering_line_carries_reason, test_timestamps,
+        test_resolve_transcript_reasons, test_find_transcript_reports_unstatable_candidate,
+        test_transcript_usage_reports_malformed_line, test_numbering_line_carries_reason, test_timestamps,
         test_command_skip_paths,
     )}
 
@@ -105,6 +106,25 @@ def test_resolve_transcript_reasons() -> None:
         }
     for expected, actual in reasons.items():
         check(f"resolve_transcript names the reason: {expected}", actual is not None and actual.startswith(expected), actual)
+
+def test_find_transcript_reports_unstatable_candidate() -> None:
+    diagnostics._reported.clear()
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        (directory / "dangling.jsonl").symlink_to(directory / "gone-target")
+        result, text = _stderr_of(_find_transcript, "req_1", [directory], 1.0)
+    check("an unstatable candidate is reported and the search returns None",
+          result is None and "dangling.jsonl" in text and "FileNotFoundError" in text, text)
+
+def test_transcript_usage_reports_malformed_line() -> None:
+    diagnostics._reported.clear()
+    good = {"type": "assistant", "requestId": "req_1", "message": {"usage": {"cache_read_input_tokens": 5, "cache_creation_input_tokens": 7}}}
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "t.jsonl"
+        path.write_text('{"type": broken\n' + json.dumps(good) + "\n" + '{"type": also broken\n', encoding="utf-8")
+        result, text = _stderr_of(_transcript_usage, path)
+    check("malformed transcript lines are reported once and the valid line is kept",
+          result == {"req_1": (5, 7)} and text.count("t.jsonl") == 1 and "malformed line skipped" in text, text)
 
 def test_numbering_line_carries_reason() -> None:
     _, text = _stderr_of(_report_numbering_paths, {"a": {"path": "transcript"}, "b": {"path": "boundaries", "reason": "no _response stream"}})
