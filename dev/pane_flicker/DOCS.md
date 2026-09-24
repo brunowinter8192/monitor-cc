@@ -91,7 +91,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### bench_hover_render.py (81 LOC)
+### bench_hover_render.py (82 LOC)
 
 **Purpose:** Times hover renders (`--mode block` for `format_proxy_block`, `--mode pane` for `_build_proxy_output`, needs a tty), optional `--scale` replicates entries.
 **Reads:** argv; the real log via `scenario_lib.py`.

@@ -56,7 +56,7 @@ PNG for visual review.
 
 ---
 
-### A_format_cache_tracker_proof.py (113 LOC)
+### A_format_cache_tracker_proof.py (117 LOC)
 
 **Purpose:** Differential-proof harness for `format_cache_tracker` — verifies its serialized
 5-tuple return is byte-identical against a captured baseline.
@@ -68,7 +68,7 @@ PNG for visual review.
 
 ---
 
-### test_hover_map.py (298 LOC)
+### test_hover_map.py (302 LOC)
 
 **Purpose:** Synthetic + real-log assertion suite for expand-model `line_map` correctness and the
 stripped-span dual-color overlay pairing.

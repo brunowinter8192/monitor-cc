@@ -18,7 +18,7 @@ exact returned lines.
 
 ## Modules
 
-### render_byte_identity.py (174 LOC)
+### render_byte_identity.py (178 LOC)
 
 **Purpose:** Byte-identity harness for the panes-split module boundaries: `build_cache_turns`,
 `_format_warnings_pane`, and `format_cache_tracker`, hashed together into one value.
