@@ -1,10 +1,10 @@
 # t1_autojump_removal report
 
-- time: 2026-09-24 21:27:49
+- time: 2026-09-24 21:28:46
 
 | check | result | detail |
 |---|---|---|
-| menubar log and settings resolve under the isolated home | PASS | MENUBAR_LOG=/var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/session_launcher_home_qr8g6p7j/Library/Application Support/com.brunowinter.monitor-cc-menubar/menubar.log |
+| menubar log and settings resolve under the isolated home | PASS | MENUBAR_LOG=/var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/session_launcher_home_igy2286t/Library/Application Support/com.brunowinter.monitor-cc-menubar/menubar.log |
 | no auto-jump identifiers in any .py under src/ and dev/ | PASS | scanned src/ and dev/, 0 hits |
 | old settings.json with the removed key still loads | PASS | loaded (500, 480) |
 | settings without a file fall back to panel defaults | PASS | defaults (422, 460) |

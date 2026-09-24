@@ -107,7 +107,7 @@ def _case_pieces_and_keys() -> str:
     pt = _imp('panel_tabs')
     assert pt.TABS == _LABELS and pt.TAB_KEYS == _KEYS, (pt.TABS, pt.TAB_KEYS)
     for label in _LABELS:
-        assert pt.tab_header_text(label) == _EXPECTED_TEXT[label], label
+        assert pt.TAB_SEPARATOR.join(pt.header_pieces(label)) == _EXPECTED_TEXT[label], label
         pieces = pt.header_pieces(label)
         assert len(pieces) == 4 and sum(p.startswith('[') for p in pieces) == 1, pieces
         assert pt.TAB_SEPARATOR.join(pieces) == _EXPECTED_TEXT[label]
@@ -143,7 +143,7 @@ def _pixel_stats(active: str):
     old.setBordered_(False)
     old.setButtonType_(7)
     old.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(
-        pt.tab_header_text(active), {NSFontAttributeName: panel._MENLO()}))
+        pt.TAB_SEPARATOR.join(pt.header_pieces(active)), {NSFontAttributeName: panel._MENLO()}))
     new = panel._make_tab_header(active, 422)
     reps = []
     for view in (old, new):

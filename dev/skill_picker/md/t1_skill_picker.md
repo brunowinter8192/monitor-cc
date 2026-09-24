@@ -1,6 +1,6 @@
 # t1_skill_picker report
 
-- time: 2026-09-24 21:27:48
+- time: 2026-09-24 21:28:46
 - every case ran in its own subprocess with an isolated HOME, all cases in parallel
 - nothing in this test types into a terminal or opens a menu
 
@@ -16,7 +16,7 @@
 | grid | PASS | 7 columns, skill button on both main rows right after mon with matching tag, cwd_map {1: '/tmp/alpha', 3: '/tmp/beta'}, worker row column 6 empty |
 | insert_paths | PASS | no terminal id: FAILED cwd=/p/x skill=gh-cli:gh-cli-search stage=terminal_id no_terminal_id | rc=1: FAILED cwd=/p/x skill=gh-cli:gh-cli-search stage=osascript rc=1 stderr=not allowed | timeout: FAILED cwd=/p/x skill=gh-cli:gh-cli-search stage=osascript TimeoutExpired('osascript', 5) | success: one osascript call, OK cwd=/p/x skill=gh-cli:gh-cli-search stage=osascript terminal=T9 osascript_ms=0 |
 | insert_text | PASS | 10 inserted texts exact, e.g. 'Aktiviere den Skill iterative-dev:iterative-dev-doccheck.' |
-| isolation | PASS | CLAUDE_DIR=/var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/session_launcher_home_xnd1flh6/.claude and MENUBAR_LOG under the isolated home; discovery log line landed there |
+| isolation | PASS | CLAUDE_DIR=/var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/session_launcher_home_ybuv8b2b/.claude and MENUBAR_LOG under the isolated home; discovery log line landed there |
 | menu | PASS | titles ['penny', 'sep', 'mine', 'sep', 'a', 'b'], represented full names ['penny', 'mine', 'p:a', 'p:b'], empty list -> one disabled "no skills" |
 
 RESULT: PASS

@@ -1,13 +1,13 @@
 # t2_launch_tab report
 
-- time: 2026-09-24 21:27:48
+- time: 2026-09-24 21:28:46
 - every case ran in its own subprocess, all cases in parallel
 
 | case | result | detail |
 |---|---|---|
 | click_handling | PASS | no desktop -> ignored; busy -> ignored; occupied desktop 2 -> launched; free desktop 4 -> launch(4, '/Users/brunowinter2000/Documents/wise2627'), panel closed; bad index ignored |
 | headers | PASS | {"sessions": "[Sessions] · RAG · Models · Launch", "rag": "Sessions · [RAG] · Models · Launch", "models": "Sessions · RAG · [Models] · Launch", "launch": "Sessions · RAG · Models · [Launch]"} |
-| log_isolation | PASS | launch log line landed in /var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/session_launcher_home_gnb5quys/Library/Application Support/com.brunowinter.monitor-cc-menubar/menubar.log |
+| log_isolation | PASS | launch log line landed in /var/folders/t2/_8msw65s0glfkr10g1mp_4g40000gn/T/session_launcher_home_mb5xbazm/Library/Application Support/com.brunowinter.monitor-cc-menubar/menubar.log |
 | occupied_marking | PASS | enabled {1: True, 2: True, 3: True, 4: True, 5: True}, titles {1: ' 1* ', 2: ' 2 ', 3: ' 3* ', 4: ' 4 ', 5: ' 5 '}, row = 5 buttons only at x=0..160, select occupied 1 -> [1*], select 2 -> [2], select 7 ignored |
 | project_rows | PASS | 10 rows in order: ['gh-cli', 'reddit-cli', 'websearch', 'rag-cli', 'iterative-dev', 'trading', 'trading_ai', 'monitor-cc', 'general', 'wise2627'] |
 | request_on_open | PASS | open() requests once on the main thread and logs when missing; granted -> silent; click/launch path never requests |
