@@ -186,8 +186,6 @@ def _make_tab_nspanel(active: str):
 
 def _reposition_tab_panel(panel, nsstatusitem) -> None:
     btn_win = nsstatusitem.button().window()
-    if btn_win is None:
-        return
     w  = panel.frame().size.width
     h  = panel.frame().size.height
     sr = btn_win.frame()

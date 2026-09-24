@@ -2,6 +2,7 @@
 import json
 import os
 
+from .menubar_log import log_menubar
 from .paths import MODEL_SELECTION_FILE, PROXY_RULES_FILE
 
 _MODEL_CHOICES = ("claude-opus-5", "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1", "claude-sonnet-5")
@@ -22,6 +23,7 @@ def _next_in(choices: tuple, current):
     try:
         idx = choices.index(current)
     except ValueError:
+        log_menubar('model_selection', f'value not in choices current={current!r} choices={choices!r}, cycling to first')
         idx = -1
     return choices[(idx + 1) % len(choices)]
 
@@ -41,11 +43,8 @@ def _next_thinking(current: dict) -> dict:
     return dict(_THINKING_OFF) if _thinking_is_enabled(current) else dict(_THINKING_ON)
 
 def _load_model_selection(path=MODEL_SELECTION_FILE):
-    try:
-        d = json.loads(path.read_text(encoding="utf-8"))
-        return d.get("main", _DEFAULT_MAIN), d.get("worker", _DEFAULT_WORKER)
-    except Exception:
-        return _DEFAULT_MAIN, _DEFAULT_WORKER
+    d = _read_json_dict(path)
+    return d.get("main", _DEFAULT_MAIN), d.get("worker", _DEFAULT_WORKER)
 
 def _write_model_selection(main: str, worker: str, path=MODEL_SELECTION_FILE) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,10 +52,25 @@ def _write_model_selection(main: str, worker: str, path=MODEL_SELECTION_FILE) ->
     tmp.write_text(json.dumps({'main': main, 'worker': worker}), encoding='utf-8')
     os.replace(tmp, path)
 
+def _read_json_dict(path) -> dict:
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(d, dict):
+            raise ValueError(f'expected JSON object, got {type(d).__name__}')
+        return d
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        log_menubar('model_selection', f'read failed path={path} err={exc!r}')
+        return {}
+
 def _load_proxy_rules(path=PROXY_RULES_FILE) -> dict:
+    return _read_json_dict(path)
+
+def _load_proxy_rules_strict(path=PROXY_RULES_FILE) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except FileNotFoundError:
         return {}
 
 def _load_model_params_for(model_id: str, path=PROXY_RULES_FILE) -> tuple:
@@ -95,7 +109,7 @@ def _dumps_proxy_rules(config: dict) -> str:
 def _write_proxy_rules_model_params(main: str, main_effort: str, main_max_tokens: int, main_thinking: dict,
                                      worker: str, worker_effort: str, worker_max_tokens: int, worker_thinking: dict,
                                      path=PROXY_RULES_FILE) -> None:
-    config = _load_proxy_rules(path)
+    config = _load_proxy_rules_strict(path)
     model_params = dict(config.get("model_params", {}))
     for model_id, effort, max_tokens, thinking in (
         (main, main_effort, main_max_tokens, main_thinking),
@@ -156,7 +170,7 @@ class _PendingSelection:
         self.worker_thinking = _next_thinking(self.worker_thinking)
 
     def write(self) -> None:
-        _write_model_selection(self.main, self.worker)
         _write_proxy_rules_model_params(
             self.main, self.main_effort, self.main_max_tokens, self.main_thinking,
             self.worker, self.worker_effort, self.worker_max_tokens, self.worker_thinking)
+        _write_model_selection(self.main, self.worker)

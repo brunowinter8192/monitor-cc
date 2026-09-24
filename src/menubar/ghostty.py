@@ -5,6 +5,7 @@ import subprocess
 import time
 from typing import Dict, List, Optional
 
+from .menubar_log import log_menubar, log_menubar_change
 from .paths import _APP_SUPPORT
 from .proc_cache import _cc_proc_cache, cc_proc_cache_snapshot
 
@@ -37,7 +38,10 @@ def _refresh_ghostty_tty_to_id(now: float) -> None:
     r3 = _query_terminal_names()
     _clear_markers(tty_marker)
     if not r3 or r3.returncode != 0:
+        if r3:
+            log_menubar_change('ghostty', 'osascript_names', f'osascript rc={r3.returncode} stderr={r3.stderr.strip()[:80]!r}')
         return
+    log_menubar_change('ghostty', 'osascript_names', None)
     name_to_id: Dict[str, str] = {}
     for line in r3.stdout.strip().split('\n'):
         if '|||' in line:
@@ -58,7 +62,8 @@ def _write_markers(new_ttys: List[str]) -> List[tuple]:
         try:
             with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
                 fh.write(f'\033]2;{marker}\007'.encode())
-        except OSError: pass
+        except OSError as exc:
+            log_menubar('ghostty', f'marker write failed tty={tty} err={exc!r}')
     return tty_marker
 
 def _query_terminal_names():
@@ -76,7 +81,8 @@ def _query_terminal_names():
         return subprocess.run(['osascript', '-e', osa],
                               capture_output=True, text=True,
                               encoding='utf-8', errors='replace', timeout=3)
-    except Exception:
+    except Exception as exc:
+        log_menubar_change('ghostty', 'query_names', f'osascript names failed err={exc!r}')
         return None
 
 def _clear_markers(tty_marker: List[tuple]) -> None:
@@ -84,7 +90,8 @@ def _clear_markers(tty_marker: List[tuple]) -> None:
         try:
             with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
                 fh.write(b'\033]2;\007')
-        except OSError: pass
+        except OSError as exc:
+            log_menubar('ghostty', f'marker clear failed tty={tty} err={exc!r}')
 
 def _query_single_terminal_id(marker: str):
     osa = (
@@ -100,7 +107,8 @@ def _query_single_terminal_id(marker: str):
         return subprocess.run(['osascript', '-e', osa],
                               capture_output=True, text=True,
                               encoding='utf-8', errors='replace', timeout=3)
-    except Exception:
+    except Exception as exc:
+        log_menubar_change('ghostty', 'query_single', f'osascript single id failed marker={marker} err={exc!r}')
         return None
 
 def _extract_term_id(r) -> Optional[str]:
@@ -125,28 +133,32 @@ def _ghostty_pid() -> Optional[str]:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
                            capture_output=True, text=True,
                            encoding='utf-8', errors='replace', timeout=2)
-        for line in r.stdout.splitlines():
-            if 'Ghostty.app/Contents/MacOS' in line:
-                pid = line.split(None, 1)[0].strip()
-                if pid.isdigit():
-                    return pid
+    except Exception as exc:
+        log_menubar_change('ghostty', 'ps_pid', f'ps failed err={exc!r}')
         return None
-    except Exception:
-        return None
+    log_menubar_change('ghostty', 'ps_pid', None)
+    for line in r.stdout.splitlines():
+        if 'Ghostty.app/Contents/MacOS' in line:
+            pid = line.split(None, 1)[0].strip()
+            if pid.isdigit():
+                return pid
+    return None
 
 def _ghostty_child_ttys(ghostty_pid: str) -> List[str]:
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,ppid=,tty='],
                            capture_output=True, text=True,
                            encoding='utf-8', errors='replace', timeout=3)
-        ttys = []
-        for line in r.stdout.strip().split('\n'):
-            parts = line.split()
-            if len(parts) >= 3 and parts[1] == ghostty_pid and parts[2] != '??':
-                ttys.append(parts[2])
-        return ttys
-    except Exception:
+    except Exception as exc:
+        log_menubar_change('ghostty', 'ps_ttys', f'ps failed err={exc!r}')
         return []
+    log_menubar_change('ghostty', 'ps_ttys', None)
+    ttys = []
+    for line in r.stdout.strip().split('\n'):
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == ghostty_pid and parts[2] != '??':
+            ttys.append(parts[2])
+    return ttys
 
 def _tty_for_cwd(cwd: str) -> Optional[str]:
     for pid, (tty, proc_cwd) in cc_proc_cache_snapshot().items():
@@ -178,5 +190,6 @@ def _write_cwd_uuid_map() -> None:
         tmp.write_text(json.dumps(mapping), encoding="utf-8")
         os.replace(tmp, dst)
         _ghostty_cwd_uuid_last = mapping
-    except Exception:
-        return
+        log_menubar_change('ghostty', 'cwd_uuid_write', None)
+    except Exception as exc:
+        log_menubar_change('ghostty', 'cwd_uuid_write', f'cwd uuid map write failed err={exc!r}')
