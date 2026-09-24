@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 
+from .diagnostics import report_skip
 from ..proxy_display.forwarded_parser import _proxy_session_id_for_project
 
 _PROJECTS_ROOT = Path("~/.claude/projects").expanduser()
@@ -27,7 +28,8 @@ def _first_cwd(transcript: Path) -> str:
                 cwd = json.loads(line).get("cwd")
                 if isinstance(cwd, str) and cwd:
                     return cwd
-    except Exception:
+    except (OSError, ValueError) as exc:
+        report_skip("project_map", str(transcript), f"{type(exc).__name__}: {exc}")
         return ""
     return ""
 
@@ -36,7 +38,8 @@ def _project_cwd_dirs(projects_root: Path) -> dict:
     dirs = {}
     try:
         entries = sorted(projects_root.iterdir())
-    except Exception:
+    except OSError as exc:
+        report_skip("project_map", str(projects_root), f"{type(exc).__name__}: {exc}")
         return dirs
     for entry in entries:
         if not entry.is_dir():
@@ -47,7 +50,8 @@ def _project_cwd_dirs(projects_root: Path) -> dict:
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
-        except Exception:
+        except OSError as exc:
+            report_skip("project_map", str(entry), f"{type(exc).__name__}: {exc}")
             continue
         for transcript in transcripts[:_TRANSCRIPTS_PER_DIR]:
             cwd = _first_cwd(transcript)

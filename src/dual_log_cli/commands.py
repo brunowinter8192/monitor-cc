@@ -4,6 +4,7 @@ import sys
 from datetime import datetime
 
 from .classifier import BadClassifierError, matches_only, parse_only
+from .diagnostics import report_skip
 from .discovery import (
     AmbiguousSessionError,
     UnknownSessionError,
@@ -95,7 +96,8 @@ def _run_search(dual_log_dir, args: argparse.Namespace) -> int:
     for session in sessions:
         try:
             data = load_timeline(session)
-        except Exception:
+        except (FileNotFoundError, ValueError) as exc:
+            report_skip("timeline", session["stem"], f"{type(exc).__name__}: {exc}")
             skipped += 1
             continue
         hits = find_matches(data["payload"], args.term, args.case_sensitive, wanted)
@@ -125,7 +127,8 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
     for session in sessions:
         try:
             data = load_timeline(session)
-        except Exception:
+        except (FileNotFoundError, ValueError) as exc:
+            report_skip("timeline", session["stem"], f"{type(exc).__name__}: {exc}")
             skipped += 1
             continue
         results.append((session, data["boundaries"]))
@@ -146,7 +149,7 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
 
 
 def _report_numbering_paths(numbering_by_stem: dict) -> None:
-    fallback = [stem for stem, numbering in numbering_by_stem.items() if numbering["path"] != "transcript"]
+    fallback = [f"{stem} ({numbering['reason']})" for stem, numbering in numbering_by_stem.items() if numbering["path"] != "transcript"]
     transcript = len(numbering_by_stem) - len(fallback)
     line = f"numbering: {transcript} session(s) via transcript (pane REQ numbers, response-end times)"
     if fallback:

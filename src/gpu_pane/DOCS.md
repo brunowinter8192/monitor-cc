@@ -26,7 +26,7 @@ that lives in the RAG project.
 ### pane.py (226 LOC)
 
 **Purpose:** Event loop — keyboard/mouse dispatch, row-1 search bar (highlight-only, no scroll infra since this pane has none), digit-key preset toggle. `GPU_POLL_INTERVAL = 2.0` s; `COLLECTIONS_POLL_INTERVAL = 30.0` s. `_toggle_server` stays in this module (not `gpu_actions.py`) because it reads the module-level `PRESET_NAMES` bare name that `dev/click_ui/p4_gpu_news_button_probe.py` monkeypatches directly.
-**Reads:** `all_statuses()`, `get_anomalies()`, `errors_today()`, `errors_today_by_server()` every 2s tick; `_fetch_collections()` every 30s tick (+ force-refresh); `PRESET_NAMES` from `status` (set at import).
+**Reads:** `all_statuses()`, `get_anomalies()`, `errors_today()`, `errors_today_by_server()` every 2s tick; `_fetch_collections()` every 30s tick (+ force-refresh); `PRESET_NAMES` from `status` (filled in place by the first successful discovery).
 **Writes:** stdout (full-screen ANSI); `/tmp/monitor_cc_error.log` on caught exception (via `pane_error_log`); mutates `_gpu_search` (search state); mutates `gpu_actions._toggle_state` and `gpu_render._button_regions` (imported, same objects).
 **Called by:** `workflow.py` (`--mode gpu` route).
 **Calls out:** `rag-cli` (subprocess CLI, `_toggle_server`).
@@ -35,15 +35,15 @@ that lives in the RAG project.
 
 ### gpu_actions.py (44 LOC)
 
-**Purpose:** Server control actions. `TOGGLE_TIMEOUT = 120` s — how long a `[starting…]`/`[stopping…]` label persists before natural expiry. `_toggle_state: dict[str → ('starting'|'stopping', float ts)]` is module-level, mutated by `_expire_toggle_states`, `_fire_button`, and `pane.py`'s own `_toggle_server` (imported back into `pane.py`, same dict object). `_expire_toggle_states` removes entries once the server's real status confirms the transition, or after `TOGGLE_TIMEOUT`. `_fire_button` fires the `rag-cli server <action> [--port <port>] <name>` subprocess and stamps `_toggle_state`.
+**Purpose:** Server control actions. `TOGGLE_TIMEOUT = 120` s — how long a `[starting…]`/`[stopping…]` label persists before expiry; an expiry without the target state writes a `log_pane_note`. `_toggle_state: dict[str → ('starting'|'stopping', float ts)]` is module-level, mutated by `_expire_toggle_states`, `_fire_button`, and `pane.py`'s own `_toggle_server` (imported back into `pane.py`, same dict object). `_expire_toggle_states` removes entries once the server's real status confirms the transition, or after `TOGGLE_TIMEOUT`. `_fire_button` fires the `rag-cli server <action> [--port <port>] <name>` subprocess and stamps `_toggle_state`.
 **Reads:** `presets`/`arbitrary` lists passed as arguments.
 **Writes:** `_toggle_state` (add/remove entries); one `subprocess.Popen` per `_fire_button` call.
 **Called by:** `pane.py` (`_expire_toggle_states`, `_fire_button`, `_toggle_server`'s reads), `gpu_render.py` (`_status_text` reads `_toggle_state`).
-**Calls out:** `rag-cli` (subprocess CLI).
+**Calls out:** `rag-cli` (subprocess CLI); `pane_error_log`.
 
 ---
 
-### gpu_render.py (178 LOC)
+### gpu_render.py (180 LOC)
 
 **Purpose:** Rendering — three-block render (GPU Servers + RAG Collections + Errors), idle-countdown computation, context-dependent button labels/regions. `IDLE_TIMEOUT` (env `RAG_SERVER_IDLE_TIMEOUT`, default 3600) is used only by `_format_countdown`. `_render_pane` is a thin orchestrator over `_render_gpu_header`, `_render_preset_rows`, `_render_arbitrary_rows`, `_render_collections_block`, `_render_errors_block`, `_render_anomalies_line`, `_apply_gpu_search_highlight`.
 **Reads:** `gpu_actions._toggle_state` (for `_status_text`); all other state passed as function arguments.
@@ -53,13 +53,13 @@ that lives in the RAG project.
 
 ---
 
-### status.py (201 LOC)
+### status.py (228 LOC)
 
-**Purpose:** State-file registry reader + collection fetcher. Globs `~/.rag-locks/server-port-*.json`, builds preset + arbitrary status lists, detects six anomaly classes, logs to `src/gpu_pane/logs/gpu_pane.log` via `TimedRotatingFileHandler` (daily, 7-day retention). `PRESET_NAMES` is discovered once at module-import time via `rag-cli server presets --json` (3s timeout; `[]` on any failure). `_fetch_collections()` calls `rag-cli list_collections --json` (5s timeout; `[]` on any failure).
-**Reads:** `~/.rag-locks/server-port-*.json` (content + mtime); `http://localhost:<port>/health`; `ps -o rss=`; `rag-cli server presets --json` (once, at import); `rag-cli list_collections --json` (every 30s).
+**Purpose:** State-file registry reader + collection fetcher. Globs `~/.rag-locks/server-port-*.json`, builds preset + arbitrary status lists, detects the anomaly classes, logs to `src/gpu_pane/logs/gpu_pane.log` via `TimedRotatingFileHandler` (daily, 7-day retention). `PRESET_NAMES` starts empty and is filled in place by `_ensure_preset_names` via `rag-cli server presets --json` (3s timeout) on every `all_statuses` tick until discovery succeeds; a failure shows as a `presets_unavailable` anomaly. `_fetch_collections()` calls `rag-cli list_collections --json` (5s timeout; `None` on any failure, noted once per state change).
+**Reads:** `~/.rag-locks/server-port-*.json` (content + mtime); `http://localhost:<port>/health`; `ps -o rss=`; `rag-cli server presets --json` (until it succeeds); `rag-cli list_collections --json` (every 30s).
 **Writes:** nothing (read-only); anomalies appended to module-level `_last_anomalies`; logs to `gpu_pane.log`.
 **Called by:** `pane.py`.
-**Calls out:** `rag-cli` (subprocess CLI); `ps` (subprocess CLI).
+**Calls out:** `rag-cli` (subprocess CLI); `ps` (subprocess CLI); `pane_error_log`.
 
 ---
 
@@ -81,7 +81,7 @@ that lives in the RAG project.
 | `gpu_render.py` | `_button_regions: dict[(start_col, end_col, phys_row) → (action, target_str)]` — imported back into `pane.py`, same dict object | mouse-click handler in `pane.py` | `_render_pane` (cleared and rebuilt per tick) |
 | `pane.py` | `_gpu_search: search_bar.SearchState` | `.matches` holds 0-based indices into `_render_pane`'s own lines list | mutated by `_poll_gpu_input`/`_handle_gpu_mouse` |
 | `status.py` | `_last_anomalies: list[dict]` | `get_anomalies()` | reset each tick by `all_statuses()` |
-| `status.py` | `PRESET_NAMES: list[str]` | `pane.py` (digit-key handler, `_toggle_server`); `all_statuses` (preset row order) | `_discover_preset_names()` at module import — frozen for the process lifetime |
+| `status.py` | `PRESET_NAMES: list[str]` | `pane.py` (digit-key handler, `_toggle_server`); `all_statuses` (preset row order) | `_ensure_preset_names()` mutates it in place (same list object) while it is empty |
 
 **`_toggle_state` key convention:** preset name (e.g. `'embedding'`) for presets; `'port-{N}'` for arbitrary servers.
 
@@ -93,8 +93,10 @@ that lives in the RAG project.
 - `enable_mouse()` captures all mouse events (including wheel) — tmux native scrollback (Ctrl+B `[`) does not work while the pane is active.
 - `_render_pane` clears `_button_regions` at the top of every call — anyone reading the regions outside the same render tick sees stale data.
 - **Hard cut:** this pane does not read legacy `~/.rag-locks/rag-server-{name}.port` files — they are detected and logged as anomalies (via glob) but their content is never read.
-- **`PRESET_NAMES` is frozen per pane process.** Discovery runs once at `status.py` import. To pick up a RAG-side preset change, the pane must be respawned (Ctrl+R triggers a tmux `respawn-pane`, which re-imports the module).
-- **`rag-cli` failure at import → empty preset block, no fabricated names.** `_discover_preset_names` returns `[]` on `FileNotFoundError`/`TimeoutExpired`/`JSONDecodeError`/`KeyError`; all running servers then land in the arbitrary block with no anomaly logged.
-- **Collections block shows `(none indexed)` on any `_fetch_collections()` failure** (Postgres down, rag-cli absent, timeout) — silent degradation, no anomaly logged.
+- **`PRESET_NAMES` is filled once and then kept.** A successful discovery is never repeated; to pick up a RAG-side preset change the pane must be respawned (Ctrl+R triggers a tmux `respawn-pane`, which re-imports the module).
+- **`rag-cli` failure → empty preset block plus a `presets_unavailable` anomaly, no fabricated names.** Discovery is retried on every 2s tick; the cause is logged to `gpu_pane.log` only when it changes.
+- **Collections block shows `?` when `_fetch_collections()` fails** (Postgres down, rag-cli absent, timeout); `(none indexed)` means the fetch succeeded with an empty list.
+- **A state file without an integer port is skipped with a `missing_port` anomaly.**
+- **`IDLE_TIMEOUT` is coupled to the RAG server's own idle timeout** by the env var `RAG_SERVER_IDLE_TIMEOUT` (default 3600); the state files carry no idle-timeout value, so a differing server setting makes the countdown wrong without any sign.
 - **`list_collections` is lock-exempt in rag-cli** (pure Postgres aggregate read) — it succeeds even while `rag-cli index`/`update_docs` holds the advisory flock.
 - `status.py`'s `except PermissionError: pass` (PID alive, different owner) must stay single-line — a two-line `except ...:\n    pass` with no comment is rejected by this codebase's write-time safety hook.

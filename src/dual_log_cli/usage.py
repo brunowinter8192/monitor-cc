@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+from .diagnostics import report_skip
 from .discovery import stem_identity
 from .project_map import build_project_index, project_label
 from .reader import iter_jsonl, local_datetime
@@ -49,7 +50,8 @@ def _find_transcript(request_id: str, directories: list, since_epoch=None) -> Pa
     for directory in directories:
         try:
             entries = sorted(directory.iterdir())
-        except Exception:
+        except OSError as exc:
+            report_skip("usage", str(directory), f"{type(exc).__name__}: {exc}")
             continue
         for path in entries:
             if path.suffix != ".jsonl":
@@ -64,7 +66,8 @@ def _find_transcript(request_id: str, directories: list, since_epoch=None) -> Pa
     for path in candidates:
         try:
             content = path.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        except OSError as exc:
+            report_skip("usage", str(path), f"{type(exc).__name__}: {exc}")
             continue
         if fragment in content:
             return path
@@ -94,21 +97,22 @@ def _transcript_usage(transcript_path: Path) -> dict:
                 if cache_read is None or cache_creation is None:
                     continue
                 usage[request_id] = (cache_read, cache_creation)
-    except Exception:
+    except OSError as exc:
+        report_skip("usage", str(transcript_path), f"{type(exc).__name__}: {exc}")
         return {}
     return usage
 
 
 def resolve_transcript(session: dict, boundaries: list, projects_root: Path = None) -> tuple:
     if not boundaries:
-        return None, {}
+        return None, {}, "no requests"
     response_path = session.get("streams", {}).get("response")
     if response_path is None:
-        return None, {}
+        return None, {}, "no _response stream"
     try:
         flow_status = flow_status_ids(response_path)
-    except Exception:
-        return None, {}
+    except OSError as exc:
+        return None, {}, f"_response unreadable: {type(exc).__name__}: {exc}"
     anchor_request_id = None
     for boundary in boundaries:
         request_id, _status = flow_status.get(boundary.get("flow_id", ""), ("", None))
@@ -116,19 +120,21 @@ def resolve_transcript(session: dict, boundaries: list, projects_root: Path = No
             anchor_request_id = request_id
             break
     if not anchor_request_id:
-        return None, flow_status
+        return None, flow_status, "no request id in _response for any request"
     root = Path(projects_root) if projects_root else _PROJECTS_ROOT
     index = build_project_index(root)
     directories = _candidate_dirs(session.get("stem", ""), index)
     if not directories:
-        return None, flow_status
+        return None, flow_status, "no project directory resolved for the stem"
     since_epoch = _epoch_from_iso(boundaries[0].get("timestamp", ""))
     transcript_path = _find_transcript(anchor_request_id, directories, since_epoch)
-    return transcript_path, flow_status
+    if transcript_path is None:
+        return None, flow_status, f"no transcript contains request {anchor_request_id}"
+    return transcript_path, flow_status, None
 
 
 def build_usage_by_flow(session: dict, boundaries: list, projects_root: Path = None) -> dict:
-    transcript_path, flow_status = resolve_transcript(session, boundaries, projects_root)
+    transcript_path, flow_status, _reason = resolve_transcript(session, boundaries, projects_root)
     return usage_from_transcript(transcript_path, flow_status)
 
 
