@@ -103,7 +103,7 @@ shared-rules directory.
 
 ---
 
-### test_strip_fix.py (189 LOC)
+### test_strip_fix.py (221 LOC)
 
 **Purpose:** Entry point for the largest suite in this directory — imports and runs every test
 function from the sibling fixture/cases modules.
@@ -143,6 +143,16 @@ SR-family tool_result non-descent identity checks.
 
 **Purpose:** The env-context `_ENV_CONTEXT_RE` replay fixtures — CC 2.1.258 trailing sentences,
 bundled CLAUDE.md-preserved shape, and gitStatus-section widening.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`.
+
+---
+
+### test_strip_fix_cases_git_attribution.py (86 LOC)
+
+**Purpose:** Fixtures for the git-attribution system-reminder strip: verbatim observed block in a 3-block msg #0, model-name independence, tool_result preservation, main/worker pipeline.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `test_strip_fix.py`.

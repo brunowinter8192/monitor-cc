@@ -20,6 +20,7 @@ _SR_TEMPLATES = {
     'skills-available':    ('The following skills are available',                       'full'),
     'agent-types':         ('Available agent types for the Agent tool',                 'full'),
     'plan-mode':           ('Plan mode ',                                               'full'),
+    'git-attribution':     ('Attribution for git commits and pull requests you create', 'full'),
 }
 _ALL_TEMPLATES = frozenset(_SR_TEMPLATES.keys())
 
