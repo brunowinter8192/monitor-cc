@@ -1,6 +1,9 @@
 # INFRASTRUCTURE
 
+import os
 import sys
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,7 +18,27 @@ from src.dual_log_cli.usage import _epoch_from_iso
 PASS_LIST = []
 FAIL_LIST = []
 
+_ZONE_CLOCKS = [("Asia/Tokyo", "2026-09-05 03:16:02"), ("America/Los_Angeles", "2026-09-04 11:16:02")]
+_DAY_BOUNDARY_CASES = [
+    ("Asia/Tokyo", "2026-09-04T15:30:00.000Z", "2026-09-05", "2026-09-04"),
+    ("America/Los_Angeles", "2026-09-05T06:30:00.000Z", "2026-09-04", "2026-09-05"),
+]
+
 # FUNCTIONS
+
+@contextmanager
+def _fixed_zone(zone: str):
+    previous = os.environ.get("TZ")
+    os.environ["TZ"] = zone
+    time.tzset()
+    try:
+        yield
+    finally:
+        if previous is None:
+            del os.environ["TZ"]
+        else:
+            os.environ["TZ"] = previous
+        time.tzset()
 
 def check(name: str, condition: bool, detail: str = "") -> None:
     if condition:
@@ -25,15 +48,15 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
 
 def test_local_datetime_matches_independent_conversion() -> None:
-    timestamp = "2026-09-04T18:16:02.582Z"
-    got = local_datetime(timestamp)
-    expected = datetime(2026, 9, 4, 18, 16, 2, 582000, tzinfo=timezone.utc).astimezone()
-    check("local_datetime matches an independently computed UTC->local conversion",
-          got == expected, (got, expected))
-    offset = datetime.now().astimezone().utcoffset()
-    if offset.total_seconds() != 0:
-        check("the converted clock differs from the raw UTC digits sliced out of the string",
-              got.strftime("%H:%M:%S") != timestamp[11:19], got)
+    for zone, expected_clock in _ZONE_CLOCKS:
+        with _fixed_zone(zone):
+            timestamp = "2026-09-04T18:16:02.582Z"
+            got = local_datetime(timestamp)
+            expected = datetime(2026, 9, 4, 18, 16, 2, 582000, tzinfo=timezone.utc).astimezone()
+            check(f"{zone}: local_datetime matches an independently computed UTC->local conversion",
+                  got == expected, (got, expected))
+            check(f"{zone}: the converted clock is the known local time, not the raw UTC digits",
+                  got.strftime("%Y-%m-%d %H:%M:%S") == expected_clock, got)
 
 def test_render_helpers_use_local_time() -> None:
     timestamp = "2026-09-04T18:16:02Z"
@@ -47,29 +70,15 @@ def test_render_helpers_use_local_time() -> None:
           _window_date(data, 0) == dt.strftime("%Y-%m-%d"), _window_date(data, 0))
 
 def test_late_timestamp_lands_on_correct_local_day() -> None:
-    offset = datetime.now().astimezone().utcoffset()
-    local_now = datetime.now().astimezone()
-    if offset.total_seconds() >= 0:
-        local_target = local_now.replace(hour=0, minute=30, second=0, microsecond=0)
-    else:
-        local_target = local_now.replace(hour=23, minute=30, second=0, microsecond=0)
-    utc_target = local_target.astimezone(timezone.utc)
-    local_day = local_target.strftime("%Y-%m-%d")
-    utc_day = utc_target.strftime("%Y-%m-%d")
-    timestamp = utc_target.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-
-    check("setup: the UTC day and the LOCAL day actually differ here (nonzero offset), or the "
-          "machine itself is at UTC (vacuous but not wrong)",
-          utc_day != local_day or offset.total_seconds() == 0, (utc_day, local_day, offset))
-
-    session = {"stem": "s", "context": "opus/x", "start": timestamp}
-    kept_local_day = filter_sessions([session], since=local_day, until=local_day)
-    check("session with a late/early UTC start is listed under its LOCAL day",
-          kept_local_day == [session], (kept_local_day, local_day, timestamp))
-    if utc_day != local_day:
-        kept_utc_day = filter_sessions([session], since=utc_day, until=utc_day)
-        check("session is NOT listed under the (different) UTC day",
-              kept_utc_day == [], (kept_utc_day, utc_day))
+    for zone, utc_timestamp, local_day, utc_day in _DAY_BOUNDARY_CASES:
+        with _fixed_zone(zone):
+            session = {"stem": "s", "context": "opus/x", "start": utc_timestamp}
+            kept_local_day = filter_sessions([session], since=local_day, until=local_day)
+            check(f"{zone}: session with a start on a different UTC day is listed under its LOCAL day",
+                  kept_local_day == [session], (kept_local_day, local_day, utc_timestamp))
+            kept_utc_day = filter_sessions([session], since=utc_day, until=utc_day)
+            check(f"{zone}: session is NOT listed under the (different) UTC day",
+                  kept_utc_day == [], (kept_utc_day, utc_day))
 
 def test_epoch_from_iso_matches_true_utc_epoch() -> None:
     timestamp = "2026-09-04T20:16:02.582Z"
