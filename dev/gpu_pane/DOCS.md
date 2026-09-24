@@ -22,6 +22,7 @@ without a search query, hashing both the rendered output and the resulting `_but
 every call.
 **Reads:** nothing external — synthetic fixtures built in-script.
 **Writes:** nothing — stdout only (`HASH: <hex>`).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Input is synthetic and built inline, so two runs on the same tree give the same hash.
 **Called by:** none — run manually; re-run after any `src/gpu_pane/` refactor.
 **Calls out:** `src.gpu_pane.pane` (`_render_pane`, `_toggle_state`, `_button_regions`) —
 imported via a function (`_import_gpu`), not a module-level `from src.` line, per

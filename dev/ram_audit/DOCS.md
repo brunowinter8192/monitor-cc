@@ -26,6 +26,7 @@ A running pane process registers a `SIGUSR1` handler via `src.ram_audit.instrume
 **Purpose:** Byte-identity harness for `register_ram_dump`/`_handle_ram_dump` — registers a fake pane, signals itself, reads the resulting dump, normalizes non-deterministic lines, and hashes what remains.
 **Reads:** its own freshly-written dump file under `dumps/`.
 **Writes:** a scratch PID file and dump file, both deleted before exit — stdout only (one `HASH:` line, plus `register_ram_dump`'s own `[ram-dump] wrote <path>` line on stderr).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Input is synthetic, but the run signals itself, waits a fixed 0.2 s, writes into `dev/ram_audit/dumps/` and uses the fixed PID file `/tmp/.monitor_cc_pid_byteidentity`, so two concurrent runs collide.
 **Called by:** none — manual regression harness, run before and after a `register_ram_dump`/`_handle_ram_dump` refactor.
 **Calls out:** `src.ram_audit.instrument` (`register_ram_dump`) — imported via a dedicated function, not a module-level `from src.` line, per the `block_dev_imports_src` hook.
 

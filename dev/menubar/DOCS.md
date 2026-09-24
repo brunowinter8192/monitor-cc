@@ -26,6 +26,7 @@ persistent output files.
 monkeypatches every I/O boundary the function touches and hashes 4 scenarios' results.
 **Reads:** nothing external — all fixtures constructed inline.
 **Writes:** nothing — stdout only (`HASH: <hex>`).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Input is synthetic and built inline, so two runs on the same tree give the same hash.
 **Called by:** none — run manually; re-run after any `_process_project_dir` change.
 **Calls out:** `src.menubar.discover` (`_process_project_dir`, `SessionInfo`) — imported via a
 dedicated function, not a module-level `from src.` line, per `block_dev_imports_src`.
@@ -40,6 +41,7 @@ dedicated function, not a module-level `from src.` line, per `block_dev_imports_
 temp copy).
 **Writes:** nothing outside its own tempdir — stdout only (`PERSISTENCE_HASH: <hex>`, `UI_HASH:
 <hex>`).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. It seeds one check from the real `~/.claude/shared-rules/proxy_rules.json`, with no env seam, so a changed rules file changes the hash.
 **Called by:** none — run manually; re-run after any `model_controller.py`/`model_selection.py`
 change.
 **Calls out:** `src.menubar.model_controller` (`ModelController`), `src.menubar.model_selection`
@@ -54,6 +56,7 @@ line, per `block_dev_imports_src`.
 `rebuild()` and a subsequent `update_inplace()`, dumping every `NSGridView` row/cell and lookup map.
 **Reads:** nothing external — synthetic session/bg-timer data built inline.
 **Writes:** nothing — stdout only (`HASH: <hex>` or `HASH: SKIPPED (...)` + `SMOKE: ...`).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Input is synthetic and built inline, so two runs on the same tree give the same hash.
 **Called by:** none — run manually; re-run after any `PanelManager` internal-attribute change.
 **Calls out:** `src.menubar.panel_manager` (`PanelManager`), `src.menubar.discover`
 (`SessionInfo`) — both imported via dedicated functions, not a module-level `from src.` line, per

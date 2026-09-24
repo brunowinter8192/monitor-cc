@@ -26,6 +26,7 @@ plus several sibling `test_strip_fix_cases_*.py` modules, all loading `src` via
 prefix of a real `_original.jsonl`, for both worker contexts.
 **Reads:** newest `_original.jsonl` under `src/logs/dual_log`, or `PROXY_PIPELINE_BYTE_IDENTITY_LOG`.
 **Writes:** nothing — stdout only (`source`, `payloads`, one `HASH:` line).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Default input is the newest live `_original.jsonl`, which grows while a session runs; pin it with `PROXY_PIPELINE_BYTE_IDENTITY_LOG` on a copied corpus.
 **Called by:** none — manual regression harness, run before/after a `src/proxy/` refactor.
 **Calls out:** `src.proxy.rules`, `src.proxy.cache`, `src.proxy.logging`,
 `src.proxy.strip_inject_delta`, `src.proxy.message_summary`.
@@ -38,6 +39,7 @@ prefix of a real `_original.jsonl`, for both worker contexts.
 real `ProxyAddon` with a fake mitmproxy flow.
 **Reads:** newest `_original.jsonl` under `src/logs/dual_log`, or `ADDON_HOOK_BYTE_IDENTITY_LOG`.
 **Writes:** nothing outside its own temp directory (cleaned up on exit) — stdout only.
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Default input is the newest live `_original.jsonl`, which grows while a session runs; pin it with `ADDON_HOOK_BYTE_IDENTITY_LOG` on a copied corpus.
 **Called by:** none — manual regression harness, run before/after a `ProxyAddon` refactor.
 **Calls out:** `src.proxy.addon` (`ProxyAddon`).
 

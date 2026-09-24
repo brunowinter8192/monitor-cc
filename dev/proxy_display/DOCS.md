@@ -29,6 +29,7 @@ and asserts PASS/FAIL against a specific predicate/rendering outcome.
 directory (default: the newest quartet under src/logs/dual_log in the main checkout, overridable
 via `RENDER_BYTE_IDENTITY_LOG_DIR` to pin a frozen quartet for a stable before/after comparison).
 **Writes:** nothing — stdout only (`source`, `entries`, `expand_states keys`, `HASH` lines).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Default input is the newest live `_forwarded.jsonl` under the live dual-log directory; pin it with `RENDER_BYTE_IDENTITY_LOG_DIR` pointing at a copied corpus.
 **Called by:** none — manual regression harness, run before and after a render-cluster refactor.
 **Calls out:** `src.proxy_display.forwarded_parser` (`_parse_forwarded_log`, `_infer_model_family`),
 `src.proxy_display.dual_log_accumulator` (`accumulate_dual_log`, `accumulate_original_tools`),
@@ -71,6 +72,7 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 **Purpose:** Side-by-side check of one turn: proxy pane rows versus token pane rows for a real dual-log session, plus a pairwise (number, turn, time) equality verdict, rendered at width 62.
 **Reads:** `_forwarded`/`_response` under the main checkout's `src/logs/dual_log`, the matching transcript under `~/.claude/projects` (found by request_id).
 **Writes:** `dev/proxy_display/md/verify_req_numbering_<stem>_turn<N>.md` and stdout.
+**Kind:** verification on live data, not a test: it asserts nothing beyond printing a pairwise verdict, and it reads the live dual-log directory and `~/.claude/projects` from hardcoded paths with no env seam. The result changes as the logs grow or rotate; the stem and turn are the arguments.
 **Called by:** none — run manually: `python dev/proxy_display/verify_req_numbering.py <stem> <turn>`.
 **Calls out:** `src.proxy_display.*`, `src.dual_log_cli.usage` (`_find_transcript`), `src.panes.cache_turns`, `src.format.token_format`.
 

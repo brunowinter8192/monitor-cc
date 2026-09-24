@@ -16,6 +16,7 @@ Resolves a fixed list of 44 top-level `UPPER_CASE` names through a `_NEW_LOCATIO
 **Purpose:** Byte-identity harness for `src/constants.py`'s constant clusters — resolves 44 fixed names to their current module and hashes `{name: repr(value)}`.
 **Reads:** nothing external.
 **Writes:** nothing — stdout only (`HASH: <hex>`).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Input is the imported constants themselves, so two runs on the same tree give the same hash.
 **Called by:** none — run manually; re-run after any further `src/constants.py` split.
 **Calls out:** `src.constants`, `src.colors`, `src.core.modes`, `src.pane_error_log` — all imported via a dedicated function (`_resolve`, through `importlib`), not a module-level `from src.` line, per `block_dev_imports_src`.
 
