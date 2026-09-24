@@ -61,23 +61,33 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t1_autojump_removal.py (152 LOC)
+### t1_autojump_removal.py (132 LOC)
 
-**Purpose:** Regression guard (with isolated HOME) that no Auto-Jump identifier remains in `src/` or `dev/`, that an old settings file still loads, and that the header buttons are static.
+**Purpose:** Regression guard (with isolated HOME) that no Auto-Jump identifier remains in `src/` or `dev/`, that an old settings file still loads, and that save/`FocusController`/`PanelSettings` carry no Auto-Jump remnants.
 **Reads:** all `.py` under `src/` and `dev/`; tempdir settings files.
 **Writes:** `md/t1_autojump_removal.md`.
 **Called by:** none — run manually after menubar changes; does not move the screen.
-**Calls out:** `src/menubar/app_settings.py`, `focus_controller.py`, `app.py`, `panel_manager.py`, `rag_controller.py`, `model_controller.py` (via `importlib`); `.space_lib`.
+**Calls out:** `src/menubar/app_settings.py`, `focus_controller.py`, `app.py`, `.space_lib`.
 
 ---
 
-### t2_launch_tab.py (435 LOC)
+### t2_launch_tab.py (442 LOC)
 
 **Purpose:** Eleven parallel subprocess cases (each with its own isolated HOME) covering header texts, log isolation, occupied-desktop marking (marked, never refused), project rows, exact start commands, launch workflow failure stages, click handling, the main-thread PostEvent request on tab open, and `space_switch` units.
 **Reads:** real `src/menubar` launch modules with fakes and patches.
 **Writes:** `md/t2_launch_tab.md`.
 **Called by:** none — run manually after Launch tab changes; does not move the screen.
 **Calls out:** `src/menubar/launch_controller.py`, `session_launch.py`, `space_switch.py`, `panel_manager.py`, `rag_controller.py`, `model_controller.py` (via `importlib`); `.space_lib`.
+
+---
+
+### t3_tab_click.py (293 LOC)
+
+**Purpose:** Six parallel subprocess cases for the clickable tab header — header pieces and ring keys, header structure, pixel equivalence with the old single-button header, wiring, click routing via `performClick_`, and re-centering on panel resize.
+**Reads:** real `src/menubar` panel controllers built with a fake app; nothing is shown on screen and no real mouse event is sent.
+**Writes:** `md/t3_tab_click.md`.
+**Called by:** none — run manually after header or ring changes; does not move the screen.
+**Calls out:** `src/menubar/panel.py`, `panel_tabs.py`, `panel_lifecycle.py`, `app.py`, `panel_manager.py`, `rag_controller.py`, `model_controller.py`, `launch_controller.py` (via `importlib`); `.space_lib`, `.test_env`.
 
 ---
 

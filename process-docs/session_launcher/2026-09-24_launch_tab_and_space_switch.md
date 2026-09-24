@@ -242,3 +242,39 @@ Lesson: any dev script that imports `src.menubar.*` must isolate `HOME` first; `
 Re-run with the user's go, one short-lived process building real NSPanels: RESULT PASS (forward and reverse ring over 4 tabs). Real
 `menubar.log` before/after that run: 8 `[launch]` lines both times (total 492429 both times), no temp home left behind. The five old test lines
 in the production log were left in place on the user's instruction.
+
+## Clickable tab names in the panel header (2026-09-24, commits `b22a72b1`, `acff2c5e`, `91c5ccf5`)
+
+Goal: the four header tab names (Sessions, RAG, Models, Launch) are selectable by mouse, not only by Cmd+Arrow. A click on a tab opens it with the same
+close/open/frame-carry-over behavior as the ring; a click on the active tab does nothing; Cmd+Arrow unchanged; the header keeps its look.
+
+Design decision (the user challenged my first plan): my plan was one header button with hit-testing on the click x-position against text measurements, firing on mouse-down.
+The user asked for four real borderless buttons instead (no geometry math for click zones, normal mouse-up button behavior). No concrete reason against it was found, so it was built that way.
+- Each panel's top bar holds a strip (width like the old button, autoresizing width) containing a header view (autoresizing flexible left/right margins, fixed width = text width)
+  with four buttons and three ` · ` labels. Button titles are exactly `panel_tabs.header_pieces(active)` (e.g. `[RAG]`), Menlo 13, tag = ring index, action `selectTab:`.
+- The header is static per panel (the active tab is fixed by the panel), so the controllers no longer set a title on rebuild; `header_btn` became `header_view`
+  (`_widgets.header_view` in `PanelManager`, `_rag_header`, `_models_header`, `_launch_header` in the other controllers).
+- `_PanelController.selectTab_`: key = `TAB_KEYS[sender.tag()]`, current = `_open_tab_name(app)`; no open tab or same tab -> nothing; else
+  `NSOperationQueue.mainQueue().addOperationWithBlock_(lambda: _deferred_close_open(app, current, key))`, exactly what the Cmd+Arrow lambdas do.
+- `_ensure_wired` calls `panel._wire_header_buttons(header, controller)` for all four headers (16 buttons). `panel_lifecycle._RING = panel_tabs.TAB_KEYS`, one ring order for keys and clicks.
+- `panel_tabs.tab_header_text` was removed (only tests used it after the change); tests join `header_pieces` with `TAB_SEPARATOR` themselves.
+
+Measured facts that matter for anyone touching this:
+- The old single header button drew its text CENTERED although `NSButton.alignment()` reported 1 (which reads as "right" in the current enum). Found by rendering the button into a bitmap
+  (`cacheDisplayInRect_toBitmapImageRep_`) and scanning columns: ink at 135-663 of 800 device pixels for `RAG` (text width 266.1 pt in a 400 pt button). Do not trust `alignment()`; render.
+- Menlo 13 widths: `Sessions` 62.6 pt, `[RAG]` 39.1, `Models` 47.0, `Launch` 47.0, ` · ` 23.5.
+- Pixel comparison old vs new header, all four active states: ink extents differ by at most 1 device pixel (0.5 pt); 4.0-4.9% of pixels differ slightly (anti-aliasing from fractional glyph origins). The test limit is 8%.
+- AppKit rounds a resized frame width: a 266.1 pt header became 266.5 pt after `setFrameSize_` on the strip. Compare widths with a tolerance of 1 pt, not 0.01.
+- `NSButton.performClick_(None)` works on buttons in an unshown NSPanel and invokes the target/action synchronously, so no synthetic mouse event is needed.
+
+Tests: `dev/session_launcher/t3_tab_click.py`, six parallel subprocess cases with isolated HOME, all PASS: pieces_and_keys, header_structure, visual_equivalence, wiring (`_ensure_wired` on a fake app),
+click_routing (16 clicks: 12 switch to the exact (current, target) once, 4 active-tab clicks do nothing, no open tab does nothing), header_recentering (stays centered and keeps its width at panel widths 422/522/322).
+Mutations that failed the tests: removed active-tab guard, reversed tag mapping, wrong autoresizing mask. `t1_autojump_removal` lost its "header buttons carry no target" check (headers now do carry `selectTab:`);
+the remaining 7 checks are unchanged. `t1_skill_picker`, `t2_launch_tab` and the byte-identity hash were re-run and unaffected.
+
+Mistake: `b22a72b1` was committed while `header_recentering` was failing (assertion tolerance 0.01 pt vs AppKit's 0.4 pt rounding; the code was right). Run the whole test set and read the FINAL result before every commit.
+The mutation for the centering mask was also invisible at first (a stretched header still has its center at the strip center); the assertion had to include the header's width.
+
+Not verified: click feel in the real panel (the user checks after the rebuild), and `dev/model_selector/verify_four_tab_ring.py` was not re-run for this change (it builds real NSPanels and needs the user's go);
+the frame carry-over itself is the unchanged ring function.
+

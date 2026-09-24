@@ -29,13 +29,13 @@ root) — this package only consumes those.
 
 ## Modules
 
-### panel.py (318 LOC)
+### panel.py (365 LOC)
 
-**Purpose:** NSPanel/NSView/NSButton/NSTextField factory helpers, cursor-tracking view subclasses, and pure layout-computation helpers for the main sessions panel.
+**Purpose:** NSPanel/NSView/NSButton/NSTextField factory helpers, cursor-tracking view subclasses, pure layout-computation helpers for the main sessions panel, and the clickable tab-header factory shared by all four panels.
 **Reads:** function parameters only (sessions, bg_by_project, panel_width passed by callers).
 **Writes:** NSPanel frame (`_reposition_panel`); constructs NSView/NSButton/NSTextField UI objects returned to callers.
-**Called by:** `panel_lifecycle.py`, `panel_manager.py`, `rag_controller.py`, `model_controller.py`, `model_panel_ui.py`.
-**Calls out:** `AppKit`, `Foundation`, `itertools`, `objc`; `.menubar_log` (`log_menubar`); `.panel_dims` (`PANEL_*`).
+**Called by:** `panel_lifecycle.py`, `panel_manager.py`, `rag_controller.py`, `model_controller.py`, `model_panel_ui.py`, `launch_panel_ui.py`, `launch_controller.py`, `app.py` (`_wire_header_buttons`).
+**Calls out:** `AppKit`, `Foundation`, `itertools`, `objc`; `.menubar_log` (`log_menubar`); `.panel_dims` (`PANEL_*`); `.panel_tabs` (`TAB_SEPARATOR`, `header_pieces`).
 
 ---
 
@@ -47,9 +47,9 @@ root) — this package only consumes those.
 
 ---
 
-### panel_grid.py (8 LOC)
+### panel_grid.py (9 LOC)
 
-**Purpose:** NSGridView column-width constants for the main sessions panel's 6-column layout.
+**Purpose:** NSGridView column-width constants for the main sessions panel's 7-column layout (last column: the skill button).
 **Called by:** `panel_manager.py`.
 **Calls out:** nothing (leaf node).
 
@@ -63,33 +63,33 @@ root) — this package only consumes those.
 
 ---
 
-### panel_manager.py (221 LOC)
+### panel_manager.py (218 LOC)
 
-**Purpose:** Per-concern controller owning the main sessions panel's NSPanel/lookup state and the full-rebuild / in-place-update rendering logic.
+**Purpose:** Per-concern controller owning the main sessions panel's NSPanel/lookup state and the full-rebuild / in-place-update rendering logic; main rows get a `skill` button after `mon`, worker rows do not.
 **Reads:** `app.settings.panel_width`/`.panel_min_height`; `sessions` and `bg_by_project` from callers.
 **Writes:** `self._lookups` (a fresh `_PanelLookups` per rebuild — `cwd_map`, `worker_tag_map`, `desktop_to_cwd`, abort maps, `displayed_items`); `self._widgets.panel` frame.
 **Called by:** `app.py` (construction, `_tick`, all `_PanelController` click handlers), `panel_lifecycle.py` (open/close/background/cycle).
-**Calls out:** `AppKit`, `Foundation`, `itertools.groupby`, `collections.Counter`; `.panel` (factories + non-cluster constants); `.panel_grid` (`_GRID_*` constants); `.panel_tabs` (`tab_header_text`).
+**Calls out:** `AppKit`, `Foundation`, `itertools.groupby`, `collections.Counter`; `.panel` (factories + non-cluster constants); `.panel_grid` (`_GRID_*` constants).
 
 ---
 
-### rag_controller.py (166 LOC)
+### rag_controller.py (157 LOC)
 
 **Purpose:** Per-concern controller for the RAG status side panel — reads the RAG indexing lock file and renders a single status label.
 **Reads:** `~/.rag-locks/rag.lock`; `app.settings.panel_width`/`.panel_min_height`.
 **Writes:** `self._rag_status_label` text (in-place, every tick); `self._rag_panel` frame.
 **Called by:** `app.py` (construction, `_tick`, resize), `panel_lifecycle.py` (open/close/cycle).
-**Calls out:** `AppKit`, `Foundation`, `json`, `os`, `errno`, `datetime`, `pathlib`; `.panel` (constants + helpers); `.panel_dims` (`PANEL_*`); `.panel_tabs` (`tab_header_text`).
+**Calls out:** `AppKit`, `Foundation`, `json`, `os`, `errno`, `datetime`, `pathlib`; `.panel` (constants + helpers); `.panel_dims` (`PANEL_*`).
 
 ---
 
-### model_controller.py (219 LOC)
+### model_controller.py (214 LOC)
 
 **Purpose:** Per-concern controller for the Models side panel — main/worker model plus effort plus max_tokens plus thinking cycle rows, and the Apply action.
 **Reads:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (via `model_selection.py`, on open and after each cycle click); `app.settings.panel_width`/`.panel_min_height`.
 **Writes:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (atomic, only on an explicit Apply click); `self._pending`'s 8 fields (in-memory, on cycle clicks); `self._models_panel` frame.
 **Called by:** `app.py` (construction, all cycle/apply `_PanelController` delegates, resize), `panel_lifecycle.py` (open/close/cycle).
-**Calls out:** `AppKit`, `Foundation`, `sys`, `threading`; `.panel` (constants + `_make_line_separator`); `.model_selection` (`_PendingSelection`, `_thinking_is_enabled`); `.model_panel_ui` (factories + `_APPLY_*` constants); `.panel_tabs` (`tab_header_text`).
+**Calls out:** `AppKit`, `Foundation`, `sys`, `threading`; `.panel` (constants + `_make_line_separator`); `.model_selection` (`_PendingSelection`, `_thinking_is_enabled`); `.model_panel_ui` (factories + `_APPLY_*` constants).
 
 ---
 
@@ -103,7 +103,7 @@ root) — this package only consumes those.
 
 ---
 
-### model_panel_ui.py (76 LOC)
+### model_panel_ui.py (72 LOC)
 
 **Purpose:** NSPanel/NSButton construction factories for the Models panel.
 **Reads:** nothing — pure AppKit object factories.
@@ -123,13 +123,13 @@ root) — this package only consumes those.
 
 ---
 
-### app.py (317 LOC)
+### app.py (340 LOC)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) — owns the per-concern controllers, the `_tick` timer loop, and `_PanelController` (the NSObject target for every button/hotkey action).
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) — owns the per-concern controllers, the `_tick` timer loop, and `_PanelController` (the NSObject target for every button/hotkey action, including `selectTab_` for the header tab buttons and `showSkillMenu_`/`insertSkill_`).
 **Reads:** `sessions.refresh()` + `sessions.bg_by_project` (via `SessionsController`, backed by `discovery_worker.py`'s background snapshot) every tick; `SETTINGS_FILE` on launch.
 **Writes:** bar icon; `SETTINGS_FILE` (via `app_settings.py`, on resize); `menubar.log` (`[abort]`/`[tick]`/`[latency]` categories).
 **Called by:** `system.py:run()` (lazy import, to break the app↔system circular import).
-**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.focus_controller`, `.rag_controller`, `.model_controller`, `.panel_manager`, `.panel`, `.bar_icons`, `.panel_dims`, `.hotkey_controller`, `.system`, `.discovery_worker`, `.monitor_sweep_scheduler`, `.bg_timer`, `.app_settings`, `.panel_lifecycle`, `.launch_controller`, `.menubar_log`.
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.focus_controller`, `.rag_controller`, `.model_controller`, `.panel_manager`, `.panel`, `.bar_icons`, `.panel_dims`, `.hotkey_controller`, `.system`, `.discovery_worker`, `.monitor_sweep_scheduler`, `.bg_timer`, `.app_settings`, `.panel_lifecycle`, `.launch_controller`, `.skill_controller`, `.panel_tabs`, `.menubar_log`.
 
 ---
 
@@ -143,13 +143,13 @@ root) — this package only consumes those.
 
 ---
 
-### panel_lifecycle.py (139 LOC)
+### panel_lifecycle.py (140 LOC)
 
 **Purpose:** Four-panel (Sessions/RAG/Models/Launch) open/close/background/cycle lifecycle driven by one ring order — reposition, show/hide, hotkey (re)registration.
 **Reads:** `app.panel`/`.rag`/`.models`/`.launch`/`.hotkey`/`.sessions` state; `app._nsapp.nsstatusitem`.
 **Writes:** NSPanel frame/order via each controller's panel ref; hotkey registration/unregistration via `app.hotkey`; `app.panel._panel_backgrounded`.
 **Called by:** `app.py` (`togglePanel_`, Cmd+K, Cmd+→/← lambdas); `launch_controller.py` (`_close_launch_panel`).
-**Calls out:** `sys`, `Foundation.NSOperationQueue`; `.panel` (`_reposition_panel`); `.rag_controller` (`_reposition_rag_panel`); `.model_panel_ui` (`_reposition_models_panel`); `.launch_panel_ui` (`_reposition_launch_panel`).
+**Calls out:** `sys`, `Foundation.NSOperationQueue`; `.panel` (`_reposition_panel`); `.rag_controller` (`_reposition_rag_panel`); `.model_panel_ui` (`_reposition_models_panel`); `.launch_panel_ui` (`_reposition_launch_panel`); `.panel_tabs` (`TAB_KEYS`).
 
 ---
 
@@ -248,15 +248,15 @@ root) — this package only consumes those.
 **Purpose:** Process entry point (`run()`), singleton lock, and Ghostty click-to-focus/monitor-launch routing for main sessions, worker viewers, and per-project monitors — every successful focus AppleScript now also activates Ghostty app-wide (one combined osascript call, `focus` before `activate`, never on a failed/MISS attempt); worker-viewer focus self-heals one stale-id failure via a single reprobe-and-retry, main-session focus unchanged otherwise.
 **Reads:** `PID_FILE` (lock); `get_ghostty_terminal_id(cwd)`/`get_ghostty_terminal_id_for_tty(tty)` from `ghostty.py` on click; `ps -A` output (worker-viewer tty lookup); the plist template (PATH source for `_resolve_launch_python3`); `MONITOR_CC_ROOT`; `tmux has-session` (via `tmux_launcher.py`).
 **Writes:** `PID_FILE`; `/tmp/monitor-cc-menubar_focus.log` (main-session path only); `menubar.log` (`[latency]`/`[monitor]` categories — `_focus_worker`'s line now carries `status=OK`/`status=ERR rc=... stderr=...`/`status=TIMEOUT` plus `attempt=1`; on a non-OK first attempt, a `focus_worker_reprobe` line (tty, cost, fresh id or `miss`) and, if the reprobe found a fresh id, a second `focus_worker ... attempt=2` line — the reprobe path is the ONLY thing that adds cost, never runs on a first-attempt success); `.ghostty.py`'s `_ghostty_tty_to_id[tty]` (in place, via the imported `_reprobe_single_tty`, on a successful reprobe); a new Ghostty window + tmux session on monitor launch.
-**Called by:** `__init__.py` (re-export), `workflow.py` (via `__init__.py:run`), `app.py` (`_focus_session`, `_focus_worker`, `_open_or_focus_monitor`), `hotkey_controller.py` (`_focus_session`), `session_launch.py` (`_launch_monitor_ghostty_native`).
+**Called by:** `__init__.py` (re-export), `workflow.py` (via `__init__.py:run`), `app.py` (`_focus_session`, `_focus_worker`, `_open_or_focus_monitor`), `hotkey_controller.py` (`_focus_session`), `session_launch.py` (`_launch_monitor_ghostty_native`), `skill_insert.py` (`_applescript_quote`).
 **Calls out:** `fcntl`, `os`, `re`, `shlex`, `shutil`, `subprocess`, `sys`; `.ghostty` (`get_ghostty_terminal_id`, `get_ghostty_terminal_id_for_tty`, `_reprobe_single_tty`); `..tmux_launcher` (`generate_session_name`, `check_session_exists`, `kill_session`); lazy `.app` (`CCMenuBarApp`) inside `run()` only.
 
 ---
 
-### panel_tabs.py (7 LOC)
+### panel_tabs.py (9 LOC)
 
-**Purpose:** Tab names in ring order plus the single builder of the shared header text that marks the active tab.
-**Called by:** `panel_manager.py`, `rag_controller.py`, `model_controller.py`, `launch_controller.py`.
+**Purpose:** Tab names and ring keys in ring order, the header separator, and the per-tab header pieces that mark the active tab.
+**Called by:** `panel.py`, `panel_lifecycle.py`, `app.py`.
 **Calls out:** nothing (leaf node).
 
 ---
@@ -269,7 +269,7 @@ root) — this package only consumes those.
 
 ---
 
-### launch_panel_ui.py (110 LOC)
+### launch_panel_ui.py (106 LOC)
 
 **Purpose:** NSPanel factory, reposition helper and button/row factories for the Launch tab (a row of the five desktop buttons without a label, project rows labeled by their last path component).
 **Reads:** nothing — pure AppKit object factories.
@@ -279,7 +279,7 @@ root) — this package only consumes those.
 
 ---
 
-### launch_controller.py (110 LOC)
+### launch_controller.py (104 LOC)
 
 **Purpose:** Per-concern controller for the Launch tab — desktop selection (occupied desktops are only marked, never refused), the PostEvent access request on tab open, and starting a launch on a background thread.
 **Reads:** `app.sessions.refresh()` (main sessions' `desktop_no`); `app.settings.panel_width`/`.panel_min_height`.
@@ -306,6 +306,36 @@ root) — this package only consumes those.
 **Writes:** synthetic Ctrl+N key events to the session event tap; the PostEvent permission request (only via `request_post_event_access_if_missing`).
 **Called by:** `session_launch.py` (switch workflow); `launch_controller.py` (`request_post_event_access_if_missing`, main thread).
 **Calls out:** `ctypes` (CoreGraphics, CoreFoundation); `.desktop_detection` (`_build_space_map`).
+
+---
+
+### skill_discovery.py (120 LOC)
+
+**Purpose:** Discovers the skills offered for one main session — project, personal and enabled-plugin skills — with short and full invocation names.
+**Reads:** `~/.claude/settings.json` (`enabledPlugins`), `~/.claude/plugins/installed_plugins.json`, each plugin's `.claude-plugin/plugin.json` and skill files, `<cwd>/.claude/skills/*/SKILL.md`, `~/.claude/skills/*/SKILL.md`.
+**Writes:** `menubar.log` (`[skill] FAILED plugin=... reason=...` tripwire lines).
+**Called by:** `skill_controller.py` (on every menu open).
+**Calls out:** `json`, `pathlib`; `.menubar_log`.
+
+---
+
+### skill_insert.py (52 LOC)
+
+**Purpose:** Types the skill activation text into a main session's Claude Code input field through Ghostty AppleScript, without submitting it.
+**Reads:** `ghostty.py`'s tty-to-terminal-id map (by session cwd).
+**Writes:** the input field of one Ghostty terminal; `menubar.log` (`[skill]` OK/FAILED line with stage and detail).
+**Called by:** `skill_controller.py` (menu choice).
+**Calls out:** `subprocess` (osascript), `time`; `.ghostty` (`get_ghostty_terminal_id`); `.menubar_log`; `.system` (`_applescript_quote`).
+
+---
+
+### skill_controller.py (52 LOC)
+
+**Purpose:** Per-concern controller for the skill dropdown — builds and pops up the NSMenu below a row's skill button and forwards the choice to the insert workflow.
+**Reads:** `discover_skills_workflow(cwd)` result on each click; `app._panel_controller` (menu item target).
+**Writes:** `self._menu_cwd` (the row whose menu is open); `menubar.log` (`[skill] FAILED` for a missing cwd or choice).
+**Called by:** `app.py` (`showSkillMenu_`, `insertSkill_`).
+**Calls out:** `AppKit` (`NSMenu`, `NSMenuItem`), `Foundation`; `.menubar_log`; `.skill_discovery`; `.skill_insert`.
 
 ---
 
@@ -344,7 +374,7 @@ root) — this package only consumes those.
 **Purpose:** Ghostty terminal UUID mapping via an OSC 2 title-marker probe — maps every Ghostty child tty (main sessions and worker viewers alike) to its terminal UUID for click-to-focus; also exposes a scoped single-tty reprobe (query immediately, one retry on a miss, no fixed sleep — see Gotchas) for repairing one stale entry without a full re-scan.
 **Reads:** `ps -A` (Ghostty PID + child ttys); `/dev/ttys<NNN>` (OSC 2 marker writes); `osascript` (terminal `id|||name` pairs for the batch refresh; `id of (first terminal whose name is ...)` for the scoped single-tty reprobe, up to twice per call).
 **Writes:** `/dev/ttys<NNN>` (probe + cleanup); `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_ghostty_cwd_uuid_last` (module state — `_reprobe_single_tty` also writes `_ghostty_tty_to_id[tty]` in place, outside the batch refresh's own throttle); `APP_SUPPORT/ghostty_cwd_uuid.json` (atomic, change-detected — via its own inline path, not `paths.py:GHOSTTY_CWD_UUID_FILE`).
-**Called by:** `discover.py:list_alive_sessions` (discovery-worker thread); `system.py:_focus_session`/`_focus_worker` (main thread); `system.py:_retry_focus_worker_after_reprobe` (`_reprobe_single_tty`, main thread, only after a real Ghostty focus failure).
+**Called by:** `discover.py:list_alive_sessions` (discovery-worker thread); `system.py:_focus_session`/`_focus_worker` (main thread); `system.py:_retry_focus_worker_after_reprobe` (`_reprobe_single_tty`, main thread, only after a real Ghostty focus failure); `skill_insert.py` (`get_ghostty_terminal_id`, main thread).
 **Calls out:** `json`, `os`, `subprocess`, `time`; `.paths` (`_APP_SUPPORT`); `.proc_cache` (`_cc_proc_cache`, `cc_proc_cache_snapshot`).
 
 ---
@@ -429,6 +459,7 @@ root) — this package only consumes those.
 | `CCMenuBarApp.models` | app.py | model_controller.py | `ModelController` — owns `_models_open`, `_models_panel`, `_models_sv`, `_models_header_btn`, `_pending` (a `model_selection.py:_PendingSelection`, incl. per-side `main_thinking`/`worker_thinking`), `_buttons` (a `_ModelRowButtons`, incl. `main_thinking`/`worker_thinking` rows). |
 | `CCMenuBarApp.focus` | app.py | focus_controller.py | `FocusController` — owns `_last_statuses` (blink/transition detection). |
 | `CCMenuBarApp.launch` | app.py | launch_controller.py | `LaunchController` — owns `_launch_open`, `_launch_panel`, `_launch_sv`, `_launch_header_btn`, `_selected_desktop`, `_occupied`, `_desktop_btns`, `_launch_in_progress` (cleared in a `finally` on the launch thread). |
+| `CCMenuBarApp.skills` | app.py | skill_controller.py | `SkillController` — owns `_menu_cwd` (the row whose skill menu is currently open; set in `show_menu`, read in `handle_choice`). |
 | `CCMenuBarApp.sessions` | app.py | sessions_controller.py | `SessionsController` — owns `_last_sessions`, `_last_bg_by_project`, refreshed from `discovery_worker.py`'s published snapshot. |
 | `CCMenuBarApp.hotkey` | app.py | hotkey_controller.py | `HotkeyController` — owns digit/arrow GC refs plus `global_handles` (the Cmd-L/Cmd-K `(cb, ref, cb, ref)` tuple, set by `CCMenuBarApp.__init__` right after registration). |
 | `_cc_proc_cache` | proc_cache.py | proc_cache.py (written only from the discovery-worker thread) | `Dict[pid, (tty, cwd)]` of live CC processes. Read cross-thread only via `cc_proc_cache_snapshot()`. |
@@ -479,3 +510,6 @@ root) — this package only consumes those.
 - Launch tab (`session_launch.py`/`space_switch.py`): needs the PostEvent permission for the menubar bundle. The request runs on the MAIN thread when the tab opens (`LaunchController.open`); the launch thread never requests. Without the grant a click only logs `[launch] FAILED ... postevent_not_granted` and nothing switches — there is no fallback path, by design. Grants survive rebuilds only while the bundle stays signed with the `monitor-cc Code Signing` identity. The bundle MUST be built from the main checkout: `MONITOR_CC_ROOT` comes from the plist's `PROJECT_ROOT`, which `setup_py2app.py` fills with the build directory.
 - Launch tab: `launch_workflow` blocks ~1.5s (switch + 1s settle) and therefore runs on a daemon thread started by `LaunchController`; a busy flag drops clicks while it runs.
 - `panel_lifecycle.py` derives ring neighbours from `_RING`; adding a tab means one entry in `_RING`, one in `panel_tabs.py:TABS`, and the panel/open/close cases.
+- Sessions grid has 7 columns; the seventh holds the `skill` button (main rows only). `mergeCellsInHorizontalRange` for the project separator rows and every `addRowWithViews_` list in `panel_manager.py` must keep 7 entries, or NSGridView raises.
+- Skill picker (`skill_*.py`): plugin skills come ONLY from the manifest's `skills` array; full name is `<manifest name>:<frontmatter name or directory name>`. Project and personal skills use the directory name (frontmatter `name` is a label only). An enabled plugin with neither manifest nor `skills/` directory is skipped silently; a missing manifest with a `skills/` directory, a manifest without a `skills` array, or a missing skill file logs `[skill] FAILED` and is skipped. The inserted text `Aktiviere den Skill <full name>.` is typed with `input text` and never submitted (no `send key`, no `activate`).
+- Tab header (`panel.py:_make_tab_header`): each panel has four real tab buttons (tag = ring index, action `selectTab:`) plus three separator labels inside a strip; the header is static per panel because the active tab is fixed by the panel, so controllers no longer set a title on rebuild. `_ensure_wired` must call `_wire_header_buttons` for every panel's header, or its clicks do nothing.
