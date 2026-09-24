@@ -60,7 +60,7 @@ block runs `main()` and handles a broken output pipe.
 
 ---
 
-### cli_args.py (161 LOC)
+### cli_args.py (167 LOC)
 
 **Purpose:** The argparse parser construction — `_parse_args(argv, epilog)` builds the top-level
 parser and its five subparsers (`sessions`, `msgs`, `expand`, `search`, `reqs`), one dedicated
@@ -72,11 +72,11 @@ helper per command.
 
 ---
 
-### commands.py (212 LOC)
+### commands.py (234 LOC)
 
 **Purpose:** The five `_run_*` command implementations (`_run_sessions`, `_run_search`,
 `_run_reqs`, `_run_msgs`, `_run_expand`) plus their shared validators (`_valid_day`,
-`_reject_bad_days`, `_load_for`, `_window`).
+`_reject_bad_days`, `_load_for`, `_window`), the stderr line naming the numbering path used (`_report_numbering_paths`) and the continue-request `--req` error text.
 **Reads:** the resolved dual_log directory and the parsed `argparse.Namespace`, both passed in by `__main__.main()`.
 **Writes:** stdout (rendered text, via `sys.stdout.write`), stderr (resolution, range and empty-term errors).
 **Called by:** `__main__.py` (`main()`, one `_run_*` per `args.command` branch).
@@ -139,7 +139,7 @@ timestamp gets parsed and converted to this machine's local time.
 
 ---
 
-### timeline.py (30 LOC)
+### timeline.py (32 LOC)
 
 **Purpose:** `load_timeline(session)` — the one call that assembles everything a render needs for
 one session: the last-request payload, its model family, its turn rows, and (when a `_forwarded`
@@ -164,10 +164,10 @@ stream exists) its request boundaries and turn-times.
 
 ---
 
-### timeline_boundaries.py (141 LOC)
+### timeline_boundaries.py (164 LOC)
 
 **Purpose:** Request-boundary derivation from the `_forwarded` delta stream (`request_boundaries`)
-plus, per boundary, its `sys_lines`/`tool_lines` — the system blocks and tools that request sent
+`continue_requests` (a worker's tool-loop requests: family match, `counts.tools == 0`, `diagnostics.previous_message_id` set — kept out of `boundaries` so `msgs`/`expand` ownership is unchanged), plus, per boundary, its `sys_lines`/`tool_lines` — the system blocks and tools that request sent
 in full (family's first request) or changed/added since the previous one of the same family,
 compared via `src/proxy/logging.py`'s `_delta_hash` — the exact content-hash normalisation the
 proxy itself uses, so a read-side "changed" decision matches the proxy's own.
@@ -178,7 +178,7 @@ proxy itself uses, so a read-side "changed" decision matches the proxy's own.
 
 ---
 
-### timeline_markers.py (76 LOC)
+### timeline_markers.py (96 LOC)
 
 **Purpose:** Request markers and numbering. `request_markers` folds boundaries into
 `{msg_index: {number, timestamp, refires, flow_id, sys_lines, tool_lines, message_count}}`, what
@@ -219,7 +219,17 @@ for the equivalent per-system-index and per-tool-name shape, both by running the
 
 ---
 
-### usage.py (144 LOC)
+### numbering.py (52 LOC)
+
+**Purpose:** `build_session_numbering` resolves a session's transcript once and annotates every create and continue request with the token pane's own REQ number, turn and response-end time (`pane_number`/`pane_turn`/`pane_time`, `None` when unmapped); returns usage, the transcript turns and which path was used.
+**Reads:** `src/panes/cache_turns.build_cache_turns` over the resolved transcript, `src/format/token_format.call_numbers`, `usage.resolve_transcript`/`usage_from_transcript`.
+**Writes:** mutates the passed boundary/continue dicts in place; returns `{usage, pane_turns, path}` (`path` is `transcript` or `boundaries`).
+**Called by:** `commands.py` (`_run_reqs`, `_run_msgs`); `dev/dual_log_cli/tests/test_reqs_pane_numbering.py`.
+**Calls out:** `panes.cache_turns`, `format.token_format` (absolute imports).
+
+---
+
+### usage.py (148 LOC)
 
 **Purpose:** Builds `msgs`' and `reqs`' `{flow_id: (cache_read_input_tokens,
 cache_creation_input_tokens)}` map by joining the session's `_response` stream, a stem-scoped
@@ -265,7 +275,7 @@ columns; PROJECT widens to fit the longest resolved path rather than truncating)
 
 ---
 
-### render_msgs.py (169 LOC)
+### render_msgs.py (171 LOC)
 
 **Purpose:** `msgs`' request-grouped classifier listing — a REQ separator per request group
 (optionally carrying CR/CC), that request's own sys/tool delta lines, then one `[idx] role type
@@ -289,7 +299,7 @@ tail when the proxy transformed it.
 
 ---
 
-### render_reqs.py (185 LOC)
+### render_reqs.py (250 LOC)
 
 **Purpose:** `reqs`' turn-grouped, CR/CC-annotated REQ listing — `render_reqs`/`render_reqs_merged`
 share one pipeline (`_session_entries_and_separators`, `_apply_filters`, `_grouped_lines`) that
@@ -360,7 +370,8 @@ prefix WAS read back, so it must NOT qualify for `--drop`.
 Chronological neighbors across turns or sessions are ignored, also under `--merged`.
 
 **`--drop`'s "previous request" is always the same session's own previous REQ, even under
-`--merged`.** `prev_usage` is precomputed per session (msg-index order) before `_merged_entries`
+`--merged`.** `prev_usage` is precomputed per session (msg-index order in the create-only fallback,
+chronological over creates and continues in the transcript path) before `_merged_entries`
 ever flattens/sorts across sessions, so a cross-session chronological neighbor never substitutes
 for it.
 
@@ -395,3 +406,12 @@ to more than one msg index, rather than guessing.** This can happen even without
 trailing re-fire that adds no msg can become the sole owner of its own group (a new `start_index`
 nothing after it ever fills), but the running request-number counter never advanced for it, so it
 inherits the same number as the group before it.
+
+**`reqs`/`msgs` numbering has two paths, named on stderr each run.** With a resolvable transcript,
+REQ numbers, turn numbers and times are the token pane's (`numbering.py`); without one, only create
+requests are listed with duallog's own running numbers and send times, and continues have no turn.
+See `process-docs/dual_log_cli/`.
+
+**`timeline_markers.request_markers` picks the LAST MAPPED boundary of a refire group as owner** once
+boundaries are annotated (a group whose last boundary is a 404 keeps the mapped one's number); an
+all-unmapped group has number `None`, printed `REQ ?` and not addressable by `msgs --req`.
