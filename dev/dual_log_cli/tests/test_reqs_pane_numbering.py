@@ -52,6 +52,8 @@ def test_reqs_pane_numbering_workflow() -> None:
     test_msgs_prints_continue_separators()
     test_expand_req_selects_reply_and_returned_result()
     test_expand_req_errors_and_cli()
+    test_unmapped_req_sits_in_its_turn_by_send_time()
+    test_unmapped_req_stays_out_of_gap_pairs()
 
     total = len(PASS_LIST) + len(FAIL_LIST)
     print(f"{len(PASS_LIST)}/{total} checks passed")
@@ -516,6 +518,58 @@ def test_expand_req_errors_and_cli() -> None:
     out = render_expand_full({"turns": [{}] * 13, "turn_times": {}, "session": {"stem": "s", "project": "p", "start": "2026-09-04T10:00:00Z"}},
                              None, 4, 6, "", [], None, "what REQ 2 produced")
     check("the header names the REQ instead of an anchor msg", "what REQ 2 produced" in out and "anchor" not in out, out)
+
+
+def _unmapped_turn_view() -> tuple:
+    entries = [
+        _create("f1", "2026-09-04T10:00:00Z", 2, True),
+        _continue("u1", "2026-09-04T10:20:01Z", "m1"),
+        _create("f2", "2026-09-04T10:20:03Z", 6),
+        _continue("k1", "2026-09-04T10:21:00Z", "m2"),
+        _continue("u2", "2026-09-04T10:25:00Z", "m3"),
+        _continue("k2", "2026-09-04T10:25:05Z", "m4"),
+    ]
+    transcript = [
+        _prompt("first", "2026-09-04T09:59:59Z"),
+        _assistant("r1", "2026-09-04T10:00:05Z"),
+        _prompt("second", "2026-09-04T10:20:00Z"),
+        _assistant("r2", "2026-09-04T10:20:20Z"),
+        _assistant("r3", "2026-09-04T10:21:10Z"),
+        _assistant("r4", "2026-09-04T10:25:15Z"),
+    ]
+    flows = [("f1", "r1", 200), ("u1", "rx1", 404), ("f2", "r2", 200), ("k1", "r3", 200),
+             ("u2", "rx2", 404), ("k2", "r4", 200)]
+    responses = [{"flow_id": f, "request_id": r, "status_code": c} for f, r, c in flows]
+    return _numbered_view(transcript, entries, responses)
+
+
+def _render_filtered(view: tuple, turn=None, gap=None) -> str:
+    session, boundaries, continues, numbering = view
+    stem = session["stem"]
+    return render_reqs(
+        [(session, boundaries)], 0, turn, gap, {stem: numbering["usage"]}, False, False, {stem: []},
+        {stem: continues}, {stem: numbering["pane_turns"]})
+
+
+def test_unmapped_req_sits_in_its_turn_by_send_time() -> None:
+    view = _unmapped_turn_view()
+    out = _render_filtered(view)
+    lines = [l for l in out.split("\n") if l.startswith("REQ") or l.startswith("── turn")]
+    kinds = [l.split()[1] if l.startswith("REQ") else "T" + l.split()[2] for l in lines]
+    check("both rejected attempts sit inside turn 2, before/among the mapped REQs of that turn",
+          kinds == ["T1", "1", "T2", "?", "2", "3", "?", "4"], lines)
+    turn2 = next(l for l in lines if l.startswith("── turn 2"))
+    check("the separator shows the prompt time 10:20:00, not the first REQ's time",
+          f"turn 2  {_clock('2026-09-04T10:20:00Z')}  " in turn2 and _clock("2026-09-04T10:20:01Z") not in turn2, turn2)
+    check("the span still runs from the first to the last REQ of the turn (10:20:01 -> 10:25:15)", "5m14s" in turn2, turn2)
+    only_turn_2 = _render_filtered(view, turn=2)
+    check("--turn 2 keeps the REQ ? rows of that turn", only_turn_2.count("REQ ?") == 2 and "── turn 1" not in only_turn_2, only_turn_2)
+
+
+def test_unmapped_req_stays_out_of_gap_pairs() -> None:
+    out = _render_filtered(_unmapped_turn_view(), gap=2)
+    lines = [l for l in out.split("\n") if l.startswith("REQ")]
+    check("--gap 2 pairs the numbered REQs 3 -> 4 (4m05s) and never lists a REQ ?", [l.split()[1] for l in lines] == ["3", "4"], lines)
 
 
 if __name__ == "__main__":
