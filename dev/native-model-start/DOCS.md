@@ -11,7 +11,7 @@ Synthetic argv, mocked config or recorded dual-log payloads go in. Each script d
 
 ## Modules
 
-### p1_arg_parse_dry_run.sh (154 LOC)
+### p1_arg_parse_dry_run.sh (137 LOC)
 
 **Purpose:** Dry-runs the launcher's model-flag precedence, mirrored from its parse loop; never starts the proxy or claude.
 **Reads:** nothing persistent; in-process argv simulation.

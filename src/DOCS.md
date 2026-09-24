@@ -149,7 +149,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### claude_proxy_start.sh (188 LOC)
+### claude_proxy_start.sh (207 LOC)
 
 **Purpose:** shell entry point that launches mitmproxy plus Claude Code with the proxy environment; orchestrates the sourced janitor and marker libraries.
 **Reads:** the model-selection rules file, existing log files, per-project marker files.

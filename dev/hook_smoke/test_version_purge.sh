@@ -11,7 +11,7 @@ _compute_proxy_hash() {
     { cat "$SCRIPT_DIR/proxy_addon.py"
       find "$SCRIPT_DIR/proxy" -type f \( -name '*.py' -o -name '*.json' \) | sort \
           | while IFS= read -r f; do cat "$f"; done
-    } | if command -v md5 &>/dev/null; then md5; else md5sum | head -c 32; fi
+    } | md5
 }
 
 _janitor_version_purge_jsonl_logs() {

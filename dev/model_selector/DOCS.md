@@ -41,7 +41,7 @@ Synthetic payloads, temp paths or in-memory fixtures go in. Each script drives r
 
 ---
 
-### verify_launcher_model_precedence.sh (185 LOC)
+### verify_launcher_model_precedence.sh (163 LOC)
 
 **Purpose:** Dry run of the launcher's model precedence chain: explicit flag, then config-file key, then nothing injected.
 **Reads:** nothing persistent outside its own temp dir.

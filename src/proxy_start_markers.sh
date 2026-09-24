@@ -22,7 +22,7 @@ _marker_is_stale() {
     _proxy_pid_is_live "$pid" || return 0
     log="$LOG_DIR/dual_log/api_requests_${log_id}_forwarded.jsonl"
     [ -f "$log" ] || return 0
-    log_mtime=$(stat -f %m "$log" 2>/dev/null || stat -c %Y "$log" 2>/dev/null)
+    log_mtime=$(stat -f %m "$log" 2>/dev/null)
     if [ -n "$log_mtime" ] && [ $(($(date +%s) - log_mtime)) -lt 60 ]; then
         return 1
     fi

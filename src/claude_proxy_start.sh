@@ -33,6 +33,8 @@ proxy_start_workflow() {
     _start_proxy
     _start_heartbeat
     trap cleanup EXIT INT TERM
+    _wait_for_proxy
+    _verify_proxy_alive
     _announce_proxy
     _resolve_claude_bin
     _enter_project
@@ -76,22 +78,29 @@ _parse_args() {
 }
 
 _resolve_config_model() {
-    if [ -z "$HAS_EXPLICIT_MODEL" ] && command -v jq &>/dev/null && [ -f "$MODEL_SELECTION_FILE" ]; then
-        CONFIG_MODEL="$(jq -r '.main // empty' "$MODEL_SELECTION_FILE" 2>/dev/null)"
-        if [ -n "$CONFIG_MODEL" ]; then
-            CLAUDE_ARGS+=("--model" "$CONFIG_MODEL")
-        fi
+    [ -z "$HAS_EXPLICIT_MODEL" ] || return 0
+    [ -f "$MODEL_SELECTION_FILE" ] || return 0
+    if ! command -v jq &>/dev/null; then
+        echo "claude_proxy_start: jq not found, $MODEL_SELECTION_FILE ignored, no --model injected" >&2
+        return 0
+    fi
+    if [ ! -r "$MODEL_SELECTION_FILE" ]; then
+        echo "claude_proxy_start: $MODEL_SELECTION_FILE unreadable, no --model injected" >&2
+        return 0
+    fi
+    if ! CONFIG_MODEL="$(jq -r '.main // empty' "$MODEL_SELECTION_FILE" 2>/dev/null)"; then
+        echo "claude_proxy_start: $MODEL_SELECTION_FILE is not valid JSON, no --model injected" >&2
+        return 0
+    fi
+    if [ -n "$CONFIG_MODEL" ]; then
+        CLAUDE_ARGS+=("--model" "$CONFIG_MODEL")
     fi
 }
 
 _derive_session_ids() {
     local normalized_project project_basename
     normalized_project="$(python3 -c "import os, sys; print(os.path.normpath(os.path.expanduser(sys.argv[1])))" "$PROJECT")"
-    if command -v md5 &>/dev/null; then
-        SESSION_ID="$(echo -n "$normalized_project" | md5 | head -c 8)"
-    else
-        SESSION_ID="$(echo -n "$normalized_project" | md5sum | head -c 8)"
-    fi
+    SESSION_ID="$(echo -n "$normalized_project" | md5 | head -c 8)"
     PROXY_SESSION_UID="${SESSION_ID}_$$_$(date +%s)"
     project_basename="$(basename "$PROJECT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed 's/^_*//;s/_*$//')"
     LOG_ID="opus_${project_basename}_$(date +%s)"
@@ -159,8 +168,18 @@ _start_heartbeat() {
     HEARTBEAT_PID=$!
 }
 
-_announce_proxy() {
+_wait_for_proxy() {
     sleep 1
+}
+
+_verify_proxy_alive() {
+    if ! kill -0 $PROXY_PID 2>/dev/null; then
+        echo "claude_proxy_start: mitmdump failed to start on port $PROXY_PORT, aborting" >&2
+        exit 1
+    fi
+}
+
+_announce_proxy() {
     echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_${LOG_ID}.jsonl"
 }
 

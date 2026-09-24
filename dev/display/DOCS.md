@@ -23,7 +23,7 @@ Markdown/JSON report to stdout or a file under this directory.
 
 ## Modules
 
-### test_tmux_layout.sh (55 LOC)
+### test_tmux_layout.sh (28 LOC)
 
 **Purpose:** Verifies the tmux pane layout (window/pane indices, `-l` percentage splits, `-b`
 top/bottom placement) in a temporary session.
