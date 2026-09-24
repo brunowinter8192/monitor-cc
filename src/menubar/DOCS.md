@@ -111,7 +111,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### paths.py (22 LOC)
+### paths.py (19 LOC)
 
 **Purpose:** Single source of truth for on-disk path values (app-support directory, shared-rules files, repo root).
 **Reads:** the project-root environment variable via the shared root resolver.
@@ -387,7 +387,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### bg_timer.py (167 LOC)
+### bg_timer.py (159 LOC)
 
 **Purpose:** Scans orchestrator wake-up processes, attributes them per project and aborts them on request.
 **Reads:** process table; the CC process cache; per-PID open files via `lsof`.

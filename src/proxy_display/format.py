@@ -8,14 +8,10 @@ from ..colors import (
 )
 from ..format.token_format import _format_k
 from ..utils import truncate_visible
-from .proxy_badge import _chars_to_tokens
 from src.proxy_display.turn_cache import TurnCache
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 
 # FUNCTIONS
-
-def _format_tok_est(chars: int) -> str:
-    return f"~{_format_k(_chars_to_tokens(chars))}tok"
 
 def _fmt_effort(s: Optional[str]) -> str:
     if s is None:

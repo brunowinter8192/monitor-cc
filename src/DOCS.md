@@ -99,7 +99,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### session_finder.py (77 LOC)
+### session_finder.py (64 LOC)
 
 **Purpose:** enumerates Claude Code session JSONL files (including subagent transcripts), optionally per project, newest first.
 **Reads:** `~/.claude/projects/` directory tree.

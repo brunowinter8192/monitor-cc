@@ -24,7 +24,7 @@ Cache-turn lists and pane geometry (from the calling pane) -> `token_format.py` 
 
 ---
 
-### token_format.py (356 LOC)
+### token_format.py (350 LOC)
 
 **Purpose:** builds the logical lines, sticky header and scroll viewport of the tokens/cache-tracker pane, plus shared request numbering and time helpers.
 **Reads:** cache-turn lists, expand states, pane dimensions, scroll offset and optional search or response data, all passed as arguments.

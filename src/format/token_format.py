@@ -84,12 +84,6 @@ def _call_thinking_meta(call: dict) -> tuple:
     sig_chars = sum(b.get('sig_chars', 0) for b in call.get('content_blocks', []) if b.get('type') == 'thinking')
     return has_thinking, sig_chars
 
-def _get_tool_preview(input_data: dict) -> str:
-    for key in ('file_path', 'pattern', 'command', 'subagent_type', 'prompt', 'query'):
-        if key in input_data:
-            return str(input_data[key]).replace('\n', ' ')
-    return ''
-
 def _format_ts(timestamp: str) -> str:
     from ..utils import format_timestamp
     return format_timestamp(timestamp)

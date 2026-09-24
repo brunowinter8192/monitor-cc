@@ -7,20 +7,14 @@ from .colors import RESET, RED, GREEN, YELLOW, BLUE
 
 CLAUDE_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 
-_last_session_count: Optional[int] = None
 _last_jsonl_count: Optional[int] = None
 _project_dirs_logged: bool = False
 
 # ORCHESTRATOR
 def find_active_sessions(project_filter: Optional[str] = None) -> List[Path]:
-    global _last_session_count
-
     project_dirs = get_project_directories()
     jsonl_files = collect_jsonl_files(project_dirs, project_filter)
     sorted_files = sort_by_modification_time(jsonl_files)
-
-    if _last_session_count != len(sorted_files):
-        _last_session_count = len(sorted_files)
 
     return sorted_files
 
@@ -68,10 +62,3 @@ def encode_project_path(path: str) -> str:
 def sort_by_modification_time(files: List[Path]) -> List[Path]:
     sorted_files = sorted(files, key=lambda f: f.stat().st_mtime, reverse=True)
     return sorted_files
-
-def is_modified_since(filepath: Path, last_mtime: float) -> bool:
-    current_mtime = filepath.stat().st_mtime
-    return current_mtime > last_mtime
-
-def get_modification_time(filepath: Path) -> float:
-    return filepath.stat().st_mtime

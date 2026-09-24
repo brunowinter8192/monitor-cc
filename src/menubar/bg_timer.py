@@ -108,14 +108,6 @@ def _scan_bg_sleep_timers(cwd_to_project: Dict[str, str]) -> Dict[str, BgSleepIn
         for proj, entries in buckets.items()
     }
 
-def _aggregate_bg(result: Dict[str, BgSleepInfo]) -> Optional[BgSleepInfo]:
-    if not result:
-        return None
-    return BgSleepInfo(
-        min_remaining=min(info.min_remaining for info in result.values()),
-        sleep_pids=[p for info in result.values() for p in info.sleep_pids],
-    )
-
 def _resolve_pid_output_file(pid: int) -> Optional[str]:
     try:
         r = subprocess.run(

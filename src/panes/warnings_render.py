@@ -13,7 +13,6 @@ from ..constants import NO_TIME_PLACEHOLDER, WARNINGS_POLL_INTERVAL
 from ..utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
 from ..format.strip_marker import highlight_stripped
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
-INDENT = '  '
 
 # FUNCTIONS
 

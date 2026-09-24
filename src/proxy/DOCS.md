@@ -256,9 +256,9 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### content_strip.py (156 LOC)
+### content_strip.py (122 LOC)
 
-**Purpose:** Strips or extracts non-system-reminder content: rejection results, session-start extraction, system-block cleanup and tool description stripping.
+**Purpose:** Strips non-system-reminder content: rejection results, system-block cleanup and tool description stripping.
 **Reads:** message content; full payload for tool and system strips.
 **Writes:** none (returns modified content or payload).
 **Called by:** `rules.py`, `message_passes.py`, `addon.py`.

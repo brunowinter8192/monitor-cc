@@ -76,7 +76,7 @@ Read-only command-line inspector for the dual-log streams in the runtime dual-lo
 
 ---
 
-### reader.py (90 LOC)
+### reader.py (83 LOC)
 
 **Purpose:** Read-only file primitives: reverse line scanner, model sniff, last-request loader, small-file JSONL iterator and local-time conversion.
 **Reads:** the original stream (byte ranges) and small streams line by line.

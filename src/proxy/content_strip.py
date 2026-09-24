@@ -45,40 +45,6 @@ def _strip_rejection_message(content):
     return content
 
 
-def _extract_session_start_block(content):
-    _RULES_MARKER = "SessionStart hook additional context:"
-    _TAG_OPEN = "<system-reminder>"
-    _TAG_CLOSE = "</system-reminder>"
-
-    def _extract_from_text(text: str):
-        if _RULES_MARKER not in text:
-            return text, None
-        marker_idx = text.index(_RULES_MARKER)
-        open_idx = text.rfind(_TAG_OPEN, 0, marker_idx)
-        if open_idx == -1:
-            return text, None
-        close_idx = text.find(_TAG_CLOSE, marker_idx)
-        if close_idx == -1:
-            return text, None
-        close_end = close_idx + len(_TAG_CLOSE)
-        extracted = text[open_idx:close_end]
-        remaining = (text[:open_idx] + text[close_end:]).strip() or "."
-        return remaining, extracted
-
-    if isinstance(content, str):
-        return _extract_from_text(content)
-    if isinstance(content, list):
-        for i, block in enumerate(content):
-            if not isinstance(block, dict) or block.get("type") != "text":
-                continue
-            new_text, extracted = _extract_from_text(block.get("text", ""))
-            if extracted:
-                new_blocks = list(content)
-                new_blocks[i] = {**block, "text": new_text}
-                return new_blocks, extracted
-    return content, None
-
-
 def _strip_session_guidance(text: str) -> str:
     marker = "# Session-specific guidance"
     env_marker = "# Environment"

@@ -55,13 +55,6 @@ def sniff_model(fh, offset: int) -> str:
     return match.group(1).decode("utf-8", "replace") if match else ""
 
 
-def read_json_line(path: Path, offset: int, length: int) -> dict:
-    with open(path, "rb") as fh:
-        fh.seek(offset)
-        raw = fh.read(length)
-    return json.loads(raw)
-
-
 def load_last_request(original_path: Path) -> tuple:
     skipped = 0
     with open(original_path, "rb") as fh:
