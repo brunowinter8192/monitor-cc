@@ -11,6 +11,7 @@ from .proc_cache import (
 )
 from .ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map, _ghostty_tty_to_id
 from .desktop_detection import detect_main_desktop_numbers
+from .menubar_log import log_menubar_change
 
 ALIVE_WINDOW_SECS      = 3600
 WORKING_THRESHOLD_SECS = 10
@@ -58,8 +59,11 @@ def list_alive_sessions() -> List[SessionInfo]:
             info = _process_project_dir(project_dir, now)
             if info is not None:
                 results.append(info)
-        except Exception:
+        except Exception as exc:
+            log_menubar_change('discover', f'project:{project_dir.name}',
+                               f'project skipped dir={project_dir.name} err={exc!r}')
             continue
+        log_menubar_change('discover', f'project:{project_dir.name}', None)
     timings['per_project_loop'] = time.monotonic() - t0
     t0 = time.monotonic()
     main_cwds = {s.cwd for s in results if not s.is_worker and s.cwd}
@@ -107,10 +111,10 @@ def _cwd_from_jsonl(path: Path) -> Optional[str]:
                 cwd = json.loads(line).get('cwd', '')
                 if cwd:
                     return cwd
-            except Exception:
+            except (ValueError, AttributeError):
                 continue
-    except Exception:
-        pass
+    except OSError as exc:
+        log_menubar_change('discover', f'cwd_jsonl:{path}', f'cwd read failed path={path} err={exc!r}')
     return None
 
 def _decode_dir_name(name: str) -> str:
@@ -171,23 +175,29 @@ def _worker_session_info(jsonl: Path, mtime: float, encoded_dir: str, project_na
     display_name = worker_name
     if cwd and '/.claude/worktrees/' in cwd:
         project_path, _, worktree_rest = cwd.partition('/.claude/worktrees/')
-        display_name = worktree_rest.split('/')[0] or worker_name
-        project_name = os.path.basename(project_path) or project_name
+        display_name = worktree_rest.split('/')[0]
+        project_name = os.path.basename(project_path)
         tmux_session = _worker_tmux_session(cwd, display_name) or ''
         if not tmux_session or not _tmux_session_exists(tmux_session):
             return None
+        alive_route = 'tmux'
     else:
         if now - mtime > ALIVE_WINDOW_SECS:
             return None
+        alive_route = 'mtime'
     hook_entry, hook_fresh = _hook_freshness(hook_state, session_id, now)
     if hook_fresh:
         status = hook_entry['status']
+        status_route = 'hook'
         if status == 'working' and tmux_session:
             wa = _tmux_window_activity(tmux_session)
             if wa == 0 or (now - wa) > WORKING_THRESHOLD_SECS:
                 status = 'idle'
+                status_route = 'hook_tmux_demote'
     else:
         status = 'idle'
+        status_route = 'no_fresh_hook'
+    _log_routes(session_id, display_name, alive_route, status_route)
     return SessionInfo(name=display_name, status=status, has_bg=has_bg,
                        encoded_dir=encoded_dir, project_name=project_name,
                        is_worker=True, cwd='', session_id=session_id,
@@ -199,20 +209,26 @@ def _main_session_info(encoded_dir: str, session_id: str, has_bg: bool, hook_sta
     if proc_cwd is None:
         return None
     project_name = os.path.basename(proc_cwd.rstrip('/'))
-    cwd = proc_cwd
-    name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
     hook_entry, hook_fresh = _hook_freshness(hook_state, session_id, now)
     if hook_fresh:
         status = hook_entry['status']
+        status_route = 'hook'
     else:
         status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
+        status_route = 'mtime'
         if status == 'idle':
             project_key = project_name.lower().replace('-', '_').replace(' ', '_')
             proxy_mtime = _proxy_log_newest_mtime(project_key, now)
             if (proxy_mtime is not None and proxy_mtime > mtime
                     and (now - proxy_mtime) <= THINKING_OVERRIDE_MAX_SECS):
                 status = 'working'
-    return SessionInfo(name=name, status=status, has_bg=has_bg,
+                status_route = 'proxy_override'
+    _log_routes(session_id, project_name, 'process', status_route)
+    return SessionInfo(name=project_name, status=status, has_bg=has_bg,
                        encoded_dir=encoded_dir, project_name=project_name,
-                       is_worker=False, cwd=cwd or '', session_id=session_id,
+                       is_worker=False, cwd=proc_cwd, session_id=session_id,
                        tmux_session_name='')
+
+def _log_routes(session_id: str, name: str, alive_route: str, status_route: str) -> None:
+    log_menubar_change('discover', f'routes:{session_id}',
+                       f'session={name} alive_route={alive_route} status_route={status_route}')
