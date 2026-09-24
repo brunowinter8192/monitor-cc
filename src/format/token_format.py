@@ -9,6 +9,7 @@ from ..colors import (
 )
 from ..utils import append_copy_symbol, highlight_query_in_line, right_align_time
 from ..search_bar import _BG_RESTORE_SENTINEL
+from .turn_cache import sync_document, publish_nav, new_turn_cache
 
 # FUNCTIONS
 
@@ -233,7 +234,7 @@ def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
         keys.extend(group_keys)
     return lines, keys
 
-def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int) -> tuple:
+def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int, parent_prefix: Optional[list] = None) -> tuple:
     viewport_lines = pane_height - 1
     max_scroll = max(0, len(all_lines) - viewport_lines)
     clamped_offset = min(scroll_offset, max_scroll)
@@ -255,7 +256,7 @@ def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, 
                 break
     visible_lines = all_lines[start:end]
     visible_keys = line_keys[start:end]
-    initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
+    initial_parent_count = parent_prefix[start] if parent_prefix is not None else sum(1 for k in line_keys[:start] if k is not None)
     return visible_lines, visible_keys, sticky_header, start, initial_parent_count
 
 def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
@@ -326,37 +327,38 @@ def _render_turn_lines(turn_idx: int, turn: dict, expand_states: dict, pane_widt
     all_lines.append('')
     line_keys.append(None)
 
-def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None, copy_feedback: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '', nav_out: Optional[dict] = None) -> tuple:
+def _render_turn_segment(turn_idx: int, turn: dict, number_row: list, inputs: dict, lines: list, keys: list, nav: dict) -> None:
+    _render_turn_lines(
+        turn_idx, turn, inputs['expand_states'], inputs['pane_width'], inputs['wide'], number_row,
+        inputs['response_rid_map'], inputs['copy_feedback'], inputs['search_match_set'],
+        inputs['search_current_key'], inputs['search_query'], nav, lines, keys)
+
+def _build_render_inputs(expand_states: dict, pane_width: int, response_rid_map: dict, copy_feedback: Optional[dict],
+                         search_match_set: Optional[set], search_current_key, search_query: str) -> dict:
+    wide = pane_width >= 60
+    preamble_lines = [] if wide else [f"{WHITE}CR/CC/D = Read/Create/Direct{SOFT_RESET}"]
+    return {
+        'expand_states': expand_states, 'pane_width': pane_width, 'wide': wide,
+        'response_rid_map': response_rid_map, 'copy_feedback': copy_feedback,
+        'search_match_set': search_match_set, 'search_current_key': search_current_key,
+        'search_query': search_query, 'preamble_lines': preamble_lines,
+    }
+
+def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None, copy_feedback: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '', nav_out: Optional[dict] = None, turn_cache: Optional[dict] = None) -> tuple:
     if not turns:
         return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0, 0
 
     if expand_states is None:
         expand_states = {}
+    if turn_cache is None:
+        turn_cache = new_turn_cache()
+
+    inputs = _build_render_inputs(
+        expand_states, pane_width, response_rid_map, copy_feedback,
+        search_match_set, search_current_key, search_query)
+    document = sync_document(turn_cache, turns, inputs, _render_turn_segment)
     if nav_out is not None:
-        nav_out.clear()
+        publish_nav(turn_cache, nav_out)
 
-    wide = pane_width >= 60
-    prompt_max = min(pane_width - 15, 60) if wide else min(pane_width - 8, 30)
-
-    all_lines = []
-    line_keys = []
-    numbers = call_numbers(turns)
-
-    if not wide:
-        all_lines.append(f"{WHITE}CR/CC/D = Read/Create/Direct{SOFT_RESET}")
-        line_keys.append(None)
-
-    for turn_idx, turn in enumerate(turns):
-        _render_turn_lines(
-            turn_idx, turn, expand_states, pane_width, wide, numbers[turn_idx], response_rid_map,
-            copy_feedback, search_match_set, search_current_key, search_query, nav_out,
-            all_lines, line_keys)
-
-    while all_lines and all_lines[-1] == '':
-        all_lines.pop()
-        line_keys.pop()
-
-    if nav_out is not None:
-        nav_out['total_lines'] = len(all_lines)
-
-    return _compute_cache_viewport(all_lines, line_keys, pane_height, pane_width, scroll_offset)
+    return _compute_cache_viewport(
+        document['lines'], document['keys'], pane_height, pane_width, scroll_offset, document['parent_prefix'])

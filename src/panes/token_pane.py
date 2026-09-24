@@ -13,7 +13,9 @@ from ..input.click_handler import (
     resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
 from ..format.token_format import format_cache_tracker
+from ..format.turn_cache import new_turn_cache
 from ..utils import truncate_visible
+from ..frame_writer import write_frame
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
 from .token_search import build_token_search_matches
@@ -38,6 +40,7 @@ _TOKENS_SEARCH_BAR_LABEL = 'search: '
 
 _tokens_search: search_bar.SearchState = search_bar.SearchState()
 _tokens_nav: dict = {}
+_tokens_turn_cache: dict = new_turn_cache()
 
 # ORCHESTRATOR
 
@@ -68,9 +71,7 @@ def run_tokens_loop() -> None:
                 if input_changed:
                     output = _build_tokens_output()
                     if output != last_output:
-                        print("\033[2J\033[3J\033[H", end='', flush=True)
-                        if output:
-                            print(output)
+                        write_frame(output)
                         last_output = output
 
                 wait_for_input(INPUT_POLL_INTERVAL)
@@ -283,7 +284,7 @@ def _build_tokens_output() -> str:
         _cache_turns, cache_expand_states, content_height, pane_width, cache_scroll_offset,
         response_rid_map=_response_rid_map, copy_feedback=_cache_copy_feedback_until,
         search_match_set=_tokens_search.match_set, search_current_key=current_match_key,
-        search_query=_tokens_search.query, nav_out=_tokens_nav,
+        search_query=_tokens_search.query, nav_out=_tokens_nav, turn_cache=_tokens_turn_cache,
     )
     result_lines = [_render_tokens_search_bar(pane_width)]
     if sticky_header is not None:

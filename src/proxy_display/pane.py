@@ -23,6 +23,7 @@ from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard, wait_for_input,
 )
+from ..frame_writer import write_frame
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
 from .. import search_bar
@@ -97,9 +98,7 @@ def run_proxy_loop() -> None:
                 if input_changed:
                     output = _build_proxy_output()
                     if output != last_output:
-                        print("\033[2J\033[3J\033[H", end='', flush=True)
-                        if output:
-                            print(output)
+                        write_frame(output)
                         last_output = output
 
                 wait_for_input(INPUT_POLL_INTERVAL)

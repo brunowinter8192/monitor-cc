@@ -8,12 +8,14 @@ from ..colors import RESET, YELLOW, DIM, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT
 from ..panes.cache_turns import build_cache_turns
 from ..panes.token_search import build_token_search_matches
 from ..format.token_format import format_cache_tracker
+from ..format.turn_cache import new_turn_cache
 from ..input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, resolve_parent_key,
     copy_to_clipboard, wait_for_input,
 )
 from ..utils import truncate_visible, visual_line_count
+from ..frame_writer import write_frame
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
 from .. import search_bar
@@ -43,6 +45,7 @@ _WT_SEARCH_BAR_LABEL = 'search: '
 
 _worker_tokens_search: search_bar.SearchState = search_bar.SearchState()
 _worker_tokens_nav: dict = {}
+_worker_tokens_turn_cache: dict = new_turn_cache()
 
 # ORCHESTRATOR
 
@@ -65,12 +68,9 @@ def run_worker_tokens_loop() -> None:
                 if _worker_tokens_copy_feedback_until:
                     input_changed = True
                 if input_changed:
-                    output, header = _build_worker_tokens_output(_monitor)
+                    output = _build_worker_tokens_output(_monitor)
                     if output != last_output:
-                        print("\033[2J\033[3J\033[H", end='', flush=True)
-                        if output:
-                            print(output, end='', flush=True)
-                            print(f"\033[H{header}\033[K", end='', flush=True)
+                        write_frame(output)
                         last_output = output
                 wait_for_input(INPUT_POLL_INTERVAL)
             except Exception:
@@ -337,7 +337,7 @@ def _render_worker_tokens_body(pane_width: int, content_height: int, total_heade
         _worker_tokens_turns, worker_tokens_expand_states, content_height, pane_width, worker_tokens_scroll_offset,
         copy_feedback=_worker_tokens_copy_feedback_until,
         search_match_set=_worker_tokens_search.match_set, search_current_key=current_match_key,
-        search_query=_worker_tokens_search.query, nav_out=_worker_tokens_nav,
+        search_query=_worker_tokens_search.query, nav_out=_worker_tokens_nav, turn_cache=_worker_tokens_turn_cache,
     )
     result_lines = []
     if sticky_header is not None:
@@ -352,7 +352,7 @@ def _render_worker_tokens_body(pane_width: int, content_height: int, total_heade
     ))
     return '\n'.join(result_lines)
 
-def _build_worker_tokens_output(monitor) -> tuple:
+def _build_worker_tokens_output(monitor) -> str:
     global _worker_tokens_pane_width
     term = os.get_terminal_size()
     pane_height, pane_width = term.lines - 1, term.columns
@@ -365,4 +365,4 @@ def _build_worker_tokens_output(monitor) -> tuple:
         body = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No token data yet{RESET}"
     else:
         body = _render_worker_tokens_body(pane_width, content_height, total_header_lines)
-    return header + '\n' + body, header
+    return header + '\n' + body

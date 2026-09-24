@@ -25,16 +25,16 @@ core/monitor.run_monitor(mode=X)
   → lazy import from panes → run_X_loop()
       loop: poll data source
             handle stdin (keyboard/mouse via input.click_handler)
-            render to stdout (ANSI escape sequences, full screen redraw)
+            render to stdout (frame_writer.write_frame: in-place frame, synchronized output)
 ```
 
 ## Modules
 
-### token_pane.py (326 LOC)
+### token_pane.py (327 LOC)
 
 **Purpose:** Token/cache-tracker pane event loop — incrementally reads session JSONL (via `cache_turns.build_cache_turns`), renders an interactive expand/collapse/scroll view with CR/CC/D per request, and owns the zebra/hover/truncation render loop over `format.token_format`'s logical lines. Also polls the `_response` dual-log incrementally for rate-limit headers and the requested/answering model fields (accumulated into `_response_rid_map`, one full entry per `request_id`), and runs the 24h `log_janitor` sweep from its own tick — this pane is the always-active, main-checkout-resident process, which is why it hosts that sweep.
 **Reads:** session JSONL (incremental via `_cache_jsonl_position`); the `_response` dual-log (incremental via `_response_log_pos`); shared state `monitor.active_project_filter`.
-**Writes:** stdout (ANSI screen); `/tmp/monitor_cc_error.log` on caught exception (via `pane_error_log`); mutates `cache_expand_states`, `cache_line_map`, `cache_hover_row`, `cache_scroll_offset`, `cache_copy_rows`, `_cache_copy_feedback_until`, `_cache_pane_width`, `_cache_turns`, `_cache_jsonl_position`, `_response_log_pos`, `_response_rid_map`, `_tokens_search`, `_tokens_nav`.
+**Writes:** stdout frames (via `frame_writer.write_frame`); `/tmp/monitor_cc_error.log` on caught exception (via `pane_error_log`); mutates `cache_expand_states`, `cache_line_map`, `cache_hover_row`, `cache_scroll_offset`, `cache_copy_rows`, `_cache_copy_feedback_until`, `_cache_pane_width`, `_cache_turns`, `_cache_jsonl_position`, `_response_log_pos`, `_response_rid_map`, `_tokens_search`, `_tokens_nav`, `_tokens_turn_cache` (frozen-turn cache handed to `format_cache_tracker`).
 **Called by:** `core/monitor.py` (mode dispatch).
 **Calls out:** none.
 

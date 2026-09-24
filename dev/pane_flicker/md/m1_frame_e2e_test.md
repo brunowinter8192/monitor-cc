@@ -1,0 +1,102 @@
+# m1_frame_e2e_test report
+
+Run: 2026-09-24T18:17:47
+Old tree: git archive integration (0ce370df); new tree: /Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/flicker
+Terminal: 100x30 private tmux sockets flk_m1_<pane>_<tree>
+
+Result: 92/92 checks passed
+
+- PASS  tokens: harness sanity, old tree emits clear-screen
+- PASS  tokens: new tree emits no 2J
+- PASS  tokens: new tree emits no 3J
+- PASS  tokens: new tree frames wrapped in 2026 pairs (20 begin / 20 end)
+- PASS  tokens: new tree nests correctly (no begin before previous end)
+- PASS  tokens: new tree has no text outside a sync pair besides boot noise
+- PASS  tokens: screen identical at step boot
+- PASS  tokens: screen identical at step hover_row_4
+- PASS  tokens: screen identical at step hover_row_5
+- PASS  tokens: screen identical at step hover_row_6
+- PASS  tokens: screen identical at step hover_row_7
+- PASS  tokens: screen identical at step hover_row_8
+- PASS  tokens: screen identical at step hover_row_9
+- PASS  tokens: screen identical at step click_expand_row_5
+- PASS  tokens: screen identical at step hover_row_8_after_expand
+- PASS  tokens: screen identical at step click_collapse_row_5
+- PASS  tokens: screen identical at step scroll_up
+- PASS  tokens: screen identical at step scroll_down_past_end
+- PASS  tokens: screen identical at step search_type
+- PASS  tokens: screen identical at step search_backspace
+- PASS  tokens: screen identical at step search_commit
+- PASS  tokens: screen identical at step hover_after_all
+- PASS  worker_tokens: harness sanity, old tree emits clear-screen
+- PASS  worker_tokens: new tree emits no 2J
+- PASS  worker_tokens: new tree emits no 3J
+- PASS  worker_tokens: new tree frames wrapped in 2026 pairs (22 begin / 22 end)
+- PASS  worker_tokens: new tree nests correctly (no begin before previous end)
+- PASS  worker_tokens: new tree has no text outside a sync pair besides boot noise
+- PASS  worker_tokens: screen identical at step boot
+- PASS  worker_tokens: screen identical at step hover_row_4
+- PASS  worker_tokens: screen identical at step hover_row_5
+- PASS  worker_tokens: screen identical at step hover_row_6
+- PASS  worker_tokens: screen identical at step hover_row_7
+- PASS  worker_tokens: screen identical at step hover_row_8
+- PASS  worker_tokens: screen identical at step hover_row_9
+- PASS  worker_tokens: screen identical at step click_expand_row_5
+- PASS  worker_tokens: screen identical at step hover_row_8_after_expand
+- PASS  worker_tokens: screen identical at step click_collapse_row_5
+- PASS  worker_tokens: screen identical at step scroll_up
+- PASS  worker_tokens: screen identical at step scroll_down_past_end
+- PASS  worker_tokens: screen identical at step search_type
+- PASS  worker_tokens: screen identical at step search_backspace
+- PASS  worker_tokens: screen identical at step search_commit
+- PASS  worker_tokens: screen identical at step switch_worker_2_shorter_frame
+- PASS  worker_tokens: screen identical at step switch_worker_1_longer_frame
+- PASS  worker_tokens: screen identical at step hover_after_all
+- PASS  proxy: harness sanity, old tree emits clear-screen
+- PASS  proxy: new tree emits no 2J
+- PASS  proxy: new tree emits no 3J
+- PASS  proxy: new tree frames wrapped in 2026 pairs (20 begin / 20 end)
+- PASS  proxy: new tree nests correctly (no begin before previous end)
+- PASS  proxy: new tree has no text outside a sync pair besides boot noise
+- PASS  proxy: screen identical at step boot
+- PASS  proxy: screen identical at step hover_row_4
+- PASS  proxy: screen identical at step hover_row_5
+- PASS  proxy: screen identical at step hover_row_6
+- PASS  proxy: screen identical at step hover_row_7
+- PASS  proxy: screen identical at step hover_row_8
+- PASS  proxy: screen identical at step hover_row_9
+- PASS  proxy: screen identical at step click_expand_row_5
+- PASS  proxy: screen identical at step hover_row_8_after_expand
+- PASS  proxy: screen identical at step click_collapse_row_5
+- PASS  proxy: screen identical at step scroll_up
+- PASS  proxy: screen identical at step scroll_down_past_end
+- PASS  proxy: screen identical at step search_type
+- PASS  proxy: screen identical at step search_backspace
+- PASS  proxy: screen identical at step search_commit
+- PASS  proxy: screen identical at step hover_after_all
+- PASS  worker_proxy: harness sanity, old tree emits clear-screen
+- PASS  worker_proxy: new tree emits no 2J
+- PASS  worker_proxy: new tree emits no 3J
+- PASS  worker_proxy: new tree frames wrapped in 2026 pairs (22 begin / 22 end)
+- PASS  worker_proxy: new tree nests correctly (no begin before previous end)
+- PASS  worker_proxy: new tree has no text outside a sync pair besides boot noise
+- PASS  worker_proxy: screen identical at step boot
+- PASS  worker_proxy: screen identical at step hover_row_4
+- PASS  worker_proxy: screen identical at step hover_row_5
+- PASS  worker_proxy: screen identical at step hover_row_6
+- PASS  worker_proxy: screen identical at step hover_row_7
+- PASS  worker_proxy: screen identical at step hover_row_8
+- PASS  worker_proxy: screen identical at step hover_row_9
+- PASS  worker_proxy: screen identical at step click_expand_row_5
+- PASS  worker_proxy: screen identical at step hover_row_8_after_expand
+- PASS  worker_proxy: screen identical at step click_collapse_row_5
+- PASS  worker_proxy: screen identical at step scroll_up
+- PASS  worker_proxy: screen identical at step scroll_down_past_end
+- PASS  worker_proxy: screen identical at step search_type
+- PASS  worker_proxy: screen identical at step search_backspace
+- PASS  worker_proxy: screen identical at step search_commit
+- PASS  worker_proxy: screen identical at step switch_worker_2_shorter_frame
+- PASS  worker_proxy: screen identical at step switch_worker_1_longer_frame
+- PASS  worker_proxy: screen identical at step hover_after_all
+
+Frames written by new tree per pane: tokens=20, worker_tokens=22, proxy=20, worker_proxy=22
