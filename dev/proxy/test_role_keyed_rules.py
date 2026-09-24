@@ -5,6 +5,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 os.environ.setdefault('MONITOR_CC_ROOT', str(_ROOT))
 sys.path.insert(0, str(_ROOT / 'src'))
+sys.path.insert(0, str(_ROOT))
 
 from proxy import rules_config
 from proxy.rules_config import _load_system2_rules

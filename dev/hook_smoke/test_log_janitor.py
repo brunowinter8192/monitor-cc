@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from hook_runner import abort_if_failed
+from src.panes.log_janitor import cleanup_old_jsonl
 
 _now = datetime.now(timezone.utc)
 
@@ -37,12 +39,8 @@ def test_log_janitor_workflow() -> None:
             print(f"           want: {expected}")
             print(f"           got:  {result}")
             failures.append(desc)
+            abort_if_failed(failures)
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for desc in failures:
-            print(f"  - {desc}")
-        sys.exit(1)
     print(f"All {len(CASES)} tests passed.")
 
 
@@ -55,7 +53,6 @@ def _run_case(input_lines: list, expected: list) -> tuple:
         tmp = Path(fh.name)
         for rec in input_lines:
             fh.write(rec + '\n')
-    from src.panes.log_janitor import cleanup_old_jsonl
     try:
         cleanup_old_jsonl(tmp)
         kept = [ln for ln in tmp.read_text(encoding='utf-8').splitlines() if ln.strip()]

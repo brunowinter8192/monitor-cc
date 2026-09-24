@@ -4,16 +4,16 @@ import hashlib
 import json
 import logging
 import os
-import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from mitmproxy import http
 
+from .proxy_error_log import log_proxy_error, log_proxy_error_on_change
 from .addon_state import DualLogPaths, DeltaState, FixationState, SessionIdentity
 from .addon_dual_log import (
-    _resolve_dual_log_file, _write_entry, _log_original_request,
+    _resolve_dual_log_file, _write_entry, proxy_log_id, _log_original_request,
     _write_request_dual_logs, _log_4xx_error, _write_stripped_injected,
 )
 
@@ -75,6 +75,8 @@ class ProxyAddon:
             flow.metadata["mc_original_payload"] = payload
 
             model_family = _infer_model_family(payload.get("model", ""))
+            if model_family == "unknown":
+                log_proxy_error_on_change("addon.model_family", f"unknown model family for model {payload.get('model', '')!r}")
             project_path = os.environ.get("PROXY_PROJECT_PATH", "")
 
             _log_original_request(self.paths.original, flow, payload)
@@ -85,7 +87,7 @@ class ProxyAddon:
             modified_payload = _apply_sys_fixation(self.fixation, model_family, modified_payload, modifications)
 
             modified_payload, modifications = _run_post_fixation_pipeline(
-                modified_payload, modifications, model_family, project_path, self.fixation.model_params_fixated
+                modified_payload, modifications, project_path, self.fixation.model_params_fixated
             )
 
             mc_request_id, mc_timestamp = _stamp_request_metadata(flow, stripped_msg_removed, injected_msg_added, all_ops)
@@ -93,7 +95,7 @@ class ProxyAddon:
             try:
                 _trigger_bg_escape(stripped_msg_removed, self.identity.worker_context, project_path)
             except Exception as e:
-                print(f"[proxy_addon] bg_escape trigger failed: {e}", file=sys.stderr)
+                log_proxy_error(f"addon.request.bg_escape flow={flow.id}", e)
 
             modified_payload = _finalize_cache_state(self.delta, model_family, modified_payload)
             _write_request_dual_logs(flow, payload, modified_payload, model_family, mc_request_id, mc_timestamp, self.paths, self.delta, self.identity)
@@ -104,7 +106,7 @@ class ProxyAddon:
             flow.request.headers.pop("content-encoding", None)
             _request_identity_encoding(flow)
         except Exception as e:
-            print(f"[proxy_addon] Error: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.request flow={flow.id}", e)
 
     def responseheaders(self, flow: http.HTTPFlow) -> None:
         try:
@@ -115,7 +117,7 @@ class ProxyAddon:
                 flow.response.stream = probe
                 flow.metadata["mc_answering_model_state"] = probe_state
         except Exception as e:
-            print(f"[proxy_addon] Error in responseheaders hook: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.responseheaders flow={flow.id}", e)
 
     def response(self, flow: http.HTTPFlow) -> None:
         try:
@@ -130,9 +132,9 @@ class ProxyAddon:
                 try:
                     _write_stripped_injected(flow, self.delta, self.paths)
                 except Exception as e:
-                    print(f"[dual_log] stripped/injected write failed: {e}", file=sys.stderr)
+                    log_proxy_error(f"addon.response.stripped_injected flow={flow.id}", e)
         except Exception as e:
-            print(f"[proxy_addon] Error in response hook: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.response flow={flow.id}", e)
 
     def error(self, flow: http.HTTPFlow) -> None:
         try:
@@ -141,7 +143,7 @@ class ProxyAddon:
             if flow.response:
                 _write_response_and_mismatch(flow, self.paths, self.identity)
         except Exception as e:
-            print(f"[proxy_addon] Error in error hook: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.error flow={flow.id}", e)
 
 
 # FUNCTIONS
@@ -153,7 +155,7 @@ def _apply_sys_fixation(fixation_state, model_family: str, modified_payload: dic
     return _apply_fixation(modified_payload, modifications, fixation_state.fixated[model_family])
 
 
-def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, model_family: str, project_path: str, fixated_model_override: dict) -> tuple:
+def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, project_path: str, fixated_model_override: dict) -> tuple:
     modified_payload, stripped_count, _ = _strip_unused_tools(modified_payload)
     if stripped_count > 0:
         modifications.append(f"stripped_{stripped_count}_unused_tools")
@@ -169,7 +171,7 @@ def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, mod
     modified_payload, cm_injected = _inject_context_management(modified_payload)
     if cm_injected:
         modifications.append("injected_context_management")
-    modified_payload, model_overridden = _inject_model_override(modified_payload, model_family, fixated_model_override)
+    modified_payload, model_overridden = _inject_model_override(modified_payload, fixated_model_override)
     if model_overridden:
         modifications.append("injected_model_override")
     modified_payload, clear_thinking_stripped = _strip_clear_thinking_edit(modified_payload)
@@ -245,12 +247,12 @@ def _write_response_and_mismatch(flow: http.HTTPFlow, paths, identity) -> None:
     try:
         response_entry = _write_response_entry(flow, paths.response)
     except Exception as e:
-        print(f"[dual_log] response write failed: {e}", file=sys.stderr)
+        log_proxy_error(f"addon.response_entry flow={flow.id}", e)
     if response_entry is not None:
         try:
             _write_model_mismatch_entry(flow, response_entry, paths.errors, identity)
         except Exception as e:
-            print(f"[dual_log] model mismatch write failed: {e}", file=sys.stderr)
+            log_proxy_error(f"addon.model_mismatch flow={flow.id}", e)
 
 
 def _write_model_mismatch_entry(flow: http.HTTPFlow, response_entry: dict, errors_log_file, identity) -> None:
@@ -295,7 +297,8 @@ def _decode_body(request: http.Request) -> Optional[bytes]:
     if request.headers.get("content-encoding", "").lower() == "gzip":
         try:
             content = gzip.decompress(content)
-        except OSError:
+        except OSError as e:
+            log_proxy_error("addon._decode_body", e)
             return None
     return content
 
@@ -303,7 +306,8 @@ def _decode_body(request: http.Request) -> Optional[bytes]:
 def _parse_payload(body: bytes) -> Optional[dict]:
     try:
         return json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        log_proxy_error("addon._parse_payload", e)
         return None
 
 
@@ -315,12 +319,13 @@ def _derive_session_id() -> str:
 
 
 def _derive_worker_context() -> str:
-    log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID") or ""
-    if log_id.startswith("worker_"):
-        parts = log_id.split("_")
-        if len(parts) >= 4:
-            return "worker:" + "_".join(parts[2:-1])
-    return "main"
+    log_id = proxy_log_id()
+    if not log_id.startswith("worker_"):
+        return "main"
+    parts = log_id.split("_")
+    if len(parts) < 4:
+        raise ValueError(f"unparsable worker log id: {log_id!r}")
+    return "worker:" + "_".join(parts[2:-1])
 
 
 addons = [ProxyAddon()]

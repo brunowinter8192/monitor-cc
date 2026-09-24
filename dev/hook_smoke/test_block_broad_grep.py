@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 import json
-import subprocess
-import sys
+from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/block_broad_grep.py"
 
@@ -51,12 +50,8 @@ def test_block_broad_grep_workflow() -> None:
         print(f"  [{status}] {desc}: exit={got} (expected {expected})")
         if got != expected:
             failures.append(desc)
+            abort_if_failed(failures)
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for f in failures:
-            print(f"  - {f}")
-        sys.exit(1)
     print(f"All {len(CASES)} tests passed.")
 
 
@@ -67,11 +62,7 @@ def _run_hook(command: str) -> int:
         "tool_name": "Bash",
         "tool_input": {"command": command},
     })
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-    )
+    result = run_hook(HOOK, payload.encode())
     return result.returncode
 
 

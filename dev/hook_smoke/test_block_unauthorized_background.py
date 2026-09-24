@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 import json
-import subprocess
-import sys
+from hook_runner import abort_if_failed, run_hook
 
 HOOK = "src/hooks/block_unauthorized_background.py"
 
@@ -59,12 +58,8 @@ def test_block_unauthorized_background_workflow() -> None:
         print(f"  [{status}] {desc}: rewritten_bg={got_bg!r} (expected {expected_bg!r})")
         if not ok:
             failures.append(desc)
+            abort_if_failed(failures)
     print()
-    if failures:
-        print(f"FAILED: {len(failures)} case(s):")
-        for f in failures:
-            print(f"  - {f}")
-        sys.exit(1)
     print(f"All {len(CASES)} tests passed.")
 
 
@@ -75,11 +70,7 @@ def _run_hook(command: str, run_in_background: bool):
         "tool_name": "Bash",
         "tool_input": {"command": command, "run_in_background": run_in_background},
     })
-    result = subprocess.run(
-        ["python3", HOOK],
-        input=payload.encode(),
-        capture_output=True,
-    )
+    result = run_hook(HOOK, payload.encode())
     if result.returncode == 0 and result.stdout.strip():
         try:
             data = json.loads(result.stdout)

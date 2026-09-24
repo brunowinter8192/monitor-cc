@@ -47,7 +47,7 @@ main-session recording, asserting the post-strip tool set is the expected core s
 
 ---
 
-### p5_mid_turn_user_msg_preserve_probe.py (111 LOC)
+### p5_mid_turn_user_msg_preserve_probe.py (112 LOC)
 
 **Purpose:** Verifies the CC 2.1.223 mid-turn-user-message preserve guard in
 `_apply_role_system_strip` against a recorded incident plus a noise-still-strips regression case.
@@ -92,7 +92,7 @@ drives `blast_radius_engine`/`blast_radius_report` over it.
 **Called by:** none — manual, one-off measurement.
 **Calls out:** `blast_radius_engine`, `blast_radius_report`.
 
-### blast_radius_engine.py (190 LOC)
+### blast_radius_engine.py (191 LOC)
 
 **Purpose:** Drives recorded message deltas through the real `message_passes.py` pass order and
 classifies each resulting op as FULL/PARTIAL/STRUCTURAL.
@@ -133,7 +133,7 @@ SSE model-name extraction and pass-through fidelity.
 
 ---
 
-### p9_response_entry_abort_survival_test.py (141 LOC)
+### p9_response_entry_abort_survival_test.py (143 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._write_response_entry` and the
 `response()`/`error()` dual-hook wiring across abort/duplicate/override scenarios.
@@ -158,7 +158,7 @@ the new fields.
 
 ---
 
-### p10_model_mismatch_warning_test.py (202 LOC)
+### p10_model_mismatch_warning_test.py (204 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._write_model_mismatch_entry`/
 `_write_response_and_mismatch` covering exactly-one-sentence, dedup, and real pane rendering.
@@ -172,7 +172,7 @@ mismatch-writing or `warnings_pane`.
 
 ---
 
-### p11_request_identity_encoding_test.py (57 LOC)
+### p11_request_identity_encoding_test.py (59 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._request_identity_encoding` — verifies it sets
 and overwrites `accept-encoding: identity` on the outbound request.

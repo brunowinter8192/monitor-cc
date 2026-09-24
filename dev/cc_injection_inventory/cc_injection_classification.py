@@ -7,6 +7,7 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _WORKTREE_ROOT = _SCRIPT_DIR.parents[1]
 sys.path.insert(0, str(_WORKTREE_ROOT / "src"))
+sys.path.insert(0, str(_WORKTREE_ROOT))
 
 import proxy.rules as rules
 import proxy.strip_vocab as strip_vocab

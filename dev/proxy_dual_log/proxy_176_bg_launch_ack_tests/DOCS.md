@@ -17,7 +17,7 @@ printing PASS/FAIL to stdout.
 
 ## Modules
 
-### proxy_176_bg_launch_ack_tests.py (71 LOC)
+### proxy_176_bg_launch_ack_tests.py (72 LOC)
 
 **Purpose:** CLI runner for the CC 2.1.176 background-launch-ack strip unit tests — imports and
 sequences every test case.

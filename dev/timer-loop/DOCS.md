@@ -15,7 +15,7 @@ dev/timer-loop/test_abort_stamp_scope.py`.
 ## Flow
 `p1_scan_bg_completion_wordings.py` scans the dual-log corpus for wording variety and writes a
 findings report. `test_abort_stamp_scope.py` drives the real menubar abort function against real
-spawned subprocesses and asserts on file/process state.
+spawned subprocesses and asserts on file/process state, as one fail-fast strand.
 
 ## Modules
 
@@ -55,7 +55,7 @@ filters, dedup, and mechanism-verdict evaluation against the real extraction cod
 
 ---
 
-### p3_project_scope_incident_probe.py (213 LOC)
+### p3_project_scope_incident_probe.py (214 LOC)
 
 **Purpose:** Replays a cross-project false-block incident where one project's main session was
 blocked by another project's pending background-task entry in a shared state file.
@@ -70,17 +70,17 @@ but unreachable since the script crashes before that import executes.
 
 ---
 
-### test_abort_stamp_scope.py (120 LOC)
+### test_abort_stamp_scope.py (130 LOC)
 
 **Purpose:** Integration regression guard for the menubar abort-stamp scoping fix
 (`_abort_bg_sleep_timers`/`_resolve_pid_output_file`) — spawns two real subprocesses, calls the
 real abort function with only one PID, and asserts only that file/process pair is touched.
 **Reads:** nothing persistent — spawns its own subprocesses and temp directory.
-**Writes:** a temp directory (removed in `finally`); appends to the real menubar app-support log
-file.
+**Writes:** a temp directory holding the fixture files and a scratch menubar log (`MENUBAR_LOG` is
+patched), removed in `finally`; `md/test_abort_stamp_scope.md`.
 **Called by:** none — manual CLI, run via `python3 dev/timer-loop/test_abort_stamp_scope.py`.
-**Calls out:** `src.menubar.bg_timer` (`_abort_bg_sleep_timers`, dynamic import), `src.menubar.paths`
-(dynamic import); spawns `sleep` as fixture subprocesses.
+**Calls out:** `src.menubar.bg_timer` (`_abort_bg_sleep_timers`, dynamic import),
+`src.menubar.menubar_log` (dynamic import), `dev.refactoring.strand_runner`; spawns `sleep` as fixture subprocesses.
 
 ---
 

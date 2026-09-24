@@ -20,7 +20,7 @@ OPTIONS = {
     'argv_emulation': False,
     'semi_standalone': False,
     'packages': ['src.menubar', 'rumps'],
-    'includes': ['src.session_finder', 'src.colors', 'src.constants', 'src.tmux_launcher', 'src.monitor_janitor'],
+    'includes': ['src.session_finder', 'src.colors', 'src.constants', 'src.tmux_launcher', 'src.monitor_janitor', 'src.monitor_root'],
     'excludes': [
         'mitmproxy', 'flask', 'tornado', 'httpx', 'httpcore',
         'aioquic', 'werkzeug', 'jinja2', 'cryptography', 'brotli',
@@ -47,7 +47,7 @@ OPTIONS = {
 
 
 _BUNDLE_SRC_KEEP = {'menubar', 'session_finder.py', 'colors.py', 'constants.py', 'tmux_launcher.py',
-                    'monitor_janitor.py', '__init__.py', '__pycache__'}
+                    'monitor_janitor.py', 'monitor_root.py', '__init__.py', '__pycache__'}
 
 
 def _prune_bundle_bloat() -> None:

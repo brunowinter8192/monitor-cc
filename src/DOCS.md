@@ -58,13 +58,23 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### monitor_janitor.py (72 LOC)
+### monitor_janitor.py (76 LOC)
 
 **Purpose:** `sweep_workflow()` — kills every `monitor_cc_*` tmux session older than 24h and logs one line per session (name, age, KILLED/SPARED/KILL_FAILED); a failed `list-sessions` logs `NOSESSIONS rc=<n>`.
 **Reads:** `tmux list-sessions` output.
 **Writes:** kills stale tmux sessions via `tmux_launcher.kill_session`; appends to `<root>/src/logs/monitor_sweep.log`.
 **Called by:** `claude_proxy_start.sh` (detached `python3 -m src.monitor_janitor` on every session start), `menubar/monitor_sweep_scheduler.py` (`sweep_workflow`, its own daily tick), `dev/monitor_lifecycle/tests/test_monitor_sweep.py`.
 **Calls out:** `tmux` (subprocess CLI).
+
+---
+
+### monitor_root.py (36 LOC)
+
+**Purpose:** Single resolver for the repo root — env var first, else the location of this file — raising on a missing directory and reporting the winning source once per process to a caller-supplied channel.
+**Reads:** `MONITOR_CC_ROOT` (or the env var name the caller passes, `PROJECT_ROOT` for the menubar).
+**Writes:** Nothing — returns a `Path`; calls the injected `report(root, source)` once per distinct resolution.
+**Called by:** `monitor_janitor.py`, `proxy_display/forwarded_parser.py`, `ram_audit/instrument.py`, `dual_log_cli/discovery.py`, `proxy/proxy_error_log.py`, `menubar/paths.py`; `dev/monitor_root/test_monitor_root.py`.
+**Calls out:** —
 
 ---
 
@@ -78,10 +88,10 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### proxy_addon.py (27 LOC)
+### proxy_addon.py (36 LOC)
 
-**Purpose:** thin mitmproxy shim — resolves `src/proxy/`'s actual location (checkout copy or per-session live copy) and re-exports `ProxyAddon`/`addons`/`apply_modification_rules`.
-**Reads:** its own `__file__` path and the live-copy directory naming convention (`.proxy_live_<session_id>`).
+**Purpose:** thin mitmproxy shim — puts the `proxy/` package directory (checkout copy or per-session live copy) and the repo root on `sys.path`, raising when `proxy/` is absent, and re-exports `ProxyAddon`/`addons`/`apply_modification_rules`.
+**Reads:** its own `__file__` path and the two known layouts (`src/proxy_addon.py`, `src/logs/.proxy_addon_live_<session_id>.py` beside `.proxy_live_<session_id>/`).
 **Writes:** mutates `sys.path`.
 **Called by:** `claude_proxy_start.sh` (copies this file to `src/logs/.proxy_addon_live_<id>.py`, then launches mitmproxy with `-s` against the copy).
 **Calls out:** `mitmproxy` (loaded via `-s`).
@@ -168,6 +178,7 @@ as module-level variables — see `core/DOCS.md`. Every pane package reads it vi
 
 - `search_bar._BG_RESTORE_SENTINEL` (`'\033[999m'`) must be resolved via `resolve_bg_restore` by every renderer that embeds it, or it leaks into terminal output as a literal escape code.
 - `search_bar.KILL_LINE_CHAR` (`'\x15'`, Ctrl-U) is an unconfirmed mapping guess for Cmd+Backspace's terminal encoding — a rebind after live testing is a one-line change.
+- `monitor_janitor.py`'s log path follows `monitor_root.resolve_monitor_cc_root` (`MONITOR_CC_ROOT` if set, else the checkout the module sits in) — a manual run from a worktree checkout without the env var set writes into that worktree's own `src/logs/`; the first `ROOT source=...` line in `monitor_sweep.log` states which source won.
 - `monitor_janitor.py`'s log path follows `MONITOR_CC_ROOT` if set, else two directories above its own `__file__` — a manual run from a worktree checkout without the env var set writes into that worktree's own `src/logs/`, not the main checkout's.
 - `tmux_launcher.restart_panes` self-heals only a pane whose spec parent pane is present; an unplaceable pane raises `RuntimeError` instead of splitting an arbitrary pane. Structural tmux calls run with `check=True`, so a failed call raises. `get_global_history_limit` returns `None` when tmux has no server (rc != 0) and the launch then skips the history-limit restore.
 - `pane_error_log.log_pane_error` swallows its own write failures silently (`except Exception: pass`) — a full disk or permissions error here never propagates and never kills the calling pane loop.
