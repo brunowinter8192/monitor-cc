@@ -36,7 +36,7 @@ check() {
 
 # ── Source _proxy_pid_is_live from the real script ─────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-PROXY_SCRIPT="$REPO_ROOT/src/claude_proxy_start.sh"
+PROXY_SCRIPT="$REPO_ROOT/src/proxy_start_markers.sh"
 [ -f "$PROXY_SCRIPT" ] || { echo "ERROR: $PROXY_SCRIPT not found"; exit 1; }
 
 # Extract the function block (awk range: header → closing brace at column 0)

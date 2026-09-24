@@ -149,13 +149,33 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### claude_proxy_start.sh (402 LOC)
+### claude_proxy_start.sh (188 LOC)
 
-**Purpose:** shell entry point that launches mitmproxy plus Claude Code with the proxy environment, log rotation, per-project marker and background janitors.
+**Purpose:** shell entry point that launches mitmproxy plus Claude Code with the proxy environment; orchestrates the sourced janitor and marker libraries.
 **Reads:** the model-selection rules file, existing log files, per-project marker files.
-**Writes:** per-session live proxy-addon copy, rotated and purged logs, marker files.
+**Writes:** per-session live proxy-addon copy, marker files, the active-plugins file of the project.
 **Called by:** invoked directly (main session start); the command `ccwrap/wrapper.py` wraps.
-**Calls out:** `mitmproxy`, `jq`, `tmux`, worker-cli (iterative-dev project).
+**Calls out:** `mitmproxy`, `jq`, worker-cli (iterative-dev project).
+
+---
+
+### proxy_start_janitor.sh (112 LOC)
+
+**Purpose:** sourced library with the janitor functions that remove orphan live copies and rotate or purge dual-logs at session start.
+**Reads:** the dual-log directory, the proxy source files for the version hash.
+**Writes:** deletes stale logs and live copies, writes the proxy version marker.
+**Called by:** `claude_proxy_start.sh` (sourced).
+**Calls out:** none.
+
+---
+
+### proxy_start_markers.sh (78 LOC)
+
+**Purpose:** sourced library with the marker staleness check, heartbeat and exit cleanup functions of the proxy launcher.
+**Reads:** the per-project and `/tmp` marker files, forwarded dual-log mtimes.
+**Writes:** the per-project and `/tmp` marker files; removes owned markers and live copies on exit.
+**Called by:** `claude_proxy_start.sh` (sourced), `dev/proxy/marker_race_repro.sh`.
+**Calls out:** none.
 
 ---
 
