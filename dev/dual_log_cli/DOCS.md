@@ -33,7 +33,7 @@ recover an earlier request's pre-strip size, backing the sys/tool overlay design
 
 ---
 
-### tests/test_local_time.py (101 LOC)
+### tests/test_local_time.py (106 LOC)
 
 **Purpose:** Proves the UTC-to-local timestamp conversion and every renderer/filter built on it
 agree, including a dynamically built day-boundary-crossing case.
@@ -196,6 +196,16 @@ delta, and is skipped by session counts and `load_last_request`.
 **Writes:** stdout (pass/fail per check); exits 1 on failure.
 **Called by:** none — run manually.
 **Calls out:** `src.dual_log_cli.discovery`, `.reader`, `.timeline_boundaries`.
+
+---
+
+### tests/test_skip_reporting.py (146 LOC)
+
+**Purpose:** Proves the stderr reporting and narrowed-exception paths: `report_skip` dedup, unreadable project-map inputs, malformed `_original` lines, `resolve_transcript` reasons, the numbering line's reason, timestamp raises, and `search` skipping only `FileNotFoundError`/`ValueError`.
+**Reads:** temp files and directories built in-script.
+**Writes:** stdout (pass/fail per check); exits 1 on failure.
+**Called by:** none — run manually.
+**Calls out:** `src.dual_log_cli.commands`, `.diagnostics`, `.project_map`, `.reader`, `.render_reqs`, `.usage`.
 
 ---
 
