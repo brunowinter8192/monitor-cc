@@ -15,9 +15,10 @@ _REQS_DESCRIPTION = (
     "SAME fixed form, and they all combine (AND). --turn N narrows FIRST, keeping only "
     "turn N of each session in scope (its separator plus its own REQ lines) — a session "
     "missing that turn prints only its `session` header line. --gap MINUTES then keeps "
-    "only the REQs bracketing a consecutive gap of at least that many whole minutes "
-    "(same session unless --merged, in which case chronological neighbors across every "
-    "session in scope); a turn's separator prints only when at least one of its OWN REQ "
+    "only the REQs bracketing a gap of at least that many whole minutes within one turn — "
+    "two consecutive REQs of the SAME turn of the SAME session, with or without --merged "
+    "(the idle time between two turns, or between two sessions, never counts; a REQ "
+    "belonging to no turn never forms a gap); a turn's separator prints only when at least one of its OWN REQ "
     "lines survives — the separator's own clock/span/preview are always that turn's WHOLE "
     "figures, never recomputed from whichever REQs a filter happened to keep. --rebuild "
     "keeps only REQs where CC > CR (the request's own cache write outweighed what it read "
@@ -151,7 +152,7 @@ def _add_reqs_subparser(sub) -> None:
     reqs.add_argument("--turn", type=int, default=None, metavar="N",
                       help="keep only turn N of each session (its separator plus its own REQ lines)")
     reqs.add_argument("--gap", type=int, default=None, metavar="MINUTES",
-                      help="keep only the REQs bracketing a consecutive gap of at least this many minutes")
+                      help="keep only the REQs bracketing a gap of at least this many minutes within one turn")
     reqs.add_argument("--merged", action="store_true",
                       help="merge every session in scope into one chronological REQ chain, each line/separator tagged by session")
     reqs.add_argument("--rebuild", action="store_true",

@@ -60,7 +60,7 @@ block runs `main()` and handles a broken output pipe.
 
 ---
 
-### cli_args.py (160 LOC)
+### cli_args.py (161 LOC)
 
 **Purpose:** The argparse parser construction — `_parse_args(argv, epilog)` builds the top-level
 parser and its five subparsers (`sessions`, `msgs`, `expand`, `search`, `reqs`), one dedicated
@@ -289,7 +289,7 @@ tail when the proxy transformed it.
 
 ---
 
-### render_reqs.py (178 LOC)
+### render_reqs.py (185 LOC)
 
 **Purpose:** `reqs`' turn-grouped, CR/CC-annotated REQ listing — `render_reqs`/`render_reqs_merged`
 share one pipeline (`_session_entries_and_separators`, `_apply_filters`, `_grouped_lines`) that
@@ -355,6 +355,9 @@ of by `message_count`.
 **`render_reqs._rebuild_drop_qualifies`'s `--drop` boundary is strict (`<`), the opposite
 convention from `--gap`'s inclusive (`>=`).** An exact `CR(n) == CR(n-1) + CC(n-1)` means the whole
 prefix WAS read back, so it must NOT qualify for `--drop`.
+
+**`--gap` only pairs consecutive REQs of the same `(stem, turn)`; a REQ with no turn never pairs.**
+Chronological neighbors across turns or sessions are ignored, also under `--merged`.
 
 **`--drop`'s "previous request" is always the same session's own previous REQ, even under
 `--merged`.** `prev_usage` is precomputed per session (msg-index order) before `_merged_entries`
