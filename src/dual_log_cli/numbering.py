@@ -17,11 +17,12 @@ def build_session_numbering(session: dict, boundaries: list, continues: list, pr
                             messages: list = None) -> dict:
     main_thread = sorted(boundaries + continues, key=lambda request: request["timestamp"])
     _annotate_status(main_thread, session)
-    transcript_path, flow_status = resolve_transcript(session, main_thread, projects_root)
+    transcript_path, flow_status, reason = resolve_transcript(session, main_thread, projects_root)
     usage = usage_from_transcript(transcript_path, flow_status)
     turns = _transcript_turns(transcript_path)
     if not any(turn.get("api_calls") for turn in turns):
-        return {"usage": usage, "pane_turns": None, "path": _PATH_BOUNDARIES}
+        return {"usage": usage, "pane_turns": None, "path": _PATH_BOUNDARIES,
+                "reason": reason or "transcript carries no api calls"}
     _annotate(main_thread, flow_status, _index_by_request_id(turns))
     _locate_msgs(main_thread, messages or [])
     return {"usage": usage, "pane_turns": turns, "path": _PATH_TRANSCRIPT, "requests": main_thread}
