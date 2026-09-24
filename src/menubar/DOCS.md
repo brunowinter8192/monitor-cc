@@ -269,9 +269,9 @@ root) — this package only consumes those.
 
 ---
 
-### launch_panel_ui.py (119 LOC)
+### launch_panel_ui.py (110 LOC)
 
-**Purpose:** NSPanel factory, reposition helper and button/row factories for the Launch tab (desktop selector row, project rows).
+**Purpose:** NSPanel factory, reposition helper and button/row factories for the Launch tab (a row of the five desktop buttons without a label, project rows labeled by their last path component).
 **Reads:** nothing — pure AppKit object factories.
 **Writes:** nothing — returns constructed NSPanel/NSView/NSButton objects to callers.
 **Called by:** `launch_controller.py`, `panel_lifecycle.py`.
@@ -279,13 +279,13 @@ root) — this package only consumes those.
 
 ---
 
-### launch_controller.py (109 LOC)
+### launch_controller.py (110 LOC)
 
-**Purpose:** Per-concern controller for the Launch tab — desktop selection, occupied-desktop marking from session desktop numbers, and starting a launch on a background thread.
+**Purpose:** Per-concern controller for the Launch tab — desktop selection (occupied desktops are only marked, never refused), the PostEvent access request on tab open, and starting a launch on a background thread.
 **Reads:** `app.sessions.refresh()` (main sessions' `desktop_no`); `app.settings.panel_width`/`.panel_min_height`.
 **Writes:** its panel stack and header; `menubar.log` (`[launch]` category, ignored/refused clicks); closes the Launch panel on a launch click.
 **Called by:** `app.py` (construction, `_tick`, `selectDesktop_`/`launchProject_` actions, resize), `panel_lifecycle.py` (open/close/cycle).
-**Calls out:** `AppKit`, `Foundation`, `threading`; `.launch_config`; `.launch_panel_ui`; `.panel` (constants + `_make_line_separator`); `.panel_lifecycle` (`_close_launch_panel`); `.panel_tabs`; `.session_launch` (`launch_workflow`); `.menubar_log`.
+**Calls out:** `AppKit`, `Foundation`, `threading`; `.launch_config`; `.launch_panel_ui`; `.panel` (constants + `_make_line_separator`); `.panel_lifecycle` (`_close_launch_panel`); `.panel_tabs`; `.session_launch` (`launch_workflow`); `.space_switch` (`request_post_event_access_if_missing`); `.menubar_log`.
 
 ---
 
@@ -299,12 +299,12 @@ root) — this package only consumes those.
 
 ---
 
-### space_switch.py (85 LOC)
+### space_switch.py (88 LOC)
 
-**Purpose:** Switches the active Mission Control desktop by posting the Ctrl+N hotkey through CGEventPost and waiting until the target space is active.
+**Purpose:** Switches the active Mission Control desktop by posting the Ctrl+N hotkey through CGEventPost and waiting until the target space is active; also exposes the PostEvent access request.
 **Reads:** CGS active space and space map; the PostEvent permission state.
-**Writes:** synthetic Ctrl+N key events to the session event tap; may raise the PostEvent permission request.
-**Called by:** `session_launch.py`.
+**Writes:** synthetic Ctrl+N key events to the session event tap; the PostEvent permission request (only via `request_post_event_access_if_missing`).
+**Called by:** `session_launch.py` (switch workflow); `launch_controller.py` (`request_post_event_access_if_missing`, main thread).
 **Calls out:** `ctypes` (CoreGraphics, CoreFoundation); `.desktop_detection` (`_build_space_map`).
 
 ---
@@ -476,6 +476,6 @@ root) — this package only consumes those.
   command, and do not split it into a second `osascript` call — both were deliberately rejected
   (order matters, one round trip only).
 - `ghostty.py:_reprobe_single_tty` deliberately has NO fixed sleep after writing the OSC2 marker, unlike `_refresh_ghostty_tty_to_id`'s batch path (120ms). Measured live (60 trials, `process-docs/menubar_worker_focus/`): an immediate query finds the marker ~88% of the time; on a miss, one immediate retry query found it 100% of the time (0 double-misses observed) — average total cost ~92ms vs ~210ms with the fixed sleep. This finding applies ONLY to the single-tty reprobe path, verified and changed there; `_refresh_ghostty_tty_to_id`'s own 120ms sleep was not re-measured or touched — do not assume the same conclusion carries over there without separately measuring it (different call shape: N markers written before one shared query, not one marker before an immediately-following query).
-- Launch tab (`session_launch.py`/`space_switch.py`): needs the PostEvent permission for the menubar bundle. Without it the click only logs `[launch] FAILED ... postevent_not_granted` and nothing switches — there is no fallback path, by design. Grants survive rebuilds only while the bundle stays signed with the `monitor-cc Code Signing` identity. The bundle MUST be built from the main checkout: `MONITOR_CC_ROOT` comes from the plist's `PROJECT_ROOT`, which `setup_py2app.py` fills with the build directory.
+- Launch tab (`session_launch.py`/`space_switch.py`): needs the PostEvent permission for the menubar bundle. The request runs on the MAIN thread when the tab opens (`LaunchController.open`); the launch thread never requests. Without the grant a click only logs `[launch] FAILED ... postevent_not_granted` and nothing switches — there is no fallback path, by design. Grants survive rebuilds only while the bundle stays signed with the `monitor-cc Code Signing` identity. The bundle MUST be built from the main checkout: `MONITOR_CC_ROOT` comes from the plist's `PROJECT_ROOT`, which `setup_py2app.py` fills with the build directory.
 - Launch tab: `launch_workflow` blocks ~1.5s (switch + 1s settle) and therefore runs on a daemon thread started by `LaunchController`; a busy flag drops clicks while it runs.
 - `panel_lifecycle.py` derives ring neighbours from `_RING`; adding a tab means one entry in `_RING`, one in `panel_tabs.py:TABS`, and the panel/open/close cases.

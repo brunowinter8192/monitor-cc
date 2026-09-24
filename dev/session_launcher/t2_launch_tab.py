@@ -133,14 +133,21 @@ def _case_occupied_marking() -> str:
     ctl.open()
     enabled = {d: bool(b.isEnabled()) for d, b in ctl._desktop_btns.items()}
     titles = {d: _title(b) for d, b in ctl._desktop_btns.items()}
-    assert enabled == {1: False, 2: True, 3: False, 4: True, 5: True}, f'enabled {enabled}'
-    assert titles == {1: ' 1*', 2: ' 2 ', 3: ' 3*', 4: ' 4 ', 5: ' 5 '}, f'titles {titles}'
+    assert enabled == {1: True, 2: True, 3: True, 4: True, 5: True}, f'enabled {enabled}'
+    assert titles == {1: ' 1* ', 2: ' 2 ', 3: ' 3* ', 4: ' 4 ', 5: ' 5 '}, f'titles {titles}'
+    row = ctl._desktop_btns[1].superview()
+    assert len(row.subviews()) == 5, f'desktop row has {len(row.subviews())} subviews, want only the 5 buttons'
+    assert sorted(round(v.frame().origin.x) for v in row.subviews()) == [0, 40, 80, 120, 160], 'buttons not starting at x=0'
     ctl.handle_select_desktop(1)
-    assert ctl._selected_desktop is None, 'occupied desktop became selected'
+    assert ctl._selected_desktop == 1, 'occupied desktop was refused'
+    assert _title(ctl._desktop_btns[1]) == '[1*]', _title(ctl._desktop_btns[1])
     ctl.handle_select_desktop(2)
     assert ctl._selected_desktop == 2
     assert _title(ctl._desktop_btns[2]) == '[2]', _title(ctl._desktop_btns[2])
-    return f'enabled {enabled}, titles {titles}, select 1 refused, select 2 shows [2]'
+    assert _title(ctl._desktop_btns[1]) == ' 1* ', 'star lost after deselect'
+    ctl.handle_select_desktop(7)
+    assert ctl._selected_desktop == 2, 'desktop outside 1-5 changed the selection'
+    return f'enabled {enabled}, titles {titles}, row = 5 buttons only at x=0..160, select occupied 1 -> [1*], select 2 -> [2], select 7 ignored'
 
 def _case_tick_and_selection() -> str:
     lc = _imp('launch_controller')
@@ -155,7 +162,8 @@ def _case_tick_and_selection() -> str:
         app.sessions.items = [_session('a', 1), _session('b', 2)]
         ctl.tick(app.sessions.items)
         assert rb.call_count == 1, f'rebuild calls {rb.call_count}'
-    assert ctl._selected_desktop is None, 'selection kept on now occupied desktop'
+    assert ctl._selected_desktop == 2, 'selection cleared when its desktop became occupied'
+    assert _title(ctl._desktop_btns[2]) == '[2*]', _title(ctl._desktop_btns[2])
     ctl._selected_desktop = 3
     ctl.open()
     assert ctl._selected_desktop is None, 'open() did not reset selection'
@@ -164,7 +172,7 @@ def _case_tick_and_selection() -> str:
         app.sessions.items = []
         ctl.tick(app.sessions.items)
         assert rb.call_count == 0, 'closed panel rebuilt'
-    return 'tick: no change -> 0 rebuilds, change -> 1 rebuild, selection cleared, open() resets, closed panel idle'
+    return 'tick: no change -> 0 rebuilds, change -> 1 rebuild, selection kept and shows [2*], open() resets, closed panel idle'
 
 def _case_project_rows() -> str:
     lc = _imp('launch_controller')
@@ -175,7 +183,8 @@ def _case_project_rows() -> str:
     assert len(buttons) == 10, f'project buttons {len(buttons)}'
     assert [b.tag() for b in buttons] == list(range(10))
     titles = [_title(b) for b in buttons]
-    want = [p.split('/Documents/', 1)[1] for p in _EXPECTED_PROJECTS]
+    want = ['gh-cli', 'reddit-cli', 'websearch', 'rag-cli', 'iterative-dev',
+            'trading', 'trading_ai', 'monitor-cc', 'general', 'wise2627']
     assert titles == want, f'titles {titles}'
     assert list(_imp('launch_config').LAUNCH_PROJECTS) == _EXPECTED_PROJECTS
     return f'10 rows in order: {titles}'
@@ -274,9 +283,10 @@ def _case_click_handling() -> str:
         ctl._launch_in_progress = False
         app.sessions.items = [_session('a', 1), _session('b', 2)]
         ctl.handle_launch_project(0)
-        assert launched == [] and 'desktop_occupied' in logs[-1], (launched, logs)
-        assert ctl._selected_desktop is None, 'selection kept after occupied refusal'
-        app.sessions.items = [_session('a', 1)]
+        assert launched == [(2, _EXPECTED_PROJECTS[0])], f'occupied desktop not launched: {launched}'
+        assert len(closed) == 1 and ctl._selected_desktop is None
+        launched.clear()
+        closed.clear()
         ctl.handle_select_desktop(4)
         ctl.handle_launch_project(9)
         assert launched == [(4, _EXPECTED_PROJECTS[9])], launched
@@ -285,27 +295,31 @@ def _case_click_handling() -> str:
         ctl.handle_select_desktop(5)
         ctl.handle_launch_project(10)
         assert len(launched) == 1 and 'index_out_of_range' in logs[-1], (launched, logs)
-    return f'no desktop -> ignored; busy -> ignored; occupied -> refused; ok -> launch{launched[0]}, panel closed; bad index ignored'
+    return f'no desktop -> ignored; busy -> ignored; occupied desktop 2 -> launched; free desktop 4 -> launch{launched[0]}, panel closed; bad index ignored'
 
 def _case_space_switch_units() -> str:
     sw = _imp('space_switch')
     out = []
     fake = MagicMock()
     fake.CGPreflightPostEventAccess.return_value = False
+    fake.CGRequestPostEventAccess.return_value = False
     with patch.object(sw, '_CG', fake):
         try:
             sw._require_post_event_access()
             raise AssertionError('no error without PostEvent')
         except sw.SpaceSwitchError as exc:
             assert str(exc) == 'postevent_not_granted'
+        assert fake.CGRequestPostEventAccess.call_count == 0, 'switch path must not request access'
+        assert sw.request_post_event_access_if_missing() is False
         assert fake.CGRequestPostEventAccess.call_count == 1
-    out.append('no PostEvent -> SpaceSwitchError + one CGRequestPostEventAccess')
+    out.append('no PostEvent -> switch path raises without requesting; request function requests once and returns False')
     fake.CGPreflightPostEventAccess.return_value = True
     fake.CGRequestPostEventAccess.reset_mock()
     with patch.object(sw, '_CG', fake):
         sw._require_post_event_access()
+        assert sw.request_post_event_access_if_missing() is True
     assert fake.CGRequestPostEventAccess.call_count == 0
-    out.append('PostEvent granted -> no request')
+    out.append('PostEvent granted -> no request, returns True')
     space_map = {3: ('D', 1), 4: ('D', 2), 5: ('D', 3), 6: ('D', 4), 7: ('D', 5)}
     fake.CGSMainConnectionID.return_value = 1
     with patch.object(sw, '_CG', fake), patch.object(sw, '_build_space_map', lambda cid: space_map):
@@ -343,7 +357,41 @@ def _case_space_switch_units() -> str:
     out.append('wait_until_active: returns on target, raises switch_timeout otherwise')
     return ' | '.join(out)
 
+def _case_request_on_open() -> str:
+    import threading
+    lc = _imp('launch_controller')
+    calls = []
+    logs = []
+    def request(granted):
+        def f():
+            calls.append(threading.current_thread().name)
+            return granted
+        return f
+    ctl = lc.LaunchController(_FakeApp([]))
+    with patch.object(lc, 'request_post_event_access_if_missing', request(False)), \
+         patch.object(lc, 'log_menubar', lambda c, m: logs.append(m)):
+        ctl.open()
+    assert calls == [threading.main_thread().name], f'calls {calls}'
+    assert len(logs) == 1 and 'postevent_not_granted' in logs[0] and 'main thread' in logs[0], logs
+    calls.clear()
+    logs.clear()
+    with patch.object(lc, 'request_post_event_access_if_missing', request(True)), \
+         patch.object(lc, 'log_menubar', lambda c, m: logs.append(m)):
+        ctl.open()
+    assert len(calls) == 1 and logs == [], (calls, logs)
+    calls.clear()
+    logs.clear()
+    ctl.handle_select_desktop(2)
+    with patch.object(lc, 'request_post_event_access_if_missing', request(False)), \
+         patch.object(lc, 'launch_workflow', lambda d, p: None), \
+         patch.object(lc, '_close_launch_panel', lambda a: None), \
+         patch.object(lc.threading, 'Thread', _SyncThread):
+        ctl.handle_launch_project(0)
+    assert calls == [], f'click path requested access: {calls}'
+    return 'open() requests once on the main thread and logs when missing; granted -> silent; click/launch path never requests'
+
 _CASES = {
+    'request_on_open': _case_request_on_open,
     'headers': _case_headers,
     'occupied_marking': _case_occupied_marking,
     'tick_and_selection': _case_tick_and_selection,

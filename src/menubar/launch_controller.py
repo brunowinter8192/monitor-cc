@@ -11,6 +11,7 @@ from .panel import _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator
 from .panel_lifecycle import _close_launch_panel
 from .panel_tabs import tab_header_text
 from .session_launch import launch_workflow
+from .space_switch import request_post_event_access_if_missing
 
 # FUNCTIONS
 
@@ -30,7 +31,13 @@ class LaunchController:
 
     def open(self) -> None:
         self._selected_desktop = None
+        self._request_post_event_access()
         self.rebuild(self.app.sessions.refresh())
+
+    def _request_post_event_access(self) -> None:
+        if request_post_event_access_if_missing():
+            return
+        log_menubar('launch', 'postevent_not_granted: access requested from main thread on tab open')
 
     def tick(self, sessions) -> None:
         if not self._launch_open:
@@ -46,8 +53,6 @@ class LaunchController:
             self._launch_sv.removeView_(sv)
             sv.removeFromSuperview()
         self._occupied = occupied_desktops(sessions)
-        if self._selected_desktop in self._occupied:
-            self._selected_desktop = None
         pw = app.settings.panel_width
         self._launch_header_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
@@ -65,8 +70,8 @@ class LaunchController:
                 _make_project_button(pw, project, index, app._panel_controller), 1)
 
     def handle_select_desktop(self, desktop: int) -> None:
-        if desktop not in LAUNCH_DESKTOPS or desktop in self._occupied:
-            log_menubar('launch', f'select ignored desktop={desktop} occupied={sorted(self._occupied)}')
+        if desktop not in LAUNCH_DESKTOPS:
+            log_menubar('launch', f'select ignored desktop={desktop} reason=not_a_launch_desktop')
             return
         self._selected_desktop = desktop
         self.rebuild()
@@ -82,10 +87,6 @@ class LaunchController:
             log_menubar('launch', f'click ignored index={index} reason=index_out_of_range')
             return
         desktop = self._selected_desktop
-        if desktop in occupied_desktops(self.app.sessions.refresh()):
-            log_menubar('launch', f'click refused desktop={desktop} reason=desktop_occupied')
-            self.rebuild()
-            return
         project = LAUNCH_PROJECTS[index]
         self._selected_desktop = None
         _close_launch_panel(self.app)
