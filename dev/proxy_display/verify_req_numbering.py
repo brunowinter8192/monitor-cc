@@ -9,7 +9,7 @@ sys.path.insert(0, str(_ROOT))
 _LOG_DIR = Path("/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log")
 _PROJECTS_ROOT = Path("~/.claude/projects").expanduser()
 _REPORT_DIR = Path(__file__).resolve().parent / "md"
-_PANE_WIDTH = 110
+_PANE_WIDTH = 62
 _COLUMN_WIDTH = 62
 
 
@@ -63,22 +63,27 @@ def _token_plain_lines(turns: list) -> list:
 
 
 def _turn_slice(lines: list, turn_number: int) -> list:
-    start = next(i for i, line in enumerate(lines) if line.startswith(f"Turn {turn_number} ["))
+    start = next(i for i, line in enumerate(lines) if line.startswith(f"Turn {turn_number} ") or line.startswith(f"Turn {turn_number}:"))
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("Turn ")), len(lines))
     return [line for line in lines[start:end] if line.strip()]
+
+
+def _row_time(line: str) -> str:
+    match = re.search(r"(\d\d:\d\d:\d\d)$", line)
+    return match.group(1) if match else ""
 
 
 def _proxy_numbering(lines: list) -> list:
     rows = []
     turn = 0
     for line in lines:
-        header = re.match(r"Turn (\d+) \[", line)
+        header = re.match(r"Turn (\d+)\b", line)
         if header:
             turn = int(header.group(1))
             continue
         row = re.search(r"REQ #(\d+)(\.\d+)? ", line)
         if row and not row.group(2):
-            rows.append((int(row.group(1)), turn))
+            rows.append((int(row.group(1)), turn, _row_time(line)))
     return rows
 
 
@@ -86,13 +91,13 @@ def _token_numbering(lines: list) -> list:
     rows = []
     turn = 0
     for line in lines:
-        header = re.match(r"Turn (\d+) \[", line)
+        header = re.match(r"Turn (\d+)\b", line)
         if header:
             turn = int(header.group(1))
             continue
         row = re.search(r"REQ #(\d+) ", line)
         if row:
-            rows.append((int(row.group(1)), turn))
+            rows.append((int(row.group(1)), turn, _row_time(line)))
     return rows
 
 
@@ -113,7 +118,7 @@ def _compose_report(stem: str, turn_number: int, proxy_lines: list, token_lines:
         f"session: {stem}",
         f"proxy entries: {entry_count}  |  token-pane turns: {len(turns)}  |  token-pane REQ rows: {len(token_rows)}",
         f"proxy rows with a number (first occurrence): {len(proxy_rows)}  |  proxy rows 'REQ #?': {unmapped}",
-        f"(number, turn) pairs identical between panes: {proxy_rows == token_rows}",
+        f"(number, turn, time) triples identical between panes: {proxy_rows == token_rows}  (pane width {_PANE_WIDTH})",
         "",
         f"Turn {turn_number}, proxy pane (left) | token pane (right)",
         f"{'-' * _COLUMN_WIDTH}-+-{'-' * _COLUMN_WIDTH}",

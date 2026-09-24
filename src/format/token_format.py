@@ -7,7 +7,7 @@ from ..colors import (
     RED, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..utils import append_copy_symbol, highlight_query_in_line
+from ..utils import append_copy_symbol, highlight_query_in_line, right_align_time
 from ..search_bar import _BG_RESTORE_SENTINEL
 
 # FUNCTIONS
@@ -24,7 +24,7 @@ def _format_k(n: int) -> str:
         return f"{n / 1000:.0f}k" if n >= 10000 else f"{n / 1000:.1f}k"
     return str(n)
 
-def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False, sig_chars: int = 0) -> str:
+def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False, sig_chars: int = 0, time_str: str = '', pane_width: int = 0) -> str:
     cc_broken = cc > cr
     bg = LIGHT_RED_BG if cc_broken else ''
     if has_thinking:
@@ -38,8 +38,12 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bo
     else:
         think_indicator = ''
     if wide:
-        return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}"
-    return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}"
+        row = f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}"
+    else:
+        row = f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}"
+    if time_str and pane_width:
+        return right_align_time(row, time_str, pane_width)
+    return row
 
 def call_numbers(turns: list) -> list:
     numbers = []
@@ -60,6 +64,19 @@ def request_numbers_by_id(turns: list) -> dict:
             if request_id:
                 numbers.setdefault(request_id, request_num)
     return numbers
+
+def _call_time_str(call: dict) -> str:
+    timestamp = call.get('timestamp', '')
+    return _format_ts(timestamp) if timestamp else ''
+
+def request_times_by_id(turns: list) -> dict:
+    times = {}
+    for turn in turns:
+        for call in turn.get('api_calls', []):
+            request_id = call.get('request_id', '')
+            if request_id:
+                times.setdefault(request_id, _call_time_str(call))
+    return times
 
 def _call_thinking_meta(call: dict) -> tuple:
     has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
@@ -228,7 +245,7 @@ def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, 
             if line_keys[i] is None and 'Turn ' in all_lines[i]:
                 raw = all_lines[i]
                 if len(raw) > pane_width + 20:
-                    m = _re.search(r'Turn \d+ \[[^\]]+\]', raw)
+                    m = _re.search(r'Turn \d+', raw)
                     if m:
                         sticky_header = f"{PASTEL_PURPLE}{m.group(0)}...{SOFT_RESET}"
                     else:
@@ -250,7 +267,8 @@ def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
     api_calls = turn.get('api_calls', [])
     thinking_calls = sum(1 for call in api_calls if _call_thinking_meta(call)[0])
     think_str = f" ({thinking_calls}/{len(api_calls)} 🧠)" if thinking_calls > 0 else ""
-    return f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{timestamp}]{think_str}: \"{truncated}\"{SOFT_RESET}"
+    row = f"{PASTEL_PURPLE}Turn {turn_idx + 1}{think_str}: \"{truncated}\"{SOFT_RESET}"
+    return right_align_time(row, timestamp, pane_width)
 
 def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: bool, request_num: int,
                       wide: bool, pane_width: int, search_match_set: Optional[set],
@@ -262,7 +280,7 @@ def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: boo
     key = (turn_idx, call_idx)
     symbol = '▼' if is_expanded else '▶'
     has_thinking, sig_chars = _call_thinking_meta(call)
-    call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars)
+    call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars, _call_time_str(call), pane_width)
     call_is_match = bool(search_match_set) and key in search_match_set
     marker = None
     if call_is_match:

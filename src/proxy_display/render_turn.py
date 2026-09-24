@@ -5,7 +5,7 @@ from ..colors import (
     SOFT_RESET, RED, GREEN, WHITE, YELLOW, DIM,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..utils import _ANSI_ESCAPE_RE, _cell_width, highlight_query_in_line
+from ..utils import _ANSI_ESCAPE_RE, _cell_width, highlight_query_in_line, right_align_time
 from .format import _shorten_model, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
 from .render_messages import _aggregate_req_buckets
 from .proxy_badge import badge_flags
@@ -47,7 +47,7 @@ def _compute_req_mods_str(entry: dict, prev_same) -> str:
         return f" {YELLOW}🔧-{removed}{SOFT_RESET}"
     return ''
 
-def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symbol: str, model_short: str, msg_count: int, mods_str: str, warn_str: str, pane_width: int, copy_feedback, is_search_match: bool = False, is_search_current: bool = False) -> str:
+def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symbol: str, model_short: str, msg_count: int, mods_str: str, warn_str: str, pane_width: int, copy_feedback, is_search_match: bool = False, is_search_current: bool = False, time_str: str = '') -> str:
     e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
     e_msgs = entry.get('messages_total_chars', 0)
@@ -67,7 +67,7 @@ def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symb
     if is_search_match:
         search_marker = SEARCH_CURRENT_BG if is_search_current else SEARCH_MATCH_BG
         body = f"{search_marker}{body}{_BG_RESTORE_SENTINEL}"
-    header_raw = f"  {body}"
+    header_raw = right_align_time(f"  {body}", time_str, pane_width, _BG_RESTORE_SENTINEL)
     if copy_feedback is not None:
         _stripped_h = _ANSI_ESCAPE_RE.sub('', header_raw)
         visible_len = sum(_cell_width(ch) for ch in _stripped_h)
@@ -122,7 +122,7 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     lines = _mark_search_lines(lines, search_query, is_search_current)
     return lines, keys
 
-def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, number_by_flow: dict, label_counts: dict, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '') -> tuple:
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, number_by_flow: dict, label_counts: dict, time_by_flow: dict = None, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '') -> tuple:
     lines = []
     keys = []
     for entry_idx, entry in group['entry_pairs']:
@@ -144,7 +144,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         mods_str = _compute_req_mods_str(entry, prev_same)
         is_search_current = search_current_entry_idx is not None and entry_idx == search_current_entry_idx
         is_search_match = bool(search_match_set) and entry_idx in search_match_set
-        lines.append(_build_req_header_line(entry, entry_idx, num_label, req_symbol, model_short, msg_count, mods_str, warn_str, pane_width, copy_feedback, is_search_match, is_search_current))
+        lines.append(_build_req_header_line(entry, entry_idx, num_label, req_symbol, model_short, msg_count, mods_str, warn_str, pane_width, copy_feedback, is_search_match, is_search_current, (time_by_flow or {}).get(entry.get('flow_id'), '') if num_label.startswith('REQ #') else ''))
         keys.append(req_key)
         if is_req_expanded:
             e_lines, e_keys = _render_req_expanded(entry_idx, entry, entries, is_standalone, prev_same, expand_states, pane_width, search_query if is_search_match else '', is_search_current, copy_feedback)
