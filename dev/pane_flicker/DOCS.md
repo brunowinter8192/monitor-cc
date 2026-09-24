@@ -21,9 +21,9 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m1_frame_e2e_test.py (247 LOC)
+### m1_frame_e2e_test.py (296 LOC)
 
-**Purpose:** Old-vs-new end-to-end check of the frame write path for all four panes, plus raw-byte assertions (no 2J/3J, sync pairs).
+**Purpose:** Old-vs-new end-to-end check of the frame write path for all four panes, plus raw-byte assertions (no 2J/3J, sync pairs) and cursor-hide checks (`#{cursor_flag}` per step, during a hover burst, after `respawn-pane`, after Ctrl+C).
 **Reads:** `git archive integration`; tmux capture output.
 **Writes:** `md/m1_frame_e2e_test.md`.
 **Called by:** none, manual.

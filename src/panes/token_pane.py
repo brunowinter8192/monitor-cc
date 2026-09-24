@@ -15,7 +15,7 @@ from ..input.click_handler import (
 from ..format.token_format import format_cache_tracker
 from ..format.turn_cache import new_turn_cache
 from ..utils import truncate_visible
-from ..frame_writer import write_frame
+from ..frame_writer import write_frame, hide_cursor, show_cursor
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
 from .token_search import build_token_search_matches
@@ -54,6 +54,7 @@ def run_tokens_loop() -> None:
     last_janitor_ts = 0.0
     setup_keyboard_input()
     enable_mouse()
+    hide_cursor()
     try:
         while True:
             try:
@@ -80,6 +81,7 @@ def run_tokens_loop() -> None:
                 wait_for_input(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
+        show_cursor()
         restore_terminal()
 
 # FUNCTIONS

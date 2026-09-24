@@ -90,25 +90,58 @@ def run_strand(pane: str, tree: str, root: Path, work_dir: Path) -> dict:
     tmux(sock, 'pipe-pane', '-t', 'flk', f'cat >> {raw_path}')
     project = f'/tmp/flk_m1_proj_{pane}_{tree}'
     cmd = f"cd {root} && {sys.executable} {DRIVER} {root} {pane} {project}"
+    shell_flag = cursor_flag(sock)
     tmux(sock, 'send-keys', '-t', 'flk', cmd, 'Enter')
     time.sleep(BOOT_SETTLE)
+    boot_flag = cursor_flag(sock)
     screens = []
+    step_flags = []
     raw_marks = []
     for name, actions in build_steps(pane):
         for kind, payload in actions:
             send(sock, kind, payload)
         time.sleep(STEP_SETTLE)
         screens.append((name, tmux(sock, 'capture-pane', '-p', '-e', '-N', '-t', 'flk').stdout))
+        step_flags.append(cursor_flag(sock))
         raw_marks.append(raw_path.stat().st_size if raw_path.exists() else 0)
+    raw_main = read_raw(raw_path)
+    burst_flags = burst_hover_flags(sock)
+    tmux(sock, 'respawn-pane', '-k', '-t', 'flk')
+    time.sleep(1.0)
+    respawn_flag = cursor_flag(sock)
+    tmux(sock, 'send-keys', '-t', 'flk', cmd, 'Enter')
+    time.sleep(BOOT_SETTLE)
+    rerun_flag = cursor_flag(sock)
+    tmux(sock, 'send-keys', '-t', 'flk', 'C-c')
+    time.sleep(1.0)
+    exit_flag = cursor_flag(sock)
+    raw_full = read_raw(raw_path)
     tmux(sock, 'kill-server')
-    raw = raw_path.read_bytes().decode('utf-8', errors='replace') if raw_path.exists() else ''
-    return {'screens': screens, 'raw': raw, 'raw_marks': raw_marks}
+    return {
+        'screens': screens, 'raw': raw_main, 'raw_full': raw_full, 'raw_marks': raw_marks,
+        'flags': {'shell': shell_flag, 'boot': boot_flag, 'steps': step_flags, 'burst': burst_flags,
+                  'respawn': respawn_flag, 'rerun': rerun_flag, 'exit': exit_flag},
+    }
+
+def cursor_flag(sock: str) -> str:
+    return tmux(sock, 'display-message', '-p', '-t', 'flk', '#{cursor_flag}').stdout.strip()
+
+def read_raw(raw_path: Path) -> str:
+    return raw_path.read_bytes().decode('utf-8', errors='replace') if raw_path.exists() else ''
+
+def burst_hover_flags(sock: str) -> list:
+    flags = []
+    for i in range(40):
+        send(sock, 'lit', hover(4 + i % 8))
+        flags.append(cursor_flag(sock))
+    return flags
 
 def evaluate(results: dict) -> list:
     verdicts = []
     for pane in PANES:
         old, new = results[(pane, 'old')], results[(pane, 'new')]
         verdicts.append((f'{pane}: harness sanity, old tree emits clear-screen', '\033[2J' in old['raw'], ''))
+        verdicts.extend(cursor_verdicts(pane, old, new))
         verdicts.append((f'{pane}: new tree emits no 2J', '\033[2J' not in new['raw'], ''))
         verdicts.append((f'{pane}: new tree emits no 3J', '\033[3J' not in new['raw'], ''))
         begins = new['raw'].count('\033[?2026h')
@@ -165,6 +198,22 @@ def apply_sgr(state: dict, params: str) -> None:
         else:
             state[f'attr{code}'] = True
         i += 1
+
+def cursor_verdicts(pane: str, old: dict, new: dict) -> list:
+    of, nf = old['flags'], new['flags']
+    frames = new['raw'].split('\033[?2026h')[1:]
+    return [
+        (f'{pane}: harness sanity, shell cursor visible before the pane starts', nf['shell'] == '1' and of['shell'] == '1', ''),
+        (f'{pane}: harness sanity, old tree never hides the cursor', set(of['steps']) == {'1'} and of['boot'] == '1', f"{of['steps']}"),
+        (f'{pane}: hide sequence reaches the pane before the first frame', 0 <= new['raw'].find('\033[?25l') < new['raw'].find('\033[?2026h'), ''),
+        (f'{pane}: every frame carries the hide sequence ({len(frames)} frames)', all(fr.startswith('\033[?25l') for fr in frames), ''),
+        (f'{pane}: cursor hidden after boot', nf['boot'] == '0', ''),
+        (f'{pane}: cursor hidden after every step', set(nf['steps']) == {'0'}, f"{nf['steps']}"),
+        (f'{pane}: cursor hidden across a 40-event hover burst', set(nf['burst']) == {'0'}, f"{nf['burst']}"),
+        (f'{pane}: respawn-pane resets to visible cursor', nf['respawn'] == '1', ''),
+        (f'{pane}: cursor hidden again after the pane restarts', nf['rerun'] == '0', ''),
+        (f'{pane}: cursor visible again after the pane exits (Ctrl+C)', nf['exit'] == '1' and '\033[?25h' in new['raw_full'], ''),
+    ]
 
 def proper_nesting(raw: str) -> bool:
     depth = 0

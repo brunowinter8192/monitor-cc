@@ -52,3 +52,18 @@ M2 test (`m2_byte_identity_test.py`, `m2_state_sequence_driver.py`, report `md/m
 - M1 and M2 were reviewed and merged into `integration`; `git diff integration --name-only` for this worktree is empty afterwards.
 - All DOCS.md module headings touched by this work (`src`, `src/format`, `src/panes`, `src/workers`, `src/proxy_display`, `dev/pane_flicker`) were checked against `wc -l` and match.
 - Still open, owned by the orchestrator and the user: live check in the real panes after the tmux server restart to 3.7c (mode 2026 only takes effect then).
+
+## Cursor block during hover, 2026-09-24 (live finding after M1/M2 merge)
+
+User report: with the tmux server still 3.6a, a white cursor block flashes on changing rows while hovering in the proxy and tokens panes, and a static block sits below the last row of the tokens pane. Cause: no pane ever sent DECTCEM hide (`\033[?25l`); the in-place frame write moves the cursor through every row and ends on the line after the last row (the newline before `\033[J`), and tmux 3.6a paints it mid-frame.
+
+Does any pane use the real terminal cursor? No. The search bar draws its own `_` character (`search_bar.render_search_bar`, `cursor_part`); grep for `?25` and cursor handling in `src/` finds nothing else for these panes. Hiding is safe.
+
+Fix (`src/frame_writer.py`, four pane loops): three layers.
+- `hide_cursor()` right after `enable_mouse()` in each of the four loops, `show_cursor()` in the `finally` (before `restore_terminal()`).
+- Every frame starts with `\033[?25l` inside the 2026 pair, so any state that re-showed the cursor is corrected within one frame.
+- Respawn: `tmux respawn-pane -k` resets the pane to a visible cursor (observed `#{cursor_flag}` = 1 right after respawn, shell running), the new process hides it again at start. The killed process cannot run its `finally`, which is fine because the respawn itself resets the mode.
+Not covered on purpose: SIGTERM/SIGKILL of the pane process without respawn leaves the cursor hidden in the shell (same limitation as `disable_mouse`); never observed.
+Scope: warnings, workers, gpu and news panes are unchanged and still show the cursor.
+
+Test (`m1_frame_e2e_test.py`, now 132 checks): per pane, `#{cursor_flag}` is 1 in the shell and with the old tree at every step (harness sanity), 0 after boot, after each of the 15-17 steps, and across a 40-event hover burst with the new tree; the hide sequence appears in the raw stream before the first frame and at the start of every frame; after `respawn-pane -k` the flag is 1, after restarting the driver 0, after Ctrl+C 1 with `\033[?25h` in the raw bytes. Mutation: emptying `CURSOR_HIDE` fails the raw and flag checks. Mid-frame painting itself cannot be sampled from outside; the guarantee is that the mode is hidden before the first byte of every frame.
