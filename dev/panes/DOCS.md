@@ -47,6 +47,16 @@ equal/mismatch/missing-field/missing-entry cases and the exact rendered ANSI lin
 
 ---
 
+### test_display_tripwires.py (     112 LOC)
+
+**Purpose:** Five parallel strands: janitor partition and atomic write, janitor failure logged, synthetic-user fallback noted once per turn, `format_timestamp` states, rate-limit header states.
+**Reads:** Temp files only; `MCFIX_TREE` selects the source tree so the same file runs against an extracted older tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.panes` (`log_janitor`, `cache_turns`), `src.utils`, `src.constants`, `src.format.token_format`.
+
+---
+
 ## State
 Neither module owns persistent state. `render_byte_identity.py`'s `_hash_cache_turns` writes to a
 `tempfile.NamedTemporaryFile` it creates and deletes within the same function call; nothing

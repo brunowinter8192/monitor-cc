@@ -38,7 +38,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### constants.py (49 LOC)
+### constants.py (50 LOC)
 
 **Purpose:** process-wide timing/size-limit constants and `TOOL_BLOCKLIST`.
 **Reads:** nothing.
@@ -128,7 +128,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### utils.py (172 LOC)
+### utils.py (169 LOC)
 
 **Purpose:** shared formatting/rendering primitives with no I/O — timestamp formatting, cell-width-aware truncation/wrapping, ANSI-safe substring highlighting, copy-symbol placement, `right_align_time` (cuts a row to a cell budget, keeps a right-aligned `HH:MM:SS` in a fixed column, 3 cells from the right edge), header-rule sizing.
 **Reads:** nothing (pure functions on passed-in strings/values).

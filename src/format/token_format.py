@@ -95,14 +95,11 @@ def _format_ts(timestamp: str) -> str:
     return format_timestamp(timestamp)
 
 def _fmt_rl_reset_time(epoch_str: str) -> str:
-    try:
-        ts = datetime.datetime.fromtimestamp(int(epoch_str))
-        now = datetime.datetime.now()
-        if ts.date() == now.date():
-            return ts.strftime('%H:%M')
-        return ts.strftime('%a %H:%M')
-    except (ValueError, OSError):
-        return epoch_str
+    ts = datetime.datetime.fromtimestamp(int(epoch_str))
+    now = datetime.datetime.now()
+    if ts.date() == now.date():
+        return ts.strftime('%H:%M')
+    return ts.strftime('%a %H:%M')
 
 def _render_usage_extras_lines(call: dict) -> tuple:
     lines = []
@@ -157,10 +154,10 @@ def _render_rate_limit_lines(call: dict, response_rid_map: dict) -> tuple:
     if parts_rl:
         lines.append(f"    {DIM}rl: {'  '.join(parts_rl)}{SOFT_RESET}")
         keys.append(None)
-    status = rl_headers.get('anthropic-ratelimit-unified-status', 'allowed')
+    status = rl_headers.get('anthropic-ratelimit-unified-status')
     overage = rl_headers.get('anthropic-ratelimit-unified-overage-status', '')
     warn_parts = []
-    if status != 'allowed':
+    if status is not None and status != 'allowed':
         warn_parts.append(f"status:{status}")
     if overage and overage != 'allowed':
         reason = rl_headers.get('anthropic-ratelimit-unified-overage-disabled-reason', '')

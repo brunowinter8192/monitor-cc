@@ -40,7 +40,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### cache_turns.py (58 LOC)
+### cache_turns.py (70 LOC)
 
 **Purpose:** `build_cache_turns(filepath, last_position, existing_turns) -> (turns, new_position)` — incrementally reads new lines from a session JSONL since `last_position`, parses them, and merges the resulting cache turns into `existing_turns` (including the case where the last existing turn was left incomplete by a previous poll; a call re-seen in a later poll keeps the later `timestamp`).
 **Reads:** session JSONL file at `filepath` (via `jsonl.read_new_lines`/`jsonl.get_current_position`) — parameters only.
@@ -80,12 +80,12 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### log_janitor.py (167 LOC)
+### log_janitor.py (190 LOC)
 
 **Purpose:** `LogSpec` registry (12 entries, the authoritative log inventory) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — the 7-day JSONL sweep triggered from `token_pane.py::run_tokens_loop` every 24h.
 **Reads:** JSONL log files passed in as `path` arguments — no shared/module state.
-**Writes:** rewrites the passed JSONL file in place (drops records older than 7 days by their `ts` field); exception-safe, never raises.
-**Called by:** `panes/token_pane.py` (lazy import inside `_refresh_tokens_data`, gated every 24h); `dev/hook_smoke/test_log_janitor.py` (via `sys.path.insert`, bare `from log_janitor import`).
+**Writes:** rewrites the passed JSONL file atomically (tmp file plus `os.replace`), dropping records older than 7 days by their `ts` field; lines whose `ts` cannot be parsed (naive, malformed) are kept and counted in one `log_pane_note` per run; any failure goes to `log_pane_error` and the function never raises.
+**Called by:** `panes/token_pane.py` (lazy import inside `_refresh_tokens_data`, gated every 24h); `dev/hook_smoke/test_log_janitor.py` (via `sys.path.insert` of the repo root, `from src.panes.log_janitor import`).
 **Calls out:** none.
 
 ---

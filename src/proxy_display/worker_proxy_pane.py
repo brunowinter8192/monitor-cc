@@ -228,7 +228,7 @@ def _read_selected_worker_name(monitor) -> Optional[str]:
     try:
         with open(sel_path, 'r', encoding='utf-8') as f:
             return f.read().strip() or None
-    except OSError:
+    except FileNotFoundError:
         return None
 
 def _handle_worker_proxy_key(char: str, monitor) -> bool:

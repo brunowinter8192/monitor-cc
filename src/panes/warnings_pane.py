@@ -214,7 +214,7 @@ def _errors_record_to_display(rec: dict) -> dict:
     ts_raw = rec.get('ts', '')
     error_full = rec.get('error_full', '') or ''
     return {
-        'timestamp': format_timestamp(ts_raw) if ts_raw else '??:??:??',
+        'timestamp': format_timestamp(ts_raw),
         'tool_name': rec.get('tool_name', ''),
         'summary': error_full[:80],
         'full_text': error_full,

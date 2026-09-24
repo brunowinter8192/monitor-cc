@@ -9,7 +9,7 @@ from ..colors import (
     DIM_YELLOW_BG,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..constants import WARNINGS_POLL_INTERVAL
+from ..constants import NO_TIME_PLACEHOLDER, WARNINGS_POLL_INTERVAL
 from ..utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
 from ..format.strip_marker import highlight_stripped
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
@@ -42,7 +42,7 @@ def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, region
         last_dt = datetime.datetime.fromtimestamp(last_refresh_ts)
         last_str = last_dt.strftime('%H:%M:%S')
     else:
-        last_str = '--:--:--'
+        last_str = NO_TIME_PLACEHOLDER
     notice_part = f" · {notice}" if notice else ''
     text = f"{DIM}[r]efresh · last: {last_str} · polling: {int(WARNINGS_POLL_INTERVAL)}s{notice_part}{RESET}"
     if regions_out is None:
