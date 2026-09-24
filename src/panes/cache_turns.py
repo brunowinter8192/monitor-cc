@@ -26,6 +26,7 @@ def _merge_duplicate_turn(existing_turns: list, new_turns: list) -> list:
         else:
             prev = dict(merged_calls[dup_idx])
             prev['output_tokens'] = max(prev.get('output_tokens', 0), call.get('output_tokens', 0))
+            prev['timestamp'] = max(prev.get('timestamp', ''), call.get('timestamp', ''))
             merged_calls[dup_idx] = prev
     merged['api_calls'] = merged_calls
     return existing_turns[:-1] + [merged] + new_turns[1:]

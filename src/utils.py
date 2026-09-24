@@ -3,10 +3,11 @@ from datetime import datetime
 import re
 import unicodedata
 
-from .colors import RESET, YELLOW
+from .colors import RESET, YELLOW, SOFT_RESET
 from .constants import WORKER_COL_WIDTH
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
+_TIME_RIGHT_RESERVE_CELLS = 3
 
 def _cell_width(ch: str) -> int:
     cp = ord(ch)
@@ -119,6 +120,17 @@ def truncate_visible(line: str, pane_width: int) -> str:
         width += cw
         i += 1
     return line[:i] + '\u2026'
+
+def right_align_time(line: str, time_str: str, pane_width: int, bg_restore: str = '') -> str:
+    if not time_str:
+        return line
+    time_cells = sum(_cell_width(ch) for ch in time_str)
+    budget = pane_width - _TIME_RIGHT_RESERVE_CELLS - time_cells - 1
+    content = truncate_visible(line, budget) if budget > 0 else ''
+    visible = sum(_cell_width(ch) for ch in _ANSI_ESCAPE_RE.sub('', content))
+    restore = bg_restore if bg_restore and bg_restore in line and bg_restore not in content else ''
+    pad = max(1, pane_width - _TIME_RIGHT_RESERVE_CELLS - time_cells - visible)
+    return f"{content}{SOFT_RESET}{restore}{' ' * pad}{time_str}"
 
 def wrap_visible(text: str, width_cells: int) -> list:
     if width_cells <= 0:

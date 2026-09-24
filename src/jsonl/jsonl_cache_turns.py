@@ -39,8 +39,9 @@ def _extract_content_blocks(content_blocks: list, output_tokens: int) -> list:
             blocks.append({'type': 'text', 'preview': block.get('text', '')})
     return blocks
 
-def _build_api_call(usage: dict, blocks: list, request_id: str) -> dict:
+def _build_api_call(usage: dict, blocks: list, request_id: str, timestamp: str) -> dict:
     return {
+        'timestamp':         timestamp,
         'cache_read':        usage.get('cache_read_input_tokens', 0),
         'cache_creation':    usage.get('cache_creation_input_tokens', 0),
         'direct':            usage.get('input_tokens', 0),
@@ -55,8 +56,9 @@ def _build_api_call(usage: dict, blocks: list, request_id: str) -> dict:
         'iterations':        usage.get('iterations') or [],
     }
 
-def _merge_duplicate_call(prev_call: dict, blocks: list, current_turn: dict, output_tokens: int) -> None:
+def _merge_duplicate_call(prev_call: dict, blocks: list, current_turn: dict, output_tokens: int, timestamp: str) -> None:
     prev_call['output_tokens'] = max(prev_call['output_tokens'], output_tokens)
+    prev_call['timestamp'] = max(prev_call.get('timestamp', ''), timestamp)
     seen_types = set()
     for b in prev_call['content_blocks']:
         if b['type'] == 'tool_use':
@@ -125,9 +127,9 @@ def _absorb_assistant_call(message: dict, current_turn: dict) -> None:
     input_key = request_id if request_id else (cache_read, cache_creation, input_tokens)
     existing_calls = current_turn['api_calls']
     if existing_calls and existing_calls[-1].get('_input_key') == input_key:
-        _merge_duplicate_call(existing_calls[-1], blocks, current_turn, output_tokens)
+        _merge_duplicate_call(existing_calls[-1], blocks, current_turn, output_tokens, message.get('timestamp', ''))
     else:
-        new_call = _build_api_call(usage, blocks, request_id)
+        new_call = _build_api_call(usage, blocks, request_id, message.get('timestamp', ''))
         new_call['_input_key'] = input_key
         existing_calls.append(new_call)
         current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + sum(b.get('chars', 0) for b in blocks if b['type'] == 'thinking')

@@ -6,7 +6,7 @@ from ..colors import (
     RESET, SOFT_RESET, DIM, YELLOW, HOVER_BG,
     DIM_YELLOW_BG, DIM_GREEN_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
-from ..format.token_format import _format_k, _format_turn_header_line, request_numbers_by_id
+from ..format.token_format import _format_k, _format_turn_header_line, request_numbers_by_id, request_times_by_id
 from ..utils import truncate_visible
 from .proxy_badge import _chars_to_tokens
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
@@ -109,12 +109,17 @@ def _number_by_flow(turns, request_id_by_flow: Optional[dict]) -> dict:
     numbers = request_numbers_by_id(turns or [])
     return {flow_id: numbers[request_id] for flow_id, request_id in (request_id_by_flow or {}).items() if request_id in numbers}
 
+def _time_by_flow(turns, request_id_by_flow: Optional[dict]) -> dict:
+    times = request_times_by_id(turns or [])
+    return {flow_id: times[request_id] for flow_id, request_id in (request_id_by_flow or {}).items() if request_id in times}
+
 def _render_all_groups(entries: list, groups: list, expand_states: dict, pane_width: int, turns, item_positions_out: Optional[dict], copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query: str, request_id_by_flow: Optional[dict] = None) -> tuple:
     from .render_turn import render_turn_expanded
     all_lines = []
     line_keys = []
     rendered_opus_labels = []
     number_by_flow = _number_by_flow(turns, request_id_by_flow)
+    time_by_flow = _time_by_flow(turns, request_id_by_flow)
     label_counts = {}
     for group in groups:
         turn_idx = group['turn_idx']
@@ -123,7 +128,7 @@ def _render_all_groups(entries: list, groups: list, expand_states: dict, pane_wi
             line_keys.append(None)
         t_lines, t_keys = render_turn_expanded(
             group, entries, expand_states, pane_width,
-            number_by_flow, label_counts,
+            number_by_flow, label_counts, time_by_flow,
             turns=turns, turn_idx=turn_idx,
             rendered_opus_labels=rendered_opus_labels,
             copy_feedback=copy_feedback,
