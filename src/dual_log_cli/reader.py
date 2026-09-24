@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..proxy.message_summary import _infer_model_family as infer_family
+from src.jsonl.jsonl_reader import JsonlReader
+from .diagnostics import report_skip
 
 _MODEL_RE = re.compile(rb'"model"\s*:\s*"([^"]+)"')
 _MODEL_SNIFF_BYTES = 512
@@ -16,11 +18,8 @@ _REVERSE_CHUNK_BYTES = 1 << 20
 def local_datetime(timestamp: str):
     if not timestamp:
         return None
-    try:
-        aware_utc = datetime.fromisoformat(timestamp.rstrip("Z")).replace(tzinfo=timezone.utc)
-        return aware_utc.astimezone()
-    except ValueError:
-        return None
+    aware_utc = datetime.fromisoformat(timestamp.rstrip("Z")).replace(tzinfo=timezone.utc)
+    return aware_utc.astimezone()
 
 
 def iter_line_offsets_reverse(path: Path, chunk_bytes: int = _REVERSE_CHUNK_BYTES):
@@ -76,6 +75,7 @@ def load_last_request(original_path: Path) -> tuple:
             try:
                 entry = json.loads(raw)
             except json.JSONDecodeError:
+                report_skip("reader", f"{original_path.name}@{offset}", "malformed line skipped")
                 skipped += 1
                 continue
             tools = (entry.get("payload") or {}).get("tools") or []
@@ -87,12 +87,4 @@ def load_last_request(original_path: Path) -> tuple:
 
 
 def iter_jsonl(path: Path):
-    with open(path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                continue
+    yield from JsonlReader(path)

@@ -2,6 +2,7 @@
 import datetime
 import json
 import os
+import sys
 
 
 # FUNCTIONS
@@ -24,11 +25,12 @@ def log_fire(hook_name: str, decision: str, tool_name: str, command: str,
             "command": command or "",
             "session": session_id or "",
         }
-        if decision in ("block", "feedback"):
+        if decision in ("block", "feedback", "trace"):
             record["reason"] = reason or ""
         else:
             record["rewritten"] = rewritten or ""
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except Exception:
-        return
+    except Exception as e:
+        print(f"log_fire failed: {type(e).__name__}: {e}", file=sys.stderr)

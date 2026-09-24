@@ -29,5 +29,15 @@ imported via a function (`_import_gpu`), not a module-level `from src.` line, pe
 
 ---
 
+### fallback_tripwire_checks.py (142 LOC)
+
+**Purpose:** Proves the traced-skip, retry and tripwire paths of `src/gpu_pane/` (preset discovery retry, missing-port and malformed state files, collections `None`, toggle expiry) with a fake `rag-cli` on PATH.
+**Reads:** nothing external; state files and the pane error log live in a temp dir.
+**Writes:** temp dir; `src/gpu_pane/logs/gpu_pane.log` of this checkout (the module's own logger).
+**Called by:** none — run manually.
+**Calls out:** `src.gpu_pane.status`, `.gpu_actions`, `.gpu_render`, `src.pane_error_log` (via `importlib`).
+
+---
+
 ## State
 No persistent state. `time.time()` is monkeypatched to a fixed constant for the duration of `main()` and restored in a `finally` block; `_toggle_state` (owned by `src.gpu_pane.pane`) is cleared before and after the run.

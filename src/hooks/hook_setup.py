@@ -11,7 +11,7 @@ _HOOKS_DIR     = Path(__file__).resolve().parent
 _REPO_ROOT     = _HOOKS_DIR.parent.parent
 _HOOK_TIMEOUT  = 5
 _MAIN_BRANCH   = "main"
-_DEFAULT_EVENT = "PreToolUse"
+_EVENT         = "PreToolUse"
 
 _HOOK_SCRIPTS = [
     ("block_dangerous_kill.py",          "Bash"),
@@ -64,10 +64,9 @@ def hook_setup_workflow() -> None:
     _report_skipped(skipped)
     hooks = settings.setdefault("hooks", {})
     installed = 0
-    for entry in installable:
-        script, matcher, event = _unpack_entry(entry)
+    for script, matcher in installable:
         command = f"python3 {_HOOKS_DIR / script}"
-        bucket = hooks.setdefault(event, [])
+        bucket = hooks.setdefault(_EVENT, [])
         if not _already_installed(bucket, command, matcher):
             _add_hook(bucket, command, matcher)
             installed += 1
@@ -79,7 +78,7 @@ def hook_setup_workflow() -> None:
 def decide_entries(hook_scripts: list, git_query_fn, tree_query_fn) -> tuple:
     to_install, skipped, cache = [], [], {}
     for entry in hook_scripts:
-        script, matcher, _event = _unpack_entry(entry)
+        script, matcher = entry
         if script not in cache:
             cache[script] = _script_verdict(script, git_query_fn, tree_query_fn)
         install, reason = cache[script]
@@ -89,11 +88,6 @@ def decide_entries(hook_scripts: list, git_query_fn, tree_query_fn) -> tuple:
             skipped.append((script, matcher, reason))
     return to_install, skipped
 
-
-def _unpack_entry(entry) -> tuple:
-    script, matcher = entry[0], entry[1]
-    event = entry[2] if len(entry) > 2 else _DEFAULT_EVENT
-    return script, matcher, event
 
 def _script_verdict(script: str, git_query_fn, tree_query_fn) -> tuple:
     present = git_query_fn(script)
@@ -171,6 +165,7 @@ def _sweep_stale_hooks(settings: dict) -> int:
                     tokens = cmd.split()
                     if len(tokens) >= 2 and not os.path.exists(tokens[1]):
                         swept += 1
+                        print(f"Swept stale hook: {event} {cmd}", file=sys.stderr)
                         continue
                 new_hooks.append(h)
             if new_hooks:

@@ -1,6 +1,6 @@
 # hook_smoke run_all
 
-24/24 strands passed
+25/25 strands passed
 
 ## PASS _strand_test_bg_task_detection
 
@@ -450,6 +450,28 @@ All fire-log tests passed.
 [PASS] skip reason text distinguishes not-on-main vs missing-from-tree
 
 10/10 passed
+
+## PASS _strand_test_hook_trace_lines
+
+[PASS] case_parse_error_all_hooks
+[PASS] case_log_dir_created
+[PASS] case_log_write_failure_stderr
+[PASS] case_strip_raw_fallback
+[PASS] case_unterminated_quote
+[PASS] case_shlex_exempt
+[PASS] case_po_read_unknown_size
+[PASS] case_rag_state_corrupt_line
+[PASS] case_rag_state_unreadable
+[PASS] case_worker_cli_missing
+[PASS] case_worker_cli_rc
+[PASS] case_worker_cli_timeout
+[PASS] case_status_fn_raises
+[PASS] case_getcwd_failed
+[PASS] case_sweep_prints
+[PASS] case_null_byte_read_path
+[PASS] case_unpack_entry_gone
+
+17/17 passed
 
 ## PASS _strand_test_log_janitor
 

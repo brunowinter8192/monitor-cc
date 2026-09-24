@@ -112,15 +112,20 @@ def _session_entries_and_separators(boundaries: list, turns: list, usage_map: di
     return entries, separators
 
 
+def _require_datetime(timestamp: str, stem: str):
+    dt = local_datetime(timestamp)
+    if dt is None:
+        raise ValueError(f"request in {stem} has no timestamp")
+    return dt
+
+
 def _entries_for_session(markers: dict, usage_map: dict, turn_by_msg_index: dict,
                          stem: str, tag: str = "") -> list:
     entries = []
     prev_usage = None
     for msg_index in sorted(markers):
         marker = markers[msg_index]
-        dt = local_datetime(_clock_source(marker))
-        if dt is None:
-            continue
+        dt = _require_datetime(_clock_source(marker), stem)
         usage = (usage_map or {}).get(marker.get("flow_id"))
         turn_number = turn_by_msg_index.get(msg_index)
         entries.append((dt, stem, marker, tag, turn_number, usage, prev_usage))
@@ -157,8 +162,8 @@ def _request_marker(request: dict) -> dict:
 
 
 def _chronological_entries(requests: list, usage_map: dict, stem: str, tag: str) -> list:
-    dated = [(local_datetime(_clock_source(request)), request) for request in requests]
-    dated = sorted((pair for pair in dated if pair[0] is not None), key=lambda pair: pair[0])
+    dated = [(_require_datetime(_clock_source(request), stem), request) for request in requests]
+    dated = sorted(dated, key=lambda pair: pair[0])
     entries = []
     prev_usage = None
     for dt, request in dated:

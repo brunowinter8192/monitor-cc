@@ -25,6 +25,7 @@ def list_monitor_sessions() -> list:
         capture_output=True, text=True
     )
     if result.returncode != 0:
+        _append_log_line(f"NOSESSIONS rc={result.returncode}")
         return []
     sessions = []
     for line in result.stdout.strip().split('\n'):
@@ -42,10 +43,10 @@ def sweep_sessions(sessions: list, max_age_seconds: int) -> list:
 
 def sweep_one_session(name: str, created: int, now: float, max_age_seconds: int) -> dict:
     age_seconds = now - created
-    killed = age_seconds >= max_age_seconds
-    if killed:
-        kill_session(name)
-    log_sweep_line(name, age_seconds, killed)
+    expired = age_seconds >= max_age_seconds
+    killed = kill_session(name) if expired else False
+    status = "KILLED" if killed else ("KILL_FAILED" if expired else "SPARED")
+    log_sweep_line(name, age_seconds, status)
     return {"name": name, "age_seconds": age_seconds, "killed": killed}
 
 def _resolve_monitor_cc_root() -> Path:
@@ -57,13 +58,15 @@ def _resolve_monitor_cc_root() -> Path:
 def _log_path() -> Path:
     return _resolve_monitor_cc_root() / "src" / "logs" / "monitor_sweep.log"
 
-def log_sweep_line(name: str, age_seconds: float, killed: bool) -> None:
+def log_sweep_line(name: str, age_seconds: float, status: str) -> None:
+    _append_log_line(f"{name} age={age_seconds / 3600:.1f}h {status}")
+
+def _append_log_line(text: str) -> None:
     log_path = _log_path()
     log_path.parent.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    status = "KILLED" if killed else "SPARED"
     with log_path.open('a', encoding='utf-8') as f:
-        f.write(f"{ts} {name} age={age_seconds / 3600:.1f}h {status}\n")
+        f.write(f"{ts} {text}\n")
 
 if __name__ == "__main__":
     sweep_workflow()

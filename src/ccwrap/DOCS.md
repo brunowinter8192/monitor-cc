@@ -29,9 +29,9 @@ from src.ccwrap.wrapper import run
 
 ## Modules
 
-### __main__.py (31 LOC)
+### __main__.py (34 LOC)
 
-**Purpose:** CLI entry point — parses `--project <path>` from argv, passes remaining args through to `claude_proxy_start.sh`, invokes `wrapper.run()`.
+**Purpose:** CLI entry point — parses `--project <path>` from argv (exit 2 when the value is missing), passes remaining args through to `claude_proxy_start.sh`, invokes `wrapper.run()`.
 **Reads:** `sys.argv`.
 **Writes:** `sys.exit(exit_code)`.
 **Called by:** `python3 -m src.ccwrap`.

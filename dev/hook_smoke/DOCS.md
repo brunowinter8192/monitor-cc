@@ -32,7 +32,7 @@ and offers the fail-fast abort used by the table tests.
 
 ---
 
-### run_all.py (68 LOC)
+### run_all.py (69 LOC)
 
 **Purpose:** Runs every `test_*.py` module of this directory as one parallel fail-fast strand and
 writes `md/run_all.md`.
@@ -281,6 +281,15 @@ the expected record and an env-var log-path override is honored (checked against
 **Writes:** PASS/FAIL to stdout.
 **Called by:** none — manual CLI.
 **Calls out:** none — imports `decide_entries` directly via `sys.path.insert`.
+
+---
+
+### test_hook_trace_lines.py (250 LOC)
+
+**Purpose:** Provokes each observed hook degradation (parse error, log-dir/write failure, raw-text strip fallback, unterminated quote, shlex exemption, unknown-size po block, rag state failures, worker-status degradation, getcwd failure, stale sweep) and asserts the `trace` line while exit semantics stay unchanged.
+**Reads:** nothing. **Writes:** PASS/FAIL to stdout; all hook logs go to temp paths.
+**Called by:** none — manual CLI; cases run in parallel threads.
+**Calls out:** none — drives the hooks via `subprocess` and direct module loads.
 
 ---
 

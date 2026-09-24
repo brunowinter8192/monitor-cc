@@ -28,13 +28,13 @@ from src.input import wait_for_input         # block until stdin readable or tim
 
 ## Modules
 
-### click_handler.py (154 LOC)
+### click_handler.py (138 LOC)
 
-**Purpose:** Low-level stdin handling — raw terminal mode, unbuffered keypress reads (UTF-8 multi-byte aware), SGR mouse sequence parsing, mouse tracking mode toggles, clipboard copy, and an event-driven `wait_for_input` sleep replacement.
+**Purpose:** Low-level stdin handling — raw terminal mode, unbuffered keypress reads (UTF-8 multi-byte aware), SGR mouse sequence parsing, mouse tracking mode toggles, clipboard copy, and an event-driven `wait_for_input` sleep replacement. Failures are tripwires: a non-tty stdin, a malformed SGR mouse field and a failing `pbcopy` raise into the pane-loop log; `restore_terminal` failures go to `log_pane_error`.
 **Reads:** stdin file descriptor via `os.read(fd, 1)` per byte (unbuffered, bypasses Python's IO layer); `select.select` for the initial poll, UTF-8 continuation-byte reads, and `wait_for_input`'s caller-provided timeout.
 **Writes:** stdout (mouse-mode enable/disable escape sequences); terminal mode via `termios`; clipboard via `pbcopy` subprocess.
 **Called by:** `core/monitor.py`, `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `workers/worker_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`.
-**Calls out:** `pbcopy` (subprocess CLI, clipboard).
+**Calls out:** `pbcopy` (subprocess CLI, clipboard); `pane_error_log.log_pane_error`.
 
 ---
 

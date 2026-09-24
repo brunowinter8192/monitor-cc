@@ -41,9 +41,9 @@ def _check_forwarded(path: Path) -> tuple:
 
 
 def _check_transcript(path: Path) -> tuple:
-    from src.jsonl import parse_jsonl_lines, extract_cache_turns
+    from src.jsonl import read_json_records, extract_cache_turns
     try:
-        messages, _ = parse_jsonl_lines(path.read_text(encoding='utf-8').splitlines(True))
+        messages, _ = read_json_records(path, 0)
         turns = extract_cache_turns(messages)
     except Exception as exc:
         return ('transcript-error', str(path), 0, repr(exc))

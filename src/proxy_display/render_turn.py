@@ -66,8 +66,8 @@ def _status_line(entry: dict) -> list:
     return [f"    {color}status: {text}{SOFT_RESET}"]
 
 def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symbol: str, model_short: str, msg_count: int, mods_str: str, warn_str: str, pane_width: int, copy_feedback, is_search_match: bool = False, is_search_current: bool = False, time_str: str = '') -> str:
-    e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
-    e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+    e_sys = entry.get('system_total_chars', 0)
+    e_tools = entry.get('tools_total_chars', 0)
     e_msgs = entry.get('messages_total_chars', 0)
     haiku_info = f"  sys:{_format_k(e_sys)} tools:{_format_k(e_tools)} msgs:{_format_k(e_msgs)}" if model_short == 'haiku' else ''
     eff_val = entry.get('effort_value')
@@ -109,7 +109,6 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     from .render_messages import render_messages
     lines = _status_line(entry)
     keys = [None] * len(lines)
-    mods = entry.get('modifications', [])
     _section_ref = None if is_standalone else prev_same
     buckets = _aggregate_req_buckets(entry, _section_ref)
     parts = [f'INERT:{c}' for c in buckets['inert_codes']]
@@ -128,7 +127,7 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     d_lines, d_keys = render_directives(entry_idx, entry, expand_states)
     lines.extend(d_lines)
     keys.extend(d_keys)
-    s_lines, s_keys = render_system_blocks(entry_idx, entry, _section_ref, expand_states, pane_width, mods)
+    s_lines, s_keys = render_system_blocks(entry_idx, entry, _section_ref, expand_states, pane_width)
     lines.extend(s_lines)
     keys.extend(s_keys)
     t_lines, t_keys = render_tools(entry_idx, entry, _section_ref, expand_states, pane_width)

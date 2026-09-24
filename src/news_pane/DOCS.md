@@ -24,10 +24,10 @@ websearch project.
 
 ## Modules
 
-### pane.py (296 LOC)
+### pane.py (294 LOC)
 
-**Purpose:** Left control-pane event loop — collection stats display, SGR mouse/keyboard dispatch, pipeline subprocess launch, running-state indicator, row-1 search bar (highlight-only, no scroll infra). `NEWS_POLL_INTERVAL = 2.0` s; `LOG_RUNNING_RECENT_SECS = 60` (mtime gate for the log-based running-state fallback).
-**Reads:** `rag-cli list_documents searxng_crypto` + `rag-cli list_collections --json` (every 2s); `LAST_RUN_FILE` (every 2s); `_pipeline_proc.poll()`; the pipeline log file (via `_is_running_via_log()`).
+**Purpose:** Left control-pane event loop — collection stats display, SGR mouse/keyboard dispatch, pipeline subprocess launch, running-state indicator, row-1 search bar (highlight-only, no scroll infra). `NEWS_POLL_INTERVAL = 2.0` s. Running state comes from the `_pipeline_proc` handle only. A failing `rag-cli` fetch shows `?` and writes one `log_pane_note` per state change.
+**Reads:** `rag-cli list_documents searxng_crypto` + `rag-cli list_collections --json` (every 2s); `LAST_RUN_FILE` (every 2s); `_pipeline_proc.poll()`.
 **Writes:** stdout (full-screen ANSI); `/tmp/monitor_cc_error.log` on caught exception (via `pane_error_log`); mutates `_pipeline_proc`, `_button_regions`, `_news_search` (query/focused/matches/match_set/current_idx/drag-select fields).
 **Called by:** `workflow.py` (`--mode news` route).
 **Calls out:** `rag-cli` (subprocess CLI), the websearch project's own pipeline (`WEBSEARCH_ROOT/venv/bin/python -m src.news`, launched via `subprocess.Popen`).
@@ -44,9 +44,9 @@ websearch project.
 
 ---
 
-### log_parser.py (79 LOC)
+### log_parser.py (78 LOC)
 
-**Purpose:** Pure parsing helper + package-level path constants. Provides `WEBSEARCH_ROOT`, `LOG_DIR`, `LAST_RUN_FILE`, `TARGET_COLLECTION`, run boundary markers, and the whitelist regex list. Functions are side-effect-free beyond the file reads they take as input.
+**Purpose:** Pure parsing helper + package-level path constants. Provides `WEBSEARCH_ROOT`, `LOG_DIR`, `LAST_RUN_FILE`, `TARGET_COLLECTION`, the run start marker, and the whitelist regex list. Functions are side-effect-free beyond the file reads they take as input.
 **Reads:** `LOG_DIR/news_coindesk_*.log` (via `find_log_file`); `LAST_RUN_FILE` (via `read_last_run_ts`); log file text (via `find_current_run_lines`).
 **Writes:** `/tmp/monitor_cc_error.log` on an unreadable log file in `find_current_run_lines` (via `pane_error_log`).
 **Called by:** `pane.py` (constants + `read_last_run_ts`), `log_pane.py` (all parsing functions).
@@ -68,7 +68,7 @@ websearch project.
 - `log_parser.py` is the constant anchor for the whole package (`WEBSEARCH_ROOT`, `LOG_DIR`, `LAST_RUN_FILE`, `TARGET_COLLECTION`) — none of these live in `src/constants.py`.
 - `_LOG_LINE_RE`'s `\s+` group before `(.*)` consumes all leading whitespace from the message — whitelist patterns must not include leading spaces (e.g. `\[(OK|FAIL)\]`, not `  \[(OK|FAIL)\]`).
 - `_button_regions` for `[run pipeline]` is only registered when `running=False`. While running, a click on that position hits no registered region and is silently ignored.
-- Running-state fallback (`_is_running_via_log`) only fires when the log was modified within `LOG_RUNNING_RECENT_SECS` (60s) AND a start marker is present without a subsequent end marker — a stale old log never falsely signals running.
+- Running state is the `_pipeline_proc` handle only. A pipeline started outside this pane (cron, CLI) does not disable the button; the log-based detection was removed because no observation of a lost handle was recorded.
 - NEWS-LOG pane uses plain `time.sleep(0.5)` (no raw-stdin setup), so Ctrl+C delivers SIGINT cleanly to `startup.py`'s signal handler.
 - `find_current_run_lines()` falls back to all lines when no start marker is found (empty collection / first-ever run).
 - The pipeline `Popen` sends stdout+stderr to `DEVNULL` — the pipeline writes its own log file in `LOG_DIR` independently, which is the only channel this pane observes.

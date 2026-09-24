@@ -37,6 +37,16 @@ check fails.
 
 ---
 
+### fallback_tripwire_checks.py (111 LOC)
+
+**Purpose:** Proves the failure paths of `src/tmux_launcher.py` and `src/monitor_janitor.py` against a real tmux server on the private socket `-L mcfixprobe`, reached through a `tmux` shim on PATH.
+**Reads:** nothing external; `MONITOR_CC_ROOT` points at a temp dir.
+**Writes:** temp dir with a sweep log; one throwaway tmux server on the private socket, killed in a `finally`.
+**Called by:** none — run manually.
+**Calls out:** `src.tmux_launcher`, `src.monitor_janitor` (imported via `importlib`).
+
+---
+
 ## State
 No persistent state. `_FakeTmux` instances are created fresh per scenario call and discarded; `subprocess.run` is monkeypatched and restored within each `_capture_*` function's own `try`/`finally`.
 

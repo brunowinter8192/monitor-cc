@@ -2,6 +2,7 @@
 import json
 import os
 
+from .menubar_log import log_menubar
 from .paths import SETTINGS_FILE as _SETTINGS_PATH
 from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
 
@@ -10,12 +11,14 @@ from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HE
 def _load_settings():
     try:
         d = json.loads(open(_SETTINGS_PATH).read())
-        raw_h = d.get('panel_min_height', d.get('panel_max_height', PANEL_HEIGHT))
         return (
             max(int(d.get('panel_width', PANEL_WIDTH)), PANEL_MIN_WIDTH),
-            max(int(raw_h),                             PANEL_MIN_HEIGHT),
+            max(int(d.get('panel_min_height', PANEL_HEIGHT)), PANEL_MIN_HEIGHT),
         )
-    except Exception:
+    except FileNotFoundError:
+        return PANEL_WIDTH, PANEL_HEIGHT
+    except Exception as exc:
+        log_menubar('settings', f'load failed path={_SETTINGS_PATH} err={exc!r}')
         return PANEL_WIDTH, PANEL_HEIGHT
 
 
@@ -27,5 +30,5 @@ def _save_settings(panel_width: int, panel_min_height: int) -> None:
             'panel_min_height': panel_min_height,
         }))
         os.replace(tmp, _SETTINGS_PATH)
-    except Exception:
-        pass
+    except Exception as exc:
+        log_menubar('settings', f'save failed path={_SETTINGS_PATH} err={exc!r}')

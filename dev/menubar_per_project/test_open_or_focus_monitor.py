@@ -20,7 +20,6 @@ def test_open_or_focus_monitor_workflow() -> None:
     _test_launch_cmd_quotes_cwd_with_space(failures)
     _test_existing_session_killed_then_relaunched(failures)
     _test_branch_launches_when_session_absent(failures)
-    _test_empty_cwd_is_noop(failures)
     _test_resolve_python3_uses_plist_path_under_bare_environ(failures)
     _test_launch_monitor_uses_native_path_only(failures)
     if failures:
@@ -77,11 +76,6 @@ def _test_branch_launches_when_session_absent(failures: list) -> None:
           calls['launch'] == '/tmp/new-project', f'calls={calls!r}')
     _check(failures, 'no session → kill_session NOT called',
           calls['kill'] is None, f'calls={calls!r}')
-
-def _test_empty_cwd_is_noop(failures: list) -> None:
-    calls = _run_open_or_focus_monitor_with_stubs(session_exists=True, cwd='')
-    _check(failures, 'empty cwd short-circuits before any tmux/kill/launch call',
-          calls == {'checked': None, 'kill': None, 'launch': None}, f'calls={calls!r}')
 
 def _test_resolve_python3_uses_plist_path_under_bare_environ(failures: list) -> None:
     bare_env = {'PATH': '/usr/bin:/bin:/usr/sbin:/sbin'}

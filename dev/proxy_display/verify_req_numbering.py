@@ -15,6 +15,14 @@ _COLUMN_WIDTH = 62
 
 # ORCHESTRATOR
 
+def _turn_cache():
+    from src.proxy_display.turn_cache import TurnCache
+    return TurnCache()
+
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
+
 def verify_workflow(stem: str, turn_number: int) -> None:
     entries, request_id_by_flow = _load_proxy_side(stem)
     turns = _load_turns(request_id_by_flow)
@@ -52,13 +60,13 @@ def _plain(ansi: str) -> list:
 
 def _proxy_plain_lines(entries: list, turns: list, request_id_by_flow: dict) -> list:
     from src.proxy_display.format import format_proxy_block
-    ansi, _ = format_proxy_block(entries, {}, None, None, 100000, _PANE_WIDTH, 0, turns, request_id_by_flow=request_id_by_flow)
+    ansi, _ = format_proxy_block(entries, {}, None, None, 100000, _PANE_WIDTH, 0, turns, request_id_by_flow=request_id_by_flow, turn_cache=_turn_cache())
     return _plain(ansi)
 
 
 def _token_plain_lines(turns: list) -> list:
     from src.format.token_format import format_cache_tracker
-    lines, _keys, _sticky, _start, _count = format_cache_tracker(turns, {}, 100000, _PANE_WIDTH, 0)
+    lines, _keys, _sticky, _start, _count = format_cache_tracker(turns, {}, 100000, _PANE_WIDTH, 0, turn_cache=_token_turn_cache())
     return _plain("\n".join(lines))
 
 

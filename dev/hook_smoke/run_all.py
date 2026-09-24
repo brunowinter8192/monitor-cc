@@ -31,6 +31,7 @@ _MODULES = [
     'test_block_worker_send_while_working',
     'test_fire_log',
     'test_hook_setup_main_branch_gate',
+    'test_hook_trace_lines',
     'test_log_janitor',
     'test_rewrite_background_sleep',
     'test_rewrite_chained_sleep',

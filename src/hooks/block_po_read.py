@@ -46,7 +46,8 @@ def _parse_command():
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
         return (cmd if isinstance(cmd, str) else None), payload.get("session_id"), payload.get("cwd")
-    except Exception:
+    except Exception as e:
+        log_fire("block_po_read", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None, None
 
 def _is_po_read_segment(seg: str, cwd) -> bool:
@@ -57,7 +58,10 @@ def _is_po_read_segment(seg: str, cwd) -> bool:
     if not match:
         return False
     size = _po_export_size(match.group(0), cwd)
-    return size is None or size <= POREAD_MAX_BYTES
+    if size is None:
+        log_fire("block_po_read", "trace", "Bash", seg, reason=f"size unknown, blocking: {match.group(0)}")
+        return True
+    return size <= POREAD_MAX_BYTES
 
 def _strip_redirects(seg: str) -> str:
     cleaned = seg

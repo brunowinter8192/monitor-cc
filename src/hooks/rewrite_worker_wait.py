@@ -49,7 +49,8 @@ def _parse_input():
         cmd = cmd if isinstance(cmd, str) else None
         bg = bg if isinstance(bg, bool) else False
         return cmd, bg, payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("rewrite_worker_wait", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, False, None
 
 def _collapse_cd(cd_match) -> str:

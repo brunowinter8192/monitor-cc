@@ -4,7 +4,7 @@ import ctypes
 from .menubar_log import log_menubar
 from .hotkey_carbon import (
     _EventHotKeyID, _EventHandlerProcPtr, _MBAR_SIG, _HOTKEY_EVENT_SPEC, _get_hkid,
-    _load_carbon, _log_queue_delay, _eventNotHandledErr,
+    _load_carbon, _log_queue_delay, _eventNotHandledErr, _check_status,
 )
 
 _DIGIT_KEYCODES = {1: 18, 2: 19, 3: 20, 4: 21, 5: 23, 6: 22, 7: 26, 8: 28, 9: 25}
@@ -33,15 +33,15 @@ def _ensure_digit_handler():
             log_menubar('hotkey', f'cmd+{slot}')
             _log_queue_delay(carbon, event, _entry_t, f'cmd+{slot}')
             fn()
-        except Exception:
-            pass
+        except Exception as exc:
+            log_menubar('hotkey', f'handler failed digit err={exc!r}')
         return 0
 
     _DIGIT_HANDLER_CB = _EventHandlerProcPtr(_handler)
     handler_ref = ctypes.c_void_p()
-    carbon.InstallEventHandler(
+    _check_status('InstallEventHandler', carbon.InstallEventHandler(
         target, _DIGIT_HANDLER_CB, 1, ctypes.byref(_HOTKEY_EVENT_SPEC),
-        None, ctypes.byref(handler_ref))
+        None, ctypes.byref(handler_ref)), 'digits')
     _DIGIT_HANDLER_REF = handler_ref
 
 def register_cmd_digits(callback_map: dict) -> tuple:
@@ -55,10 +55,10 @@ def register_cmd_digits(callback_map: dict) -> tuple:
         if slot not in _DIGIT_CALLBACKS:
             continue
         hk_ref = ctypes.c_void_p()
-        carbon.RegisterEventHotKey(
+        _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
             keycode, 0x0100,
             _EventHotKeyID(_MBAR_SIG, slot + 1),
-            target, 0, ctypes.byref(hk_ref))
+            target, 0, ctypes.byref(hk_ref)), f'slot={slot}')
         hk_refs.append(hk_ref)
     return None, hk_refs
 
