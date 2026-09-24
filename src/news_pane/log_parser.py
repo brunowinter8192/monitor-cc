@@ -10,7 +10,6 @@ LAST_RUN_FILE  = LOG_DIR / 'news_coindesk_last_run.txt'
 TARGET_COLLECTION = 'searxng_crypto'
 
 RUN_START_MARKER = '=== coindesk pipeline started ==='
-RUN_END_MARKER   = '=== coindesk pipeline complete ==='
 
 _LOG_LINE_RE = re.compile(r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(\w+)\s+(.*)')
 
@@ -34,7 +33,7 @@ def find_log_file() -> Path | None:
 def read_last_run_ts() -> str | None:
     try:
         return LAST_RUN_FILE.read_text().strip() or None
-    except OSError:
+    except FileNotFoundError:
         return None
 
 
