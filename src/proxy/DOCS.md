@@ -147,9 +147,9 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### strip_sr.py (161 LOC)
+### strip_sr.py (162 LOC)
 
-**Purpose:** Strips `<system-reminder>` blocks from message content via a catalog of 11 exact-match templates (task-tools-nag, pyright-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, agent-types, plan-mode).
+**Purpose:** Strips `<system-reminder>` blocks from message content via a catalog of 12 exact-match templates (task-tools-nag, pyright-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, agent-types, plan-mode, git-attribution).
 **Reads:** Message content (string or list of blocks); template catalog (module-local).
 **Writes:** — (returns modified content)
 **Called by:** `src/proxy/message_passes.py`.
