@@ -182,8 +182,8 @@ def _proxy_log_newest_mtime(project_key: str, now: float) -> Optional[float]:
                     mt = p.stat().st_mtime
                     if result is None or mt > result:
                         result = mt
-                except OSError:
-                    pass
+                except OSError as exc:
+                    log_menubar_change('proc_cache', f'proxy_stat:{p.name}', f'stat failed file={p.name} err={exc!r}')
     _proxy_log_mtime_cache[project_key] = (now, result)
     return result
 

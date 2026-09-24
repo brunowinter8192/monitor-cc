@@ -211,6 +211,12 @@ def proxy_mtime(d, mlog) -> None:
     start = len(log_text(mlog))
     got = p._proxy_log_newest_mtime('projx', 100.0)
     check('g6.proxy_mtime.missing_dir_logged', got is None and 'proxy log dir missing' in since(mlog, start))
+    p._PROXY_LOG_DIR = logs
+    p._proxy_log_mtime_cache.clear()
+    start = len(log_text(mlog))
+    with mock.patch.object(p.Path, 'stat', mock.Mock(side_effect=OSError('vanished'))):
+        gone = p._proxy_log_newest_mtime('projx', 100.0)
+    check('g6.proxy_mtime.stat_failure_logged', gone is None and 'stat failed file=api_requests_a_opus_projx_1.jsonl' in since(mlog, start))
     paths = load('paths')
     check('g6.proxy_mtime.default_derives_from_root', str(p.MONITOR_CC_ROOT) == str(paths.MONITOR_CC_ROOT))
 
