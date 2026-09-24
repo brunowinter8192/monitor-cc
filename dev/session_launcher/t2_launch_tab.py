@@ -110,21 +110,28 @@ class _FakeApp:
 def _title(btn) -> str:
     return str(btn.attributedTitle().string())
 
+def _header_text(strip) -> str:
+    parts = []
+    for v in strip.subviews()[0].subviews():
+        text = v.attributedTitle().string() if hasattr(v, 'attributedTitle') else v.attributedStringValue().string()
+        parts.append((v.frame().origin.x, str(text)))
+    return ''.join(t for _, t in sorted(parts))
+
 def _case_headers() -> str:
     app = _FakeApp([])
     got = {}
     pm = _imp('panel_manager').PanelManager(app)
     pm.rebuild([])
-    got['sessions'] = _title(pm._widgets.header_btn)
+    got['sessions'] = _header_text(pm._widgets.header_view)
     rag = _imp('rag_controller').RagController(app)
     rag.rebuild()
-    got['rag'] = _title(rag._rag_header_btn)
+    got['rag'] = _header_text(rag._rag_header)
     models = _imp('model_controller').ModelController(app)
     models.rebuild()
-    got['models'] = _title(models._models_header_btn)
+    got['models'] = _header_text(models._models_header)
     launch = _imp('launch_controller').LaunchController(app)
     launch.open()
-    got['launch'] = _title(launch._launch_header_btn)
+    got['launch'] = _header_text(launch._launch_header)
     assert got == _EXPECTED_HEADERS, f'got {got}'
     assert all(('Auto' + '-Jump') not in v for v in got.values())
     return json.dumps(got, ensure_ascii=False)

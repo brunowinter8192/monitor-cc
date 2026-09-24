@@ -1,15 +1,13 @@
 # INFRASTRUCTURE
 import threading
 
-from AppKit import NSAttributedString, NSFontAttributeName
 from Foundation import NSMakeRect
 
 from .launch_config import LAUNCH_DESKTOPS, LAUNCH_PROJECTS
 from .launch_panel_ui import (_make_launch_nspanel, _make_desktop_row, _make_project_button)
 from .menubar_log import log_menubar
-from .panel import _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator
+from .panel import _TOP_BAR_H, _ROW_H, _LABEL_H, _make_line_separator
 from .panel_lifecycle import _close_launch_panel
-from .panel_tabs import tab_header_text
 from .session_launch import launch_workflow
 from .space_switch import request_post_event_access_if_missing
 
@@ -23,7 +21,7 @@ class LaunchController:
     def __init__(self, app) -> None:
         self.app = app
         self._launch_open: bool = False
-        self._launch_panel, self._launch_sv, self._launch_header_btn = _make_launch_nspanel()
+        self._launch_panel, self._launch_sv, self._launch_header = _make_launch_nspanel()
         self._selected_desktop = None
         self._occupied = frozenset()
         self._desktop_btns = {}
@@ -54,10 +52,6 @@ class LaunchController:
             sv.removeFromSuperview()
         self._occupied = occupied_desktops(sessions)
         pw = app.settings.panel_width
-        self._launch_header_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                tab_header_text('Launch'),
-                {NSFontAttributeName: _MENLO()}))
         required_h = _TOP_BAR_H + _LABEL_H + _ROW_H + _LABEL_H + len(LAUNCH_PROJECTS) * _ROW_H
         self._resize_launch_panel(max(app.settings.panel_min_height, required_h))
         self._launch_sv.addView_inGravity_(_make_line_separator(pw), 1)

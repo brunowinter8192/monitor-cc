@@ -30,7 +30,9 @@ from .system import _focus_session, _focus_worker, _open_or_focus_monitor
 from .sessions_controller import SessionsController
 from .app_settings import _load_settings, _save_settings
 from .panel_lifecycle import (_open_main_panel, _open_tab_name, _close_panel,
-                               _panel_of, _background_panel)
+                               _panel_of, _background_panel, _deferred_close_open)
+from .panel import _wire_header_buttons
+from .panel_tabs import TAB_KEYS
 
 BLINK_DURATION = 0.2
 POLL_INTERVAL  = 1.5
@@ -75,6 +77,15 @@ class _PanelController(NSObject):
         cwd = self._app.panel._lookups.cwd_map.get(sender.tag())
         if cwd:
             _open_or_focus_monitor(cwd)
+
+    def selectTab_(self, sender):
+        app = self._app
+        target = TAB_KEYS[sender.tag()]
+        current = _open_tab_name(app)
+        if current is None or current == target:
+            return
+        NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, current, target))
 
     def showSkillMenu_(self, sender):
         cwd = self._app.panel._lookups.cwd_map.get(sender.tag())
@@ -229,6 +240,9 @@ class CCMenuBarApp(rumps.App):
             self.panel._widgets.quit_btn.setAction_(b'restartApp:')
             self.panel._widgets.kill_btn.setTarget_(self._panel_controller)
             self.panel._widgets.kill_btn.setAction_(b'killApp:')
+            for header in (self.panel._widgets.header_view, self.rag._rag_header,
+                           self.models._models_header, self.launch._launch_header):
+                _wire_header_buttons(header, self._panel_controller)
             self.panel._widgets.panel.setDelegate_(self._panel_controller)
             self.rag._rag_panel.setDelegate_(self._panel_controller)
             self.models._models_panel.setDelegate_(self._panel_controller)
