@@ -129,7 +129,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ### root_report.py (14 LOC)
 
-**Purpose:** Reporter handed (bound to the log path) to `monitor_root.resolve_monitor_cc_root` by `paths.py` — appends the resolved root and its source to `menubar.log`.
+**Purpose:** Reporter handed (bound to the log path) to the shared `monitor_root` module by `paths.py` — appends the resolved root and its source to `menubar.log`.
 **Reads:** —
 **Writes:** one `[paths]` line in `menubar.log`, same line format as `log_menubar`; written directly because `menubar_log` imports `paths`, so calling `log_menubar` from the import-time resolution is a cycle.
 **Called by:** `paths.py`.
