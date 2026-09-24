@@ -1,8 +1,11 @@
 # INFRASTRUCTURE
+import os
+import shutil
 import subprocess
 import sys
-import time
+import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 from src.monitor_janitor import list_monitor_sessions, sweep_sessions, _log_path
@@ -10,39 +13,23 @@ from src.monitor_janitor import list_monitor_sessions, sweep_sessions, _log_path
 _OLD_NAME    = "monitor_cc_testold"
 _NEW_NAME    = "monitor_cc_testnew"
 _WORKER_NAME = "worker-testkeep"
-_OLD_AGE_WAIT   = 2.0
-_TEST_THRESHOLD = 1.0
+_OLD_AGE_BACKDATE = 1000
+_TEST_THRESHOLD   = 500
 
 # ORCHESTRATOR
 
 def test_monitor_sweep_workflow() -> None:
     failures = []
-    old_pid = new_pid = worker_pid = None
+    scratch = Path(tempfile.mkdtemp(prefix="mcsw_", dir="/tmp"))
     try:
-        old_pid = _create_fixture_session(_OLD_NAME)
-        time.sleep(_OLD_AGE_WAIT)
-        new_pid = _create_fixture_session(_NEW_NAME)
-        worker_pid = _create_fixture_session(_WORKER_NAME)
-
-        all_sessions = list_monitor_sessions()
-        names = {name for name, _ in all_sessions}
-        _check(failures, "enumeration includes testold", _OLD_NAME in names)
-        _check(failures, "enumeration includes testnew", _NEW_NAME in names)
-        _check(failures, "enumeration excludes worker-* session", _WORKER_NAME not in names)
-
-        fixture_pair = [(n, c) for n, c in all_sessions if n in (_OLD_NAME, _NEW_NAME)]
-        sweep_sessions(fixture_pair, _TEST_THRESHOLD)
-
-        _check(failures, "testold session killed", not _session_exists(_OLD_NAME))
-        _check(failures, "testnew session spared", _session_exists(_NEW_NAME))
-        _check(failures, "worker-* session untouched", _session_exists(_WORKER_NAME))
-        _check(failures, "testold pane process reaped (no orphan)", not _pid_alive(old_pid))
-        _check(failures, "testnew pane process still alive", _pid_alive(new_pid))
-        _check(failures, "worker-* pane process untouched", _pid_alive(worker_pid))
-        _check(failures, "log recorded testold as KILLED", _log_has(_OLD_NAME, "KILLED"))
-        _check(failures, "log recorded testnew as SPARED", _log_has(_NEW_NAME, "SPARED"))
+        with patch.dict(os.environ, _isolated_env(scratch)):
+            os.environ.pop("TMUX", None)
+            try:
+                _run_checks(failures)
+            finally:
+                _cleanup_fixtures()
     finally:
-        _cleanup_fixtures()
+        shutil.rmtree(scratch, ignore_errors=True)
 
     print()
     if failures:
@@ -54,13 +41,39 @@ def test_monitor_sweep_workflow() -> None:
 
 # FUNCTIONS
 
+def _isolated_env(scratch: Path) -> dict:
+    return {"TMUX_TMPDIR": str(scratch), "MONITOR_CC_ROOT": str(scratch)}
+
+def _run_checks(failures: list) -> None:
+    old_pid = _create_fixture_session(_OLD_NAME)
+    new_pid = _create_fixture_session(_NEW_NAME)
+    worker_pid = _create_fixture_session(_WORKER_NAME)
+
+    all_sessions = list_monitor_sessions()
+    names = {name for name, _ in all_sessions}
+    _check(failures, "enumeration includes testold", _OLD_NAME in names)
+    _check(failures, "enumeration includes testnew", _NEW_NAME in names)
+    _check(failures, "enumeration excludes worker-* session", _WORKER_NAME not in names)
+
+    fixture_pair = [(n, c - _OLD_AGE_BACKDATE if n == _OLD_NAME else c)
+                    for n, c in all_sessions if n in (_OLD_NAME, _NEW_NAME)]
+    sweep_sessions(fixture_pair, _TEST_THRESHOLD)
+
+    _check(failures, "testold session killed", not _session_exists(_OLD_NAME))
+    _check(failures, "testnew session spared", _session_exists(_NEW_NAME))
+    _check(failures, "worker-* session untouched", _session_exists(_WORKER_NAME))
+    _check(failures, "testold pane process reaped (no orphan)", not _pid_alive(old_pid))
+    _check(failures, "testnew pane process still alive", _pid_alive(new_pid))
+    _check(failures, "worker-* pane process untouched", _pid_alive(worker_pid))
+    _check(failures, "log recorded testold as KILLED", _log_has(_OLD_NAME, "KILLED"))
+    _check(failures, "log recorded testnew as SPARED", _log_has(_NEW_NAME, "SPARED"))
+
 def _check(failures: list, desc: str, ok: bool) -> None:
     print(f"  [{'OK  ' if ok else 'FAIL'}] {desc}")
     if not ok:
         failures.append(desc)
 
 def _create_fixture_session(name: str) -> int:
-    subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True)
     subprocess.run(["tmux", "new-session", "-d", "-s", name, "sleep 120"], check=True)
     pid_raw = subprocess.run(
         ["tmux", "list-panes", "-t", name, "-F", "#{pane_pid}"],
@@ -78,12 +91,11 @@ def _log_has(name: str, status: str) -> bool:
     log_path = _log_path()
     if not log_path.exists():
         return False
-    tail = log_path.read_text(encoding='utf-8').splitlines()[-20:]
-    return any(f"{name} " in line and status in line for line in tail)
+    lines = log_path.read_text(encoding='utf-8').splitlines()
+    return any(f"{name} " in line and status in line for line in lines)
 
 def _cleanup_fixtures() -> None:
-    for name in (_OLD_NAME, _NEW_NAME, _WORKER_NAME):
-        subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True)
+    subprocess.run(["tmux", "kill-server"], capture_output=True)
 
 
 if __name__ == "__main__":
