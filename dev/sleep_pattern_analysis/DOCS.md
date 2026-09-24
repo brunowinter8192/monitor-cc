@@ -1,31 +1,31 @@
 # dev/sleep_pattern_analysis/
 
 ## Role
-Empirical analysis of `block_chained_sleep` hook events — classifies the command token before `sleep N` in a blocked Bash chain as trivial-sync, load-bearing, or mixed/unclear, feeding a rewrite-instead-of-block hook design. Touch when re-auditing hook events or expanding the classification sets; not a regression suite.
+Empirical analysis of chained-sleep hook block events: classifies the command before the sleep in a blocked Bash chain as trivial-sync, load-bearing or mixed, feeding a rewrite-instead-of-block hook design. Touch when re-auditing hook events; not a regression suite.
 
 ## Public Interface
-No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bin/python dev/sleep_pattern_analysis/analyze.py [--since YYYY-MM-DD] [--out PATH]`.
+No `__init__.py`. Entry point: `./venv/bin/python dev/sleep_pattern_analysis/analyze.py [--since YYYY-MM-DD] [--out PATH]`.
 
 ## Flow
-`analyze.py` parses CLI args and orchestrates; `sleep_events.py` walks session JSONL files and resolves each blocked hook event to its triggering Bash command; `sleep_parsing.py` extracts per-sleep context records from that command; `sleep_report.py` builds the report and calls `classify.py`, which supplies the token classification rules and appends the classification section to that same report.
+The entry script collects block events from session JSONLs, resolves each to its triggering Bash command, extracts per-sleep context records, builds the Markdown report and appends the classification section.
 
 ## Modules
 
 ### analyze.py (43 LOC)
 
-**Purpose:** Entry script — parses CLI args and orchestrates event collection, sleep parsing, and report generation.
-**Reads:** nothing directly — delegates to `sleep_events._collect_events`.
-**Writes:** `--out` path (default `dev/sleep_pattern_analysis/01_reports/sleep_audit_2026-05-24.md`, a stale hardcoded fallback — callers should always pass `--out` explicitly).
-**Called by:** none — manual CLI.
-**Calls out:** `sleep_events`, `sleep_parsing`, `sleep_report`.
+**Purpose:** Entry script: parses CLI args and orchestrates event collection, sleep parsing and report generation.
+**Reads:** nothing directly; delegates to the event collector.
+**Writes:** the report at the `--out` path. Its default path points to a report that no longer exists, so always pass `--out`.
+**Called by:** none; manual CLI.
+**Calls out:** `sleep_events.py`, `sleep_parsing.py`, `sleep_report.py`.
 
 ---
 
 ### sleep_events.py (105 LOC)
 
-**Purpose:** Walks session JSONL files, resolves each `BLOCKED` `block_chained_sleep` event to its triggering command via a two-pass tool_use_id/uuid map.
-**Reads:** session JSONL files under the user's Claude Code projects directory (`PROJECTS_DIR`).
-**Writes:** nothing — returns the event list.
+**Purpose:** Walks session JSONLs and resolves each blocked event to its triggering command through a two-pass id map.
+**Reads:** session JSONLs under the user's Claude projects directory.
+**Writes:** nothing; returns the event list.
 **Called by:** `analyze.py`.
 **Calls out:** none.
 
@@ -33,9 +33,9 @@ No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bi
 
 ### sleep_parsing.py (108 LOC)
 
-**Purpose:** Extracts per-sleep context records (cmd_before, cmd_after, chain_op, in_loop, is_canonical, in_heredoc) from a triggering command string.
-**Reads:** nothing beyond function args.
-**Writes:** nothing — returns the record list.
+**Purpose:** Extracts per-sleep context records from a triggering command string.
+**Reads:** nothing beyond arguments.
+**Writes:** nothing; returns records.
 **Called by:** `analyze.py`.
 **Calls out:** none.
 
@@ -43,23 +43,23 @@ No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bi
 
 ### sleep_report.py (127 LOC)
 
-**Purpose:** Builds the Markdown report section by section from the parsed records and calls `classify.add_classification()` for the final classification section.
-**Reads:** nothing beyond function args.
-**Writes:** nothing directly — returns the report string; mutates the caller-owned `lines` list in place while building it.
+**Purpose:** Builds the Markdown report section by section and delegates the classification section.
+**Reads:** nothing beyond arguments.
+**Writes:** nothing; returns the report string.
 **Called by:** `analyze.py`.
-**Calls out:** `classify.add_classification()`.
+**Calls out:** `classify.py`.
 
 ---
 
 ### classify.py (88 LOC)
 
-**Purpose:** Token classification constant sets (trivial, load-bearing, mixed-notes) plus `add_classification()`, which appends the classification table to an in-progress report line list.
-**Reads:** nothing — pure constants and logic.
-**Writes:** mutates the caller-owned `lines` list passed in by `sleep_report._build_report()`.
+**Purpose:** Holds the token classification sets and appends the classification table to the in-progress report.
+**Reads:** nothing.
+**Writes:** mutates the caller-owned line list.
 **Called by:** `sleep_report.py`.
 **Calls out:** none.
 
 ---
 
 ## State
-No module owns persistent state. `sleep_report.py` and `classify.py` both mutate the same `lines` list — built and owned by `sleep_report._build_report()`, passed by reference into `classify.add_classification()` for the final section, never read back except to join into the returned report string.
+No persistent state. The report builder and classifier share one caller-owned line list, passed by reference.
