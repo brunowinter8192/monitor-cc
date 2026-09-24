@@ -113,21 +113,14 @@ def _apply_bp4_last_message(messages: list, cc_marker: dict) -> tuple:
 
 def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dict:
     result = dict(payload)
-    bp_count = 0
     cc_marker = {"type": "ephemeral", "ttl": "1h"}
 
-    if _apply_bp1_system(result, cc_marker):
-        bp_count += 1
-    if _apply_bp2_tools(result, cc_marker):
-        bp_count += 1
+    _apply_bp1_system(result, cc_marker)
+    _apply_bp2_tools(result, cc_marker)
 
     messages = result.get("messages", [])
-    messages, hit3 = _apply_bp3_unchanged_tail(messages, prev_mod_messages, cc_marker)
-    if hit3:
-        bp_count += 1
-    messages, hit4 = _apply_bp4_last_message(messages, cc_marker)
-    if hit4:
-        bp_count += 1
+    messages, _ = _apply_bp3_unchanged_tail(messages, prev_mod_messages, cc_marker)
+    messages, _ = _apply_bp4_last_message(messages, cc_marker)
 
     result["messages"] = messages
     return result

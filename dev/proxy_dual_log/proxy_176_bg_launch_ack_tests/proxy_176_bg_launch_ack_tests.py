@@ -7,6 +7,7 @@ while _AREA_ROOT.name != 'proxy_dual_log':
     _AREA_ROOT = _AREA_ROOT.parent
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / 'src'))
+sys.path.insert(0, str(_PROJECT_ROOT))
 
 from proxy_176_bg_launch_ack_cases import (
     test_tool_result_str_content,

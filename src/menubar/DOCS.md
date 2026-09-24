@@ -123,13 +123,23 @@ root) — this package only consumes those.
 
 ---
 
-### paths.py (21 LOC)
+### paths.py (22 LOC)
 
 **Purpose:** Single source of truth for on-disk path constants (per-machine app-support dir and cross-repo shared-rules dir).
-**Reads:** `PROJECT_ROOT` env var (`MONITOR_CC_ROOT`).
+**Reads:** `PROJECT_ROOT` env var via `monitor_root.resolve_monitor_cc_root` (`MONITOR_CC_ROOT` is the resolved path; the winning source goes to `menubar.log` through `root_report.py`).
 **Writes:** creates `_APP_SUPPORT` dir at import.
 **Called by:** `app.py` (`SETTINGS_FILE`), `proc_cache.py` (`HOOKS_FILE`), `system.py` (`PID_FILE`, `MONITOR_CC_ROOT`), `session_launch.py` (`MONITOR_CC_ROOT`), `ghostty.py` (`_APP_SUPPORT`), `model_selection.py` (`MODEL_SELECTION_FILE`, `PROXY_RULES_FILE`), `monitor_sweep_scheduler.py` (`MONITOR_SWEEP_STATE_FILE`, `MONITOR_CC_ROOT`), `menubar_log.py` (`_APP_SUPPORT`), `app_settings.py` (`SETTINGS_FILE`).
 **Calls out:** `pathlib`, `os`.
+
+---
+
+### root_report.py (5 LOC)
+
+**Purpose:** Reporter handed to `monitor_root.resolve_monitor_cc_root` by `paths.py` — writes the resolved root and its source to `menubar.log`.
+**Reads:** —
+**Writes:** one `[paths]` line in `menubar.log` via `log_menubar` (imported lazily because `menubar_log` imports `paths`).
+**Called by:** `paths.py`.
+**Calls out:** —
 
 ---
 
@@ -429,13 +439,13 @@ root) — this package only consumes those.
 
 ---
 
-### setup_menubar.py (30 LOC)
+### setup_menubar.py (29 LOC)
 
 **Purpose:** Plist-writer utility for `app.py:restartApp_` — writes the LaunchAgent plist for either the dev/venv launcher or the py2app-installed bundle.
-**Reads:** `src/menubar/com.brunowinter.monitor-cc-menubar.plist` (template); `PROJECT_ROOT` env var.
+**Reads:** `src/menubar/com.brunowinter.monitor-cc-menubar.plist` (template); `paths.MONITOR_CC_ROOT`.
 **Writes:** `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist`.
 **Called by:** `app.py:restartApp_` (lazy import, branch-specific).
-**Calls out:** `pathlib`, `os`.
+**Calls out:** `pathlib`, `.paths`.
 
 ---
 

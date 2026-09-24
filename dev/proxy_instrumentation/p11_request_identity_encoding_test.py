@@ -1,10 +1,12 @@
 # INFRASTRUCTURE
+import os
 import sys
 from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
 
 from proxy.addon import _request_identity_encoding
 

@@ -8,7 +8,7 @@ sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
 from model_params_test_infra import _RESULTS
 from model_override_injection_tests import (
-    test_legacy_only_unchanged,
+    test_legacy_only_is_ignored,
     test_model_params_hit,
     test_model_params_miss,
     test_suffixed_model_id_is_deliberate_miss,
@@ -17,7 +17,7 @@ from model_override_injection_tests import (
     test_config_load_failure_fails_open,
     test_fixation_pins_model_params_snapshot,
     test_fixation_fresh_instance_picks_up_new_config,
-    test_fixation_legacy_path_pinned_and_unchanged,
+    test_fixation_legacy_only_config_pins_no_op,
     test_fixation_miss_is_pinned_too,
     test_fixation_load_failure_does_not_pin,
 )
@@ -33,7 +33,7 @@ def run_probe_workflow():
     print("=" * 70)
     print("model_params probe — per-model config replacing the legacy model override")
     print("=" * 70)
-    test_legacy_only_unchanged()
+    test_legacy_only_is_ignored()
     test_model_params_hit()
     test_model_params_miss()
     test_suffixed_model_id_is_deliberate_miss()
@@ -42,7 +42,7 @@ def run_probe_workflow():
     test_config_load_failure_fails_open()
     test_fixation_pins_model_params_snapshot()
     test_fixation_fresh_instance_picks_up_new_config()
-    test_fixation_legacy_path_pinned_and_unchanged()
+    test_fixation_legacy_only_config_pins_no_op()
     test_fixation_miss_is_pinned_too()
     test_fixation_load_failure_does_not_pin()
     test_clear_thinking_edit_stripped_when_thinking_disabled()

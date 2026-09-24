@@ -248,7 +248,7 @@ the expected record, an env-var log-path override is honored, tool-error writer 
 
 ---
 
-### test_header_capture.py (170 LOC)
+### test_header_capture.py (173 LOC)
 
 **Purpose:** 13-case smoke for proxy header-capture logic — `anthropic-beta` extraction and
 `_filter_response_headers()` exact-name/prefix filtering.

@@ -106,23 +106,23 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### forwarded_parser.py (284 LOC)
+### forwarded_parser.py (291 LOC)
 
 **Purpose:** Forwarded-log delta reconstruction (continue requests are kept out of the per-family accumulator, see Gotchas) — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`; also owns `_proxy_session_id_for_project` (hashes `os.path.normpath(os.path.expanduser(project_path))`, matching `tmux_launcher.generate_session_name` byte-for-byte) and `_resolve_log_id` (marker-file → log_id resolution; a missing marker falls back to the session id and is noted once per session id in the pane error log, a short or empty marker raises), both shared with `parser.py`. Leaf module — does not import from `parser.py` (parser.py imports these id-resolution helpers from here instead, avoiding a circular import).
-**Reads:** `_forwarded` dual-log JSONL files (incremental by byte position); `.proxy_session_*` marker files (`_resolve_log_id`).
+**Reads:** `_forwarded` dual-log JSONL files (incremental by byte position); `.proxy_session_*` marker files (`_resolve_log_id`); the repo root from `monitor_root` (`_monitor_root`, shared with `parser.py` and `side_logs.py`).
 **Writes:** Nothing — returns `(entry_list, new_position)`, a `{flow_id: messages}` dict, or a log-id string; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`); `_lazy_load_messages_forwarded` fills `entry['messages']` in place and raises `LookupError` when the flow cannot be loaded. An entry outside the keep-last window has no `messages` key (absent means not loaded, never `None`).
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/parser.py` (`_proxy_session_id_for_project`, `_resolve_log_id`), `src/proxy_display/proxy_pane_shared.py` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `src/proxy_display/dual_log_accumulator.py` (`_infer_model_family`), `src/dual_log_cli/project_map.py` (`_proxy_session_id_for_project`)
-**Calls out:** `proxy.message_summary` (`_infer_model_family`, `_summarize_message`), `proxy.logging` (`_compute_diff`), `pane_error_log` (`log_pane_error`)
+**Calls out:** `proxy.message_summary` (`_infer_model_family`, `_summarize_message`), `proxy.logging` (`_compute_diff`), `pane_error_log` (`log_pane_error`, `log_pane_note`), `monitor_root` (`resolve_monitor_cc_root`)
 
 ---
 
-### parser.py (88 LOC)
+### parser.py (81 LOC)
 
 **Purpose:** Proxy log path resolution — marker-file-based resolution of the current proxy session's `_forwarded`/`_stripped`/`_injected`/`_original`/`_errors`/`_response` log paths (`_find_response_log_path` derives the `_response` sibling of a main-log path), and worker log discovery via glob. The marker-file → log_id resolution itself lives in `forwarded_parser._resolve_log_id`, shared by every `find_*_log_path` function here.
 **Reads:** `.proxy_session_*` marker files under the runtime log directory (src/logs/, gitignored).
 **Writes:** Nothing — returns path objects, a session-id string, or a marker mtime float, or `None` when no marker exists; an unreadable marker file's `OSError` propagates to the caller (every pane loop already catches and logs via `pane_error_log`).
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/proxy_pane_shared.py` (`_find_dual_log_paths`), `src/proxy_display/__init__.py` (`find_worker_proxy_log`), `src/panes/warnings_pane.py` (`find_errors_log_path`, `proxy_session_id_for_project`, `get_proxy_session_start_ts`), `src/panes/token_pane.py` (`find_response_log_path`)
-**Calls out:** `forwarded_parser` (`_proxy_session_id_for_project`, `_resolve_log_id`)
+**Calls out:** `forwarded_parser` (`_monitor_root`, `_proxy_session_id_for_project`, `_resolve_log_id`)
 
 ---
 
@@ -142,17 +142,17 @@ populate `messages` for entries the deque window dropped.
 **Reads:** `_stripped`/`_injected`/`_original` dual-log JSONL files (incremental by byte position).
 **Writes:** Nothing — returns the new file position; mutates the `acc_by_family` argument in place; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`, retry-next-poll position unchanged).
 **Called by:** `src/proxy_display/pane.py` (`accumulate_original_tools`), `src/proxy_display/proxy_pane_shared.py` (`accumulate_dual_log`), `src/proxy_display/frozen_turns.py` (`overlay_epoch`), `src/dual_log_cli/overlay.py` (`accumulate_dual_log`, its own independent accumulator per call — never shares state with the panes')
-**Calls out:** `pane_error_log` (`log_pane_error`)
+**Calls out:** `pane_error_log` (`log_pane_error`), `forwarded_parser` (`_monitor_root`)
 
 ---
 
-### side_logs.py (57 LOC)
+### side_logs.py (56 LOC)
 
 **Purpose:** `_response`/`_errors` side-log readers. `read_response_log` reads `_response` entries incrementally (`{request_id: full entry dict}` — headers plus `cc_requested_model`/`proxy_forwarded_model`/`answering_model`, whatever the on-disk entry carries). `scan_worker_errors_logs` globs worker `_errors` dual-logs and reads them incrementally by byte position.
 **Reads:** `_response`/`_errors` dual-log JSONL files (incremental by byte position).
 **Writes:** Nothing — returns tuples; `/tmp/monitor_cc_error.log` on `read_response_log`'s `OSError` and on each skipped `scan_worker_errors_logs` file (via `pane_error_log`, retry-next-poll position unchanged). `scan_worker_errors_logs` requires the project session id and `min_mtime`; without a project there is no worker-errors scan.
 **Called by:** `src/panes/token_pane.py` (`read_response_log`, lazy import), `src/panes/warnings_pane.py` (`scan_worker_errors_logs`, lazy import)
-**Calls out:** `pane_error_log` (`log_pane_error`)
+**Calls out:** `pane_error_log` (`log_pane_error`), `forwarded_parser` (`_monitor_root`)
 
 ---
 

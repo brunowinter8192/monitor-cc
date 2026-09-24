@@ -55,7 +55,7 @@ filters, dedup, and mechanism-verdict evaluation against the real extraction cod
 
 ---
 
-### p3_project_scope_incident_probe.py (213 LOC)
+### p3_project_scope_incident_probe.py (214 LOC)
 
 **Purpose:** Replays a cross-project false-block incident where one project's main session was
 blocked by another project's pending background-task entry in a shared state file.

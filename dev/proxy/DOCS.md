@@ -36,14 +36,14 @@ prefix of a real `_original.jsonl`, for both worker contexts.
 
 **Purpose:** Byte-identity regression harness for `ProxyAddon`'s hook methods themselves, driving a
 real `ProxyAddon` with a fake mitmproxy flow.
-**Reads:** newest `_original.jsonl` under `src/logs/dual_log`, or `ADDON_HOOK_BYTE_IDENTITY_LOG`.
+**Reads:** newest `_original.jsonl` under `src/logs/dual_log`, or `ADDON_HOOK_BYTE_IDENTITY_LOG`; sets `PROXY_LOG_ID` and `MONITOR_CC_ROOT` (temp dir) itself. The hash covers the six dual logs plus captured stderr, which is empty now that the proxy reports errors to `proxy_error.log`.
 **Writes:** nothing outside its own temp directory (cleaned up on exit) — stdout only.
 **Called by:** none — manual regression harness, run before/after a `ProxyAddon` refactor.
 **Calls out:** `src.proxy.addon` (`ProxyAddon`).
 
 ---
 
-### proxy_bgcomplete_tests.py (154 LOC)
+### proxy_bgcomplete_tests.py (155 LOC)
 
 **Purpose:** Smoke tests for the task-notification wakeup-injection single-block fix across the
 completed/failed x with/without output-file/task-id combinations.
@@ -91,7 +91,7 @@ tree — glob on a missing directory yields zero entries, not an error.
 
 ---
 
-### test_role_keyed_rules.py (182 LOC)
+### test_role_keyed_rules.py (183 LOC)
 
 **Purpose:** Unit tests for role-keyed system2 rule selection, covering role selection, degraded
 configs, `exclude_projects`, and end-to-end resolution.
@@ -114,7 +114,7 @@ function from the sibling fixture/cases modules.
 
 ---
 
-### test_strip_fix_fixtures.py (83 LOC)
+### test_strip_fix_fixtures.py (92 LOC)
 
 **Purpose:** Loads the `src.proxy` strip/pass modules under test and builds the shared
 `check()`/content fixtures every case module uses.
@@ -239,7 +239,7 @@ path).
 
 ---
 
-### poread_inject_tests.py (339 LOC)
+### poread_inject_tests.py (340 LOC)
 
 **Purpose:** End-to-end regression guard for `inject_poread.py`'s marker-expansion pass, mint through
 apply, across expansion/determinism/false-positive/race cases.
@@ -251,7 +251,7 @@ apply, across expansion/determinism/false-positive/race cases.
 
 ---
 
-### test_sidecar_delta_chain.py (182 LOC)
+### test_sidecar_delta_chain.py (183 LOC)
 
 **Purpose:** Regression guard isolating the CC-internal zero-tool sidecar call from the
 per-model-family forwarded delta-hash chain.
@@ -268,3 +268,43 @@ No persistent state lives in this directory. Every script builds its own synthet
 `test_role_keyed_rules.py` is the one exception: it repoints `src.proxy.rules_config`'s
 module-level globals (`_SHARED_RULES_DIR`, `_PROXY_RULES_CONFIG`, plus its two caches) for the
 duration of its own run only, never touching the real shared-rules directory.
+
+### test_live_copy_bootstrap.py (133 LOC)
+
+**Purpose:** Builds a mirror repo in a temp directory with the exact copy layout of `claude_proxy_start.sh` (live shim + `.proxy_live_<id>/proxy/`) and proves `src/proxy_addon.py` resolves the live package and the mirror root, with and without `MONITOR_CC_ROOT`, in the non-live layout, and raises for a missing package or root.
+**Reads:** the repo `src/` (copied into the mirror); a stub `mitmproxy` module it writes itself.
+**Writes:** nothing — PASS/FAIL lines and a case count on stdout; cases run in parallel subprocesses.
+**Called by:** none — manual test, run after a `src/proxy/` change.
+**Calls out:** `src.proxy.*`.
+
+---
+
+### test_proxy_env_and_family.py (162 LOC)
+
+**Purpose:** Cases for `PROXY_LOG_ID` (missing raises at addon import, worker id parsing, dual-log file names), `_infer_model_family` (`unknown` for anything but haiku/sonnet/opus, logged once by the addon) and the unmapped-marker raise in `strip_sr`.
+**Reads:** nothing persistent — temp `MONITOR_CC_ROOT`, in-process fakes.
+**Writes:** nothing — PASS/FAIL lines and a case count on stdout; cases run in parallel subprocesses.
+**Called by:** none — manual test, run after a `src/proxy/` change.
+**Calls out:** `src.proxy.*`.
+
+---
+
+### test_proxy_error_log.py (252 LOC)
+
+**Purpose:** Cases proving each formerly stderr-only handler in `src/proxy/` now writes to `proxy_error.log` (request/response hooks fail open, decode/parse bypass, dual-log write failures, 4xx decode, bg_escape event log, poread refusal, schema store), plus log-on-change, size cap and silent logger failure.
+**Reads:** nothing persistent — temp `MONITOR_CC_ROOT`, in-process fakes.
+**Writes:** nothing — PASS/FAIL lines and a case count on stdout; cases run in parallel subprocesses.
+**Called by:** none — manual test, run after a `src/proxy/` change.
+**Calls out:** `src.proxy.*`.
+
+---
+
+### test_proxy_config_trace.py (230 LOC)
+
+**Purpose:** Cases proving config-class swallows (`proxy_rules.json`, rule files, model override, context management, active plugins, exclude list, schema files) return their defaults and are noted in `proxy_error.log` once per changed error, re-arming after a healthy read.
+**Reads:** nothing persistent — temp `HOME` and `MONITOR_CC_ROOT`, in-process fakes.
+**Writes:** nothing — PASS/FAIL lines and a case count on stdout; cases run in parallel subprocesses.
+**Called by:** none — manual test, run after a `src/proxy/` change.
+**Calls out:** `src.proxy.*`.
+
+---
