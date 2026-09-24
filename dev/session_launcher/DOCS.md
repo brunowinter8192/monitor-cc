@@ -7,7 +7,7 @@ Experiments and regression tests for the menubar Launch tab (`src/menubar/launch
 No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m dev.session_launcher.s0_preflight` (the `s*`/`t2` scripts import `dev.session_launcher.space_lib`); `t1_autojump_removal.py` also runs directly.
 
 ## Flow
-`s*` scripts drive real macOS APIs (CGS space queries, CGEventPost, osascript) and write a table under `md/`; `s1` and `s2` visibly switch desktops and are run only with the user's go. `t*` scripts import the real `src/menubar` modules via `importlib`, use fakes and patches, and write a PASS/FAIL table under `md/`.
+`s*` scripts drive real macOS APIs (CGS space queries, CGEventPost, osascript) and write a table under `md/`; `s1` and `s2` visibly switch desktops and are run only with the user's go. `t*` scripts first isolate `HOME` (`test_env.py`), import the real `src/menubar` modules via `importlib`, use fakes and patches, and write a PASS/FAIL table under `md/`.
 
 ## Modules
 
@@ -18,6 +18,16 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 **Writes:** synthetic key and gesture events; `md/<script>.md` via `write_report`.
 **Called by:** `s0_preflight.py`, `s1_switch_probe.py`, `s2_ghostty_window_probe.py`, `t1_autojump_removal.py`, `t2_launch_tab.py`.
 **Calls out:** `ctypes`, `subprocess` (osascript, ps).
+
+---
+
+### test_env.py (19 LOC)
+
+**Purpose:** Redirects `HOME` to a throwaway temp directory before any `src.menubar` import, so tests never touch the production app-support dir, log or settings.
+**Reads:** nothing.
+**Writes:** a temp directory (removed at exit); the `HOME` environment variable of the calling process.
+**Called by:** `t1_autojump_removal.py`, `t2_launch_tab.py` (each `t2` case subprocess isolates itself).
+**Calls out:** `tempfile`, `shutil`.
 
 ---
 
@@ -51,9 +61,9 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t1_autojump_removal.py (141 LOC)
+### t1_autojump_removal.py (152 LOC)
 
-**Purpose:** Regression guard that no Auto-Jump identifier remains in `src/` or `dev/`, that an old settings file still loads, and that the header buttons are static.
+**Purpose:** Regression guard (with isolated HOME) that no Auto-Jump identifier remains in `src/` or `dev/`, that an old settings file still loads, and that the header buttons are static.
 **Reads:** all `.py` under `src/` and `dev/`; tempdir settings files.
 **Writes:** `md/t1_autojump_removal.md`.
 **Called by:** none — run manually after menubar changes; does not move the screen.
@@ -61,9 +71,9 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t2_launch_tab.py (417 LOC)
+### t2_launch_tab.py (435 LOC)
 
-**Purpose:** Ten parallel subprocess cases covering header texts, occupied-desktop marking (marked, never refused), project rows, exact start commands, launch workflow failure stages, click handling, the main-thread PostEvent request on tab open, and `space_switch` units.
+**Purpose:** Eleven parallel subprocess cases (each with its own isolated HOME) covering header texts, log isolation, occupied-desktop marking (marked, never refused), project rows, exact start commands, launch workflow failure stages, click handling, the main-thread PostEvent request on tab open, and `space_switch` units.
 **Reads:** real `src/menubar` launch modules with fakes and patches.
 **Writes:** `md/t2_launch_tab.md`.
 **Called by:** none — run manually after Launch tab changes; does not move the screen.
