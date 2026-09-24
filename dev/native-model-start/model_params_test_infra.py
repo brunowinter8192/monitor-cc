@@ -9,18 +9,14 @@ sys.path.insert(0, str(WORKTREE_ROOT))
 
 from proxy import inject_helpers
 
-_PASS = "\033[32mPASS\033[0m"
-_FAIL = "\033[31mFAIL\033[0m"
-
-_RESULTS = []
-
-
 # FUNCTIONS
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 
 def _with_config(config, fn):

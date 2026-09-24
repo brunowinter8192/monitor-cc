@@ -1,25 +1,38 @@
 # INFRASTRUCTURE
-
 import sys
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.render_msgs import render_msgs
 from src.dual_log_cli.timeline_boundaries import _system_block_chars, _tool_chars
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_untouched_sys_line_unchanged',
+    'test_transformed_sys_line_shows_original_chars_and_tail',
+    'test_desc_stripped_tool_uses_measured_wire_not_derived_from_raw_text',
+    'test_sys_billing_header_untouched',
+    'test_whole_stripped_tool_synthesized_as_standalone_line',
+    'test_whole_stripped_tool_scoped_to_owning_flow',
+    'test_whole_stripped_tool_unresolvable_name_skipped',
+    'test_default_sys_tool_overlay_unchanged',
+]
+
+# ORCHESTRATOR
+
+def test_msgs_sys_tool_overlay_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_msgs_sys_tool_overlay')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _msg(index: int, role: str, chars: int, blocks: list) -> dict:
     return {"index": index, "role": role, "type": blocks[0]["type"], "chars": chars, "blocks": blocks}
@@ -153,24 +166,5 @@ def test_default_sys_tool_overlay_unchanged() -> None:
     check("delta lines still print under the separator, no tail/chars-source change with empty overlays",
           "sys[1]" in got_default and "tool[Bash]" in got_default and "→" not in got_default, got_default)
 
-# ORCHESTRATOR
-
-def test_msgs_sys_tool_overlay_workflow() -> None:
-    test_untouched_sys_line_unchanged()
-    test_transformed_sys_line_shows_original_chars_and_tail()
-    test_desc_stripped_tool_uses_measured_wire_not_derived_from_raw_text()
-    test_sys_billing_header_untouched()
-    test_whole_stripped_tool_synthesized_as_standalone_line()
-    test_whole_stripped_tool_scoped_to_owning_flow()
-    test_whole_stripped_tool_unresolvable_name_skipped()
-    test_default_sys_tool_overlay_unchanged()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_msgs_sys_tool_overlay_workflow()
+if __name__ == '__main__':
+    sys.exit(test_msgs_sys_tool_overlay_workflow())

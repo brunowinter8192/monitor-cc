@@ -1,25 +1,35 @@
 # INFRASTRUCTURE
-
 import sys
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.render_search import render_search
 from src.dual_log_cli.search import find_matches
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_hit_carries_block_chars_not_count',
+    'test_rendered_line_format',
+    'test_small_artifact_distinguishable_from_prose_hit',
+    'test_no_match_unchanged',
+    'test_alignment_across_sessions',
+]
+
+# ORCHESTRATOR
+
+def test_search_chars_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_search_chars')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def test_hit_carries_block_chars_not_count() -> None:
     payload = {"messages": [
@@ -81,21 +91,5 @@ def test_alignment_across_sessions() -> None:
     check("both sessions contribute one hit line each", len(hit_lines) == 2, hit_lines)
     check("chars column ends at the same offset on both lines", len(hit_lines[0]) == len(hit_lines[1]), hit_lines)
 
-# ORCHESTRATOR
-
-def test_search_chars_workflow() -> None:
-    test_hit_carries_block_chars_not_count()
-    test_rendered_line_format()
-    test_small_artifact_distinguishable_from_prose_hit()
-    test_no_match_unchanged()
-    test_alignment_across_sessions()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_search_chars_workflow()
+if __name__ == '__main__':
+    sys.exit(test_search_chars_workflow())

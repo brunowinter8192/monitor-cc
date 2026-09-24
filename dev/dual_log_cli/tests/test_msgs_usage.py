@@ -1,29 +1,42 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_msgs import render_msgs
 from src.dual_log_cli.usage import build_usage_by_flow, _find_transcript
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_separator_shows_resolved_usage',
+    'test_separator_omits_unresolved_usage',
+    'test_separator_default_unchanged',
+    'test_refire_suffix_stays_outside_usage',
+    'test_find_transcript_scopes_to_directories_and_mtime',
+    'test_build_usage_by_flow_main_stem',
+    'test_build_usage_by_flow_worker_stem',
+    'test_build_usage_by_flow_degrades_cleanly',
+]
+
+# ORCHESTRATOR
+
+def test_msgs_usage_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_msgs_usage')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -162,24 +175,5 @@ def test_build_usage_by_flow_degrades_cleanly() -> None:
     check("missing _response stream -> {}",
           build_usage_by_flow({"streams": {}}, [_boundary(0, 1, "t", "f0")]) == {})
 
-# ORCHESTRATOR
-
-def test_msgs_usage_workflow() -> None:
-    test_separator_shows_resolved_usage()
-    test_separator_omits_unresolved_usage()
-    test_separator_default_unchanged()
-    test_refire_suffix_stays_outside_usage()
-    test_find_transcript_scopes_to_directories_and_mtime()
-    test_build_usage_by_flow_main_stem()
-    test_build_usage_by_flow_worker_stem()
-    test_build_usage_by_flow_degrades_cleanly()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_msgs_usage_workflow()
+if __name__ == '__main__':
+    sys.exit(test_msgs_usage_workflow())

@@ -1,13 +1,12 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.timeline_boundaries import request_boundaries
 from src.dual_log_cli.timeline_markers import (
     AmbiguousRequestNumberError,
@@ -16,18 +15,29 @@ from src.dual_log_cli.timeline_markers import (
     request_msg_range,
     resolve_req_range,
 )
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_single_req_resolves_own_group',
+    'test_range_spans_from_f_start_to_t_end',
+    'test_last_req_runs_to_session_end',
+    'test_unknown_req_number_raises',
+    'test_duplicate_req_number_raises',
+]
+
+# ORCHESTRATOR
+
+def test_msgs_req_range_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_msgs_req_range')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _delta_entry(flow_id: str, timestamp: str, messages: int, is_first: bool = False) -> dict:
     return {
@@ -104,21 +114,5 @@ def test_duplicate_req_number_raises() -> None:
               "1" in str(exc) and "0" in str(exc) and "2" in str(exc), str(exc))
     check("duplicate REQ number raises AmbiguousRequestNumberError", raised)
 
-# ORCHESTRATOR
-
-def test_msgs_req_range_workflow() -> None:
-    test_single_req_resolves_own_group()
-    test_range_spans_from_f_start_to_t_end()
-    test_last_req_runs_to_session_end()
-    test_unknown_req_number_raises()
-    test_duplicate_req_number_raises()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_msgs_req_range_workflow()
+if __name__ == '__main__':
+    sys.exit(test_msgs_req_range_workflow())

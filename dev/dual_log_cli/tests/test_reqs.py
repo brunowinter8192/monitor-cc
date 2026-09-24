@@ -1,26 +1,40 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_reqs import render_reqs
 from src.dual_log_cli.timeline_boundaries import request_boundaries
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_single_session_req_lines_show_cr_cc',
+    'test_unresolved_usage_shows_question_marks',
+    'test_refire_collapsed_same_as_msgs',
+    'test_multiple_sessions_blank_line_separated',
+    'test_session_with_zero_requests_prints_nothing',
+    'test_skipped_note_appended',
+    'test_empty_results',
+]
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+# ORCHESTRATOR
+
+def test_reqs_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_reqs')
+
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -50,26 +64,6 @@ def _boundaries(entries: list) -> list:
 
 def _session(stem: str) -> dict:
     return {"stem": stem}
-
-# ORCHESTRATOR
-
-def test_reqs_workflow() -> None:
-    test_single_session_req_lines_show_cr_cc()
-    test_unresolved_usage_shows_question_marks()
-    test_refire_collapsed_same_as_msgs()
-    test_multiple_sessions_blank_line_separated()
-    test_session_with_zero_requests_prints_nothing()
-    test_skipped_note_appended()
-    test_empty_results()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-# FUNCTIONS
 
 def test_single_session_req_lines_show_cr_cc() -> None:
     boundaries = _boundaries([
@@ -140,5 +134,5 @@ def test_empty_results() -> None:
     check("no sessions found, with skipped note", got_skipped == (
         "no sessions found\n\n(1 session skipped — timeline could not be loaded)\n"), got_skipped)
 
-if __name__ == "__main__":
-    test_reqs_workflow()
+if __name__ == '__main__':
+    sys.exit(test_reqs_workflow())

@@ -8,50 +8,40 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 
+sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 from proxy.addon_dual_log import _is_sidecar_payload, _write_request_dual_logs
 from proxy.addon_state import DeltaState, DualLogPaths, SessionIdentity
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from dev.refactoring.strand_runner import strand_workflow
 
-_PASS = "\033[32mPASS\033[0m"
-_FAIL = "\033[31mFAIL\033[0m"
-_RESULTS = []
-
-
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
-
+_STRANDS = [
+    'test_is_sidecar_payload_matches_tool_count',
+    'test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real',
+    'test_real_change_after_sidecar_still_reported',
+]
 
 # ORCHESTRATOR
 
-def run_probe_workflow():
-    print("=" * 70)
-    print("sidecar delta-chain isolation probe (src/proxy/addon_dual_log.py)")
-    print("=" * 70)
-    test_is_sidecar_payload_matches_tool_count()
-    test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real()
-    test_real_change_after_sidecar_still_reported()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-    return passed == total
-
+def run_probe_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_sidecar_delta_chain')
 
 # FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 class _FakeRequest:
     def __init__(self, headers):
         self.headers = headers
 
-
 class _FakeFlow:
     def __init__(self, flow_id, headers=None):
         self.id = flow_id
         self.request = _FakeRequest(headers or {})
-
 
 def _payload(model, tools, system_texts, msg_text="hi"):
     return {
@@ -60,7 +50,6 @@ def _payload(model, tools, system_texts, msg_text="hi"):
         "system": [{"type": "text", "text": t} for t in system_texts],
         "messages": [{"role": "user", "content": msg_text}],
     }
-
 
 def _make_paths(tmp_dir: Path) -> DualLogPaths:
     return DualLogPaths(
@@ -72,7 +61,6 @@ def _make_paths(tmp_dir: Path) -> DualLogPaths:
         response=tmp_dir / "response.jsonl",
     )
 
-
 def _read_jsonl(path: Path) -> list:
     if not path.exists():
         return []
@@ -83,7 +71,6 @@ def _read_jsonl(path: Path) -> list:
             if line:
                 entries.append(json.loads(line))
     return entries
-
 
 def _real_and_sidecar_payloads():
     real_payload = _payload(
@@ -97,14 +84,12 @@ def _real_and_sidecar_payloads():
     )
     return real_payload, sidecar_payload
 
-
 def test_is_sidecar_payload_matches_tool_count():
     print("\n[Test 1] _is_sidecar_payload: tools-count-zero, model-agnostic")
     check("empty tools list -> sidecar", _is_sidecar_payload({"tools": []}))
     check("missing tools key -> sidecar", _is_sidecar_payload({}))
     check("one tool -> not sidecar", not _is_sidecar_payload({"tools": [{"name": "Bash"}]}))
     check("six tools -> not sidecar", not _is_sidecar_payload({"tools": [{"name": f"T{i}"} for i in range(6)]}))
-
 
 def test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real():
     print("\n[Test 2] Sidecar write does not advance the per-family chain")
@@ -150,7 +135,6 @@ def test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real():
               "(the artifact-level marker a reader identifies it by)",
               (sidecar_entry.get("counts") or {}).get("tools") == 0)
 
-
 def test_real_change_after_sidecar_still_reported():
     print("\n[Test 3] A genuine change after a sidecar is still visible in forwarded_delta")
     with tempfile.TemporaryDirectory() as td:
@@ -177,7 +161,5 @@ def test_real_change_after_sidecar_still_reported():
         check("REQ 2's new tool is Read, not something sidecar-derived",
               (last_entry["tools_delta"]["1"] or {}).get("name") == "Read")
 
-
-if __name__ == "__main__":
-    ok = run_probe_workflow()
-    sys.exit(0 if ok else 1)
+if __name__ == '__main__':
+    sys.exit(run_probe_workflow())

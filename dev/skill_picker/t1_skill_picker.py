@@ -4,7 +4,6 @@ import json
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -82,7 +81,7 @@ def _run_case_in_child(name: str) -> None:
         print(json.dumps({'ok': False, 'detail': f'ERROR {exc!r}'}))
 
 def _build_report(results) -> str:
-    lines = ['# t1_skill_picker report', '', f'- time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}',
+    lines = ['# t1_skill_picker report', '',
              '- every case ran in its own subprocess with an isolated HOME, all cases in parallel',
              '- nothing in this test types into a terminal or opens a menu', '',
              '| case | result | detail |', '|---|---|---|']

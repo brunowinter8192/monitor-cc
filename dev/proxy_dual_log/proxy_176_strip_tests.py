@@ -1,3 +1,4 @@
+# INFRASTRUCTURE
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
@@ -8,6 +9,9 @@ from proxy.message_passes import _apply_role_system_strip
 from proxy.strip_inject_delta import _process_messages_section, _MSG_CODE_TO_FN
 from proxy.diff_engine import _diff_messages
 from proxy.logging import _normalize_msg_shape_for_hash
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from dev.refactoring.strand_runner import strand_workflow
 
 _SYSTEM_CONTENT = (
     "The following deferred tools are now available via ToolSearch. "
@@ -16,14 +20,31 @@ _SYSTEM_CONTENT = (
     + "x" * 9400
 )
 
-_PASS = "\033[32mPASS\033[0m"
-_FAIL = "\033[31mFAIL\033[0m"
+_STRANDS = [
+    'test_workflow_blocklist',
+    'test_role_system_strip_fires',
+    'test_role_system_strip_unconditional',
+    'test_role_user_assistant_untouched',
+    'test_idempotency',
+    'test_empty_content_skipped',
+    'test_multiple_system_messages',
+    'test_attribution_rs_code',
+    'test_attribution_user_unaffected',
+]
 
-def check(label, condition):
-    print(f"  {'  '+_PASS if condition else '  '+_FAIL}  {label}")
-    return condition
+# ORCHESTRATOR
 
+def proxy_176_strip_tests_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='proxy_176_strip_tests')
 
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def test_workflow_blocklist():
     print("Fix 1 — Workflow blocklist removal")
@@ -41,8 +62,6 @@ def test_workflow_blocklist():
     check("removed_names == ['Workflow']", removed_names == ["Workflow"])
     print()
 
-
-
 def test_role_system_strip_fires():
     print("Fix 2a — role=system content replaced with '.'")
     messages = [
@@ -57,7 +76,6 @@ def test_role_system_strip_fires():
     check("ops recorded for block 0", ops.get(0, {}).get(0) is not None)
     print()
 
-
 def test_role_system_strip_unconditional():
     print("Fix 2b — strip fires regardless of content (arbitrary string)")
     messages = [{"role": "system", "content": "some future unknown content xyz"}]
@@ -65,7 +83,6 @@ def test_role_system_strip_unconditional():
     check("content → '.' for arbitrary content", result[0]["content"] == ".")
     check("mod-name present", "stripped_role_system_msg" in mods)
     print()
-
 
 def test_role_user_assistant_untouched():
     print("Fix 2c — role=user and role=assistant messages untouched")
@@ -82,7 +99,6 @@ def test_role_user_assistant_untouched():
     check("no changed indices", changed == [])
     print()
 
-
 def test_idempotency():
     print("Fix 2d — idempotency: already-'.' content not re-processed")
     messages = [{"role": "system", "content": "."}]
@@ -92,7 +108,6 @@ def test_idempotency():
     check("no changed indices", changed == [])
     print()
 
-
 def test_empty_content_skipped():
     print("Fix 2e — empty content skipped")
     messages = [{"role": "system", "content": ""}]
@@ -100,7 +115,6 @@ def test_empty_content_skipped():
     check("empty content not modified", result[0]["content"] == "")
     check("no mods", mods == [])
     print()
-
 
 def test_multiple_system_messages():
     print("Fix 2f — multiple role=system messages all stripped")
@@ -116,8 +130,6 @@ def test_multiple_system_messages():
     check("two mods recorded", mods.count("stripped_role_system_msg") == 2)
     check("indices 0 and 2 changed", set(changed) == {0, 2})
     print()
-
-
 
 def test_attribution_rs_code():
     print("Fix 2g — attribution: role=system → code='RS', fn='_apply_role_system_strip'")
@@ -138,7 +150,6 @@ def test_attribution_rs_code():
     check("RS → _apply_role_system_strip in _MSG_CODE_TO_FN", _MSG_CODE_TO_FN.get('RS') == '_apply_role_system_strip')
     print()
 
-
 def test_attribution_user_unaffected():
     print("Fix 2h — attribution: role=user still uses _attribute_chunk (not RS)")
     orig_msgs = [{"role": "user", "content": "The following skills are available for use with the Skill tool\nsome skill text"}]
@@ -156,15 +167,5 @@ def test_attribution_user_unaffected():
     check("user attribution uses content-based path (SK → _apply_cumulative_sr_strips)", fn_value == "_apply_cumulative_sr_strips")
     print()
 
-
-if __name__ == "__main__":
-    test_workflow_blocklist()
-    test_role_system_strip_fires()
-    test_role_system_strip_unconditional()
-    test_role_user_assistant_untouched()
-    test_idempotency()
-    test_empty_content_skipped()
-    test_multiple_system_messages()
-    test_attribution_rs_code()
-    test_attribution_user_unaffected()
-    print("Done.")
+if __name__ == '__main__':
+    sys.exit(proxy_176_strip_tests_workflow())

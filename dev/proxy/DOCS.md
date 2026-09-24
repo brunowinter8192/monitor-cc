@@ -17,6 +17,7 @@ through one real pass function. Output is PASS/FAIL lines to stdout, a `HASH:` l
 written to `dev/proxy/md/` or `/tmp/`. `test_strip_fix.py` fans out into `test_strip_fix_fixtures.py`
 plus several sibling `test_strip_fix_cases_*.py` modules, all loading `src` via
 `importlib.import_module` rather than a module-level `from src.` import.
+Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
 
 ## Modules
 
@@ -26,6 +27,7 @@ plus several sibling `test_strip_fix_cases_*.py` modules, all loading `src` via
 prefix of a real `_original.jsonl`, for both worker contexts.
 **Reads:** newest `_original.jsonl` under `src/logs/dual_log`, or `PROXY_PIPELINE_BYTE_IDENTITY_LOG`.
 **Writes:** nothing — stdout only (`source`, `payloads`, one `HASH:` line).
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Default input is the newest live `_original.jsonl`, which grows while a session runs; pin it with `PROXY_PIPELINE_BYTE_IDENTITY_LOG` on a copied corpus.
 **Called by:** none — manual regression harness, run before/after a `src/proxy/` refactor.
 **Calls out:** `src.proxy.rules`, `src.proxy.cache`, `src.proxy.logging`,
 `src.proxy.strip_inject_delta`, `src.proxy.message_summary`.
@@ -38,12 +40,13 @@ prefix of a real `_original.jsonl`, for both worker contexts.
 real `ProxyAddon` with a fake mitmproxy flow.
 **Reads:** newest `_original.jsonl` under `src/logs/dual_log`, or `ADDON_HOOK_BYTE_IDENTITY_LOG`; sets `PROXY_LOG_ID` and `MONITOR_CC_ROOT` (temp dir) itself. The hash covers the six dual logs plus captured stderr, which is empty now that the proxy reports errors to `proxy_error.log`.
 **Writes:** nothing outside its own temp directory (cleaned up on exit) — stdout only.
+**Kind:** verification aid, not a test: it prints a hash and asserts nothing, a human compares two runs taken before and after a change. Default input is the newest live `_original.jsonl`, which grows while a session runs; pin it with `ADDON_HOOK_BYTE_IDENTITY_LOG` on a copied corpus.
 **Called by:** none — manual regression harness, run before/after a `ProxyAddon` refactor.
 **Calls out:** `src.proxy.addon` (`ProxyAddon`).
 
 ---
 
-### proxy_bgcomplete_tests.py (155 LOC)
+### proxy_bgcomplete_tests.py (160 LOC)
 
 **Purpose:** Smoke tests for the task-notification wakeup-injection single-block fix across the
 completed/failed x with/without output-file/task-id combinations.
@@ -91,7 +94,7 @@ tree — glob on a missing directory yields zero entries, not an error.
 
 ---
 
-### test_role_keyed_rules.py (183 LOC)
+### test_role_keyed_rules.py (204 LOC)
 
 **Purpose:** Unit tests for role-keyed system2 rule selection, covering role selection, degraded
 configs, `exclude_projects`, and end-to-end resolution.
@@ -103,7 +106,7 @@ shared-rules directory.
 
 ---
 
-### test_strip_fix.py (221 LOC)
+### test_strip_fix.py (251 LOC)
 
 **Purpose:** Entry point for the largest suite in this directory — imports and runs every test
 function from the sibling fixture/cases modules.
@@ -114,7 +117,7 @@ function from the sibling fixture/cases modules.
 
 ---
 
-### test_strip_fix_fixtures.py (92 LOC)
+### test_strip_fix_fixtures.py (87 LOC)
 
 **Purpose:** Loads the `src.proxy` strip/pass modules under test and builds the shared
 `check()`/content fixtures every case module uses.
@@ -239,7 +242,7 @@ path).
 
 ---
 
-### poread_inject_tests.py (340 LOC)
+### poread_inject_tests.py (323 LOC)
 
 **Purpose:** End-to-end regression guard for `inject_poread.py`'s marker-expansion pass, mint through
 apply, across expansion/determinism/false-positive/race cases.
@@ -251,7 +254,7 @@ apply, across expansion/determinism/false-positive/race cases.
 
 ---
 
-### test_sidecar_delta_chain.py (183 LOC)
+### test_sidecar_delta_chain.py (165 LOC)
 
 **Purpose:** Regression guard isolating the CC-internal zero-tool sidecar call from the
 per-model-family forwarded delta-hash chain.

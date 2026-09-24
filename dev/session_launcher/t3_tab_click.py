@@ -5,7 +5,6 @@ import json
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -279,7 +278,7 @@ _CASES = {
 }
 
 def _build_report(results) -> str:
-    lines = ['# t3_tab_click report', '', f'- time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}',
+    lines = ['# t3_tab_click report', '',
              '- every case ran in its own subprocess with an isolated HOME, all cases in parallel',
              '- no panel is shown and no real mouse event is sent; clicks use NSButton.performClick_ on unshown panels', '',
              '| case | result | detail |', '|---|---|---|']

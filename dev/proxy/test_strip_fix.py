@@ -2,8 +2,10 @@
 
 # INFRASTRUCTURE
 import sys
+from pathlib import Path
 
-from test_strip_fix_fixtures import PASS, FAIL
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from dev.refactoring.strand_runner import strand_workflow
 from test_strip_fix_cases_templates import (
     t01_task_tools_nag_real_text_block, t02_task_tools_nag_fp_code_literal, t03_task_tools_nag_tool_result_preserved,
     t04_pyright_real, t05_pyright_fp, t06_pyright_tool_result_nested_preserved,
@@ -86,14 +88,21 @@ from test_strip_fix_cases_pasted_content import (
     pc10_pass_role_gate_and_mod_and_ops, pc11_full_pipeline_attribution_via_strip_vocab,
 )
 
+_STRANDS = [
+    'strand_templates',
+    'strand_env_context',
+    'strand_git_attribution',
+    'strand_wakeup',
+    'strand_launch_ack_interrupt',
+    'strand_wrapped_tn',
+    'strand_badge',
+    'strand_pasted_content',
+]
+
 # ORCHESTRATOR
 
-def run_test_strip_fix_workflow():
-    tests = _test_sequence()
-    print(f'Running {len(tests)} tests...\n')
-    for fn in tests:
-        fn()
-    _report_and_exit()
+def run_test_strip_fix_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_strip_fix')
 
 
 # FUNCTIONS
@@ -201,21 +210,42 @@ def _seq_pasted_content() -> list:
     ]
 
 
-def _test_sequence() -> list:
-    return (
-        _seq_templates() + _seq_env_context() + _seq_git_attribution() + _seq_wakeup() + _seq_launch_ack_interrupt()
-        + _seq_wrapped_tn() + _seq_badge() + _seq_pasted_content()
-    )
+def strand_templates() -> None:
+    _run_group(_seq_templates())
 
 
-def _report_and_exit() -> None:
-    total = len(PASS) + len(FAIL)
-    print(f'\n{len(PASS)}/{total} passed')
-    if FAIL:
-        print('FAILED:', FAIL)
-        sys.exit(1)
-    print('ALL PASS')
+def strand_env_context() -> None:
+    _run_group(_seq_env_context())
+
+
+def strand_git_attribution() -> None:
+    _run_group(_seq_git_attribution())
+
+
+def strand_wakeup() -> None:
+    _run_group(_seq_wakeup())
+
+
+def strand_launch_ack_interrupt() -> None:
+    _run_group(_seq_launch_ack_interrupt())
+
+
+def strand_wrapped_tn() -> None:
+    _run_group(_seq_wrapped_tn())
+
+
+def strand_badge() -> None:
+    _run_group(_seq_badge())
+
+
+def strand_pasted_content() -> None:
+    _run_group(_seq_pasted_content())
+
+
+def _run_group(cases: list) -> None:
+    for fn in cases:
+        fn()
 
 
 if __name__ == '__main__':
-    run_test_strip_fix_workflow()
+    sys.exit(run_test_strip_fix_workflow())

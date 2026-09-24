@@ -4,7 +4,6 @@ import json
 import re
 import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -66,7 +65,7 @@ def _check_isolation() -> str:
     log_mod = importlib.import_module('src.menubar.menubar_log')
     assert str(log_mod.MENUBAR_LOG).startswith(str(home)), f'log path {log_mod.MENUBAR_LOG}'
     assert str(paths.SETTINGS_FILE).startswith(str(home)), f'settings path {paths.SETTINGS_FILE}'
-    return f'MENUBAR_LOG={log_mod.MENUBAR_LOG}'
+    return f'MENUBAR_LOG=<home>/{log_mod.MENUBAR_LOG.relative_to(home)}'
 
 def _settings_module():
     return importlib.import_module('src.menubar.app_settings')
@@ -120,7 +119,7 @@ def _check_app_surface() -> str:
     return f'PanelSettings fields {fields}'
 
 def _build_report(results) -> str:
-    lines = ['# t1_autojump_removal report', '', f'- time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', '',
+    lines = ['# t1_autojump_removal report', '',
              '| check | result | detail |', '|---|---|---|']
     for name, ok, detail in results:
         lines.append(f'| {name} | {"PASS" if ok else "FAIL"} | {detail} |')

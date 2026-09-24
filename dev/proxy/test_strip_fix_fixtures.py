@@ -53,20 +53,15 @@ _C = '</system-reminder>'
 _INTERRUPT_MARKER = '[Request interrupted by user]'
 _INTERRUPT_MARKER_TOOL_USE = '[Request interrupted by user for tool use]'
 
-PASS = []
-FAIL = []
-
-
-def check(name, condition, msg=''):
-    if condition:
-        PASS.append(name)
-        print(f'  PASS  {name}')
-    else:
-        FAIL.append(name)
-        print(f'  FAIL  {name}' + (f': {msg}' if msg else ''))
-
-
 # FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
+
 
 def mk_sr(body):
     return f'{_O}\n{body}\n{_C}'

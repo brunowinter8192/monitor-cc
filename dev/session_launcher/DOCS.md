@@ -61,7 +61,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t1_autojump_removal.py (132 LOC)
+### t1_autojump_removal.py (131 LOC)
 
 **Purpose:** Regression guard (with isolated HOME) that no Auto-Jump identifier remains in `src/` or `dev/`, that an old settings file still loads, and that save/`FocusController`/`PanelSettings` carry no Auto-Jump remnants.
 **Reads:** all `.py` under `src/` and `dev/`; tempdir settings files.
@@ -71,7 +71,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t2_launch_tab.py (92 LOC)
+### t2_launch_tab.py (91 LOC)
 
 **Purpose:** Runner for eleven parallel subprocess cases (each with its own isolated HOME) that owns the case table and writes the PASS/FAIL report.
 **Reads:** the case functions of the three `t2_*_cases.py` modules.
@@ -121,7 +121,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t3_tab_click.py (293 LOC)
+### t3_tab_click.py (292 LOC)
 
 **Purpose:** Six parallel subprocess cases for the clickable tab header — header pieces and ring keys, header structure, pixel equivalence with the old single-button header, wiring, click routing via `performClick_`, and re-centering on panel resize.
 **Reads:** real `src/menubar` panel controllers built with a fake app; nothing is shown on screen and no real mouse event is sent.

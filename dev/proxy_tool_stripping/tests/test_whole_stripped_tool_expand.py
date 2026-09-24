@@ -1,28 +1,44 @@
 #!/usr/bin/env python3
+
+# INFRASTRUCTURE
 import json
 import os
 import sys
 import tempfile
 from pathlib import Path
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-
 from src.proxy_display.render_sections import _render_whole_stripped_tool, render_tools
 from src.proxy_display.parser import _find_original_log_path
 from src.proxy_display.dual_log_accumulator import accumulate_original_tools
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS = []
-FAIL = []
+_STRANDS = [
+    't01_collapsed_row_key_and_symbol',
+    't02_expanded_symbol_flips',
+    't03_expanded_shows_description_and_params',
+    't04_expanded_no_tool_def_shows_fallback',
+    't05_whole_stripped_row_uses_original_def_when_available',
+    't06_whole_stripped_row_collapsed_falls_back_when_no_original_available',
+    't07_forwarded_tool_row_unaffected',
+    't08_find_original_log_path',
+    't09_accumulate_original_tools_missing_file_is_noop',
+    't10_accumulate_original_tools_latest_snapshot_per_family',
+]
 
+# ORCHESTRATOR
 
-def check(name, condition, msg=''):
-    if condition:
-        PASS.append(name)
-        print(f'  PASS  {name}')
-    else:
-        FAIL.append(name)
-        print(f'  FAIL  {name}' + (f': {msg}' if msg else ''))
+def test_whole_stripped_tool_expand_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_whole_stripped_tool_expand')
 
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def t01_collapsed_row_key_and_symbol():
     lines, keys = _render_whole_stripped_tool(3, 'Agent', {'description': 'x'}, {})
@@ -31,13 +47,11 @@ def t01_collapsed_row_key_and_symbol():
     check('T01_symbol_collapsed', '▶ Agent' in lines[0], repr(lines[0]))
     check('T01_yellow_bg', '\033[48;2;94;81;47m' in lines[0], repr(lines[0]))
 
-
 def t02_expanded_symbol_flips():
     key = ('stripped_tool', 0, 'ListAgents')
     lines, keys = _render_whole_stripped_tool(0, 'ListAgents', {'description': 'd'}, {key: True})
     check('T02_symbol_expanded', '▼ ListAgents' in lines[0], repr(lines[0]))
     check('T02_key_still_first', keys[0] == key)
-
 
 def t03_expanded_shows_description_and_params():
     key = ('stripped_tool', 2, 'SendFeedback')
@@ -61,7 +75,6 @@ def t03_expanded_shows_description_and_params():
     check('T03_all_lines_yellow_bg', all('\033[48;2;94;81;47m' in l for l in lines), lines)
     check('T03_expanded_key_count', keys.count(None) == len(lines) - 1, f'keys={keys}')
 
-
 def t04_expanded_no_tool_def_shows_fallback():
     key = ('stripped_tool', 5, 'Workflow')
     lines, keys = _render_whole_stripped_tool(5, 'Workflow', None, {key: True})
@@ -69,7 +82,6 @@ def t04_expanded_no_tool_def_shows_fallback():
     check('T04_fallback_text', '(original definition unavailable)' in lines[1], repr(lines[1]))
     check('T04_fallback_yellow', '\033[48;2;94;81;47m' in lines[1], repr(lines[1]))
     check('T04_fallback_key_is_none', keys == [key, None], f'keys={keys}')
-
 
 def _mk_dual_entry(tools_names, tools_defs, stripped_tools, original_tools_by_name=None):
     return {
@@ -83,7 +95,6 @@ def _mk_dual_entry(tools_names, tools_defs, stripped_tools, original_tools_by_na
         '_original_tools_by_name': original_tools_by_name or {},
         'deferred_tools_names': [],
     }
-
 
 def t05_whole_stripped_row_uses_original_def_when_available():
     entry = _mk_dual_entry(
@@ -99,7 +110,6 @@ def t05_whole_stripped_row_uses_original_def_when_available():
     check('T05_agent_original_desc_shown', 'Delegate to a sub-agent' in body, body)
     check('T05_agent_key_present', ('stripped_tool', 0, 'Agent') in keys, f'keys={keys}')
 
-
 def t06_whole_stripped_row_collapsed_falls_back_when_no_original_available():
     entry = _mk_dual_entry(
         tools_names=['Bash'],
@@ -114,7 +124,6 @@ def t06_whole_stripped_row_collapsed_falls_back_when_no_original_available():
     check('T06_row_clickable', ('stripped_tool', 0, 'ListAgents') in keys, f'keys={keys}')
     check('T06_no_content_shown_collapsed', 'unavailable' not in body, body)
 
-
 def t07_forwarded_tool_row_unaffected():
     tool_def = {'name': 'Bash', 'description': 'Run bash commands', 'input_schema': {
         'properties': {'command': {'type': 'string', 'description': 'the command'}}, 'required': ['command'],
@@ -128,19 +137,16 @@ def t07_forwarded_tool_row_unaffected():
     check('T07_bash_param_shown', 'command*: string — the command' in body, body)
     check('T07_no_stripped_tool_keys', not any(isinstance(k, tuple) and k[0] == 'stripped_tool' for k in keys), keys)
 
-
 def t08_find_original_log_path():
     p = _find_original_log_path(Path('/x/y/src/logs/api_requests_abc123.jsonl'))
     check('T08_path_shape', str(p) == '/x/y/src/logs/dual_log/api_requests_abc123_original.jsonl', str(p))
     check('T08_none_input', _find_original_log_path(None) is None)
-
 
 def t09_accumulate_original_tools_missing_file_is_noop():
     acc = {}
     new_pos = accumulate_original_tools(Path('/no/such/file_original.jsonl'), 0, acc)
     check('T09_pos_unchanged', new_pos == 0, new_pos)
     check('T09_acc_empty', acc == {}, acc)
-
 
 def t10_accumulate_original_tools_latest_snapshot_per_family():
     with tempfile.TemporaryDirectory() as td:
@@ -173,25 +179,5 @@ def t10_accumulate_original_tools_latest_snapshot_per_family():
         check('T10_same_dict_reference_preserved', acc['opus'] is opus_dict_ref)
         check('T10_position_advanced_again', pos2 > pos)
 
-
 if __name__ == '__main__':
-    tests = [
-        t01_collapsed_row_key_and_symbol, t02_expanded_symbol_flips,
-        t03_expanded_shows_description_and_params, t04_expanded_no_tool_def_shows_fallback,
-        t05_whole_stripped_row_uses_original_def_when_available,
-        t06_whole_stripped_row_collapsed_falls_back_when_no_original_available,
-        t07_forwarded_tool_row_unaffected,
-        t08_find_original_log_path, t09_accumulate_original_tools_missing_file_is_noop,
-        t10_accumulate_original_tools_latest_snapshot_per_family,
-    ]
-
-    print(f'Running {len(tests)} tests...\n')
-    for fn in tests:
-        fn()
-
-    total = len(PASS) + len(FAIL)
-    print(f'\n{len(PASS)}/{total} passed')
-    if FAIL:
-        print('FAILED:', FAIL)
-        sys.exit(1)
-    print('ALL PASS')
+    sys.exit(test_whole_stripped_tool_expand_workflow())

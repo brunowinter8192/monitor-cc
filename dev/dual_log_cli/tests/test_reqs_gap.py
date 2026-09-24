@@ -1,26 +1,40 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_reqs import render_reqs
 from src.dual_log_cli.timeline_boundaries import request_boundaries
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_gap_one_qualifying_pair',
+    'test_gap_two_adjacent_gaps_sharing_req',
+    'test_gap_no_qualifying_gap',
+    'test_gap_threshold_boundary',
+    'test_gap_cross_turn_dropped',
+    'test_gap_within_turn_kept_beside_cross_turn',
+    'test_gap_no_turn_never_qualifies',
+]
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+# ORCHESTRATOR
+
+def test_reqs_gap_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_reqs_gap')
+
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -59,26 +73,6 @@ def _turns(openers: list) -> dict:
 
 def _req_lines(got: str) -> list:
     return [l for l in got.split("\n") if l.startswith("REQ")]
-
-# ORCHESTRATOR
-
-def test_reqs_gap_workflow() -> None:
-    test_gap_one_qualifying_pair()
-    test_gap_two_adjacent_gaps_sharing_req()
-    test_gap_no_qualifying_gap()
-    test_gap_threshold_boundary()
-    test_gap_cross_turn_dropped()
-    test_gap_within_turn_kept_beside_cross_turn()
-    test_gap_no_turn_never_qualifies()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-# FUNCTIONS
 
 def test_gap_one_qualifying_pair() -> None:
     boundaries = _boundaries([
@@ -167,5 +161,5 @@ def test_gap_no_turn_never_qualifies() -> None:
     got = render_reqs([(_session("s"), boundaries)], gap_minutes=2)
     check("REQs of a session with no turn opener never form a gap", got == "no REQs to show\n", got)
 
-if __name__ == "__main__":
-    test_reqs_gap_workflow()
+if __name__ == '__main__':
+    sys.exit(test_reqs_gap_workflow())

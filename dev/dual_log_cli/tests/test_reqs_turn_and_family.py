@@ -1,27 +1,37 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.discovery import filter_by_family
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_reqs import render_reqs
 from src.dual_log_cli.timeline_boundaries import request_boundaries
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_turn_narrows_before_gap_applies',
+    'test_turn_out_of_range_prints_header_only',
+    'test_filter_by_family',
+]
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+# ORCHESTRATOR
+
+def test_reqs_turn_and_family_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_reqs_turn_and_family')
+
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -51,22 +61,6 @@ def _boundaries(entries: list) -> list:
 
 def _session(stem: str) -> dict:
     return {"stem": stem}
-
-# ORCHESTRATOR
-
-def test_reqs_turn_and_family_workflow() -> None:
-    test_turn_narrows_before_gap_applies()
-    test_turn_out_of_range_prints_header_only()
-    test_filter_by_family()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-# FUNCTIONS
 
 def _text_block(preview: str) -> dict:
     return {"label": "text", "type": "text", "chars": 1, "sig_chars": 0, "preview": preview}
@@ -123,5 +117,5 @@ def test_filter_by_family() -> None:
     check("neither flag set returns the list unchanged",
           [s["stem"] for s in unfiltered] == stems, unfiltered)
 
-if __name__ == "__main__":
-    test_reqs_turn_and_family_workflow()
+if __name__ == '__main__':
+    sys.exit(test_reqs_turn_and_family_workflow())

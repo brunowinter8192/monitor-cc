@@ -16,9 +16,10 @@ No `__init__.py` in this directory. Entry path: run each script directly, e.g.
 
 A test script builds synthetic dicts or writes a temp `_forwarded.jsonl`-shaped file, runs the real
 `src.dual_log_cli` function under test, and compares the result against an expected value via a
-local `check()` helper; a failure list drives the exit code. The probe instead globs the real
+local `check()` helper; a failing `check()` raises so its strand aborts at the first failure. The probe instead globs the real
 dual-log directory for `_original`/`_stripped` stem pairs, runs four corpus-wide measurements, and
 writes a dated report to `md/`.
+Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
 
 ## Modules
 
@@ -33,7 +34,7 @@ recover an earlier request's pre-strip size, backing the sys/tool overlay design
 
 ---
 
-### tests/test_local_time.py (106 LOC)
+### tests/test_local_time.py (109 LOC)
 
 **Purpose:** Proves the UTC-to-local timestamp conversion and every renderer/filter built on it
 agree, including a dynamically built day-boundary-crossing case.
@@ -44,7 +45,7 @@ agree, including a dynamically built day-boundary-crossing case.
 
 ---
 
-### tests/test_msgs_blocks.py (155 LOC)
+### tests/test_msgs_blocks.py (149 LOC)
 
 **Purpose:** Proves `msgs`' block sub-lines render one indented line per block under a multi-block
 message, unchanged single-block format, and correct tool labels.
@@ -55,7 +56,7 @@ message, unchanged single-block format, and correct tool labels.
 
 ---
 
-### tests/test_msgs_overlay.py (141 LOC)
+### tests/test_msgs_overlay.py (135 LOC)
 
 **Purpose:** Proves `msgs`' strip/inject delta tail renders correctly for untouched, single-block
 and multi-block lines, including the `by REQ n` suffix rule.
@@ -66,7 +67,7 @@ and multi-block lines, including the `by REQ n` suffix rule.
 
 ---
 
-### tests/test_msgs_req_range.py (124 LOC)
+### tests/test_msgs_req_range.py (118 LOC)
 
 **Purpose:** Proves `msgs --req F [T]` resolves a REQ or range to the correct msg-index span and
 raises on an unknown or ambiguous REQ number.
@@ -77,7 +78,7 @@ raises on an unknown or ambiguous REQ number.
 
 ---
 
-### tests/test_msgs_sys_delta.py (177 LOC)
+### tests/test_msgs_sys_delta.py (171 LOC)
 
 **Purpose:** Proves `msgs`' sys/tool delta lines tag changed/new entries correctly, exclude the
 billing header, and show only the owning re-fire boundary's lines.
@@ -88,7 +89,7 @@ billing header, and show only the owning re-fire boundary's lines.
 
 ---
 
-### tests/test_msgs_sys_tool_overlay.py (176 LOC)
+### tests/test_msgs_sys_tool_overlay.py (170 LOC)
 
 **Purpose:** Proves the sys/tool strip-inject delta tail shows the original size with a measured
 wire figure, never derived from raw stripped-text length.
@@ -99,7 +100,7 @@ wire figure, never derived from raw stripped-text length.
 
 ---
 
-### tests/test_msgs_usage.py (185 LOC)
+### tests/test_msgs_usage.py (179 LOC)
 
 **Purpose:** Proves the CR/CC prompt-cache separator renders only when a marker's flow_id resolves
 in the usage map, built from a fixture projects tree.
@@ -110,7 +111,7 @@ in the usage map, built from a fixture projects tree.
 
 ---
 
-### tests/test_project_display.py (198 LOC)
+### tests/test_project_display.py (192 LOC)
 
 **Purpose:** Proves the PROJECT-over-CONTEXT rework — stem-to-project resolution, display-stem
 stripping, ambiguous-stem resolution, and the new PROJECT column.
@@ -122,7 +123,7 @@ stripping, ambiguous-stem resolution, and the new PROJECT column.
 
 ---
 
-### tests/test_reqs.py (144 LOC)
+### tests/test_reqs.py (138 LOC)
 
 **Purpose:** Proves `reqs`' fixed `REQ n HH:MM:SS CR c CC c` line form across padding, re-fires,
 multi-session separation and empty results.
@@ -133,7 +134,7 @@ multi-session separation and empty results.
 
 ---
 
-### tests/test_reqs_gap.py (128 LOC)
+### tests/test_reqs_gap.py (165 LOC)
 
 **Purpose:** Proves `reqs --gap MINUTES`'s pairing rule, inclusive threshold, and the once-only rule
 for a REQ bracketing two adjacent gaps.
@@ -144,7 +145,7 @@ for a REQ bracketing two adjacent gaps.
 
 ---
 
-### tests/test_reqs_merged.py (120 LOC)
+### tests/test_reqs_merged.py (132 LOC)
 
 **Purpose:** Proves `reqs --merged` interleaves two sessions' REQs chronologically and that a gap
 bridged by another session does not qualify.
@@ -155,7 +156,7 @@ bridged by another session does not qualify.
 
 ---
 
-### tests/test_reqs_rebuild_drop.py (178 LOC)
+### tests/test_reqs_rebuild_drop.py (172 LOC)
 
 **Purpose:** Proves `reqs --rebuild`/`--drop`'s predicates, strict-inequality boundary, REQ-1
 exemption, and same-session predecessor rule under `--merged`.
@@ -166,7 +167,7 @@ exemption, and same-session predecessor rule under `--merged`.
 
 ---
 
-### tests/test_reqs_turn_and_family.py (127 LOC)
+### tests/test_reqs_turn_and_family.py (121 LOC)
 
 **Purpose:** Proves `reqs --turn` narrows the REQ sequence ahead of `--gap`/`--rebuild`/`--drop`,
 and that `filter_by_family` selects correctly.
@@ -177,7 +178,7 @@ and that `filter_by_family` selects correctly.
 
 ---
 
-### tests/test_search_chars.py (101 LOC)
+### tests/test_search_chars.py (95 LOC)
 
 **Purpose:** Proves `search` reports a block's original-payload chars instead of an occurrence
 count, one hit per matching block, with aligned columns.
@@ -188,7 +189,7 @@ count, one hit per matching block, with aligned columns.
 
 ---
 
-### tests/test_sidecar_exclusion.py (144 LOC)
+### tests/test_sidecar_exclusion.py (138 LOC)
 
 **Purpose:** Proves a zero-tool sidecar entry seeds no boundary, does not pollute the sys/tool
 delta, and is skipped by session counts and `load_last_request`.
@@ -209,7 +210,7 @@ delta, and is skipped by session counts and `load_last_request`.
 
 ---
 
-### tests/test_tool_name_comparison.py (165 LOC)
+### tests/test_tool_name_comparison.py (159 LOC)
 
 **Purpose:** Proves `msgs`' NAME-based tool comparison ignores index shifts, tags removed/changed/
 new correctly, and reproduces a real REQ-196 false positive.
@@ -220,7 +221,7 @@ new correctly, and reproduces a real REQ-196 false positive.
 
 ---
 
-### tests/test_turns.py (251 LOC)
+### tests/test_turns.py (245 LOC)
 
 **Purpose:** Proves `reqs`' always-on turn grouping — opener classification, preview selection,
 turn assignment, duration bands, `--turn N`, and separator survival under filters.
@@ -232,7 +233,7 @@ turn assignment, duration bands, `--turn N`, and separator survival under filter
 
 ---
 
-### tests/test_reqs_pane_numbering.py (57 LOC)
+### tests/test_reqs_pane_numbering.py (55 LOC)
 
 **Purpose:** Runner for the 19 pane-numbering checks of `reqs`, `msgs` and `expand --req`; prints the pass count and exits 1 on failure.
 **Reads:** the check functions of the three `reqs_pane_numbering_*_checks.py` modules.
@@ -242,11 +243,11 @@ turn assignment, duration bands, `--turn N`, and separator survival under filter
 
 ---
 
-### tests/reqs_pane_numbering_fixtures.py (270 LOC)
+### tests/reqs_pane_numbering_fixtures.py (268 LOC)
 
-**Purpose:** Shared `check()` with the `PASS_LIST`/`FAIL_LIST` state and the synthetic forwarded, transcript and response builders for the pane-numbering checks.
+**Purpose:** Shared raising `check()` and the synthetic forwarded, transcript and response builders for the pane-numbering checks.
 **Reads:** nothing external — temp files it writes and removes.
-**Writes:** `PASS_LIST`, `FAIL_LIST` (module state read by the runner).
+**Writes:** nothing — `check()` prints a PASS line or raises.
 **Called by:** the runner and the three check modules.
 **Calls out:** `src.dual_log_cli.numbering`, `.reader`, `.render_reqs`, `.timeline_boundaries`, `src.proxy_display.forwarded_parser`.
 
@@ -282,7 +283,16 @@ turn assignment, duration bands, `--turn N`, and separator survival under filter
 
 ---
 
+### tests/strand_abort_probe.py (79 LOC)
+
+**Purpose:** Proves the strand behaviour of any converted suite — injects one failing strand into a temporary copy and checks the abort, the finished siblings and the exit code.
+**Reads:** the converted suite files named on the command line (relative to `dev/`).
+**Writes:** a temporary `__mut_*` copy next to the suite, deleted before exit; stdout verdicts.
+**Called by:** none — run manually after converting a suite: `python dev/dual_log_cli/tests/strand_abort_probe.py <file> ...`.
+**Calls out:** the suite under test (subprocess).
+
+---
+
 ## State
 
-No shared or mutating state across modules — each test file owns its own module-level
-`PASS_LIST`/`FAIL_LIST`, populated only by its own `check()` calls during that file's own run.
+No shared or mutating state across modules — each strand is its own subprocess and each test file owns its own raising `check()`.

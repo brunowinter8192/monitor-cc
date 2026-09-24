@@ -1,27 +1,38 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.render_msgs import render_msgs
 from src.dual_log_cli.timeline_boundaries import request_boundaries
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_removed_tool_named_not_its_shifted_neighbours',
+    'test_content_change_at_new_position_still_flagged',
+    'test_brand_new_tool_name_is_new',
+    'test_reintroduced_tool_is_new_again',
+    'test_skill_help_shape_end_to_end',
+    'test_render_removed_line_has_no_chars_column',
+]
+
+# ORCHESTRATOR
+
+def test_tool_name_comparison_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_tool_name_comparison')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _delta_entry(flow_id: str, timestamp: str, counts: dict, is_first: bool,
                   tools_delta: dict = None, messages: int = None) -> dict:
@@ -144,22 +155,5 @@ def test_render_removed_line_has_no_chars_column() -> None:
     check("no digit-grouped chars figure or trailing 'c' anywhere on the removed line",
           "," not in lines[1] and not lines[1].rstrip().endswith("c"), lines[1])
 
-# ORCHESTRATOR
-
-def test_tool_name_comparison_workflow() -> None:
-    test_removed_tool_named_not_its_shifted_neighbours()
-    test_content_change_at_new_position_still_flagged()
-    test_brand_new_tool_name_is_new()
-    test_reintroduced_tool_is_new_again()
-    test_skill_help_shape_end_to_end()
-    test_render_removed_line_has_no_chars_column()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_tool_name_comparison_workflow()
+if __name__ == '__main__':
+    sys.exit(test_tool_name_comparison_workflow())
