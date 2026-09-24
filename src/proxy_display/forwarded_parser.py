@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 from ..constants import PROXY_MESSAGES_KEEP_LAST
-from ..pane_error_log import log_pane_error
+from ..pane_error_log import log_pane_error, log_pane_note
 from src.jsonl.jsonl_reader import JsonlReader
 from ..proxy.message_summary import _infer_model_family, _summarize_message
 from ..proxy.logging import _compute_diff
+
+_missing_marker_noted: set = set()
 
 # FUNCTIONS
 
@@ -20,12 +22,19 @@ def _proxy_session_id_for_project(project_path: str) -> str:
 
 def _resolve_log_id(root: str, session_id: str) -> str:
     marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
-    log_id = session_id
-    if marker_file.exists():
-        lines = marker_file.read_text(encoding='utf-8').splitlines()
-        if len(lines) >= 2 and lines[1].strip():
-            log_id = lines[1].strip()
+    if not marker_file.exists():
+        _note_missing_marker(session_id)
+        return session_id
+    log_id = marker_file.read_text(encoding='utf-8').splitlines()[1].strip()
+    if not log_id:
+        raise ValueError(f'empty log id on line 2 of {marker_file}')
     return log_id
+
+def _note_missing_marker(session_id: str) -> None:
+    if session_id in _missing_marker_noted:
+        return
+    _missing_marker_noted.add(session_id)
+    log_pane_note('forwarded_parser', f'no proxy session marker for {session_id}; using the session id as log id')
 
 def _summarize_fwd_message(msg: dict) -> dict:
     s = _summarize_message(msg)
@@ -120,10 +129,11 @@ def _reconstruct_first_request(fwd_e: dict, sys_cnt: int, tools_cnt: int, msg_cn
     return new_system, new_tools, new_summaries, new_summaries
 
 def _reconstruct_delta_request(prev_acc: Optional[dict], fwd_e: dict, sys_cnt: int, tools_cnt: int, msg_cnt: int) -> tuple:
-    prev = prev_acc if prev_acc else {'system': [], 'tools': [], 'messages': []}
-    new_system = _apply_delta_to_list(prev['system'], fwd_e.get('system_delta') or {}, sys_cnt)
-    new_tools = _apply_delta_to_list(prev['tools'], fwd_e.get('tools_delta') or {}, tools_cnt)
-    new_summaries, delta_summaries = _apply_messages_delta(prev['messages'], fwd_e.get('messages_delta') or {}, msg_cnt)
+    if not prev_acc:
+        raise LookupError(f'delta request without earlier state: flow_id={fwd_e.get("flow_id")!r}')
+    new_system = _apply_delta_to_list(prev_acc['system'], fwd_e.get('system_delta') or {}, sys_cnt)
+    new_tools = _apply_delta_to_list(prev_acc['tools'], fwd_e.get('tools_delta') or {}, tools_cnt)
+    new_summaries, delta_summaries = _apply_messages_delta(prev_acc['messages'], fwd_e.get('messages_delta') or {}, msg_cnt)
     return new_system, new_tools, new_summaries, delta_summaries
 
 def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, message_summaries: list, delta_messages: list) -> dict:

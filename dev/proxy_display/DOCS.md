@@ -42,6 +42,16 @@ and asserts PASS/FAIL against a specific predicate/rendering outcome.
 
 ---
 
+### test_forwarded_tripwires.py (      86 LOC)
+
+**Purpose:** Four parallel strands for the forwarded-log tripwires: missing marker noted once, short or empty marker raises, marker log id used, delta request without earlier state raises.
+**Reads:** Temp directories only; `MCFIX_TREE` selects the source tree.
+**Writes:** stdout only (`PASS`/`FAIL` per strand).
+**Called by:** none — manual test.
+**Calls out:** `src.proxy_display.forwarded_parser`.
+
+---
+
 ### render_byte_identity.py (115 LOC)
 
 **Purpose:** Byte-identity harness for the proxy_display render cluster — see Flow above.
