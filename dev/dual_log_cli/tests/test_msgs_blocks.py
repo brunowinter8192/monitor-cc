@@ -1,26 +1,37 @@
 # INFRASTRUCTURE
-
 import sys
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_msgs import render_msgs
 from src.dual_log_cli.timeline_turns import build_turns
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_multiblock_matches_spec_sample',
+    'test_singleblock_unchanged_format',
+    'test_multiblock_line_count_and_order',
+    'test_subline_chars_align_to_parent_column',
+    'test_real_pipeline_tool_labels',
+    'test_req_separator_unchanged',
+]
+
+# ORCHESTRATOR
+
+def test_msgs_blocks_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_msgs_blocks')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -134,22 +145,5 @@ def test_req_separator_unchanged() -> None:
     check("REQ separator format unchanged",
           got.startswith(f"── REQ 1  {_local_clock('2026-08-30T09:00:00Z')} ──\n"), got)
 
-# ORCHESTRATOR
-
-def test_msgs_blocks_workflow() -> None:
-    test_multiblock_matches_spec_sample()
-    test_singleblock_unchanged_format()
-    test_multiblock_line_count_and_order()
-    test_subline_chars_align_to_parent_column()
-    test_real_pipeline_tool_labels()
-    test_req_separator_unchanged()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_msgs_blocks_workflow()
+if __name__ == '__main__':
+    sys.exit(test_msgs_blocks_workflow())

@@ -11,3 +11,7 @@
 ## Equivalence proof
 
 Run before and after with the venv python, `python -m dev.skill_picker.t1_skill_picker`, diff of stdout with the `- time:` line removed. The 12-row table is identical except one detail cell that prints the random temp HOME name (`session_launcher_home_<random>`) in the `isolation` case. Running the script overwrites the tracked `md/t1_skill_picker.md`; it was restored with `git checkout` after each run.
+
+## Phase 3 addition (same session, later task)
+
+A7: `md/t1_skill_picker.md` no longer contains the `- time:` line, and the `isolation` case prints `CLAUDE_DIR=<home>/.claude` instead of the random temp HOME path. Two consecutive runs give byte-identical reports. `p1_real_discovery.py` (a probe that reads the real `~/.claude`) still writes a time line; it is not a test.

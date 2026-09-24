@@ -19,6 +19,7 @@ discoverable key is expanded, then hashes `format_proxy_block`'s output at sever
 `render_system_blocks`/`render_tools`/`render_messages` called directly per entry per width, and
 prints one `HASH:` line. `test_standalone_sidecar.py` builds synthetic entries in-process instead
 and asserts PASS/FAIL against a specific predicate/rendering outcome.
+Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
 
 ## Modules
 
@@ -42,7 +43,7 @@ via `RENDER_BYTE_IDENTITY_LOG_DIR` to pin a frozen quartet for a stable before/a
 
 ---
 
-### test_standalone_sidecar.py (107 LOC)
+### test_standalone_sidecar.py (93 LOC)
 
 **Purpose:** Regression guard confirming `format._is_standalone_entry`'s existing haiku check
 already excludes every CC-internal zero-tool sidecar shape observed in real data from
@@ -57,7 +58,7 @@ already excludes every CC-internal zero-tool sidecar shape observed in real data
 
 ---
 
-### test_req_prefix_turn_headers.py (382 LOC)
+### test_req_prefix_turn_headers.py (347 LOC)
 
 **Purpose:** Regression test for the `REQ #n` row prefix, `Turn` header rows, right-aligned times (one column, truncation, same time in both panes), the HTTP status marker and `status:` line, continue-safe forwarded parsing and REQ-number/turn-header parity with `format_cache_tracker`, on synthetic forwarded lines and turns.
 **Reads:** nothing external — a temp forwarded JSONL and in-process turns.

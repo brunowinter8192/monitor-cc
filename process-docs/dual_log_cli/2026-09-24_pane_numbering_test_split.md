@@ -15,3 +15,10 @@ A wrapper loaded the pre-split file (`git show HEAD:`) and the new runner, ran `
 ## Note on DOCS.md
 
 The area DOCS.md had no entry for `test_reqs_pane_numbering.py` before this change; entries for the runner and the four new modules were added. Other LOC values in that file were not audited.
+
+## Phase 3 additions (same session, later task)
+
+- B9: `test_local_time.py` no longer depends on the host time zone or on `now()`. The two affected cases loop over `Asia/Tokyo` and `America/Los_Angeles` inside a `_fixed_zone` context manager (sets `TZ`, calls `time.tzset()`, restores) with fixed instants: `2026-09-04T18:16:02.582Z` is `2026-09-05 03:16:02` in Tokyo and `2026-09-04 11:16:02` in Los Angeles; `2026-09-04T15:30:00Z` lands on local day 09-05 in Tokyo, `2026-09-05T06:30:00Z` on local day 09-04 in Los Angeles. The old "differs from UTC digits" check was skipped on a UTC machine; the new checks always run. Proven by passing under `TZ=UTC`, `Asia/Kolkata`, `America/New_York`, and by a mutated copy (wrong expected clock) that failed one check.
+- A1-A3: all 17 test files plus `test_reqs_pane_numbering.py` (19 strands; `reqs_pane_numbering_fixtures.py` has the raising `check`) are strand suites. `test_reqs_pane_numbering.py` is the runner whose strand names are the imported `test_*` functions. `strand_abort_probe.py` was added here and works on any converted suite in the other areas too.
+
+Note: the pass counts of the 17 files before and after are equal (for example `test_turns.py` 27, `test_msgs_sys_delta.py` 26, `test_project_display.py` 23).

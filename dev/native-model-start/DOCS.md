@@ -14,7 +14,8 @@ No `__init__.py` in this directory. Each script is its own entry point, run dire
 Synthetic argv (`p1`), mocked config (`p2` and its test-group modules), or recorded dual-log
 payloads (`p3`/`p4`/`p5`) go in. Each script drives real production code (the launcher's parse
 loop mirrored in bash, or a real `ProxyAddon`/`apply_modification_rules` instance) and asserts
-specific invariants. Output is stdout PASS/FAIL plus a timestamped report under `md/`.
+specific invariants. Output is stdout PASS/FAIL plus a fixed-name report `md/p2_model_params_probe.md` for the strand run of `p2`.
+Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
 
 ## Modules
 
@@ -29,7 +30,7 @@ specific invariants. Output is stdout PASS/FAIL plus a timestamped report under 
 
 ---
 
-### p2_model_params_probe.py (83 LOC)
+### p2_model_params_probe.py (54 LOC)
 
 **Purpose:** Entry point for the model_params probe — runs the 15 test groups imported from the
 two test-group modules in order and writes the report.
@@ -41,13 +42,12 @@ two test-group modules in order and writes the report.
 
 ---
 
-### model_params_test_infra.py (27 LOC)
+### model_params_test_infra.py (23 LOC)
 
-**Purpose:** Shared `check()`/`_RESULTS` assertion-recording infra and the `_with_config` helper
+**Purpose:** Shared raising `check()` assertion infra and the `_with_config` helper
 used by every test group in this probe.
 **Reads:** nothing.
-**Writes:** nothing — mutates the shared in-memory `_RESULTS` list other modules import by
-reference.
+**Writes:** nothing — `check()` prints a PASS line or raises `AssertionError`.
 **Called by:** `p2_model_params_probe.py`, `model_override_injection_tests.py`,
 `thinking_context_management_tests.py`.
 **Calls out:** `src.proxy.inject_helpers`.
@@ -73,7 +73,7 @@ self-consistency, the forwarded `thinking` field, and strip-side field attributi
 **Writes:** nothing — results recorded via `model_params_test_infra.check`.
 **Called by:** `p2_model_params_probe.py`.
 **Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging`, `src.proxy.strip_inject_delta`,
-`dev/proxy_dual_log/attribution_coverage/attribution_coverage.py` (loaded via `importlib.util`).
+`dev/proxy_dual_log/attribution_coverage/attribution_coverage_classify.py` (loaded via `importlib.util`).
 
 ---
 
@@ -115,6 +115,4 @@ currently absent; the script raises before writing its report.
 ---
 
 ## State
-No persistent state lives in this directory. `model_params_test_infra.py` owns the one piece of
-shared in-process state, `_RESULTS`, mutated by every test-group module's `check()` call and read
-by `p2_model_params_probe.py` to print/write the pass count — discarded at process exit.
+No persistent state lives in this directory. Test-group modules share only the raising `check()` of `model_params_test_infra.py`; every strand is its own subprocess.

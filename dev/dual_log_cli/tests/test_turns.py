@@ -1,13 +1,12 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_format import _fmt_duration
 from src.dual_log_cli.render_reqs import render_reqs
@@ -18,18 +17,35 @@ from src.dual_log_cli.timeline_grouping import (
     _turn_preview,
     turn_openers,
 )
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_opener_classification',
+    'test_preview_uses_last_text_block',
+    'test_assignment_uses_message_count_not_start_index',
+    'test_group_markers_by_turn_no_openers',
+    'test_fmt_duration_bands',
+    'test_turns_render_matches_milestones_worked_example',
+    'test_turns_no_opener_prints_flat_list_no_separators',
+    'test_turns_by_stem_none_reproduces_flat_listing',
+    'test_turn_selects_exactly_one_turn',
+    'test_turn_missing_from_session_prints_header_only',
+    'test_separator_survives_only_when_a_req_of_its_own_does',
+]
+
+# ORCHESTRATOR
+
+def test_turns_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_turns')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -225,27 +241,5 @@ def test_separator_survives_only_when_a_req_of_its_own_does() -> None:
           f"── turn 2  {_local_clock('2026-09-06T22:37:44Z')}  0s  recap ──\n"
           f"REQ 3   {_local_clock('2026-09-06T22:37:44Z')}  CR 10  CC 40\n" in got, got)
 
-# ORCHESTRATOR
-
-def test_turns_workflow() -> None:
-    test_opener_classification()
-    test_preview_uses_last_text_block()
-    test_assignment_uses_message_count_not_start_index()
-    test_group_markers_by_turn_no_openers()
-    test_fmt_duration_bands()
-    test_turns_render_matches_milestones_worked_example()
-    test_turns_no_opener_prints_flat_list_no_separators()
-    test_turns_by_stem_none_reproduces_flat_listing()
-    test_turn_selects_exactly_one_turn()
-    test_turn_missing_from_session_prints_header_only()
-    test_separator_survives_only_when_a_req_of_its_own_does()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_turns_workflow()
+if __name__ == '__main__':
+    sys.exit(test_turns_workflow())

@@ -17,7 +17,7 @@ from model_params_test_infra import check, _with_config
 # FUNCTIONS
 
 def _load_attribution_coverage_module():
-    path = WORKTREE_ROOT / "dev" / "proxy_dual_log" / "attribution_coverage.py"
+    path = WORKTREE_ROOT / "dev" / "proxy_dual_log" / "attribution_coverage" / "attribution_coverage_classify.py"
     spec = importlib.util.spec_from_file_location("attribution_coverage_probe", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

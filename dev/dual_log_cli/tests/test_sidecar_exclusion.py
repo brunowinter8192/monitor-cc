@@ -1,28 +1,37 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.discovery import build_session
 from src.dual_log_cli.reader import load_last_request
 from src.dual_log_cli.timeline_boundaries import request_boundaries
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_sidecar_seeds_no_boundary_and_does_not_pollute_prev_counts',
+    'test_build_session_excludes_sidecar_from_request_count',
+    'test_load_last_request_skips_trailing_sidecar',
+    'test_load_last_request_unaffected_when_last_line_has_tools',
+]
+
+# ORCHESTRATOR
+
+def test_sidecar_exclusion_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_sidecar_exclusion')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _delta_entry(flow_id: str, timestamp: str, tools: int, messages: int, is_first: bool = False,
                   model: str = "claude-sonnet-5", system: int = 4) -> dict:
@@ -125,20 +134,5 @@ def test_load_last_request_unaffected_when_last_line_has_tools() -> None:
     check("returns the last line when it already carries tools", entry is not None and entry.get("flow_id") == "f1", entry)
     check("nothing skipped", skipped == 0, skipped)
 
-# ORCHESTRATOR
-
-def test_sidecar_exclusion_workflow() -> None:
-    test_sidecar_seeds_no_boundary_and_does_not_pollute_prev_counts()
-    test_build_session_excludes_sidecar_from_request_count()
-    test_load_last_request_skips_trailing_sidecar()
-    test_load_last_request_unaffected_when_last_line_has_tools()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_sidecar_exclusion_workflow()
+if __name__ == '__main__':
+    sys.exit(test_sidecar_exclusion_workflow())

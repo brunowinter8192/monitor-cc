@@ -1,26 +1,40 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_reqs import render_reqs, render_reqs_merged
 from src.dual_log_cli.timeline_boundaries import request_boundaries
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_rebuild_keeps_only_cc_gt_cr',
+    'test_drop_boundary_exact_equal_does_not_qualify',
+    'test_drop_req1_never_qualifies',
+    'test_merged_drop_predecessor_stays_within_session',
+    'test_unresolved_usage_skipped_under_either_flag',
+    'test_rebuild_and_drop_combine_with_and',
+    'test_plain_listing_shows_usage_without_rebuild_or_drop',
+]
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+# ORCHESTRATOR
+
+def test_reqs_rebuild_drop_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_reqs_rebuild_drop')
+
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -50,26 +64,6 @@ def _boundaries(entries: list) -> list:
 
 def _session(stem: str) -> dict:
     return {"stem": stem}
-
-# ORCHESTRATOR
-
-def test_reqs_rebuild_drop_workflow() -> None:
-    test_rebuild_keeps_only_cc_gt_cr()
-    test_drop_boundary_exact_equal_does_not_qualify()
-    test_drop_req1_never_qualifies()
-    test_merged_drop_predecessor_stays_within_session()
-    test_unresolved_usage_skipped_under_either_flag()
-    test_rebuild_and_drop_combine_with_and()
-    test_plain_listing_shows_usage_without_rebuild_or_drop()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-# FUNCTIONS
 
 def test_rebuild_keeps_only_cc_gt_cr() -> None:
     boundaries = _boundaries([
@@ -174,5 +168,5 @@ def test_plain_listing_shows_usage_without_rebuild_or_drop() -> None:
     check("CR/CC print on the plain listing with neither --rebuild nor --drop set",
           got == expected, got)
 
-if __name__ == "__main__":
-    test_reqs_rebuild_drop_workflow()
+if __name__ == '__main__':
+    sys.exit(test_reqs_rebuild_drop_workflow())

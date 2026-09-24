@@ -1,26 +1,40 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_reqs import render_reqs_merged
 from src.dual_log_cli.timeline_boundaries import request_boundaries
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+STEM_A = "api_requests_opus_monitor_cc_1788500000"
+STEM_B = "api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001"
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+_STRANDS = [
+    'test_merged_order_interleaved_across_sessions',
+    'test_merged_gap_interleaved_by_another_session_still_qualifies',
+    'test_merged_gap_across_sessions_dropped',
+    'test_merged_gap_cross_turn_dropped',
+]
+
+# ORCHESTRATOR
+
+def test_reqs_merged_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_reqs_merged')
+
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -59,26 +73,6 @@ def _turns(stems: list, openers: list) -> dict:
 
 def _req_lines(got: str) -> list:
     return [l for l in got.split("\n") if l.startswith("REQ")]
-
-STEM_A = "api_requests_opus_monitor_cc_1788500000"
-STEM_B = "api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001"
-
-# ORCHESTRATOR
-
-def test_reqs_merged_workflow() -> None:
-    test_merged_order_interleaved_across_sessions()
-    test_merged_gap_interleaved_by_another_session_still_qualifies()
-    test_merged_gap_across_sessions_dropped()
-    test_merged_gap_cross_turn_dropped()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-# FUNCTIONS
 
 def test_merged_order_interleaved_across_sessions() -> None:
     boundaries_a = _boundaries([
@@ -134,5 +128,5 @@ def test_merged_gap_cross_turn_dropped() -> None:
     check("under --merged a gap between two turns of one session is dropped",
           got == "no REQs to show\n", got)
 
-if __name__ == "__main__":
-    test_reqs_merged_workflow()
+if __name__ == '__main__':
+    sys.exit(test_reqs_merged_workflow())

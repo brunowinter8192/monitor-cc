@@ -17,6 +17,7 @@ through one real pass function. Output is PASS/FAIL lines to stdout, a `HASH:` l
 written to `dev/proxy/md/` or `/tmp/`. `test_strip_fix.py` fans out into `test_strip_fix_fixtures.py`
 plus several sibling `test_strip_fix_cases_*.py` modules, all loading `src` via
 `importlib.import_module` rather than a module-level `from src.` import.
+Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
 
 ## Modules
 
@@ -45,7 +46,7 @@ real `ProxyAddon` with a fake mitmproxy flow.
 
 ---
 
-### proxy_bgcomplete_tests.py (154 LOC)
+### proxy_bgcomplete_tests.py (158 LOC)
 
 **Purpose:** Smoke tests for the task-notification wakeup-injection single-block fix across the
 completed/failed x with/without output-file/task-id combinations.
@@ -93,7 +94,7 @@ tree — glob on a missing directory yields zero entries, not an error.
 
 ---
 
-### test_role_keyed_rules.py (182 LOC)
+### test_role_keyed_rules.py (204 LOC)
 
 **Purpose:** Unit tests for role-keyed system2 rule selection, covering role selection, degraded
 configs, `exclude_projects`, and end-to-end resolution.
@@ -105,7 +106,7 @@ shared-rules directory.
 
 ---
 
-### test_strip_fix.py (221 LOC)
+### test_strip_fix.py (251 LOC)
 
 **Purpose:** Entry point for the largest suite in this directory — imports and runs every test
 function from the sibling fixture/cases modules.
@@ -116,7 +117,7 @@ function from the sibling fixture/cases modules.
 
 ---
 
-### test_strip_fix_fixtures.py (83 LOC)
+### test_strip_fix_fixtures.py (87 LOC)
 
 **Purpose:** Loads the `src.proxy` strip/pass modules under test and builds the shared
 `check()`/content fixtures every case module uses.
@@ -241,7 +242,7 @@ path).
 
 ---
 
-### poread_inject_tests.py (339 LOC)
+### poread_inject_tests.py (321 LOC)
 
 **Purpose:** End-to-end regression guard for `inject_poread.py`'s marker-expansion pass, mint through
 apply, across expansion/determinism/false-positive/race cases.
@@ -253,7 +254,7 @@ apply, across expansion/determinism/false-positive/race cases.
 
 ---
 
-### test_sidecar_delta_chain.py (182 LOC)
+### test_sidecar_delta_chain.py (163 LOC)
 
 **Purpose:** Regression guard isolating the CC-internal zero-tool sidecar call from the
 per-model-family forwarded delta-hash chain.

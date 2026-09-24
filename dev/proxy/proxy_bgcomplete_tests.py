@@ -1,31 +1,43 @@
+# INFRASTRUCTURE
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
-
 from proxy.message_passes import _apply_first_pass
 from proxy.strip_bg_completed import _WAKEUP_TEXT
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from dev.refactoring.strand_runner import strand_workflow
 
-_PASS = "\033[32mPASS\033[0m"
-_FAIL = "\033[31mFAIL\033[0m"
+_STRANDS = [
+    'b01_completed_with_output_file',
+    'b02_completed_no_output_file',
+    'b03_failed_tn_single_block',
+    'b04_failed_tn_with_output_file',
+]
 
-def check(label, condition, detail=""):
-    status = _PASS if condition else _FAIL
-    suffix = f"  [{detail}]" if detail and not condition else ""
-    print(f"    {status}  {label}{suffix}")
-    return condition
+# ORCHESTRATOR
 
+def proxy_bgcomplete_tests_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='proxy_bgcomplete_tests')
+
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _block_count(content) -> int:
     if isinstance(content, list):
         return len(content)
     return 1
 
-
 def _all_text(content) -> str:
     if isinstance(content, str):
         return content
     return "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
-
 
 def b01_completed_with_output_file():
     print("B01 — completed TN + output-file + task-id → single block, wakeup + Output: + ID:")
@@ -59,7 +71,6 @@ def b01_completed_with_output_file():
           f"removed={removed}")
     print()
 
-
 def b02_completed_no_output_file():
     print("B02 — completed TN, task-id only (no output-file) → single block, wakeup + ID: line")
     task_id = "bphrsnzu7"
@@ -87,7 +98,6 @@ def b02_completed_no_output_file():
     check("B02_injected_correct", injected.get(0) == [expected_injected], f"injected={injected}")
     print()
 
-
 def b03_failed_tn_single_block():
     print("B03 — failed TN, no task-id / no output-file → single block, wakeup only, summary dropped")
     tn = (
@@ -112,7 +122,6 @@ def b03_failed_tn_single_block():
     check("B03_removed_is_tn_block", removed.get(0) and removed[0][0].startswith("<task-notification>"),
           f"removed={removed}")
     print()
-
 
 def b04_failed_tn_with_output_file():
     print("B04 — failed TN + output-file + task-id → single block, wakeup + Output: + ID:")
@@ -145,10 +154,5 @@ def b04_failed_tn_with_output_file():
           f"removed={removed}")
     print()
 
-
-if __name__ == "__main__":
-    b01_completed_with_output_file()
-    b02_completed_no_output_file()
-    b03_failed_tn_single_block()
-    b04_failed_tn_with_output_file()
-    print("Done.")
+if __name__ == '__main__':
+    sys.exit(proxy_bgcomplete_tests_workflow())

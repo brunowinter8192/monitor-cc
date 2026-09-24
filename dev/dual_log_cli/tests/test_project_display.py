@@ -1,12 +1,11 @@
 # INFRASTRUCTURE
-
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.discovery import (
     AmbiguousSessionError,
     UnknownSessionError,
@@ -18,18 +17,7 @@ from src.dual_log_cli.discovery import (
 from src.dual_log_cli.render_expand import render_expand_full
 from src.dual_log_cli.render_sessions import render_sessions
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
-
-PASS_LIST = []
-FAIL_LIST = []
-
-# FUNCTIONS
-
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+from dev.refactoring.strand_runner import strand_workflow
 
 _PROJECT_CWD = "/Users/fake/trading"
 _WORKER_SID = _proxy_session_id_for_project(_PROJECT_CWD)
@@ -37,6 +25,38 @@ _FIXTURE_INDEX = {
     "cwd_to_dir": {_PROJECT_CWD: Path("/fake/projects/-Users-fake-trading")},
     "sid_to_cwd": {_WORKER_SID: _PROJECT_CWD},
 }
+
+_STRANDS = [
+    'test_project_for_stem_worker_resolves_to_project_cwd_not_worktree',
+    'test_project_for_stem_main_resolves_via_label_match',
+    'test_project_for_stem_worker_unresolved_falls_back_to_sid8',
+    'test_project_for_stem_main_unresolved_falls_back_to_label',
+    'test_project_for_stem_unparseable_falls_back_to_raw_stem',
+    'test_project_for_stem_none_index_degrades_cleanly',
+    'test_display_stem_strips_worker_sid_keeps_epoch',
+    'test_display_stem_main_unchanged',
+    'test_display_stem_unparseable_unchanged',
+    'test_resolve_stem_matches_full_stem_and_displayed_form',
+    'test_resolve_stem_ambiguous_across_both_match_sets',
+    'test_filter_sessions_matches_project_path_or_stem',
+    'test_render_sessions_project_column_and_displayed_stem',
+    'test_render_sessions_empty',
+    'test_render_expand_full_project_header_line',
+]
+
+# ORCHESTRATOR
+
+def test_project_display_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_project_display')
+
+# FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def test_project_for_stem_worker_resolves_to_project_cwd_not_worktree() -> None:
     stem = f"api_requests_worker_{_WORKER_SID}_reldist-power_1788726467"
@@ -168,31 +188,5 @@ def test_render_expand_full_project_header_line() -> None:
     check("second header line is 'project   <path>', not 'context   ...'",
           lines[1] == "project   /Users/fake/trading", lines[1])
 
-# ORCHESTRATOR
-
-def test_project_display_workflow() -> None:
-    test_project_for_stem_worker_resolves_to_project_cwd_not_worktree()
-    test_project_for_stem_main_resolves_via_label_match()
-    test_project_for_stem_worker_unresolved_falls_back_to_sid8()
-    test_project_for_stem_main_unresolved_falls_back_to_label()
-    test_project_for_stem_unparseable_falls_back_to_raw_stem()
-    test_project_for_stem_none_index_degrades_cleanly()
-    test_display_stem_strips_worker_sid_keeps_epoch()
-    test_display_stem_main_unchanged()
-    test_display_stem_unparseable_unchanged()
-    test_resolve_stem_matches_full_stem_and_displayed_form()
-    test_resolve_stem_ambiguous_across_both_match_sets()
-    test_filter_sessions_matches_project_path_or_stem()
-    test_render_sessions_project_column_and_displayed_stem()
-    test_render_sessions_empty()
-    test_render_expand_full_project_header_line()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_project_display_workflow()
+if __name__ == '__main__':
+    sys.exit(test_project_display_workflow())

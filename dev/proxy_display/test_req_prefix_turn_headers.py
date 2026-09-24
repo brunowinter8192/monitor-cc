@@ -6,55 +6,51 @@ import tempfile
 from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(WORKTREE_ROOT))
 
-_PASS = "\033[32mPASS\033[0m"
-_FAIL = "\033[31mFAIL\033[0m"
-_RESULTS = []
+sys.path.insert(0, str(WORKTREE_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from dev.refactoring.strand_runner import strand_workflow
 
 _SYSTEM_DELTA = {"0": {"type": "text", "text": "x-anthropic-billing-header: cc_version=1"}}
 _TOOLS_DELTA = {"0": {"name": "Bash", "description": "d", "input_schema": {}}}
 _BEFORE_TURN_2 = "2026-09-24T10:05:00.000Z"
 _TURN_2_START = "2026-09-24T10:10:00.000Z"
+_CALL_TIMES = {
+    "r1": "2026-09-24T10:00:11.000Z",
+    "r2": "2026-09-24T10:00:21.500Z",
+    "r3": "2026-09-24T10:00:31.000Z",
+    "r4": "2026-09-24T10:10:12.000Z",
+}
 
+_STRANDS = [
+    'test_continue_entries_do_not_corrupt_accumulator',
+    'test_lazy_load_of_continue_and_following_create',
+    'test_req_prefix_and_turn_headers',
+    'test_numbering_matches_token_pane',
+    'test_refire_and_unmapped_labels',
+    'test_right_aligned_times_in_both_panes',
+    'test_time_survives_truncation',
+    'test_same_time_for_same_req_in_both_panes',
+    'test_transcript_parser_records_last_entry_time',
+    'test_http_status_marker_and_line',
+]
 
 # ORCHESTRATOR
 
-def run_workflow():
-    print("=" * 70)
-    print("REQ prefix and turn header rows (src/proxy_display/format.py)")
-    print("=" * 70)
-    test_continue_entries_do_not_corrupt_accumulator()
-    test_lazy_load_of_continue_and_following_create()
-    test_req_prefix_and_turn_headers()
-    test_numbering_matches_token_pane()
-    test_refire_and_unmapped_labels()
-    test_right_aligned_times_in_both_panes()
-    test_time_survives_truncation()
-    test_same_time_for_same_req_in_both_panes()
-    test_transcript_parser_records_last_entry_time()
-    test_http_status_marker_and_line()
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-    return passed == total
-
+def run_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_req_prefix_turn_headers')
 
 # FUNCTIONS
 
-def check(label, condition, detail=""):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    if not condition and detail != "":
-        print(f"        detail: {detail}")
-    return condition
-
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _msg(role, text):
     return {"role": role, "content": text}
-
 
 def _fwd(flow_id, ts, model, counts, system_delta, tools_delta, messages_delta, previous_message_id, is_first=False):
     return {
@@ -71,7 +67,6 @@ def _fwd(flow_id, ts, model, counts, system_delta, tools_delta, messages_delta, 
         "messages_delta": messages_delta,
         "diagnostics": {"previous_message_id": previous_message_id},
     }
-
 
 def _forwarded_lines() -> list:
     sonnet = "claude-sonnet-5"
@@ -92,7 +87,6 @@ def _forwarded_lines() -> list:
              {"system": 1, "tools": 0, "messages": 2}, _SYSTEM_DELTA, {}, {"0": _msg("user", "r3")}, "msg_d"),
     ]
 
-
 def _write_forwarded() -> Path:
     handle = tempfile.NamedTemporaryFile(mode="w", suffix="_forwarded.jsonl", delete=False)
     with handle:
@@ -100,19 +94,9 @@ def _write_forwarded() -> Path:
             handle.write(json.dumps(line) + "\n")
     return Path(handle.name)
 
-
-_CALL_TIMES = {
-    "r1": "2026-09-24T10:00:11.000Z",
-    "r2": "2026-09-24T10:00:21.500Z",
-    "r3": "2026-09-24T10:00:31.000Z",
-    "r4": "2026-09-24T10:10:12.000Z",
-}
-
-
 def _call(request_id):
     return {"request_id": request_id, "cache_read": 1000, "cache_creation": 100, "direct": 2,
             "output_tokens": 50, "content_blocks": [], "timestamp": _CALL_TIMES[request_id]}
-
 
 def _turns() -> list:
     return [
@@ -120,15 +104,12 @@ def _turns() -> list:
         {"prompt": "second prompt", "timestamp": _TURN_2_START, "api_calls": [_call("r4")]},
     ]
 
-
 def _request_id_by_flow() -> dict:
     return {"f1": "r1", "f2": "r2", "f3": "r3", "f4": "r4"}
-
 
 def _plain_lines(ansi: str) -> list:
     from src.utils import _ANSI_ESCAPE_RE
     return [_ANSI_ESCAPE_RE.sub("", line).replace("\x1b[K", "").rstrip() for line in ansi.split("\n")]
-
 
 def _parsed_entries() -> list:
     from src.proxy_display.forwarded_parser import _parse_forwarded_log
@@ -138,7 +119,6 @@ def _parsed_entries() -> list:
     finally:
         path.unlink()
     return entries
-
 
 def test_continue_entries_do_not_corrupt_accumulator():
     from src.proxy_display.forwarded_parser import _parse_forwarded_log
@@ -157,7 +137,6 @@ def test_continue_entries_do_not_corrupt_accumulator():
     check("the create after the continues shows +4 messages, so it stays a fresh request",
           entries[4]["diff_from_prev"]["messages_added"] == 4)
 
-
 def test_lazy_load_of_continue_and_following_create():
     from src.proxy_display.forwarded_parser import _lazy_load_messages_forwarded, _parse_forwarded_log
     print("\n[Test 2] lazy load replays continue and create entries consistently")
@@ -173,7 +152,6 @@ def test_lazy_load_of_continue_and_following_create():
         path.unlink()
     check("a continue lazy-loads to its own 2 messages", len(cont["messages"]) == 2)
     check("the create after it lazy-loads to its full 6 messages", len(create["messages"]) == 6)
-
 
 def test_req_prefix_and_turn_headers():
     from src.proxy_display.format import format_proxy_block
@@ -193,7 +171,6 @@ def test_req_prefix_and_turn_headers():
           and lines.index(next(l for l in lines if "REQ #3" in l)) < headers[1] < lines.index(next(l for l in lines if "REQ #4" in l)), lines)
     check("Turn 2 header carries the prompt text", '"second prompt"' in lines[headers[1]], lines[headers[1]])
 
-
 def test_numbering_matches_token_pane():
     from src.format.token_format import format_cache_tracker
     from src.proxy_display.format import format_proxy_block
@@ -211,7 +188,6 @@ def test_numbering_matches_token_pane():
     check("REQ number sequence is identical", proxy_numbers == token_numbers == [1, 2, 3, 4], (proxy_numbers, token_numbers))
     check("Turn header rows are byte-identical", proxy_headers == token_headers, (proxy_headers, token_headers))
 
-
 def test_refire_and_unmapped_labels():
     from src.proxy_display.format import format_proxy_block
     print("\n[Test 5] a refire sharing a request_id shows REQ #n.m")
@@ -221,16 +197,13 @@ def test_refire_and_unmapped_labels():
     labels = [" ".join(line.split()[1:3]) for line in _plain_lines(ansi) if "sonnet" in line]
     check("the second entry of one request_id is REQ #2.1", labels[1:3] == ["REQ #2", "REQ #2.1"], labels)
 
-
 def _cells(text: str) -> int:
     from src.utils import _cell_width
     return sum(_cell_width(ch) for ch in text)
 
-
 def _local(iso: str) -> str:
     from src.utils import format_timestamp
     return format_timestamp(iso)
-
 
 def _pane_rows(pane: str, width: int) -> list:
     from src.format.token_format import format_cache_tracker
@@ -243,7 +216,6 @@ def _pane_rows(pane: str, width: int) -> list:
                                  request_id_by_flow=_request_id_by_flow(), copy_feedback={})
     return [line for line in _plain_lines(ansi) if line.strip()]
 
-
 def _time_columns(rows: list) -> list:
     out = []
     for row in rows:
@@ -254,7 +226,6 @@ def _time_columns(rows: list) -> list:
         if match and (row.startswith("Turn ") or "REQ #" in row or " #" in row):
             out.append((match.group(1), _cells(body), row))
     return out
-
 
 def test_right_aligned_times_in_both_panes():
     print("\n[Test 6] time of day right-aligned in one column on turn rows and REQ rows, both panes, narrow and wide")
@@ -276,7 +247,6 @@ def test_right_aligned_times_in_both_panes():
         check(f"{pane} w={width}: turn row times are the turn timestamps, no inline [time] left",
               [c[0] for c in columns if c[2].startswith("Turn ")] == expected_turn_times and all("[" not in r for r in turn_rows), turn_rows)
 
-
 def test_time_survives_truncation():
     print("\n[Test 7] a row too long for the pane is cut, the right-aligned time stays")
     for pane, width in (("token", 62), ("proxy", 40)):
@@ -288,7 +258,6 @@ def test_time_survives_truncation():
     from src.panes.token_search import build_token_search_matches
     matches = build_token_search_matches(_local(_CALL_TIMES["r2"]), _turns(), 120, {})
     check("token pane search matches a REQ by its time text", (0, 1) in matches, matches)
-
 
 def test_same_time_for_same_req_in_both_panes():
     print("\n[Test 8] the same REQ shows the same time in the token pane and the proxy pane")
@@ -307,7 +276,6 @@ def test_same_time_for_same_req_in_both_panes():
         check(f"w={width}: token pane REQ times equal the transcript call times", token == expected, token)
         check(f"w={width}: proxy pane REQ times equal the token pane's", proxy == token, (proxy, token))
 
-
 def test_transcript_parser_records_last_entry_time():
     from src.jsonl.jsonl_cache_turns import extract_cache_turns
     print("\n[Test 9] extract_cache_turns keeps the LAST assistant entry time of a request")
@@ -320,14 +288,12 @@ def test_transcript_parser_records_last_entry_time():
     turns = extract_cache_turns(messages)
     check("one call, timestamp of the later entry", len(turns[0]["api_calls"]) == 1 and turns[0]["api_calls"][0]["timestamp"] == "2026-09-24T10:00:09.000Z", turns)
 
-
 def _status_entries() -> list:
     entries = _parsed_entries()
     statuses = {"f1": 200, "f2": 200, "f3": 200, "f4": 200, "f5": 404}
     for entry in entries:
         entry["http_status"] = statuses.get(entry["flow_id"])
     return entries
-
 
 def test_http_status_marker_and_line() -> None:
     from src.proxy_display.format import format_proxy_block
@@ -377,6 +343,5 @@ def test_http_status_marker_and_line() -> None:
     check("REQ numbers and times stay the parity ones from Test 8 (same rows, numbers 1..4)",
           [int(m.group(1)) for l in lines for m in [re.search(r"REQ #(\d+)\b", l)] if m] == [1, 2, 3, 4])
 
-
-if __name__ == "__main__":
-    sys.exit(0 if run_workflow() else 1)
+if __name__ == '__main__':
+    sys.exit(run_workflow())

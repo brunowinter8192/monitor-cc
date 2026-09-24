@@ -10,8 +10,6 @@ from src.dual_log_cli.render_reqs import render_reqs
 from src.dual_log_cli.timeline_boundaries import continue_requests, request_boundaries
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
 
-PASS_LIST = []
-FAIL_LIST = []
 
 _PROJECT_CWD = "/Users/fake/pane-project"
 _WORKER = "fake-worker"
@@ -21,12 +19,12 @@ _HAIKU = "claude-haiku-4-5-20251001"
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 
 def _clock(iso_timestamp: str) -> str:

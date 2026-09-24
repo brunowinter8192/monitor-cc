@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-
 import os
 import sys
 import time
@@ -8,15 +7,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.discovery import filter_sessions
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_format import _clock, _window_date, fmt_timestamp
 from src.dual_log_cli.usage import _epoch_from_iso
-
-PASS_LIST = []
-FAIL_LIST = []
+from dev.refactoring.strand_runner import strand_workflow
 
 _ZONE_CLOCKS = [("Asia/Tokyo", "2026-09-05 03:16:02"), ("America/Los_Angeles", "2026-09-04 11:16:02")]
 _DAY_BOUNDARY_CASES = [
@@ -24,7 +21,26 @@ _DAY_BOUNDARY_CASES = [
     ("America/Los_Angeles", "2026-09-05T06:30:00.000Z", "2026-09-04", "2026-09-05"),
 ]
 
+_STRANDS = [
+    'test_local_datetime_matches_independent_conversion',
+    'test_render_helpers_use_local_time',
+    'test_late_timestamp_lands_on_correct_local_day',
+    'test_epoch_from_iso_matches_true_utc_epoch',
+]
+
+# ORCHESTRATOR
+
+def test_local_time_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_local_time')
+
 # FUNCTIONS
+
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 @contextmanager
 def _fixed_zone(zone: str):
@@ -39,13 +55,6 @@ def _fixed_zone(zone: str):
         else:
             os.environ["TZ"] = previous
         time.tzset()
-
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
 
 def test_local_datetime_matches_independent_conversion() -> None:
     for zone, expected_clock in _ZONE_CLOCKS:
@@ -91,20 +100,5 @@ def test_epoch_from_iso_matches_true_utc_epoch() -> None:
     check("_epoch_from_iso returns None for empty/unparseable input",
           _epoch_from_iso("") is None and _epoch_from_iso("garbage") is None)
 
-# ORCHESTRATOR
-
-def test_local_time_workflow() -> None:
-    test_local_datetime_matches_independent_conversion()
-    test_render_helpers_use_local_time()
-    test_late_timestamp_lands_on_correct_local_day()
-    test_epoch_from_iso_matches_true_utc_epoch()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_local_time_workflow()
+if __name__ == '__main__':
+    sys.exit(test_local_time_workflow())

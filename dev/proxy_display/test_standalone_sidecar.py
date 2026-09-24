@@ -4,24 +4,32 @@ import sys
 from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
+
 sys.path.insert(0, str(WORKTREE_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from dev.refactoring.strand_runner import strand_workflow
 
-_PASS = "\033[32mPASS\033[0m"
-_FAIL = "\033[31mFAIL\033[0m"
-_RESULTS = []
+_STRANDS = [
+    'test_is_standalone_entry_observed_shapes',
+    'test_haiku_sidecar_does_not_consume_a_req_number',
+]
 
+# ORCHESTRATOR
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
-
+def run_probe_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_standalone_sidecar')
 
 # FUNCTIONS
 
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
+
 def _strip(line: str, ansi_re) -> str:
     return ansi_re.sub('', line)
-
 
 def test_is_standalone_entry_observed_shapes():
     from src.proxy_display.format import _is_standalone_entry
@@ -39,7 +47,6 @@ def test_is_standalone_entry_observed_shapes():
               'model': 'claude-opus-4-8', 'tools_total_chars': 500, 'system_total_chars': 300,
           }))
 
-
 def _entry(model, message_count, tools_total_chars, system_total_chars, messages_added, flow_id, ts):
     return {
         'model': model,
@@ -52,14 +59,12 @@ def _entry(model, message_count, tools_total_chars, system_total_chars, messages
         'tools_hash': None,
     }
 
-
 def _labels(lines, ansi_re):
     out = []
     for line in lines:
         m = re.search(r'(#\d+(?:\.\d+)?|[HS])\s+\w', _strip(line, ansi_re))
         out.append(m.group(1) if m else None)
     return out
-
 
 def test_haiku_sidecar_does_not_consume_a_req_number():
     from src.proxy_display.render_turn import render_turn_expanded
@@ -84,24 +89,5 @@ def test_haiku_sidecar_does_not_consume_a_req_number():
           all('REQ #' in _strip(l, _ANSI_ESCAPE_RE) for l, k in zip(lines, keys)
               if isinstance(k, tuple) and k[0] == 'req' and 'haiku' not in _strip(l, _ANSI_ESCAPE_RE)))
 
-
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("standalone-sidecar REQ-numbering probe (src/proxy_display/format.py)")
-    print("=" * 70)
-    test_is_standalone_entry_observed_shapes()
-    test_haiku_sidecar_does_not_consume_a_req_number()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-    return passed == total
-
-
-if __name__ == "__main__":
-    ok = run_probe_workflow()
-    sys.exit(0 if ok else 1)
+if __name__ == '__main__':
+    sys.exit(run_probe_workflow())

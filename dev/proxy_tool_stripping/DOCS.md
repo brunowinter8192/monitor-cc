@@ -16,10 +16,11 @@ dev/proxy_tool_stripping/tests/test_whole_stripped_tool_expand.py`.
 `tests/test_whole_stripped_tool_expand.py` drives real render/parser functions against synthetic
 fixtures and prints PASS/FAIL. `probe_trailing_message_shapes.py` scans real `_stripped.jsonl` text
 for a specific tag shape and writes a findings report.
+Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
 
 ## Modules
 
-### tests/test_whole_stripped_tool_expand.py (197 LOC)
+### tests/test_whole_stripped_tool_expand.py (183 LOC)
 
 **Purpose:** Verifies the whole-stripped tool row expand feature — a `TOOL_BLOCKLIST`-stripped tool's
 drill-down row expands to show the original description/schema sourced from the session's `_original`

@@ -27,6 +27,7 @@ project/worktree root as two levels above that; a handful additionally derive th
 root specifically for the dual-log corpus, since that data is gitignored and worktree-local copies
 never have it (see `process-docs/proxy_dual_log/` for the exact split and why the corpus lookup
 keeps its pre-existing two-candidate fallback rather than being collapsed to one).
+Converted suites run as parallel strands through `dev/refactoring/strand_runner.py`: `python <file>` starts one subprocess per strand (`--strand <name>`), each strand aborts at its first failing `check`, sibling strands still finish, and the exit code is 1 if any strand aborted. The strand names are the module constant `_STRANDS`.
 
 ## Modules
 
@@ -64,7 +65,7 @@ spans as equal/stripped/injected via `difflib`.
 
 ---
 
-### proxy_176_agent_types_tests.py (142 LOC)
+### proxy_176_agent_types_tests.py (146 LOC)
 
 **Purpose:** Unit tests for the CC 2.1.176 agent-types system-reminder strip and its attribution
 code.

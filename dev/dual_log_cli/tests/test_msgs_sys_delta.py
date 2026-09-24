@@ -1,29 +1,39 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 
+sys.path.insert(0, str(_HERE.parents[2]))
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_msgs import render_msgs
 from src.dual_log_cli.timeline_boundaries import request_boundaries
 from src.dual_log_cli.timeline_markers import request_markers
+from dev.refactoring.strand_runner import strand_workflow
 
-PASS_LIST = []
-FAIL_LIST = []
+_STRANDS = [
+    'test_first_request_lists_everything_no_tag',
+    'test_later_request_excludes_billing_header_and_tags_changed_new',
+    'test_billing_header_only_delta_yields_no_lines',
+    'test_render_msgs_prints_delta_lines_under_separator',
+    'test_refire_group_shows_owner_lines_only',
+]
+
+# ORCHESTRATOR
+
+def test_msgs_sys_delta_workflow() -> int:
+    return strand_workflow(globals(), __file__, _STRANDS, title='test_msgs_sys_delta')
 
 # FUNCTIONS
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def check(name, condition, detail=""):
+    if not condition:
+        print(f"  FAIL  {name}" + (f": {detail}" if detail != "" else ""))
+        raise AssertionError(name)
+    print(f"  PASS  {name}")
+    return True
 
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
@@ -157,21 +167,5 @@ def test_refire_group_shows_owner_lines_only() -> None:
     check("owner marker's sys_lines are the re-fire's own, not the first request's 3 blocks",
           [l["label"] for l in owner_marker["sys_lines"]] == ["sys[1]"], owner_marker["sys_lines"])
 
-# ORCHESTRATOR
-
-def test_msgs_sys_delta_workflow() -> None:
-    test_first_request_lists_everything_no_tag()
-    test_later_request_excludes_billing_header_and_tags_changed_new()
-    test_billing_header_only_delta_yields_no_lines()
-    test_render_msgs_prints_delta_lines_under_separator()
-    test_refire_group_shows_owner_lines_only()
-
-    total = len(PASS_LIST) + len(FAIL_LIST)
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
-    print("ALL PASS")
-
-if __name__ == "__main__":
-    test_msgs_sys_delta_workflow()
+if __name__ == '__main__':
+    sys.exit(test_msgs_sys_delta_workflow())
