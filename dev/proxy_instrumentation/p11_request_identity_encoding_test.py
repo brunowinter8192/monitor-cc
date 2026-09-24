@@ -7,13 +7,19 @@ sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
 from proxy.addon import _request_identity_encoding
+from dev.refactoring.strand_runner import strand_workflow
+
+_STRAND_NAMES = [
+    '_test_sets_accept_encoding_identity_from_empty',
+    '_test_overwrites_existing_accept_encoding_value',
+]
+_TITLE = 'p11_request_identity_encoding_test'
+_REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'p11_request_identity_encoding_test.md'
 
 # ORCHESTRATOR
 
 def run_identity_encoding_tests_workflow() -> None:
-    _test_sets_accept_encoding_identity_from_empty()
-    _test_overwrites_existing_accept_encoding_value()
-    print("[p11_request_identity_encoding_test] all checks passed")
+    sys.exit(strand_workflow(globals(), __file__, _STRAND_NAMES, _REPORT_PATH, _TITLE))
 
 # FUNCTIONS
 

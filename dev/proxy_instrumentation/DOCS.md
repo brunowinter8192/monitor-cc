@@ -122,7 +122,7 @@ render comparison for one classified record.
 
 ---
 
-### p8_answering_model_probe_test.py (97 LOC)
+### p8_answering_model_probe_test.py (103 LOC)
 
 **Purpose:** Unit-level regression guard for `response_model_probe.make_answering_model_probe`'s
 SSE model-name extraction and pass-through fidelity.
@@ -133,7 +133,7 @@ SSE model-name extraction and pass-through fidelity.
 
 ---
 
-### p9_response_entry_abort_survival_test.py (128 LOC)
+### p9_response_entry_abort_survival_test.py (141 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._write_response_entry` and the
 `response()`/`error()` dual-hook wiring across abort/duplicate/override scenarios.
@@ -158,7 +158,7 @@ the new fields.
 
 ---
 
-### p10_model_mismatch_warning_test.py (196 LOC)
+### p10_model_mismatch_warning_test.py (202 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._write_model_mismatch_entry`/
 `_write_response_and_mismatch` covering exactly-one-sentence, dedup, and real pane rendering.
@@ -172,7 +172,7 @@ mismatch-writing or `warnings_pane`.
 
 ---
 
-### p11_request_identity_encoding_test.py (51 LOC)
+### p11_request_identity_encoding_test.py (57 LOC)
 
 **Purpose:** Unit-level regression guard for `addon._request_identity_encoding` — verifies it sets
 and overwrites `accept-encoding: identity` on the outbound request.
