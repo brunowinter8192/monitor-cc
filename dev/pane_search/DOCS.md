@@ -12,7 +12,7 @@ Each suite splits into an entry script, a fixtures module and one or more case m
 
 ## Modules
 
-### p1_full_sweep_cost_probe.py (50 LOC)
+### p1_full_sweep_cost_probe.py (51 LOC)
 
 **Purpose:** Orchestrates the reconstruction cost probe end to end and writes the report.
 **Reads:** a forwarded dual-log JSONL (argument, or the newest one on the dev machine; gitignored runtime data).
@@ -22,7 +22,7 @@ Each suite splits into an entry script, a fixtures module and one or more case m
 
 ---
 
-### p1_full_sweep_reconstruct.py (161 LOC)
+### p1_full_sweep_reconstruct.py (171 LOC)
 
 **Purpose:** Local reimplementation of the forwarded-delta reconstruction (lazy per-entry and one-sweep) plus wall-time and RAM wrappers.
 **Reads:** a forwarded-delta JSONL passed as argument.

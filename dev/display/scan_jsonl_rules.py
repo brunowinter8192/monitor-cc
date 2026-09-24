@@ -11,6 +11,18 @@ SYSTEM_REMINDER_PATTERN = re.compile(r'<system-reminder>(.*?)</system-reminder>'
 CONTENTS_OF_PATTERN = re.compile(r'Contents of ([^\n]+)')
 
 
+_SKIPPED_LINES = 0
+
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
+
 def find_latest_jsonl(project_name: str = None) -> Path:
     if project_name:
         project_dir = PROJECTS_DIR / project_name
@@ -38,6 +50,7 @@ def _collect_rule_locations(filepath: Path) -> list:
             try:
                 msg = json.loads(line)
             except json.JSONDecodeError:
+                _note_skipped_line()
                 continue
 
             msg_type = msg.get('type', 'unknown')
@@ -93,6 +106,7 @@ def scan_jsonl(filepath: Path) -> None:
 
     _print_rule_locations(rule_locations)
     _print_parseable_names(rule_locations)
+    _report_skipped_lines()
 
 
 if __name__ == '__main__':

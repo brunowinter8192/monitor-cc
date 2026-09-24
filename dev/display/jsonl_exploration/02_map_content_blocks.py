@@ -11,6 +11,18 @@ DEFAULT_PROJECT = None
 REPORTS_DIR = Path(__file__).parent / '02_reports'
 
 
+_SKIPPED_LINES = 0
+
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
+
 def find_latest_jsonl(project_name: str = None) -> Path:
     if project_name:
         project_dir = PROJECTS_DIR / project_name
@@ -109,6 +121,7 @@ def _collect_block_stats(filepath: Path) -> tuple:
             try:
                 msg = json.loads(line)
             except json.JSONDecodeError:
+                _note_skipped_line()
                 continue
 
             msg_type = msg.get('type', 'MISSING')
@@ -253,6 +266,7 @@ def main():
     output_path = REPORTS_DIR / f'content_blocks_{timestamp}.md'
     output_path.write_text(report, encoding='utf-8')
     print(f'Report written to: {output_path}')
+    _report_skipped_lines()
 
 
 if __name__ == '__main__':

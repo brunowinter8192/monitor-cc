@@ -41,6 +41,7 @@ def scan_all_files(jsonl_files):
     unknown_top = {}
     unknown_content = {}
     parse_errors = 0
+    unreadable_files = 0
     total_lines = 0
     version_counter = Counter()
 
@@ -48,6 +49,7 @@ def scan_all_files(jsonl_files):
         try:
             lines = filepath.read_text(encoding='utf-8').splitlines()
         except OSError:
+            unreadable_files += 1
             continue
 
         for line in lines:
@@ -76,6 +78,7 @@ def scan_all_files(jsonl_files):
         'files_scanned': len(jsonl_files),
         'total_lines': total_lines,
         'parse_errors': parse_errors,
+        'unreadable_files': unreadable_files,
         'top_level_types': top_level_types,
         'content_block_types': content_block_types,
         'unknown_top': unknown_top,
@@ -157,6 +160,7 @@ def report_header_lines(data):
     out.append(f'Files scanned: {data["files_scanned"]}')
     out.append(f'Total lines parsed: {data["total_lines"]}')
     out.append(f'Parse errors: {data["parse_errors"]}')
+    out.append(f'Unreadable files: {data["unreadable_files"]}')
     out.append('')
     return out
 

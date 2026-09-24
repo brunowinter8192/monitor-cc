@@ -6,7 +6,16 @@ import tracemalloc
 from collections import deque
 from pathlib import Path
 
+_SKIPPED_LINES = 0
+
 # FUNCTIONS
+
+def skipped_line_count() -> int:
+    return _SKIPPED_LINES
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
 
 def _infer_model_family(model: str) -> str:
     m = model.lower()
@@ -60,6 +69,7 @@ def _next_forwarded_delta(f):
         try:
             fwd_e = json.loads(line)
         except json.JSONDecodeError:
+            _note_skipped_line()
             continue
         if fwd_e.get('type') != 'forwarded_delta':
             continue

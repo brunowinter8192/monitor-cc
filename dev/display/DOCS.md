@@ -34,7 +34,7 @@ top/bottom placement) in a temporary session.
 
 ---
 
-### scan_jsonl_rules.py (100 LOC)
+### scan_jsonl_rules.py (114 LOC)
 
 **Purpose:** Scans a Claude Code session JSONL for "Contents of" lines to check whether loaded
 rules data is present, and in what message shape.

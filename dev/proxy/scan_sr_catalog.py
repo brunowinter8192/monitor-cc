@@ -37,6 +37,8 @@ CODE_INDICATORS = [
     "…",
 ]
 
+_SKIPPED_LINES = 0
+
 # ORCHESTRATOR
 
 def scan_sr_catalog_workflow():
@@ -48,6 +50,7 @@ def scan_sr_catalog_workflow():
     print(f'  False positives: {sum(d["count"] for d in false_positives.values())}')
     print(f'  Missed SRs: {sum(d["count"] for d in missed_sr.values())}')
     print(f'  TNs stripped: {stripped_tn["count"]}')
+    _report_skipped_lines()
 
     report = write_report(total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr)
     OUT_FILE.write_text(report, encoding='utf-8')
@@ -55,6 +58,15 @@ def scan_sr_catalog_workflow():
 
 
 # FUNCTIONS
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
 
 def is_code_false_positive(chunk: str) -> bool:
     inner = chunk
@@ -204,6 +216,7 @@ def scan_all_logs():
                     _process_stripped_chunks(removed, msgs, stripped_sr, stripped_tn, false_positives)
                     _process_missed_srs(msgs, SR_RE, missed_sr)
                 except (json.JSONDecodeError, KeyError, TypeError):
+                    _note_skipped_line()
                     continue
 
     return total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr

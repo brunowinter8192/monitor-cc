@@ -11,7 +11,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ## Modules
 
-### pipeline_byte_identity.py (124 LOC)
+### pipeline_byte_identity.py (137 LOC)
 
 **Purpose:** Verification aid: hashes the full modification pipeline over a bounded prefix of a real original log for both worker contexts.
 **Reads:** the newest original log, or a pinned path via an env var.
@@ -21,7 +21,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### addon_hook_byte_identity.py (160 LOC)
+### addon_hook_byte_identity.py (173 LOC)
 
 **Purpose:** Verification aid: hashes the addon's hook behavior by driving a real addon with a fake flow.
 **Reads:** the newest original log, or a pinned path via an env var; sets its own env and a temp monitor root.
@@ -51,7 +51,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### replay_strip_v2.py (223 LOC)
+### replay_strip_v2.py (236 LOC)
 
 **Purpose:** Two-part validator of the template-based system-reminder strip against an old proxy's recorded removal field.
 **Reads:** a hardcoded log directory under a pre-rename path, absent now; a glob on it yields zero entries.
@@ -61,7 +61,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### scan_sr_catalog.py (306 LOC)
+### scan_sr_catalog.py (319 LOC)
 
 **Purpose:** Scans proxy request logs into a catalog of stripped and missed system-reminder and task-notification content, classified by heuristic.
 **Reads:** the same absent pre-rename log directory.

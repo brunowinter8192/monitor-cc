@@ -21,6 +21,8 @@ _STANDALONE_SR_RE = _sr_mod._STANDALONE_SR_RE
 _INNER_SR_RE = _sr_mod._INNER_SR_RE
 _strip_system_reminders = _sr_mod._strip_system_reminders
 
+_SKIPPED_LINES = 0
+
 # ORCHESTRATOR
 
 def main():
@@ -29,6 +31,7 @@ def main():
     print(f'Done. {result["total_entries"]} entries in {result["total_logs"]} logs.')
     print(f'Part A: FPs_old={result["fps_old"]}, FPs_new={result["fps_new"]} | Real_old={result["real_old"]}, drops={result["real_new_drops"]}')
     print(f'Part B: Missed_old={result["missed_old"]}, now_stripped={result["now_stripped"]}, still_missed={result["still_missed"]}')
+    _report_skipped_lines()
 
     report = write_report(result)
     OUT_FILE.write_text(report)
@@ -42,6 +45,15 @@ def main():
 
 
 # FUNCTIONS
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
 
 def _chunk_template(chunk):
     if not isinstance(chunk, str) or not chunk.startswith('<system-reminder>'):
@@ -143,6 +155,7 @@ def scan_all():
                     _process_part_b(rp, old_removed, counters)
 
                 except (json.JSONDecodeError, KeyError, TypeError):
+                    _note_skipped_line()
                     continue
 
     return {

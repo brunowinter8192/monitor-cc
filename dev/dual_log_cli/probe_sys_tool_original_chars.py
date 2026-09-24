@@ -14,7 +14,18 @@ REPORT_DIR = _HERE / "md"
 
 _HAIKU_RE = re.compile(r"haiku", re.IGNORECASE)
 
+_SKIPPED_LINES = 0
+
 # FUNCTIONS
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
 
 def _resolve_dual_log_dir() -> Path:
     env_root = os.environ.get("MONITOR_CC_ROOT")
@@ -54,6 +65,7 @@ def _last_non_haiku_entry(original_path: Path):
         try:
             entry = json.loads(line)
         except json.JSONDecodeError:
+            _note_skipped_line()
             continue
         if _infer_family(entry.get("model", "")) == "haiku":
             continue
@@ -69,6 +81,7 @@ def _whole_stripped_names(stripped_path: Path) -> set:
         try:
             entry = json.loads(line)
         except json.JSONDecodeError:
+            _note_skipped_line()
             continue
         for name, val in (entry.get("tools_delta") or {}).items():
             if isinstance(val, dict) and val.get("whole") is True:
@@ -116,6 +129,7 @@ def _measure_tool_content_stability(stems: list) -> list:
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
+                _note_skipped_line()
                 continue
             tools = (entry.get("payload") or {}).get("tools", []) or []
             by_name_per_request.append({t.get("name", "?"): _delta_hash(t) for t in tools if isinstance(t, dict)})
@@ -145,6 +159,7 @@ def _measure_system_stability(stems: list) -> list:
             try:
                 entries.append(json.loads(line))
             except json.JSONDecodeError:
+                _note_skipped_line()
                 continue
         if not entries:
             continue
@@ -183,6 +198,7 @@ def _measure_recording_pattern(stems: list) -> list:
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
+                _note_skipped_line()
                 continue
             if _infer_family(entry.get("model", "")) != family:
                 continue
@@ -225,6 +241,7 @@ def probe_sys_tool_original_chars_workflow() -> None:
     lines += _measure_recording_pattern(stems)
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"report written to {report_path}")
+    _report_skipped_lines()
 
 if __name__ == "__main__":
     probe_sys_tool_original_chars_workflow()

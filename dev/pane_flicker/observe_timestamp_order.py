@@ -10,6 +10,8 @@ _MAIN_LOGS = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs')
 _PROJECTS = Path.home() / '.claude' / 'projects'
 _REPORT = Path(__file__).resolve().parent / 'md' / 'observe_timestamp_order.md'
 
+_SKIPPED_LINES = 0
+
 # ORCHESTRATOR
 
 def main():
@@ -17,9 +19,19 @@ def main():
     rows += [_check_forwarded(p) for p in sorted(_MAIN_LOGS.rglob('*_forwarded.jsonl'))]
     rows += [_check_transcript(p) for p in sorted(_PROJECTS.rglob('*.jsonl')) if 'subagents' not in p.parts]
     _write_report(rows)
+    _report_skipped_lines()
 
 
 # FUNCTIONS
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
 
 def _first_disorder(stamps: list):
     for i in range(1, len(stamps)):
@@ -34,6 +46,7 @@ def _check_forwarded(path: Path) -> tuple:
         try:
             e = json.loads(raw)
         except json.JSONDecodeError:
+            _note_skipped_line()
             continue
         if e.get('type') == 'forwarded_delta':
             stamps.append(e.get('timestamp', ''))

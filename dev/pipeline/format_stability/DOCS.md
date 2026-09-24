@@ -11,7 +11,7 @@ The script scans real session JSONL files under the user's Claude Code projects 
 
 ## Modules
 
-### 01_unknown_types.py (232 LOC)
+### 01_unknown_types.py (236 LOC)
 
 **Purpose:** Scans all session JSONL files for top-level and content-block types outside the script's own known-type sets.
 **Reads:** all session JSONL files under the Claude projects directory.

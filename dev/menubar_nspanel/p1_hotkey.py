@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import ctypes
+import sys
 
 
 # FUNCTIONS
@@ -24,8 +25,8 @@ def _register_hotkey(app: 'NSPanelProbeApp') -> None:
     def _on_hotkey(handler_ref, event, user_data):
         try:
             app._nsapp.nsstatusitem.button().performClick_(None)
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f'hotkey click failed: {exc!r}', file=sys.stderr)
         return 0
 
     cb = EventHandlerProcPtr(_on_hotkey)
