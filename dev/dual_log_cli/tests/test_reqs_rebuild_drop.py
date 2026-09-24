@@ -108,8 +108,8 @@ def test_drop_req1_never_qualifies() -> None:
     session = _session("s")
     usage_by_stem = {"s": {"f0": (5, 5)}}
     got = render_reqs([(session, boundaries)], usage_by_stem=usage_by_stem, drop=True)
-    check("REQ 1 has no predecessor -> never qualifies for --drop, header only",
-          got == "session s\n", got)
+    check("REQ 1 has no predecessor -> never qualifies for --drop, the no-REQ line",
+          got == "no REQs to show\n", got)
 
 def test_merged_drop_predecessor_stays_within_session() -> None:
     boundaries_a = _boundaries([
@@ -141,11 +141,11 @@ def test_unresolved_usage_skipped_under_either_flag() -> None:
     ])
     session = _session("s")
     got_rebuild = render_reqs([(session, boundaries)], usage_by_stem={"s": {}}, rebuild=True)
-    check("no usage resolved at all -> --rebuild shows nothing but the header",
-          got_rebuild == "session s\n", got_rebuild)
+    check("no usage resolved at all -> --rebuild shows the no-REQ line",
+          got_rebuild == "no REQs to show\n", got_rebuild)
     got_drop = render_reqs([(session, boundaries)], usage_by_stem={"s": {}}, drop=True)
-    check("no usage resolved at all -> --drop shows nothing but the header",
-          got_drop == "session s\n", got_drop)
+    check("no usage resolved at all -> --drop shows the no-REQ line",
+          got_drop == "no REQs to show\n", got_drop)
 
 def test_rebuild_and_drop_combine_with_and() -> None:
     boundaries = _boundaries([
@@ -156,7 +156,7 @@ def test_rebuild_and_drop_combine_with_and() -> None:
     usage_by_stem = {"s": {"f0": (5, 5), "f1": (10, 40)}}
     got = render_reqs([(session, boundaries)], usage_by_stem=usage_by_stem, rebuild=True, drop=True)
     check("REQ 2 passes --rebuild alone but fails --drop (exact-equal boundary) -> excluded",
-          got == "session s\n", got)
+          got == "no REQs to show\n", got)
 
 def test_plain_listing_shows_usage_without_rebuild_or_drop() -> None:
     boundaries = _boundaries([

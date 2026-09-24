@@ -102,8 +102,8 @@ def test_turn_out_of_range_prints_header_only() -> None:
     boundaries = _boundaries([_delta_entry("f0", "2026-09-04T10:00:00Z", 1, is_first=True)])
     session = _session("s")
     got = render_reqs([(session, boundaries)], turn=5)
-    check("no turn concept at all (no turns_by_stem) -> --turn N never matches -> header only",
-          got == "session s\n", got)
+    check("no turn concept at all (no turns_by_stem) -> --turn N never matches -> the no-REQ line",
+          got == "no REQs to show\n", got)
 
 def test_filter_by_family() -> None:
     sessions = [

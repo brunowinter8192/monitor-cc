@@ -14,7 +14,7 @@ from src.dual_log_cli.commands import _report_numbering_paths, _req_error_text
 from src.dual_log_cli.numbering import build_session_numbering
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render_msgs import render_msgs
-from src.dual_log_cli.render_reqs import render_reqs
+from src.dual_log_cli.render_reqs import render_reqs, render_reqs_merged
 from src.dual_log_cli.timeline_boundaries import continue_requests, request_boundaries
 from src.dual_log_cli.timeline_markers import UnknownRequestNumberError, request_markers, resolve_req_range
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
@@ -38,6 +38,9 @@ def test_reqs_pane_numbering_workflow() -> None:
     test_msgs_uses_pane_numbers()
     test_owner_rule_prefers_mapped_boundary()
     test_fallback_when_transcript_unresolved()
+    test_create_sharing_a_start_index_is_its_own_req()
+    test_sessions_without_output_are_hidden()
+    test_no_output_at_all_prints_one_line()
 
     total = len(PASS_LIST) + len(FAIL_LIST)
     print(f"{len(PASS_LIST)}/{total} checks passed")
@@ -99,8 +102,8 @@ def _write_forwarded(entries: list) -> Path:
     return Path(handle.name)
 
 
-def _timeline() -> tuple:
-    path = _write_forwarded(_forwarded_entries())
+def _timeline(entries: list = None) -> tuple:
+    path = _write_forwarded(_forwarded_entries() if entries is None else entries)
     try:
         return request_boundaries(path, "sonnet"), continue_requests(path, "sonnet")
     finally:
@@ -149,26 +152,26 @@ def _write_projects(root: Path, transcript_lines: list) -> None:
             "\n".join(json.dumps(record, separators=(",", ":")) for record in records) + "\n")
 
 
-def _session(tmp_path: Path) -> dict:
+def _session(tmp_path: Path, responses: list = None) -> dict:
     response = tmp_path / "session_response.jsonl"
-    response.write_text("\n".join(json.dumps(line) for line in _response_lines()) + "\n")
+    response.write_text("\n".join(json.dumps(line) for line in (_response_lines() if responses is None else responses)) + "\n")
     stem = f"api_requests_worker_{_proxy_session_id_for_project(_PROJECT_CWD)}_{_WORKER}_1788400000"
     return {"stem": stem, "streams": {"response": response}}
 
 
-def _numbered_view(transcript_lines: list = None) -> tuple:
-    boundaries, continues = _timeline()
+def _numbered_view(transcript_lines: list = None, entries: list = None, responses: list = None) -> tuple:
+    boundaries, continues = _timeline(entries)
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         projects_root = tmp_path / "projects"
         _write_projects(projects_root, _transcript_lines() if transcript_lines is None else transcript_lines)
-        session = _session(tmp_path)
+        session = _session(tmp_path, responses)
         numbering = build_session_numbering(session, boundaries, continues, projects_root)
     return session, boundaries, continues, numbering
 
 
-def _render(gap=None) -> str:
-    session, boundaries, continues, numbering = _numbered_view()
+def _render(gap=None, view: tuple = None) -> str:
+    session, boundaries, continues, numbering = view or _numbered_view()
     stem = session["stem"]
     return render_reqs(
         [(session, boundaries)], 0, None, gap, {stem: numbering["usage"]}, False, False, {stem: []},
@@ -269,6 +272,78 @@ def test_fallback_when_transcript_unresolved() -> None:
     text = buffer.getvalue()
     check("the stderr line states both paths and names the fallback stem",
           "1 session(s) via transcript" in text and "1 via boundaries fallback" in text and "stem_b" in text, text)
+
+
+def _folded_create_view() -> tuple:
+    entries = [
+        _create("b1", "2026-09-04T10:00:00Z", 2, True),
+        _create("b2", "2026-09-04T10:05:00Z", 6),
+        _create("b3", "2026-09-04T10:19:00Z", 6),
+        _create("b4", "2026-09-04T10:20:20Z", 9),
+    ]
+    transcript = [
+        _prompt("only prompt", "2026-09-04T09:59:59Z"),
+        _assistant("r1", "2026-09-04T10:00:05Z"),
+        _assistant("r3", "2026-09-04T10:20:10Z"),
+        _assistant("r4", "2026-09-04T10:23:40Z"),
+    ]
+    responses = [{"flow_id": flow, "request_id": request_id, "status_code": 200}
+                 for flow, request_id in (("b1", "r1"), ("b2", "r2"), ("b3", "r3"), ("b4", "r4"))]
+    return _numbered_view(transcript, entries, responses)
+
+
+def test_create_sharing_a_start_index_is_its_own_req() -> None:
+    view = _folded_create_view()
+    boundaries = view[1]
+    groups = request_markers(boundaries)
+    check("fixture: b3 and b4 share start_index 6, msgs ownership folds them into one group owned by REQ 3",
+          groups[6]["number"] == 3 and groups[6]["refires"] == 1, groups)
+    out = _render(view=view)
+    lines = _req_lines(out)
+    check("reqs lists every mapped create as its own line: 1, ?, 2, 3 in response-end order",
+          [l.split()[1] for l in lines] == ["1", "?", "2", "3"], lines)
+    gap_lines = _req_lines(_render(gap=2, view=view))
+    check("--gap 2 pairs REQ 1 -> 2 and REQ 2 -> 3, the folded REQ 2 is present",
+          [l.split()[1] for l in gap_lines] == ["1", "2", "3"], gap_lines)
+
+
+def _second_session() -> tuple:
+    entries = [_create("z1", "2026-09-04T11:00:00Z", 2, True), _create("z2", "2026-09-04T11:00:30Z", 5)]
+    path = _write_forwarded(entries)
+    try:
+        boundaries = request_boundaries(path, "sonnet")
+    finally:
+        path.unlink()
+    return {"stem": "api_requests_opus_other_1788500000"}, boundaries
+
+
+def test_sessions_without_output_are_hidden() -> None:
+    session, boundaries, continues, numbering = _numbered_view()
+    other, other_boundaries = _second_session()
+    stem = session["stem"]
+    out = render_reqs(
+        [(other, other_boundaries), (session, boundaries)], 0, None, 2, {stem: numbering["usage"]}, False, False,
+        {stem: [], other["stem"]: []}, {stem: continues}, {stem: numbering["pane_turns"]})
+    check("the session with a surviving gap prints, the empty one prints no header",
+          f"session {stem}" in out and other["stem"] not in out, out)
+    check("no blank line is left behind by the hidden session", not out.startswith("\n") and "\n\n\n" not in out, out)
+    merged = render_reqs_merged(
+        [(other, other_boundaries), (session, boundaries)], 0, None, 2, {stem: numbering["usage"]}, False, False,
+        {stem: [], other["stem"]: []}, {stem: continues}, {stem: numbering["pane_turns"]})
+    check("--merged counts only sessions in the header when something prints", merged.startswith("merged 2 sessions\n"), merged)
+
+
+def test_no_output_at_all_prints_one_line() -> None:
+    session, boundaries, continues, numbering = _numbered_view()
+    other, other_boundaries = _second_session()
+    stem = session["stem"]
+    args = ([(other, other_boundaries), (session, boundaries)], 0, None, 60, {stem: numbering["usage"]}, False, False,
+            {stem: [], other["stem"]: []}, {stem: continues}, {stem: numbering["pane_turns"]})
+    check("nothing qualifies -> exactly the short line", render_reqs(*args) == "no REQs to show\n", render_reqs(*args))
+    check("--merged prints the same line", render_reqs_merged(*args) == "no REQs to show\n", render_reqs_merged(*args))
+    with_skipped = render_reqs(*((args[0], 1) + args[2:]))
+    check("the skipped-sessions note still follows", with_skipped.startswith("no REQs to show\n") and "1 session skipped" in with_skipped, with_skipped)
+    check("an empty scope still says 'no sessions found'", render_reqs([]) == "no sessions found\n", render_reqs([]))
 
 
 if __name__ == "__main__":

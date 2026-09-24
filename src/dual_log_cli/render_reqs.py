@@ -3,10 +3,10 @@ from .discovery import stem_identity
 from .reader import local_datetime
 from .render_format import _clock, _fmt_duration, _skipped_lines
 from .timeline_grouping import _group_markers_by_turn, _turn_preview
-from .timeline_markers import request_markers
 
 _REQ_NUMBER_WIDTH = 4
 _PREVIEW_CHARS = 100
+_NO_REQS_LINE = "no REQs to show"
 
 
 # FUNCTIONS
@@ -19,18 +19,22 @@ def render_reqs(results: list, skipped: int = 0, turn: int = None, gap_minutes: 
     if not results:
         lines = ["no sessions found"]
         return "\n".join(lines + _skipped_lines(skipped)) + "\n"
-    lines = []
+    blocks = []
     for session, boundaries in results:
         stem = session.get("stem", "")
-        lines.append(f"session {stem}")
         usage_map = (usage_by_stem or {}).get(stem, {})
         turns = (turns_by_stem or {}).get(stem, [])
         entries, separators = _session_entries_and_separators(
             boundaries, turns, usage_map, stem, "", (continues_by_stem or {}).get(stem),
             (pane_turns_by_stem or {}).get(stem))
         entries = _apply_filters(entries, turn, gap_minutes, rebuild, drop)
-        lines.extend(_grouped_lines(entries, separators, merged=False))
-        lines.append("")
+        if entries:
+            blocks.append([f"session {stem}"] + _grouped_lines(entries, separators, merged=False))
+    if not blocks:
+        return _no_reqs_output(skipped)
+    lines = []
+    for block in blocks:
+        lines.extend(block + [""])
     return "\n".join(lines[:-1] + _skipped_lines(skipped)) + "\n"
 
 
@@ -43,9 +47,15 @@ def render_reqs_merged(results: list, skipped: int = 0, turn: int = None, gap_mi
         return "\n".join(lines + _skipped_lines(skipped)) + "\n"
     entries, separators = _merged_entries(results, turns_by_stem, usage_by_stem, continues_by_stem, pane_turns_by_stem)
     entries = _apply_filters(entries, turn, gap_minutes, rebuild, drop)
+    if not entries:
+        return _no_reqs_output(skipped)
     lines = [f"merged {len(results)} sessions"]
     lines.extend(_grouped_lines(entries, separators, merged=True))
     return "\n".join(lines + _skipped_lines(skipped)) + "\n"
+
+
+def _no_reqs_output(skipped: int) -> str:
+    return "\n".join([_NO_REQS_LINE] + _skipped_lines(skipped)) + "\n"
 
 
 def _req_line(marker: dict, tag: str, usage, cr_width: int) -> str:
@@ -115,13 +125,13 @@ def _entries_for_session(markers: dict, usage_map: dict, turn_by_msg_index: dict
 
 def _pane_entries_and_separators(boundaries: list, continues: list, pane_turns: list,
                                  usage_map: dict, stem: str, tag: str) -> tuple:
-    requests = list(request_markers(boundaries or []).values())
-    requests.extend(_continue_marker(request) for request in continues)
+    requests = [_request_marker(request) for request in (boundaries or [])]
+    requests.extend(_request_marker(request) for request in continues)
     entries = _chronological_entries(requests, usage_map, stem, tag)
     return entries, _pane_turn_separators(entries, pane_turns, stem, tag)
 
 
-def _continue_marker(request: dict) -> dict:
+def _request_marker(request: dict) -> dict:
     return {
         "number": request.get("pane_number"),
         "timestamp": request["timestamp"],

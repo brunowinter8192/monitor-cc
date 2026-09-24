@@ -118,7 +118,7 @@ def test_gap_no_qualifying_gap() -> None:
     ])
     session = _session("s")
     got = render_reqs([(session, boundaries)], gap_minutes=90, turns_by_stem=_turns([0]))
-    check("no qualifying gap -> only the session header line", got == "session s\n", got)
+    check("no qualifying gap -> the no-REQ line", got == "no REQs to show\n", got)
 
 def test_gap_threshold_boundary() -> None:
     exact_boundary = _boundaries([
@@ -135,7 +135,7 @@ def test_gap_threshold_boundary() -> None:
     check("a gap of exactly the threshold QUALIFIES (>=)",
           got_exact.count("REQ") == 2, got_exact)
     check("one second short of the threshold does NOT qualify",
-          got_under == "session s\n", got_under)
+          got_under == "no REQs to show\n", got_under)
 
 def test_gap_cross_turn_dropped() -> None:
     boundaries = _boundaries([
@@ -144,7 +144,7 @@ def test_gap_cross_turn_dropped() -> None:
     ])
     got = render_reqs([(_session("s"), boundaries)], gap_minutes=2, turns_by_stem=_turns([0, 7]))
     check("a gap between the last REQ of turn 1 and the first of turn 2 is dropped",
-          got == "session s\n", got)
+          got == "no REQs to show\n", got)
 
 def test_gap_within_turn_kept_beside_cross_turn() -> None:
     boundaries = _boundaries([
@@ -165,7 +165,7 @@ def test_gap_no_turn_never_qualifies() -> None:
         _delta_entry("f1", "2026-09-04T12:00:00Z", 5),
     ])
     got = render_reqs([(_session("s"), boundaries)], gap_minutes=2)
-    check("REQs of a session with no turn opener never form a gap", got == "session s\n", got)
+    check("REQs of a session with no turn opener never form a gap", got == "no REQs to show\n", got)
 
 if __name__ == "__main__":
     test_reqs_gap_workflow()
