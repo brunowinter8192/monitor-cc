@@ -167,8 +167,8 @@ Behavior decisions (each has a reason):
 
 Observed by the user in the rebuilt bundle (built from the main checkout, 20:36): three project clicks on
 desktop 4 each logged `[launch] FAILED desktop=4 project=... stage=switch SpaceSwitchError('postevent_not_granted')`
-(20:36:10, 20:36:29, 20:36:47). No macOS permission prompt appeared. The `menubar.log` also holds two
-`select ignored desktop=1 occupied=[1, 3]` lines from the user's earlier clicks on an occupied desktop.
+(20:36:10, 20:36:29, 20:36:47). No macOS permission prompt appeared. The `menubar.log` also held `select ignored desktop=1 occupied=[1, 3]` lines at 20:29:18/29/37; an earlier version of this
+entry called them the user's clicks. That was WRONG: they came from this worker's own `t2` runs (see the test isolation section).
 
 Changes made (commit `33c0016d`):
 - Occupied desktops are selectable and launchable. The `*` is information only. Removed: the refusal in
@@ -209,4 +209,29 @@ requests, the switch path raises without requesting. `t1_autojump_removal.py` st
   (40 px each). The `*` meaning is no longer explained in the UI. `t2` occupied_marking asserts the row has exactly five subviews at x=0,40,80,120,160.
 - Tool guard lesson: a shell call containing a recursive grep without `--include` is rejected as a whole, so earlier commands in the
   same call did not run either. After any rejected call, re-check what actually landed (`git status`).
+
+## Test isolation defect and fix (2026-09-24, reported by the user after the merge and rebuild)
+
+Defect: `t2` (and `t1`) imported the real `src.menubar` modules, whose paths resolve from `~` at import time
+(`paths.py`: `Path("~/Library/Application Support/com.brunowinter.monitor-cc-menubar").expanduser()`), so `log_menubar` wrote into the
+user's production `menubar.log`. Observed leftovers from this worker's test runs (all `[launch]`, none from real use):
+`20:29:18`, `20:29:29`, `20:29:37` `select ignored desktop=1 occupied=[1, 3]` (old wording), and
+`20:39:50`, `20:42:34` `select ignored desktop=7 reason=not_a_launch_desktop`. The production log was NOT edited by this worker; the five
+lines are still in it. Real launch lines (`FAILED desktop=4 ...` at 20:36:10/29/47) are the user's.
+Side effect that was also happening: importing `paths.py` runs its one-time migration and `mkdir` against the real app-support dir.
+
+Fix without touching production code: `dev/session_launcher/test_env.py:isolate_home()` sets `HOME` to a fresh temp dir BEFORE the first
+`src.menubar` import (it raises if `src.menubar.paths` is already imported), and removes the dir at exit. `t1` calls it at the start of `main`,
+each `t2` case subprocess calls it first (so parallel cases get separate homes). Because `~` is redirected, `SETTINGS_FILE`, `HOOKS_FILE`,
+`PID_FILE`, the sweep state file and the shared-rules files under `~/.claude` also point into the temp dir; the tests still pass with empty
+model-selection files, so the ModelController load path works on defaults. New checks: `t1` "menubar log and settings resolve under the
+isolated home" and `t2` case `log_isolation` (paths under the temp home, and a real `[launch]` log line lands in the temp log).
+
+Verification, 2026-09-24: real log before a full run of `t2` (11 cases) plus `t1` (8 checks): 492403 lines, 8 `[launch]` lines; after: 492403 lines,
+8 `[launch]` lines. The total is only meaningful because the live menubar wrote nothing in that window; the `[launch]` count is the reliable
+signal, since the running app appends other categories constantly. No `session_launcher_home_*` directory is left behind.
+
+Not covered: `dev/model_selector/verify_four_tab_ring.py` (another area's script, updated during M2) still imports the menubar with the real `HOME`.
+Its `LaunchController.open()` only logs when PostEvent is missing, which does not happen in the dev process, but it is not isolated.
+Lesson: any dev script that imports `src.menubar.*` must isolate `HOME` first; `log_menubar` and `paths.py` have import-time side effects.
 

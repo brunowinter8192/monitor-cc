@@ -2,6 +2,7 @@
 import argparse
 import importlib
 import json
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -14,6 +15,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
 from dev.session_launcher.space_lib import write_report
+from dev.session_launcher.test_env import isolate_home
 
 _EXPECTED_HEADERS = {
     'sessions': '[Sessions] · RAG · Models · Launch',
@@ -71,6 +73,7 @@ def _spawn_case(name: str) -> dict:
 
 def _run_case_in_child(name: str) -> None:
     try:
+        isolate_home()
         detail = _CASES[name]()
         print(json.dumps({'ok': True, 'detail': detail}))
     except AssertionError as exc:
@@ -390,7 +393,22 @@ def _case_request_on_open() -> str:
     assert calls == [], f'click path requested access: {calls}'
     return 'open() requests once on the main thread and logs when missing; granted -> silent; click/launch path never requests'
 
+def _case_log_isolation() -> str:
+    home = Path(os.environ['HOME'])
+    paths = importlib.import_module('src.menubar.paths')
+    log_mod = importlib.import_module('src.menubar.menubar_log')
+    assert str(log_mod.MENUBAR_LOG).startswith(str(home)), f'log path {log_mod.MENUBAR_LOG}'
+    for name in ('SETTINGS_FILE', 'HOOKS_FILE', 'PID_FILE', 'MONITOR_SWEEP_STATE_FILE'):
+        assert str(getattr(paths, name)).startswith(str(home)), f'{name} {getattr(paths, name)}'
+    lc = _imp('launch_controller')
+    ctl = lc.LaunchController(_FakeApp([]))
+    ctl.handle_select_desktop(7)
+    text = log_mod.MENUBAR_LOG.read_text()
+    assert 'reason=not_a_launch_desktop' in text, f'log text {text!r}'
+    return f'launch log line landed in {log_mod.MENUBAR_LOG}'
+
 _CASES = {
+    'log_isolation': _case_log_isolation,
     'request_on_open': _case_request_on_open,
     'headers': _case_headers,
     'occupied_marking': _case_occupied_marking,

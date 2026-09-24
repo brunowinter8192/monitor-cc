@@ -12,6 +12,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
 from dev.session_launcher.space_lib import write_report
+from dev.session_launcher.test_env import isolate_home
 
 _SCAN_DIRS = ('src', 'dev')
 _FORBIDDEN = re.compile('|'.join(['auto' + '_focus', 'Auto' + '-Jump', 'toggle' + 'AutoJump', 'auto' + '_jump']))
@@ -19,7 +20,9 @@ _FORBIDDEN = re.compile('|'.join(['auto' + '_focus', 'Auto' + '-Jump', 'toggle' 
 # ORCHESTRATOR
 
 def main() -> None:
+    isolate_home()
     checks = [
+        ('menubar log and settings resolve under the isolated home', _check_isolation),
         ('no auto-jump identifiers in any .py under src/ and dev/', _check_no_identifiers_left),
         ('old settings.json with the removed key still loads', _check_old_settings_load),
         ('settings without a file fall back to panel defaults', _check_settings_defaults),
@@ -57,6 +60,14 @@ def _check_no_identifiers_left() -> str:
                     hits.append(f'{path.relative_to(_ROOT)}:{i}')
     assert not hits, f'hits: {hits}'
     return 'scanned src/ and dev/, 0 hits'
+
+def _check_isolation() -> str:
+    home = Path(sys.modules['os'].environ['HOME'])
+    paths = importlib.import_module('src.menubar.paths')
+    log_mod = importlib.import_module('src.menubar.menubar_log')
+    assert str(log_mod.MENUBAR_LOG).startswith(str(home)), f'log path {log_mod.MENUBAR_LOG}'
+    assert str(paths.SETTINGS_FILE).startswith(str(home)), f'settings path {paths.SETTINGS_FILE}'
+    return f'MENUBAR_LOG={log_mod.MENUBAR_LOG}'
 
 def _settings_module():
     return importlib.import_module('src.menubar.app_settings')
