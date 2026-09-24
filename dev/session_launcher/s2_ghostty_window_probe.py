@@ -39,7 +39,7 @@ def main() -> None:
             results.append(result)
             print(_format_console(result), flush=True)
             if not result['closed'] or not result['returned']:
-                print(f'ABORT: closed={result["closed"]} returned={result["returned"]} new_window={result["new_wid"]}')
+                print(f'ABORT: closed={result["closed"]} returned={result["returned"]} new_window={result["new_wid"]} as_id={result["as_id"]}')
                 path = write_report(__file__, _build_report(results, perms, home_idx, args.method))
                 print(f'report: {path}')
                 return
@@ -84,15 +84,27 @@ def _wait_new_cg_window(before: List[int]) -> Optional[int]:
         time.sleep(_POLL_INTERVAL)
     return None
 
-def _close_window(as_id: str, cg_wid: Optional[int]) -> bool:
-    script = f'tell application "Ghostty" to close (first window whose id is "{as_id}")'
+def _as_window_ids() -> List[str]:
+    script = (
+        'tell application "Ghostty"\n'
+        '  set out to ""\n'
+        '  repeat with w in every window\n'
+        '    set out to out & (id of w) & linefeed\n'
+        '  end repeat\n'
+        '  return out\n'
+        'end tell'
+    )
+    r = subprocess.run(['osascript', '-e', script], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace', timeout=15)
+    return [line.strip() for line in r.stdout.splitlines() if line.strip()]
+
+def _close_window(as_id: str) -> bool:
+    script = f'tell application "Ghostty" to close window (first window whose id is "{as_id}")'
     subprocess.run(['osascript', '-e', script], capture_output=True, text=True,
                    encoding='utf-8', errors='replace', timeout=15)
-    if cg_wid is None:
-        return False
     t0 = time.monotonic()
     while time.monotonic() - t0 < _WINDOW_TIMEOUT:
-        if cg_wid not in ghostty_window_ids():
+        if as_id not in _as_window_ids():
             return True
         time.sleep(_POLL_INTERVAL)
     return False
@@ -122,7 +134,7 @@ def _run_cycle(variant: str, cycle: int, target_idx: int, home_space: int, ids: 
     observed = _observe_window(cg_wid, ids) if cg_wid is not None else {'window_desktops': None, 'onscreen': None}
     time.sleep(_SETTLE_SECONDS)
     active_after_settle = _desktop_of_space(active_space(), ids)
-    closed = _close_window(as_id, cg_wid) if as_id is not None else True
+    closed = _close_window(as_id) if as_id is not None else True
     returned = return_home(home_space, [method])
     return {'variant': variant, 'cycle': cycle, 'target_idx': target_idx, 'switch_ms': switch_ms,
             'as_id': as_id, 'new_wid': cg_wid, 'script_ms': script_ms, 'visible_ms': visible_ms,
@@ -133,7 +145,7 @@ def _run_cycle(variant: str, cycle: int, target_idx: int, home_space: int, ids: 
 def _format_console(r: dict) -> str:
     return (f'{r["variant"]} #{r["cycle"]} target={r["target_idx"]} switch_ms={r["switch_ms"]} new_wid={r["new_wid"]} '
             f'window_desktops={r["window_desktops"]} active_after_script={r["active_after_script"]} '
-            f'closed={r["closed"]} returned={r["returned"]}')
+            f'as_id={r["as_id"]} closed={r["closed"]} returned={r["returned"]}')
 
 def _fmt_ms(v: Optional[float]) -> str:
     return f'{v:.0f}' if v is not None else '-'
@@ -148,6 +160,7 @@ def _build_report(results: List[dict], perms: Dict[str, bool], home_idx: int, me
         f'- permissions of this process: {perms}',
         '- window desktop: CGSCopySpacesForWindows of the new CG window mapped to desktop index',
         '- hit = window desktop equals target desktop and window is on screen',
+        '- closed = the Ghostty window id is gone from the AppleScript window list; the CG window may linger as an off-screen zombie with no space',
         '',
         '| variant | # | target | switch ms | script ms | visible ms | window desktop | onscreen | hit | active after script | active after settle | closed | returned |',
         '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
