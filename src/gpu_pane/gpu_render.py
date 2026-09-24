@@ -117,7 +117,9 @@ def _render_arbitrary_rows(arbitrary: list, error_counts: dict, pane_width: int,
 
 def _render_collections_block(collections: list, pane_width: int) -> list:
     rows = ["", f"{DIM}{'═' * min(pane_width, 64)}{RESET}  RAG Collections"]
-    if collections:
+    if collections is None:
+        rows.append(f"  {DIM}?{RESET}")
+    elif collections:
         for c in collections:
             rows.append(f"  {c['collection']:<32} {c['chunks']} chunks")
     else:
