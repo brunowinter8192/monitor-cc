@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import atexit
 import importlib
 import json
 import os
@@ -10,7 +11,12 @@ from types import SimpleNamespace
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
-os.environ.setdefault('MONITOR_CC_ROOT', str(WORKTREE_ROOT))
+os.environ['MONITOR_CC_ROOT'] = str(WORKTREE_ROOT)
+
+from dev.refactoring.strand_runner import check
+
+_FIXED_TERMINAL = os.terminal_size((220, 50))
+os.get_terminal_size = lambda fd=1: _FIXED_TERMINAL
 
 _ROOT_PKG = 'src'
 mod_wt = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tokens_pane')
@@ -18,17 +24,9 @@ mod_search_bar = importlib.import_module(f'{_ROOT_PKG}.search_bar')
 mod_colors = importlib.import_module(f'{_ROOT_PKG}.colors')
 
 PANE_WIDTH = 100
-_PROJECT_FILTER = '/tmp/p7proj'
+_PROJECT_FILTER = f'/tmp/p7proj_{os.getpid()}'
 _MONITOR = SimpleNamespace(active_project_filter=_PROJECT_FILTER)
-_RESULTS = []
 _TMP_ROOT = None
-
-
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    status = 'PASS' if condition else 'FAIL'
-    print(f"  {status}  {label}")
-    return condition
 
 
 # FUNCTIONS
@@ -54,9 +52,12 @@ def _reset_state(query: str = ''):
     mod_wt._worker_tokens_search.match_set = set()
     mod_wt._worker_tokens_search.current_idx = 0
     mod_search_bar.clear_selection(mod_wt._worker_tokens_search)
-    sel_path = mod_wt.get_selection_file_path(_PROJECT_FILTER)
-    if os.path.exists(sel_path):
-        os.remove(sel_path)
+    _remove_selection_file()
+    atexit.register(_remove_selection_file)
+
+
+def _remove_selection_file():
+    Path(mod_wt.get_selection_file_path(_PROJECT_FILTER)).unlink(missing_ok=True)
 
 
 def _select_worker(name: str, workers: list) -> None:

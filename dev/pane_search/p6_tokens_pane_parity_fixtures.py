@@ -6,7 +6,12 @@ from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
-os.environ.setdefault('MONITOR_CC_ROOT', str(WORKTREE_ROOT))
+os.environ['MONITOR_CC_ROOT'] = str(WORKTREE_ROOT)
+
+from dev.refactoring.strand_runner import check
+
+_FIXED_TERMINAL = os.terminal_size((220, 50))
+os.get_terminal_size = lambda fd=1: _FIXED_TERMINAL
 
 _ROOT_PKG = 'src'
 mod_tp = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
@@ -19,14 +24,6 @@ mod_parser = importlib.import_module(f'{_ROOT_PKG}.proxy_display.parser')
 mod_side_logs = importlib.import_module(f'{_ROOT_PKG}.proxy_display.side_logs')
 
 PANE_WIDTH = 100
-_RESULTS = []
-
-
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    status = 'PASS' if condition else 'FAIL'
-    print(f"  {status}  {label}")
-    return condition
 
 
 # FUNCTIONS
