@@ -162,7 +162,9 @@ def _req_separator(marker: dict, usage_by_flow: dict = None) -> str:
         extra = f"  (+{refires} re-fire{'s' if refires != 1 else ''})"
     usage = (usage_by_flow or {}).get(marker.get("flow_id"))
     usage_part = f"  {_fmt_usage(*usage)}" if usage else ""
-    return f"── REQ {marker['number']}  {_clock(marker['timestamp'])}{usage_part} ──{extra}"
+    number = "?" if marker["number"] is None else marker["number"]
+    clock = marker.get("clock_timestamp") or marker["timestamp"]
+    return f"── REQ {number}  {_clock(clock)}{usage_part} ──{extra}"
 
 
 def _fmt_usage(cache_read: int, cache_creation: int) -> str:

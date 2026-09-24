@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from .reader import infer_family, load_last_request
-from .timeline_boundaries import build_turn_times, request_boundaries
+from .timeline_boundaries import build_turn_times, continue_requests, request_boundaries
 from .timeline_turns import build_turns
 
 # FUNCTIONS
@@ -17,6 +17,7 @@ def load_timeline(session: dict) -> dict:
     family = infer_family(entry.get("model", ""))
     forwarded = session["streams"].get("forwarded")
     boundaries = request_boundaries(forwarded, family) if forwarded else []
+    continues = continue_requests(forwarded, family) if forwarded else []
     return {
         "session": session,
         "entry": entry,
@@ -26,5 +27,6 @@ def load_timeline(session: dict) -> dict:
         "haiku_lines_skipped": skipped,
         "turns": build_turns(payload),
         "boundaries": boundaries,
+        "continues": continues,
         "turn_times": build_turn_times(boundaries),
     }

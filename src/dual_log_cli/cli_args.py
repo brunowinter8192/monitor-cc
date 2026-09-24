@@ -32,7 +32,13 @@ _REQS_DESCRIPTION = (
     "project sends, so a request from ANY session in scope keeps it warm for every other; "
     "a `merged <N> sessions` header replaces the per-session `session <stem>` lines, and "
     "every REQ line AND every turn separator carries `  <tag>` (a worker's name, or a main "
-    "session's project label, read off the stem) — turn numbers stay per session."
+    "session's project label, read off the stem) — turn numbers stay per session. Every "
+    "main-thread request, create AND continue (a worker's tool-loop request, sonnet with no "
+    "tools and a previous_message_id), is its own REQ. When CC's transcript resolves, REQ "
+    "numbers, turn numbers and times are the token pane's own (response-end times), and a REQ "
+    "the transcript does not hold prints as `REQ ?` with its send time and no turn; otherwise "
+    "only create requests are listed, with duallog's own numbers and send times, and a stderr "
+    "line names the path used."
 )
 
 # FUNCTIONS

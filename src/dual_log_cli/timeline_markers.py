@@ -13,16 +13,18 @@ class AmbiguousRequestNumberError(Exception):
 
 
 def request_markers(boundaries: list) -> dict:
-    numbers = _running_request_numbers(boundaries)
+    numbers = _boundary_numbers(boundaries)
     grouped: dict = {}
     for position, boundary in enumerate(boundaries):
         grouped.setdefault(boundary["start_index"], []).append(position)
     markers = {}
     for index, positions in grouped.items():
-        owner = positions[-1]
+        owner = _group_owner(boundaries, positions)
         markers[index] = {
             "number": numbers[owner],
             "timestamp": boundaries[owner]["timestamp"],
+            "clock_timestamp": boundaries[owner].get("pane_time") or boundaries[owner]["timestamp"],
+            "pane_turn": boundaries[owner].get("pane_turn"),
             "refires": len(positions) - 1,
             "flow_id": boundaries[owner].get("flow_id", ""),
             "sys_lines": boundaries[owner].get("sys_lines", []),
@@ -42,18 +44,36 @@ def _running_request_numbers(boundaries: list) -> list:
     return numbers
 
 
+def _boundary_numbers(boundaries: list) -> list:
+    running = _running_request_numbers(boundaries)
+    return [
+        boundary["pane_number"] if "pane_number" in boundary else running[position]
+        for position, boundary in enumerate(boundaries)
+    ]
+
+
+def _group_owner(boundaries: list, positions: list) -> int:
+    last = positions[-1]
+    if "pane_number" not in boundaries[last]:
+        return last
+    mapped = [p for p in positions if boundaries[p]["pane_number"] is not None]
+    return mapped[-1] if mapped else last
+
+
 def request_numbers_by_flow(boundaries: list) -> dict:
-    numbers = _running_request_numbers(boundaries)
+    numbers = _boundary_numbers(boundaries)
     return {
         boundary["flow_id"]: numbers[position]
         for position, boundary in enumerate(boundaries)
-        if boundary.get("flow_id")
+        if boundary.get("flow_id") and numbers[position] is not None
     }
 
 
 def request_msg_range(markers: dict, req_from: int, req_to: int, last_msg_index: int) -> tuple:
     by_number: dict = {}
     for msg_index, marker in markers.items():
+        if marker["number"] is None:
+            continue
         by_number.setdefault(marker["number"], []).append(msg_index)
     for number in (req_from, req_to):
         candidates = by_number.get(number)
