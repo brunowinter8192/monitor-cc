@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import bisect
 from pathlib import Path
 
 from src.dual_log_cli.usage import resolve_transcript, usage_from_transcript
@@ -12,7 +13,8 @@ _PATH_BOUNDARIES = "boundaries"
 # ORCHESTRATOR
 
 
-def build_session_numbering(session: dict, boundaries: list, continues: list, projects_root: Path = None) -> dict:
+def build_session_numbering(session: dict, boundaries: list, continues: list, projects_root: Path = None,
+                            messages: list = None) -> dict:
     main_thread = sorted(boundaries + continues, key=lambda request: request["timestamp"])
     transcript_path, flow_status = resolve_transcript(session, main_thread, projects_root)
     usage = usage_from_transcript(transcript_path, flow_status)
@@ -20,7 +22,8 @@ def build_session_numbering(session: dict, boundaries: list, continues: list, pr
     if not any(turn.get("api_calls") for turn in turns):
         return {"usage": usage, "pane_turns": None, "path": _PATH_BOUNDARIES}
     _annotate(main_thread, flow_status, _index_by_request_id(turns))
-    return {"usage": usage, "pane_turns": turns, "path": _PATH_TRANSCRIPT}
+    _locate_msgs(main_thread, messages or [])
+    return {"usage": usage, "pane_turns": turns, "path": _PATH_TRANSCRIPT, "requests": main_thread}
 
 
 # FUNCTIONS
@@ -41,6 +44,43 @@ def _index_by_request_id(turns: list) -> dict:
             if request_id and request_id not in index:
                 index[request_id] = (number, turn_number, call.get("timestamp", ""))
     return index
+
+
+def _locate_msgs(main_thread: list, messages: list) -> None:
+    assistants = [index for index, message in enumerate(messages) if message.get("role") == "assistant"]
+    result_index = _tool_result_index(messages)
+    for request in main_thread:
+        if request.get("pane_number") is None:
+            continue
+        start = _msg_start(request, assistants, result_index, len(messages))
+        if start is not None:
+            request["msg_start"] = start
+
+
+def _tool_result_index(messages: list) -> dict:
+    index = {}
+    for position, message in enumerate(messages):
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("tool_use_id"):
+                index[block["tool_use_id"]] = position
+    return index
+
+
+def _msg_start(request: dict, assistants: list, result_index: dict, total: int):
+    if "message_count" in request:
+        last_sent = min(request["message_count"], total) - 1
+    else:
+        positions = [result_index[i] for i in request.get("tool_use_ids", []) if i in result_index]
+        if not positions or len(positions) != len(request["tool_use_ids"]):
+            return None
+        last_sent = min(positions)
+    if last_sent < 0:
+        return None
+    before = bisect.bisect_left(assistants, last_sent) - 1
+    return assistants[before] if before >= 0 else 0
 
 
 def _annotate(main_thread: list, flow_status: dict, index: dict) -> None:

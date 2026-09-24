@@ -58,7 +58,7 @@ def test_reqs_workflow() -> None:
     test_unresolved_usage_shows_question_marks()
     test_refire_collapsed_same_as_msgs()
     test_multiple_sessions_blank_line_separated()
-    test_session_with_zero_requests_still_gets_header()
+    test_session_with_zero_requests_prints_nothing()
     test_skipped_note_appended()
     test_empty_results()
 
@@ -121,10 +121,10 @@ def test_multiple_sessions_blank_line_separated() -> None:
     )
     check("two sessions render in the order given, blank-line separated", got == expected, got)
 
-def test_session_with_zero_requests_still_gets_header() -> None:
+def test_session_with_zero_requests_prints_nothing() -> None:
     session = _session("empty_session")
     got = render_reqs([(session, [])])
-    check("session header present, no REQ lines", got == "session empty_session\n", got)
+    check("a session with zero REQs prints no header, only the no-REQ line", got == "no REQs to show\n", got)
 
 def test_skipped_note_appended() -> None:
     session = _session("s")

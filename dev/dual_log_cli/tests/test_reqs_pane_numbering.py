@@ -10,13 +10,18 @@ from pathlib import Path
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
-from src.dual_log_cli.commands import _report_numbering_paths, _req_error_text
+from src.dual_log_cli.cli_args import _parse_args
+from src.dual_log_cli.commands import _report_numbering_paths, _req_error_text, _req_output_window, _resolve_range
 from src.dual_log_cli.numbering import build_session_numbering
 from src.dual_log_cli.reader import local_datetime
+from src.dual_log_cli.render_expand import render_expand_full
 from src.dual_log_cli.render_msgs import render_msgs
-from src.dual_log_cli.render_reqs import render_reqs
+from src.dual_log_cli.render_reqs import render_reqs, render_reqs_merged
 from src.dual_log_cli.timeline_boundaries import continue_requests, request_boundaries
-from src.dual_log_cli.timeline_markers import UnknownRequestNumberError, request_markers, resolve_req_range
+from src.dual_log_cli.timeline_markers import (
+    UnknownRequestNumberError, request_markers, resolve_req_output_range, resolve_req_range,
+    resolve_req_range_with_next,
+)
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
 
 PASS_LIST = []
@@ -38,6 +43,15 @@ def test_reqs_pane_numbering_workflow() -> None:
     test_msgs_uses_pane_numbers()
     test_owner_rule_prefers_mapped_boundary()
     test_fallback_when_transcript_unresolved()
+    test_create_sharing_a_start_index_is_its_own_req()
+    test_sessions_without_output_are_hidden()
+    test_no_output_at_all_prints_one_line()
+    test_msg_start_of_creates_and_continues()
+    test_req_range_covers_own_group_and_next()
+    test_unlocated_continues_own_no_msgs()
+    test_msgs_prints_continue_separators()
+    test_expand_req_selects_reply_and_returned_result()
+    test_expand_req_errors_and_cli()
 
     total = len(PASS_LIST) + len(FAIL_LIST)
     print(f"{len(PASS_LIST)}/{total} checks passed")
@@ -99,8 +113,8 @@ def _write_forwarded(entries: list) -> Path:
     return Path(handle.name)
 
 
-def _timeline() -> tuple:
-    path = _write_forwarded(_forwarded_entries())
+def _timeline(entries: list = None) -> tuple:
+    path = _write_forwarded(_forwarded_entries() if entries is None else entries)
     try:
         return request_boundaries(path, "sonnet"), continue_requests(path, "sonnet")
     finally:
@@ -149,26 +163,26 @@ def _write_projects(root: Path, transcript_lines: list) -> None:
             "\n".join(json.dumps(record, separators=(",", ":")) for record in records) + "\n")
 
 
-def _session(tmp_path: Path) -> dict:
+def _session(tmp_path: Path, responses: list = None) -> dict:
     response = tmp_path / "session_response.jsonl"
-    response.write_text("\n".join(json.dumps(line) for line in _response_lines()) + "\n")
+    response.write_text("\n".join(json.dumps(line) for line in (_response_lines() if responses is None else responses)) + "\n")
     stem = f"api_requests_worker_{_proxy_session_id_for_project(_PROJECT_CWD)}_{_WORKER}_1788400000"
     return {"stem": stem, "streams": {"response": response}}
 
 
-def _numbered_view(transcript_lines: list = None) -> tuple:
-    boundaries, continues = _timeline()
+def _numbered_view(transcript_lines: list = None, entries: list = None, responses: list = None) -> tuple:
+    boundaries, continues = _timeline(entries)
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         projects_root = tmp_path / "projects"
         _write_projects(projects_root, _transcript_lines() if transcript_lines is None else transcript_lines)
-        session = _session(tmp_path)
+        session = _session(tmp_path, responses)
         numbering = build_session_numbering(session, boundaries, continues, projects_root)
     return session, boundaries, continues, numbering
 
 
-def _render(gap=None) -> str:
-    session, boundaries, continues, numbering = _numbered_view()
+def _render(gap=None, view: tuple = None) -> str:
+    session, boundaries, continues, numbering = view or _numbered_view()
     stem = session["stem"]
     return render_reqs(
         [(session, boundaries)], 0, None, gap, {stem: numbering["usage"]}, False, False, {stem: []},
@@ -269,6 +283,239 @@ def test_fallback_when_transcript_unresolved() -> None:
     text = buffer.getvalue()
     check("the stderr line states both paths and names the fallback stem",
           "1 session(s) via transcript" in text and "1 via boundaries fallback" in text and "stem_b" in text, text)
+
+
+def _folded_create_view() -> tuple:
+    entries = [
+        _create("b1", "2026-09-04T10:00:00Z", 2, True),
+        _create("b2", "2026-09-04T10:05:00Z", 6),
+        _create("b3", "2026-09-04T10:19:00Z", 6),
+        _create("b4", "2026-09-04T10:20:20Z", 9),
+    ]
+    transcript = [
+        _prompt("only prompt", "2026-09-04T09:59:59Z"),
+        _assistant("r1", "2026-09-04T10:00:05Z"),
+        _assistant("r3", "2026-09-04T10:20:10Z"),
+        _assistant("r4", "2026-09-04T10:23:40Z"),
+    ]
+    responses = [{"flow_id": flow, "request_id": request_id, "status_code": 200}
+                 for flow, request_id in (("b1", "r1"), ("b2", "r2"), ("b3", "r3"), ("b4", "r4"))]
+    return _numbered_view(transcript, entries, responses)
+
+
+def test_create_sharing_a_start_index_is_its_own_req() -> None:
+    view = _folded_create_view()
+    boundaries = view[1]
+    groups = request_markers(boundaries)
+    check("fixture: b3 and b4 share start_index 6, msgs ownership folds them into one group owned by REQ 3",
+          groups[6]["number"] == 3 and groups[6]["refires"] == 1, groups)
+    out = _render(view=view)
+    lines = _req_lines(out)
+    check("reqs lists every mapped create as its own line: 1, ?, 2, 3 in response-end order",
+          [l.split()[1] for l in lines] == ["1", "?", "2", "3"], lines)
+    gap_lines = _req_lines(_render(gap=2, view=view))
+    check("--gap 2 pairs REQ 1 -> 2 and REQ 2 -> 3, the folded REQ 2 is present",
+          [l.split()[1] for l in gap_lines] == ["1", "2", "3"], gap_lines)
+
+
+def _second_session() -> tuple:
+    entries = [_create("z1", "2026-09-04T11:00:00Z", 2, True), _create("z2", "2026-09-04T11:00:30Z", 5)]
+    path = _write_forwarded(entries)
+    try:
+        boundaries = request_boundaries(path, "sonnet")
+    finally:
+        path.unlink()
+    return {"stem": "api_requests_opus_other_1788500000"}, boundaries
+
+
+def test_sessions_without_output_are_hidden() -> None:
+    session, boundaries, continues, numbering = _numbered_view()
+    other, other_boundaries = _second_session()
+    stem = session["stem"]
+    out = render_reqs(
+        [(other, other_boundaries), (session, boundaries)], 0, None, 2, {stem: numbering["usage"]}, False, False,
+        {stem: [], other["stem"]: []}, {stem: continues}, {stem: numbering["pane_turns"]})
+    check("the session with a surviving gap prints, the empty one prints no header",
+          f"session {stem}" in out and other["stem"] not in out, out)
+    check("no blank line is left behind by the hidden session", not out.startswith("\n") and "\n\n\n" not in out, out)
+    merged = render_reqs_merged(
+        [(other, other_boundaries), (session, boundaries)], 0, None, 2, {stem: numbering["usage"]}, False, False,
+        {stem: [], other["stem"]: []}, {stem: continues}, {stem: numbering["pane_turns"]})
+    check("--merged counts only sessions in the header when something prints", merged.startswith("merged 2 sessions\n"), merged)
+
+
+def test_no_output_at_all_prints_one_line() -> None:
+    session, boundaries, continues, numbering = _numbered_view()
+    other, other_boundaries = _second_session()
+    stem = session["stem"]
+    args = ([(other, other_boundaries), (session, boundaries)], 0, None, 60, {stem: numbering["usage"]}, False, False,
+            {stem: [], other["stem"]: []}, {stem: continues}, {stem: numbering["pane_turns"]})
+    check("nothing qualifies -> exactly the short line", render_reqs(*args) == "no REQs to show\n", render_reqs(*args))
+    check("--merged prints the same line", render_reqs_merged(*args) == "no REQs to show\n", render_reqs_merged(*args))
+    with_skipped = render_reqs(*((args[0], 1) + args[2:]))
+    check("the skipped-sessions note still follows", with_skipped.startswith("no REQs to show\n") and "1 session skipped" in with_skipped, with_skipped)
+    check("an empty scope still says 'no sessions found'", render_reqs([]) == "no sessions found\n", render_reqs([]))
+
+
+def _use(tool_id: str) -> dict:
+    return {"role": "assistant", "content": [{"type": "tool_use", "id": tool_id, "name": "Bash", "input": {}}]}
+
+
+def _result(tool_id: str) -> dict:
+    return {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "ok"}]}
+
+
+def _reminder() -> dict:
+    return {"role": "system", "content": "reminder"}
+
+
+def _ownership_payload() -> list:
+    return [
+        {"role": "user", "content": "go"},
+        _use("t1"), _result("t1"), _reminder(),
+        _use("t2"), _result("t2"), _reminder(),
+        _use("t3"), _result("t3"), _reminder(),
+        _use("t4"), _result("t4"), _reminder(),
+    ]
+
+
+def _continue_with(flow_id: str, timestamp: str, previous: str, first_msg) -> dict:
+    entry = _continue(flow_id, timestamp, previous)
+    entry["messages_delta"] = {"0": first_msg}
+    return entry
+
+
+def _ownership_view() -> tuple:
+    entries = [
+        _create("c1", "2026-09-04T10:00:00Z", 1, True),
+        _continue_with("k1", "2026-09-04T10:01:00Z", "m1", _result("t1")),
+        _continue_with("k2", "2026-09-04T10:02:00Z", "m2", _result("t2")),
+        _create("c2", "2026-09-04T10:03:00Z", 9),
+        _continue_with("k3", "2026-09-04T10:04:00Z", "m3", _result("t4")),
+        _continue_with("k4", "2026-09-04T10:05:00Z", "m4", {"role": "user", "content": "next prompt"}),
+        _continue_with("k5", "2026-09-04T10:06:00Z", "m5", _result("t99")),
+    ]
+    transcript = [
+        _prompt("go", "2026-09-04T09:59:59Z"),
+        _assistant("r1", "2026-09-04T10:00:05Z"),
+        _assistant("r2", "2026-09-04T10:01:05Z"),
+        _assistant("r3", "2026-09-04T10:02:05Z"),
+        _assistant("r4", "2026-09-04T10:03:05Z"),
+        _assistant("r5", "2026-09-04T10:04:05Z"),
+        _assistant("r6", "2026-09-04T10:05:05Z"),
+    ]
+    flows = [("c1", "r1", 200), ("k1", "r2", 200), ("k2", "r3", 200), ("c2", "r4", 200),
+             ("k3", "r5", 200), ("k4", "r6", 200), ("k5", "r7", 404)]
+    responses = [{"flow_id": f, "request_id": r, "status_code": c} for f, r, c in flows]
+    boundaries, continues = _timeline(entries)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        projects_root = tmp_path / "projects"
+        _write_projects(projects_root, transcript)
+        session = _session(tmp_path, responses)
+        numbering = build_session_numbering(session, boundaries, continues, projects_root, messages=_ownership_payload())
+    return session, boundaries, continues, numbering
+
+
+def test_msg_start_of_creates_and_continues() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    starts = {r["flow_id"]: r.get("msg_start") for r in numbering["requests"]}
+    check("each located request starts at the assistant reply it answers: c1 0, k1 1, k2 4, c2 7, k3 10",
+          starts == {"c1": 0, "k1": 1, "k2": 4, "c2": 7, "k3": 10, "k4": None, "k5": None}, starts)
+    markers = request_markers(numbering["requests"])
+    check("markers carry the pane numbers 1..5 at those starts",
+          {index: m["number"] for index, m in markers.items()} == {0: 1, 1: 2, 4: 3, 7: 4, 10: 5}, markers)
+
+
+def test_req_range_covers_own_group_and_next() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    requests = numbering["requests"]
+    check("--req 2 (a continue) = its own group [1..3] plus the next request's group [4..6], the tool_use it caused sits at msg 4",
+          resolve_req_range_with_next(requests, 2, 2, 12) == (1, 6), resolve_req_range_with_next(requests, 2, 2, 12))
+    check("--req 3 reaches the create's group that follows: msgs 4..9",
+          resolve_req_range_with_next(requests, 3, 3, 12) == (4, 9))
+    check("--req 4 (a create) = its group [7..9] plus the next continue's group [10..12]",
+          resolve_req_range_with_next(requests, 4, 4, 12) == (7, 12))
+    check("--req 5 whose successor owns nothing = its own group only", resolve_req_range_with_next(requests, 5, 5, 12) == (10, 12))
+    check("--req 2 3 spans both groups plus the group after: msgs 1..9", resolve_req_range_with_next(requests, 2, 3, 12) == (1, 9))
+    data = {"boundaries": boundaries, "continues": continues, "requests": requests}
+    check("the command layer routes transcript numbering to the with-next rule",
+          _resolve_range(data, numbering, 2, 2, 12) == (1, 6))
+
+
+def test_unlocated_continues_own_no_msgs() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    requests = numbering["requests"]
+    raised = False
+    try:
+        resolve_req_range_with_next(requests, 6, 6, 12)
+    except UnknownRequestNumberError:
+        raised = True
+    check("the opener continue (REQ 6, no tool_result to locate) owns no msgs", raised)
+    data = {"boundaries": boundaries, "continues": continues, "requests": requests}
+    text = _req_error_text(UnknownRequestNumberError("x"), data, (6, 6))
+    check("the message names it a continue whose msgs could not be located", "could not be located" in text and "REQ 6" in text, text)
+    unknown = False
+    try:
+        resolve_req_range_with_next(requests, 99, 99, 12)
+    except UnknownRequestNumberError:
+        unknown = True
+    check("a number outside the recorded requests stays 'not found'", unknown)
+
+
+def test_msgs_prints_continue_separators() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    turns = [{"index": i, "role": m["role"], "type": "text", "chars": 4,
+              "blocks": [{"label": "text", "type": "text", "chars": 4, "sig_chars": 0, "preview": ""}]}
+             for i, m in enumerate(_ownership_payload())]
+    out = render_msgs({"boundaries": boundaries, "requests": numbering["requests"], "turns": turns}, 1, 6, numbering["usage"])
+    seps = [line for line in out.split("\n") if line.startswith("── REQ")]
+    check("msgs 1..6 print the continue separators REQ 2 and REQ 3 with their response-end times",
+          [x.split()[2] for x in seps] == ["2", "3"] and _clock("2026-09-04T10:01:05Z") in seps[0] and _clock("2026-09-04T10:02:05Z") in seps[1], seps)
+    check("the tool_use msg 4 sits under REQ 3's separator", out.index("── REQ 3") < out.index("[  4]"), out)
+
+
+def _raises_text(call) -> str:
+    try:
+        call()
+    except UnknownRequestNumberError as exc:
+        return str(exc)
+    return ""
+
+
+def test_expand_req_selects_reply_and_returned_result() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    requests = numbering["requests"]
+    check("expand --req 1 (a create) = the next request's group: reply msg 1 plus the result that came back",
+          resolve_req_output_range(requests, 1, 12) == (1, 3), resolve_req_output_range(requests, 1, 12))
+    check("expand --req 2 (a continue) = msgs 4..6, the tool_use it produced and the tool_result REQ 3 sent",
+          resolve_req_output_range(requests, 2, 12) == (4, 6))
+    check("expand --req 3 = msgs 7..9 (the next request is a create)", resolve_req_output_range(requests, 3, 12) == (7, 9))
+    check("expand --req 4 = msgs 10..12", resolve_req_output_range(requests, 4, 12) == (10, 12))
+    data = {"requests": requests}
+    check("the command layer resolves the same window on the transcript path",
+          _req_output_window(data, numbering, 2, 12) == (4, 6))
+
+
+def test_expand_req_errors_and_cli() -> None:
+    _session_dict, boundaries, continues, numbering = _ownership_view()
+    requests = numbering["requests"]
+    text = _raises_text(lambda: resolve_req_output_range(requests, 5, 12))
+    check("REQ 5: the next request is an unlocated opener -> 'could not be located'", "could not be located" in text and "REQ 6" in text, text)
+    text = _raises_text(lambda: resolve_req_output_range(requests, 6, 12))
+    check("the last request's reply is not recorded", "reply is not recorded" in text, text)
+    check("an unknown number stays 'not found'", _raises_text(lambda: resolve_req_output_range(requests, 99, 12)) == "REQ 99 not found")
+    buffer = io.StringIO()
+    with redirect_stderr(buffer):
+        window = _req_output_window({"requests": requests}, {"path": "boundaries"}, 2, 12)
+    check("without the transcript path expand --req refuses and says why", window is None and "transcript numbering" in buffer.getvalue(), buffer.getvalue())
+    by_req = _parse_args(["expand", "s", "--req", "3"], "")
+    by_msg = _parse_args(["expand", "s", "5"], "")
+    check("argparse: --req replaces the msg argument, a bare msg still parses",
+          (by_req.msg, by_req.req) == (None, 3) and (by_msg.msg, by_msg.req) == (5, None), (by_req, by_msg))
+    out = render_expand_full({"turns": [{}] * 13, "turn_times": {}, "session": {"stem": "s", "project": "p", "start": "2026-09-04T10:00:00Z"}},
+                             None, 4, 6, "", [], None, "what REQ 2 produced")
+    check("the header names the REQ instead of an anchor msg", "what REQ 2 produced" in out and "anchor" not in out, out)
 
 
 if __name__ == "__main__":

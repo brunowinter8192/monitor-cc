@@ -21,6 +21,7 @@ proxy appends to them live during a session.
 ./venv/bin/python -m src.dual_log_cli msgs <stem-or-substring> [FROM] [TO]
 ./venv/bin/python -m src.dual_log_cli msgs <stem-or-substring> --req F [T]
 ./venv/bin/python -m src.dual_log_cli expand <stem-or-substring> <msg> [--before N] [--after N] [--only CLASSIFIER]
+./venv/bin/python -m src.dual_log_cli expand <stem-or-substring> --req N [--before N] [--after N] [--only CLASSIFIER]
 ./venv/bin/python -m src.dual_log_cli search <term> [SCOPE] [--since D] [--until D] [--only CLASSIFIER] [--case-sensitive]
 ./venv/bin/python -m src.dual_log_cli reqs [SCOPE] [--since D] [--until D] [--main | --worker] [--turn N] [--gap M] [--merged] [--rebuild] [--drop]
 ```
@@ -48,7 +49,7 @@ prompt-cache figures `msgs` and `reqs` both show.
 
 ## Modules
 
-### __main__.py (117 LOC)
+### __main__.py (120 LOC)
 
 **Purpose:** `main()` dispatches argv to the five subcommands (`sessions`, `msgs`, `expand`,
 `search`, `reqs`); carries the full `--help` usage text as `_USAGE_EPILOG`; the `if __name__`
@@ -60,7 +61,7 @@ block runs `main()` and handles a broken output pipe.
 
 ---
 
-### cli_args.py (167 LOC)
+### cli_args.py (174 LOC)
 
 **Purpose:** The argparse parser construction — `_parse_args(argv, epilog)` builds the top-level
 parser and its five subparsers (`sessions`, `msgs`, `expand`, `search`, `reqs`), one dedicated
@@ -72,11 +73,11 @@ helper per command.
 
 ---
 
-### commands.py (234 LOC)
+### commands.py (275 LOC)
 
 **Purpose:** The five `_run_*` command implementations (`_run_sessions`, `_run_search`,
 `_run_reqs`, `_run_msgs`, `_run_expand`) plus their shared validators (`_valid_day`,
-`_reject_bad_days`, `_load_for`, `_window`), the stderr line naming the numbering path used (`_report_numbering_paths`) and the continue-request `--req` error text.
+`_reject_bad_days`, `_load_for`, `_window`), the stderr line naming the numbering path used (`_report_numbering_paths`), `_numbered_view` (numbering + `data["requests"]` for `msgs`/`expand`), `--req` range routing (`_resolve_range`, `_req_output_window`) and the continue-request `--req` error text.
 **Reads:** the resolved dual_log directory and the parsed `argparse.Namespace`, both passed in by `__main__.main()`.
 **Writes:** stdout (rendered text, via `sys.stdout.write`), stderr (resolution, range and empty-term errors).
 **Called by:** `__main__.py` (`main()`, one `_run_*` per `args.command` branch).
@@ -164,7 +165,7 @@ stream exists) its request boundaries and turn-times.
 
 ---
 
-### timeline_boundaries.py (164 LOC)
+### timeline_boundaries.py (176 LOC)
 
 **Purpose:** Request-boundary derivation from the `_forwarded` delta stream (`request_boundaries`)
 `continue_requests` (a worker's tool-loop requests: family match, `counts.tools == 0`, `diagnostics.previous_message_id` set — kept out of `boundaries` so `msgs`/`expand` ownership is unchanged), plus, per boundary, its `sys_lines`/`tool_lines` — the system blocks and tools that request sent
@@ -178,16 +179,16 @@ proxy itself uses, so a read-side "changed" decision matches the proxy's own.
 
 ---
 
-### timeline_markers.py (96 LOC)
+### timeline_markers.py (135 LOC)
 
 **Purpose:** Request markers and numbering. `request_markers` folds boundaries into
-`{msg_index: {number, timestamp, refires, flow_id, sys_lines, tool_lines, message_count}}`, what
-`msgs` draws its REQ separators from. `request_numbers_by_flow` is what `overlay` uses to name the
+`{msg_index: {number, timestamp, clock_timestamp, pane_turn, refires, flow_id, sys_lines, tool_lines, message_count}}`, what
+`msgs` draws its REQ separators from (grouped by `msg_start` once annotated, else `start_index`). `resolve_req_range_with_next` (`msgs --req`: the REQs' groups plus the next request's group) and `resolve_req_output_range` (`expand --req`: the next request's group, i.e. the reply plus the returned result). `request_numbers_by_flow` is what `overlay` uses to name the
 request behind a strip. `resolve_req_range`/`request_msg_range` translate a REQ number range into
 the equivalent msg-index range for `msgs --req`.
 **Reads:** Boundary dicts (from `timeline_boundaries.request_boundaries`) — parameters only, no module state.
 **Writes:** Nothing — returns dicts, lists, or a `(start, end)` tuple; raises on an ambiguous/unknown REQ number.
-**Called by:** `timeline_grouping.py` (`request_markers`), `overlay.py` (`request_numbers_by_flow`), `render_msgs.py` (`request_markers`), `commands.py` (`resolve_req_range`, the two errors); `dev/dual_log_cli/tests/test_msgs_req_range.py`.
+**Called by:** `timeline_grouping.py` (`request_markers`), `overlay.py` (`request_numbers_by_flow`), `render_msgs.py` (`request_markers`), `commands.py` (`resolve_req_range`, `resolve_req_range_with_next`, `resolve_req_output_range`, the two errors); `dev/dual_log_cli/tests/test_msgs_req_range.py`.
 **Calls out:** —
 
 ---
@@ -219,12 +220,13 @@ for the equivalent per-system-index and per-tool-name shape, both by running the
 
 ---
 
-### numbering.py (52 LOC)
+### numbering.py (92 LOC)
 
 **Purpose:** `build_session_numbering` resolves a session's transcript once and annotates every create and continue request with the token pane's own REQ number, turn and response-end time (`pane_number`/`pane_turn`/`pane_time`, `None` when unmapped); returns usage, the transcript turns and which path was used.
-**Reads:** `src/panes/cache_turns.build_cache_turns` over the resolved transcript, `src/format/token_format.call_numbers`, `usage.resolve_transcript`/`usage_from_transcript`.
-**Writes:** mutates the passed boundary/continue dicts in place; returns `{usage, pane_turns, path}` (`path` is `transcript` or `boundaries`).
-**Called by:** `commands.py` (`_run_reqs`, `_run_msgs`); `dev/dual_log_cli/tests/test_reqs_pane_numbering.py`.
+**Reads:** the payload messages passed in by `commands`, `src/panes/cache_turns.build_cache_turns` over the resolved transcript, `src/format/token_format.call_numbers`, `usage.resolve_transcript`/`usage_from_transcript`.
+**Writes:** mutates the passed boundary/continue dicts in place (`pane_*`, plus `msg_start` for every located request); returns `{usage, pane_turns, path, requests}` (`path` is `transcript` or `boundaries`, `requests` the annotated creates plus continues).
+**Also:** `_locate_msgs` finds each request's msg group start in the last full payload — a create at the last assistant msg before its last sent msg, a continue at the last assistant msg before its tool_result (matched by `tool_use_id`); openers, unmapped and newer-than-payload continues stay unlocated.
+**Called by:** `commands.py` (`_run_reqs`, `_numbered_view`); `dev/dual_log_cli/tests/test_reqs_pane_numbering.py`.
 **Calls out:** `panes.cache_turns`, `format.token_format` (absolute imports).
 
 ---
@@ -299,7 +301,7 @@ tail when the proxy transformed it.
 
 ---
 
-### render_reqs.py (250 LOC)
+### render_reqs.py (260 LOC)
 
 **Purpose:** `reqs`' turn-grouped, CR/CC-annotated REQ listing — `render_reqs`/`render_reqs_merged`
 share one pipeline (`_session_entries_and_separators`, `_apply_filters`, `_grouped_lines`) that
@@ -313,11 +315,11 @@ chronologically-sorted, session-tagged chain instead of one listing per session.
 
 ---
 
-### render_expand.py (48 LOC)
+### render_expand.py (49 LOC)
 
 **Purpose:** `render_expand_full` — `expand`'s full-content window dump: a session/project/window
 header, then each selected msg's full block content, with `── stripped by REQ n ──`/`── injected
-by REQ n ──` sections for a block the proxy transformed.
+by REQ n ──` sections for a block the proxy transformed; with `expand --req` the header names the REQ (`what REQ N produced`) instead of an anchor msg.
 **Reads:** The dict produced by `timeline.load_timeline`, plus `dumped` (already-selected msg/block rows from `commands._run_expand`).
 **Writes:** Nothing — returns a string; `commands.py` does the `sys.stdout.write`.
 **Called by:** `commands.py` (`_run_expand`); `dev/dual_log_cli/tests/test_project_display.py`.
@@ -415,3 +417,12 @@ See `process-docs/dual_log_cli/`.
 **`timeline_markers.request_markers` picks the LAST MAPPED boundary of a refire group as owner** once
 boundaries are annotated (a group whose last boundary is a 404 keeps the mapped one's number); an
 all-unmapped group has number `None`, printed `REQ ?` and not addressable by `msgs --req`.
+
+**In the transcript path every located request is its own msg group, and `msgs --req N` / `expand --req N`
+read it that way.** A REQ owns the assistant reply it answers plus the msgs it sent; `msgs --req N` prints
+N's group and the next request's group, `expand --req N` prints only the next request's group (N's reply
+plus what came back). Msgs of unlocated requests sit under the preceding located REQ's group. See
+`process-docs/dual_log_cli/`.
+
+**`reqs` lists every create and continue as its own entry (no refire folding) and prints no header for a
+session with no surviving REQ line;** when nothing prints at all, the single line `no REQs to show`.

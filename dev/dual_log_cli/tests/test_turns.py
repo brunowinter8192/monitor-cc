@@ -211,7 +211,7 @@ def test_turn_missing_from_session_prints_header_only() -> None:
     turns, boundaries = _two_turn_fixture()
     session = {"stem": "s"}
     got = render_reqs([(session, boundaries)], turn=99, turns_by_stem={"s": turns})
-    check("a turn number the session never reaches -> header only", got == "session s\n", got)
+    check("a turn number the session never reaches -> the no-REQ line", got == "no REQs to show\n", got)
 
 def test_separator_survives_only_when_a_req_of_its_own_does() -> None:
     turns, boundaries = _two_turn_fixture()

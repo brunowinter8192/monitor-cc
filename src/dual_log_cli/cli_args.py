@@ -106,18 +106,25 @@ def _add_msgs_subparser(sub) -> None:
 def _add_expand_subparser(sub) -> None:
     expand = sub.add_parser(
         "expand",
-        help="full content of one msg, or of a window around it",
+        help="full content of one msg, of a window around it, or of what one REQ produced",
         description=(
             "Dumps the complete content of every block of every selected msg, as CC sent it. A "
             "block the proxy transformed is followed by `── stripped by REQ n ──` / `── injected "
             "by REQ n ──` sections showing what it removed and what it put there instead; an "
             "untouched block shows content only. --before/--after widen the window around the "
             "anchor and default to 0, so a bare call prints exactly the anchor msg. --only selects "
-            "msgs by role and/or ANY block type; a selected msg always shows ALL of its blocks."
+            "msgs by role and/or ANY block type; a selected msg always shows ALL of its blocks. "
+            "--req N replaces the msg argument: it selects what REQ N produced — its assistant reply "
+            "(with the tool_use) and the tool_result that came back, i.e. the msgs the next request "
+            "opened with — so a gap between two REQs from `reqs --gap` can be opened directly. A REQ "
+            "whose reply is not recorded, or whose next request could not be located, prints an error. "
+            "Needs the transcript numbering that `reqs` and `msgs` also report on stderr."
         ),
     )
     expand.add_argument("session", help="session stem or unambiguous substring")
-    expand.add_argument("msg", type=int, help="anchor msg index")
+    expand.add_argument("msg", type=int, nargs="?", default=None, help="anchor msg index (omit when using --req)")
+    expand.add_argument("--req", type=int, default=None, metavar="N",
+                        help="expand what REQ N produced (its reply with the tool_use plus the returned tool_result) instead of a msg")
     expand.add_argument("--before", type=int, default=0,
                         help="msgs before the anchor (0 and up, default 0)")
     expand.add_argument("--after", type=int, default=0,

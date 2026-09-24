@@ -4,12 +4,13 @@ from .render_format import _clock, _window_date, fmt_chars
 # FUNCTIONS
 
 
-def render_expand_full(data: dict, anchor: int, start: int, end: int,
-                       only: str, dumped: list, overlay: dict = None) -> str:
+def render_expand_full(data: dict, anchor, start: int, end: int,
+                       only: str, dumped: list, overlay: dict = None, scope_label: str = "") -> str:
     msgs = data["turns"]
     times = data.get("turn_times", {})
-    scope = (f"msgs {start}-{end} of 0-{len(msgs) - 1}, anchor #{anchor}, "
-             f"{_window_date(data, anchor)}")
+    anchor_part = scope_label or f"anchor #{anchor}"
+    scope = (f"msgs {start}-{end} of 0-{len(msgs) - 1}, {anchor_part}, "
+             f"{_window_date(data, start if anchor is None else anchor)}")
     lines = [
         f"session   {data['session']['stem']}",
         f"project   {data['session']['project']}",

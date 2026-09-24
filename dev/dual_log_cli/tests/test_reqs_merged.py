@@ -121,8 +121,8 @@ def test_merged_gap_across_sessions_dropped() -> None:
     boundaries_b = _boundaries([_delta_entry("b0", "2026-09-04T11:40:00Z", 2, is_first=True)])
     got = render_reqs_merged([(_session(STEM_A), boundaries_a), (_session(STEM_B), boundaries_b)],
                              gap_minutes=90, turns_by_stem=_turns([STEM_A, STEM_B], [0]))
-    check("a cross-session chronological neighbor never forms a gap, header only",
-          got == "merged 2 sessions\n", got)
+    check("a cross-session chronological neighbor never forms a gap, the no-REQ line",
+          got == "no REQs to show\n", got)
 
 def test_merged_gap_cross_turn_dropped() -> None:
     boundaries_a = _boundaries([
@@ -132,7 +132,7 @@ def test_merged_gap_cross_turn_dropped() -> None:
     got = render_reqs_merged([(_session(STEM_A), boundaries_a)], gap_minutes=90,
                              turns_by_stem=_turns([STEM_A], [0, 7]))
     check("under --merged a gap between two turns of one session is dropped",
-          got == "merged 1 sessions\n", got)
+          got == "no REQs to show\n", got)
 
 if __name__ == "__main__":
     test_reqs_merged_workflow()
