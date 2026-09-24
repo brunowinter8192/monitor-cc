@@ -75,11 +75,12 @@ def alternate_keys_skipped(mod, mlog) -> None:
 
 def routes_logged_on_change(mod, mlog) -> None:
     load('menubar_log')._last_by_key.clear()
+    start = len(log_text(mlog))
     mod._spaces_for_wid = lambda cid, wid: {10: [5], 11: [9]}.get(wid, [])
     mod._resolve_cgwindow_id('w', {'w': [10]}, set(), 1, None, 1)
     mod._resolve_cgwindow_id('w', {'w': [10]}, set(), 1, None, 1)
     mod._resolve_cgwindow_id('w', {'w': [10, 11]}, {5}, 1, None, 1)
-    text = log_text(mlog)
+    text = log_text(mlog)[start:]
     check('g4.route.logged_on_change_only', text.count('route=single_name_match') == 1 and text.count('route=unclaimed_space') == 1)
 
 def lkg_removed(mod) -> None:
