@@ -5,10 +5,10 @@ from itertools import groupby
 from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSForegroundColorAttributeName, NSGridCell,
                     NSGridCellPlacementLeading, NSGridView)
-from Foundation import NSMakeRect, NSRange
+from Foundation import NSRange
 
 from .panel import (
-    _make_nspanel,
+    _make_nspanel, _resize_panel_keep_top,
     _MENLO, _BADGE_WORKING, _BADGE_IDLE,
     _ROW_H, _LABEL_H,
     _project_desktop_no, _compute_required_height,
@@ -92,7 +92,8 @@ class PanelManager:
         pw = self.app.settings.panel_width
         sorted_sessions = _sorted_sessions(sessions)
         required_h = _compute_required_height(sorted_sessions)
-        self._resize_panel(max(self.app.settings.panel_min_height, required_h))
+        _resize_panel_keep_top(self._widgets.panel, self.app.settings.panel_width,
+                               max(self.app.settings.panel_min_height, required_h))
         stack.addView_inGravity_(_make_line_separator(pw), 1)
         if not sorted_sessions:
             stack.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
@@ -209,10 +210,3 @@ class PanelManager:
                         _format_bg_badge(proj_bg.min_remaining),
                         {NSFontAttributeName: _MENLO(),
                          NSForegroundColorAttributeName: NSColor.systemOrangeColor()}))
-
-    def _resize_panel(self, new_h: float) -> None:
-        w         = self.app.settings.panel_width
-        frame     = self._widgets.panel.frame()
-        top_y     = frame.origin.y + frame.size.height
-        self._widgets.panel.setFrame_display_(
-            NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)

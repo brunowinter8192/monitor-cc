@@ -3,10 +3,7 @@ import sys
 
 from Foundation import NSOperationQueue
 
-from .panel import _reposition_panel
-from .rag_controller import _reposition_rag_panel
-from .model_panel_ui import _reposition_models_panel
-from .launch_panel_ui import _reposition_launch_panel
+from .panel import _reposition_panel, _reposition_tab_panel
 from .panel_tabs import TAB_KEYS
 
 _RING = TAB_KEYS
@@ -96,7 +93,7 @@ def _close_main_panel(app: 'CCMenuBarApp') -> None:
 
 def _open_rag_panel(app: 'CCMenuBarApp') -> None:
     app.rag.rebuild()
-    _reposition_rag_panel(app.rag._rag_panel, app._nsapp.nsstatusitem)
+    _reposition_tab_panel(app.rag._rag_panel, app._nsapp.nsstatusitem)
     app.rag._rag_panel.orderFrontRegardless()
     app.rag._rag_panel.enableCursorRects()
     app.rag._rag_open = True
@@ -111,7 +108,7 @@ def _close_rag_panel(app: 'CCMenuBarApp') -> None:
 
 def _open_models_panel(app: 'CCMenuBarApp') -> None:
     app.models.open()
-    _reposition_models_panel(app.models._models_panel, app._nsapp.nsstatusitem)
+    _reposition_tab_panel(app.models._models_panel, app._nsapp.nsstatusitem)
     app.models._models_panel.orderFrontRegardless()
     app.models._models_panel.enableCursorRects()
     app.models._models_open = True
@@ -126,7 +123,7 @@ def _close_models_panel(app: 'CCMenuBarApp') -> None:
 
 def _open_launch_panel(app: 'CCMenuBarApp') -> None:
     app.launch.open()
-    _reposition_launch_panel(app.launch._launch_panel, app._nsapp.nsstatusitem)
+    _reposition_tab_panel(app.launch._launch_panel, app._nsapp.nsstatusitem)
     app.launch._launch_panel.orderFrontRegardless()
     app.launch._launch_panel.enableCursorRects()
     app.launch._launch_open = True

@@ -91,5 +91,15 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
+### p2_panel_snapshot.py (195 LOC)
+
+**Purpose:** Before/after proof for the shared side-panel refactor — snapshots the constructed Sessions/RAG/Models/Launch panels (style, level, collection behavior, frames, full subview tree) and compares two snapshots.
+**Reads:** real `src/menubar` controllers built with a fake app and fake status items under an isolated HOME; `/tmp/session_launcher_p2_panel_snapshot/p2_panel_snapshot_before.json` and `..._after.json` in compare mode.
+**Writes:** `/tmp/session_launcher_p2_panel_snapshot/p2_panel_snapshot_<label>.json` (with `--label`, not part of the repo); `md/p2_panel_snapshot.md` (compare mode, needs both snapshots present); nothing is shown on screen.
+**Called by:** none — run manually with `--label before` on the old code, `--label after` on the new code, then without arguments to compare.
+**Calls out:** `src/menubar/panel_manager.py`, `rag_controller.py`, `model_controller.py`, `launch_controller.py`, `panel_lifecycle.py` (via `importlib`); `.space_lib`, `.test_env`.
+
+---
+
 ## State
 None. Each script is stateless; reports in `md/` are overwritten on every run.

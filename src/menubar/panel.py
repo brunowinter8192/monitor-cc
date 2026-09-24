@@ -290,6 +290,53 @@ def _reposition_panel(panel, nsstatusitem) -> None:
     py = sr.origin.y - h - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
 
+def _make_tab_nspanel(active: str):
+    panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
+        NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
+        NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskResizable, 2, True)
+    panel.setLevel_(NSStatusWindowLevel)
+    panel.setCollectionBehavior_(
+        NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorIgnoresCycle)
+    panel.setHasShadow_(True)
+    panel.setOpaque_(False)
+    panel.setAcceptsMouseMovedEvents_(True)
+    panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
+    cv = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT))
+    panel.setContentView_(cv)
+    panel.enableCursorRects()
+    top_bar = NSView.alloc().initWithFrame_(
+        NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
+    top_bar.setAutoresizingMask_(10)
+    header = _make_tab_header(active, PANEL_WIDTH)
+    top_bar.addSubview_(header)
+    cv.addSubview_(top_bar)
+    stack_h = PANEL_HEIGHT - _TOP_BAR_H
+    stack = NSStackView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, stack_h))
+    stack.setAutoresizingMask_(18)
+    stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
+    stack.setAlignment_(NSLayoutAttributeLeading)
+    stack.setSpacing_(1.0)
+    stack.setDistribution_(-1)
+    cv.addSubview_(stack)
+    return panel, stack, header
+
+def _reposition_tab_panel(panel, nsstatusitem) -> None:
+    btn_win = nsstatusitem.button().window()
+    if btn_win is None:
+        return
+    w  = panel.frame().size.width
+    h  = panel.frame().size.height
+    sr = btn_win.frame()
+    px = sr.origin.x + sr.size.width / 2.0 - w / 2.0
+    py = sr.origin.y - h - PANEL_GAP
+    panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
+
+def _resize_panel_keep_top(panel, width, new_h: float) -> None:
+    frame = panel.frame()
+    top_y = frame.origin.y + frame.size.height
+    panel.setFrame_display_(
+        NSMakeRect(frame.origin.x, top_y - new_h, width, new_h), False)
+
 def _make_grid_cell_btn(text: str, color=None) -> NSButton:
     attrs = {NSFontAttributeName: _MENLO()}
     if color is not None:

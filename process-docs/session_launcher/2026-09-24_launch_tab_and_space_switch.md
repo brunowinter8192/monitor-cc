@@ -278,3 +278,37 @@ The mutation for the centering mask was also invisible at first (a stretched hea
 Not verified: click feel in the real panel (the user checks after the rebuild), and `dev/model_selector/verify_four_tab_ring.py` was not re-run for this change (it builds real NSPanels and needs the user's go);
 the frame carry-over itself is the unchanged ring function.
 
+
+## Shared side-panel scaffolding (2026-09-24, refactor after the live-verified tab clicks)
+
+The near-identical copies flagged during M2 were removed. Verified by diff before touching anything: the three panel factories (`_make_rag_nspanel`, `_make_models_nspanel`,
+`_make_launch_nspanel`) were identical except for the label passed to `_make_tab_header`; the three `_reposition_*_panel` functions were identical (including the `btn_win is None` guard);
+the four controller resize methods (`_resize_rag_panel`, `_resize_models_panel`, `_resize_launch_panel` and `PanelManager._resize_panel`) were identical except for the panel attribute.
+
+Result, all in `panel.py` (already the shared module every tab imports; the code standards forbid living in one consumer):
+- `_make_tab_nspanel(active)` returns `(panel, stack, header)`; callers pass `'RAG'`, `'Models'`, `'Launch'`.
+- `_reposition_tab_panel(panel, nsstatusitem)`; `panel_lifecycle` uses it for the three side panels.
+- `_resize_panel_keep_top(panel, width, new_h)`; the four controllers call it with `app.settings.panel_width` (the four private resize methods are gone).
+- `rag_controller.py`, `model_panel_ui.py`, `launch_panel_ui.py` lost their factory/reposition functions and the AppKit/PANEL_* imports only those used; `model_panel_ui.py` (24 LOC) and `launch_panel_ui.py` (59 LOC) now only hold button/row factories.
+- Deliberately NOT merged: the Sessions panel's `_make_nspanel` (footer, `_PanelContentView`, extra tracking areas) and `_reposition_panel` (no `None` guard on the status window; merging would change behavior when the status item has no window).
+- Method: the removed function bodies were extracted programmatically and asserted identical to the shared bodies (modulo the names and the header label) before being deleted.
+
+Proof of unchanged behavior (`dev/session_launcher/p2_panel_snapshot.py`, snapshots in `dev/session_launcher/json/`): a snapshot of the four constructed panels was taken on the code BEFORE the refactor
+(`--label before`, repeated once and byte-identical, so the snapshot is deterministic), again AFTER (`--label after`), and compared: 3174 values identical. Covered per panel: class, style mask, level, collection behavior, shadow, opaque,
+accepts-mouse-moved, content min size, frame, and the full recursive subview tree (class, frame, autoresizing mask, tag, text/title) including the header strip with its 4 buttons and 3 separators; initially, after rebuild at four
+width/min-height settings (which drives the resize function for all four controllers), after reposition against two status-item frames, and reposition with no status window (frames stay unchanged). Sanity check that the comparison can fail:
+changing the shared factory's window level by +1 produced 15 differences (`/initial/rag/level: before 25 after 26`), then reverted. The snapshot script resolves the reposition function by the old per-tab names first and the shared one second so the
+same script runs on both versions; that compatibility lookup is confined to the dev script.
+Also unchanged: `panel_manager_byte_identity.py` and `model_controller_byte_identity.py` give the same hashes on the pre-refactor commit (checked out into a temporary git worktree) and on the refactored tree
+(`b65e982a...`; `0efc9d39...`/`635d6108...`/`662318b9...` are the three model-controller hashes as before). All suites PASS after the refactor: `t1_autojump_removal` (7), `t2_launch_tab` (11), `t3_tab_click` (6), `t1_skill_picker` (12).
+`dev/model_selector/verify_four_tab_ring.py` was run once with the user's go (real NSPanels, isolated HOME): PASS in both ring directions. The user's real `menubar.log` had 9 `[launch]` and 1 `[skill]` lines before and after the whole run.
+
+Lessons: there is no linter in the venv (no pyflakes/flake8/ruff); after moving code between modules a throwaway AST check for unused imports and undefined names (kept out of the repo, in /tmp) caught the missing `_make_tab_nspanel`/`_resize_panel_keep_top`
+import in `rag_controller.py` that the plain `import src.menubar.app` smoke test had not (Python resolves those names only when the function runs; the snapshot's controller construction is what exercises them).
+Baseline hashes of scripts that print a hash are best taken from a clean `git worktree add /tmp/x HEAD` (the scripts locate their root from `__file__`), not by stashing.
+
+Correction (same day, after review): the two snapshot JSON files (about 7,700 lines each) were committed in `8d41f8b6` under `dev/session_launcher/json/` and then removed again, because a `before` snapshot of a code state that no longer
+exists and an `after` snapshot that can be regenerated at any time are of no use to a successor. `p2_panel_snapshot.py` now writes its JSON to `/tmp/session_launcher_p2_panel_snapshot/` (not in the repo); the compare report
+`md/p2_panel_snapshot.md` (PASS, 3174 identical values) stays. Checked before deleting: regenerating `--label after` reproduced the committed `after` file byte for byte. The compare mode needs both snapshots in that /tmp directory,
+so for a future refactor take `--label before` on the old code first. The statement above that the snapshots are "committed in `dev/session_launcher/json/`" no longer holds.
+

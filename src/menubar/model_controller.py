@@ -6,9 +6,10 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSForegroundColorAttributeName)
 from Foundation import NSMakeRect, NSOperationQueue
 
-from .panel import _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator
+from .panel import (_TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator,
+                    _make_tab_nspanel, _resize_panel_keep_top)
 from .model_selection import _PendingSelection, _thinking_is_enabled
-from .model_panel_ui import (_make_models_nspanel, _make_model_row_btn, _make_apply_btn,
+from .model_panel_ui import (_make_model_row_btn, _make_apply_btn,
                              _APPLY_BTN_W, _APPLY_SUCCESS_TITLE, _APPLY_SUCCESS_W,
                              _APPLY_SUCCESS_DURATION)
 
@@ -94,7 +95,7 @@ class ModelController:
     def __init__(self, app) -> None:
         self.app = app
         self._models_open: bool = False
-        self._models_panel, self._models_sv, self._models_header = _make_models_nspanel()
+        self._models_panel, self._models_sv, self._models_header = _make_tab_nspanel('Models')
         self._pending = _PendingSelection()
         self._pending.load()
         self._buttons = _ModelRowButtons()
@@ -110,7 +111,7 @@ class ModelController:
             sv.removeFromSuperview()
         pw = app.settings.panel_width
         required_h = _TOP_BAR_H + _LABEL_H + 8 * _ROW_H + 22
-        self._resize_models_panel(max(app.settings.panel_min_height, required_h))
+        _resize_panel_keep_top(self._models_panel, app.settings.panel_width, max(app.settings.panel_min_height, required_h))
         self._models_sv.addView_inGravity_(_make_line_separator(pw), 1)
         self._buttons.build(self._models_sv, pw, app._panel_controller)
         self._buttons.refresh_titles(self._pending)
@@ -205,10 +206,3 @@ class ModelController:
             btn.setTitle_('Apply')
         except Exception as exc:
             print(f'[menubar] apply success revert failed: {exc}', file=sys.stderr)
-
-    def _resize_models_panel(self, new_h: float) -> None:
-        w     = self.app.settings.panel_width
-        frame = self._models_panel.frame()
-        top_y = frame.origin.y + frame.size.height
-        self._models_panel.setFrame_display_(
-            NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
