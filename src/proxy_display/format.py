@@ -44,8 +44,8 @@ def _shorten_model(model: str) -> str:
 def _is_standalone_entry(entry: dict) -> bool:
     if entry.get('is_continue'):
         return False
-    sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
-    tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+    sys_chars = entry.get('system_total_chars', 0)
+    tools_chars = entry.get('tools_total_chars', 0)
     return (
         'haiku' in entry.get('model', '').lower()
         or (sys_chars == 0 and tools_chars == 0)
@@ -127,14 +127,10 @@ def _slice_viewport(all_lines: list, line_keys: list, parent_prefix: list, pane_
     initial_parent_count = parent_prefix[start]
     return visible_lines, visible_keys, initial_parent_count, total_lines
 
-def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '', request_id_by_flow: Optional[dict] = None, turn_cache: Optional[TurnCache] = None) -> tuple:
+def format_proxy_block(entries: list, expand_states: dict, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '', request_id_by_flow: Optional[dict] = None, *, turn_cache: TurnCache) -> tuple:
     if not entries:
         return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
     from src.proxy_display.frozen_turns import assign_groups, render_frozen
-    if expand_states is None:
-        expand_states = {}
-    if turn_cache is None:
-        turn_cache = TurnCache()
     groups = assign_groups(entries, turns, turn_cache)
     flat = render_frozen(
         entries, groups, expand_states, pane_width, turns,

@@ -17,6 +17,10 @@ _REPORTS = _AREA_ROOT / 'A_render_refactor_proof_reports'
 
 # ORCHESTRATOR
 
+def _turn_cache():
+    from src.proxy_display.turn_cache import TurnCache
+    return TurnCache()
+
 def main():
     args = _parse_args()
     cases = _build_cases()
@@ -88,7 +92,7 @@ def _render_case(case, format_proxy_block):
     if name == 'expand_fixpoint':
         return _render_fixpoint(entries, kw, format_proxy_block)
     line_map = {}
-    return format_proxy_block(entries, expand_states, line_map=line_map, **kw)
+    return format_proxy_block(entries, expand_states, line_map=line_map, **kw, turn_cache=_turn_cache())
 
 
 def _render_fixpoint(entries, kw, format_proxy_block):
@@ -97,7 +101,7 @@ def _render_fixpoint(entries, kw, format_proxy_block):
     result = ('', 0)
     for _ in range(20):
         line_map = {}
-        result = format_proxy_block(entries, expand_states, line_map=line_map, **kw)
+        result = format_proxy_block(entries, expand_states, line_map=line_map, **kw, turn_cache=_turn_cache())
         new_keys = {v for v in line_map.values() if v is not None} - known_keys
         if not new_keys:
             break

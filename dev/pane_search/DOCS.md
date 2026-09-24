@@ -73,7 +73,7 @@ embedding, `search.py`, `forwarded_parser.py`'s reconstruction functions, or
 
 ---
 
-### p2_search_feature_regression_fixtures.py (106 LOC)
+### p2_search_feature_regression_fixtures.py (107 LOC)
 
 **Purpose:** Loads the `src` modules under test, holds the shared `check()`/results list, and
 builds synthetic proxy entries and pane-state resets for the M2 suite's test cases.

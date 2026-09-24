@@ -61,7 +61,8 @@ def _parse_command():
             payload.get("session_id"),
             (cwd if isinstance(cwd, str) else None),
         )
-    except Exception:
+    except Exception as e:
+        log_fire("block_cli_chained", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None, None
 
 def _split_spans(text: str, sep_re) -> list:

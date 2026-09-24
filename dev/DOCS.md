@@ -43,5 +43,6 @@ import), and either asserts pass/fail to stdout or writes a report under `dev/<a
 - `session_launcher/` — desktop-switch and Ghostty-window-placement probes (macOS 26.6.2) plus regression tests for the menubar Launch tab, the clickable tab header and the Auto-Jump removal.
 - `setup_py2app/` — exit-code checks for `setup_py2app.py` via AST extraction (the build script is never run).
 - `skill_picker/` — tests and a read-only real-machine probe for the menubar skill dropdown (skill discovery, inserted text, Ghostty AppleScript, menu and grid).
+- `workers/` — regression checks for worker status probes, selection IPC and the `list_workers` shape (fakes only, no tmux).
 
 Other `dev/` areas exist outside this map's scope; see their own `DOCS.md`.

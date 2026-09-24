@@ -1,57 +1,57 @@
 # m1_frame_e2e_test report
 
-Run: 2026-09-24T18:38:43
-Old tree: git archive 0ce370df (0ce370df); new tree: /Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/flicker
+Run: 2026-09-24T23:52:06
+Old tree: git archive 0ce370df (0ce370df); new tree: /Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/mcfix-display
 Terminal: 100x30 private tmux sockets flk_m1_<pane>_<tree>
 
-Result: 132/132 checks passed
+Result: 82/132 checks passed
 
 - PASS  tokens: harness sanity, old tree emits clear-screen
 - PASS  tokens: harness sanity, shell cursor visible before the pane starts
 - PASS  tokens: harness sanity, old tree never hides the cursor  (['1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
 - PASS  tokens: hide sequence reaches the pane before the first frame
-- PASS  tokens: every frame carries the hide sequence (20 frames)
+- PASS  tokens: every frame carries the hide sequence (62 frames)
 - PASS  tokens: cursor hidden after boot
 - PASS  tokens: cursor hidden after every step  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
-- PASS  tokens: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- FAIL  tokens: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
 - PASS  tokens: respawn-pane resets to visible cursor
 - PASS  tokens: cursor hidden again after the pane restarts
 - PASS  tokens: cursor visible again after the pane exits (Ctrl+C)
 - PASS  tokens: new tree emits no 2J
 - PASS  tokens: new tree emits no 3J
-- PASS  tokens: new tree frames wrapped in 2026 pairs (20 begin / 20 end)
+- PASS  tokens: new tree frames wrapped in 2026 pairs (62 begin / 62 end)
 - PASS  tokens: new tree nests correctly (no begin before previous end)
 - PASS  tokens: new tree has no text outside a sync pair besides boot noise
 - PASS  tokens: screen identical at step boot
-- PASS  tokens: screen identical at step hover_row_4
+- FAIL  tokens: screen identical at step hover_row_4  (row 8 token 1/558vs158: old="'(('bg'," new="'()")
 - PASS  tokens: screen identical at step hover_row_5
 - PASS  tokens: screen identical at step hover_row_6
-- PASS  tokens: screen identical at step hover_row_7
+- FAIL  tokens: screen identical at step hover_row_7  (row 3 token 0/558vs1: old="'" new='')
 - PASS  tokens: screen identical at step hover_row_8
 - PASS  tokens: screen identical at step hover_row_9
 - PASS  tokens: screen identical at step click_expand_row_5
 - PASS  tokens: screen identical at step hover_row_8_after_expand
 - PASS  tokens: screen identical at step click_collapse_row_5
 - PASS  tokens: screen identical at step scroll_up
-- PASS  tokens: screen identical at step scroll_down_past_end
+- FAIL  tokens: screen identical at step scroll_down_past_end  (row 6 token 1/158vs558: old="'()" new="'(('bg',")
 - PASS  tokens: screen identical at step search_type
-- PASS  tokens: screen identical at step search_backspace
-- PASS  tokens: screen identical at step search_commit
-- PASS  tokens: screen identical at step hover_after_all
+- FAIL  tokens: screen identical at step search_backspace  (row 7 token 3/558vs558: old='69,' new='49,')
+- FAIL  tokens: screen identical at step search_commit  (row 7 token 3/558vs558: old='69,' new='49,')
+- FAIL  tokens: screen identical at step hover_after_all  (row 8 token 1/558vs158: old="'(('bg'," new="'()")
 - PASS  worker_tokens: harness sanity, old tree emits clear-screen
 - PASS  worker_tokens: harness sanity, shell cursor visible before the pane starts
 - PASS  worker_tokens: harness sanity, old tree never hides the cursor  (['1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
 - PASS  worker_tokens: hide sequence reaches the pane before the first frame
-- PASS  worker_tokens: every frame carries the hide sequence (22 frames)
+- PASS  worker_tokens: every frame carries the hide sequence (53 frames)
 - PASS  worker_tokens: cursor hidden after boot
 - PASS  worker_tokens: cursor hidden after every step  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
-- PASS  worker_tokens: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+- FAIL  worker_tokens: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '1', '1', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
 - PASS  worker_tokens: respawn-pane resets to visible cursor
 - PASS  worker_tokens: cursor hidden again after the pane restarts
 - PASS  worker_tokens: cursor visible again after the pane exits (Ctrl+C)
 - PASS  worker_tokens: new tree emits no 2J
 - PASS  worker_tokens: new tree emits no 3J
-- PASS  worker_tokens: new tree frames wrapped in 2026 pairs (22 begin / 22 end)
+- PASS  worker_tokens: new tree frames wrapped in 2026 pairs (53 begin / 53 end)
 - PASS  worker_tokens: new tree nests correctly (no begin before previous end)
 - PASS  worker_tokens: new tree has no text outside a sync pair besides boot noise
 - PASS  worker_tokens: screen identical at step boot
@@ -59,24 +59,24 @@ Result: 132/132 checks passed
 - PASS  worker_tokens: screen identical at step hover_row_5
 - PASS  worker_tokens: screen identical at step hover_row_6
 - PASS  worker_tokens: screen identical at step hover_row_7
-- PASS  worker_tokens: screen identical at step hover_row_8
+- FAIL  worker_tokens: screen identical at step hover_row_8  (row 3 token 31/51vs51: old="'5'(('fg'," new="'4'(('fg',")
 - PASS  worker_tokens: screen identical at step hover_row_9
 - PASS  worker_tokens: screen identical at step click_expand_row_5
-- PASS  worker_tokens: screen identical at step hover_row_8_after_expand
-- PASS  worker_tokens: screen identical at step click_collapse_row_5
-- PASS  worker_tokens: screen identical at step scroll_up
-- PASS  worker_tokens: screen identical at step scroll_down_past_end
-- PASS  worker_tokens: screen identical at step search_type
-- PASS  worker_tokens: screen identical at step search_backspace
-- PASS  worker_tokens: screen identical at step search_commit
-- PASS  worker_tokens: screen identical at step switch_worker_2_shorter_frame
-- PASS  worker_tokens: screen identical at step switch_worker_1_longer_frame
-- PASS  worker_tokens: screen identical at step hover_after_all
+- FAIL  worker_tokens: screen identical at step hover_row_8_after_expand  (row 1 token 51/243vs261: old="'_'(('fg'," new="'c'(('fg',")
+- FAIL  worker_tokens: screen identical at step click_collapse_row_5  (row 1 token 43/240vs243: old='166,' new='205,')
+- FAIL  worker_tokens: screen identical at step scroll_up  (row 1 token 43/240vs243: old='166,' new='205,')
+- FAIL  worker_tokens: screen identical at step scroll_down_past_end  (row 6 token 1/558vs158: old="'(('bg'," new="'()")
+- FAIL  worker_tokens: screen identical at step search_type  (row 6 token 1/558vs158: old="'(('bg'," new="'()")
+- FAIL  worker_tokens: screen identical at step search_backspace  (row 1 token 61/249vs252: old="'_'(('fg'," new="'c'(('fg',")
+- FAIL  worker_tokens: screen identical at step search_commit  (row 1 token 61/246vs249: old="'" new="'c'(('fg',")
+- FAIL  worker_tokens: screen identical at step switch_worker_2_shorter_frame  (row 1 token 61/246vs249: old="'" new="'c'(('fg',")
+- FAIL  worker_tokens: screen identical at step switch_worker_1_longer_frame  (row 1 token 0/103vs249: old="'c'()" new="'s'(('fg',")
+- FAIL  worker_tokens: screen identical at step hover_after_all  (row 1 length old=41 new=249 tailold="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)" tailnew="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)")
 - PASS  proxy: harness sanity, old tree emits clear-screen
 - PASS  proxy: harness sanity, shell cursor visible before the pane starts
 - PASS  proxy: harness sanity, old tree never hides the cursor  (['1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
 - PASS  proxy: hide sequence reaches the pane before the first frame
-- PASS  proxy: every frame carries the hide sequence (20 frames)
+- PASS  proxy: every frame carries the hide sequence (18 frames)
 - PASS  proxy: cursor hidden after boot
 - PASS  proxy: cursor hidden after every step  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
 - PASS  proxy: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
@@ -85,30 +85,30 @@ Result: 132/132 checks passed
 - PASS  proxy: cursor visible again after the pane exits (Ctrl+C)
 - PASS  proxy: new tree emits no 2J
 - PASS  proxy: new tree emits no 3J
-- PASS  proxy: new tree frames wrapped in 2026 pairs (20 begin / 20 end)
+- PASS  proxy: new tree frames wrapped in 2026 pairs (18 begin / 18 end)
 - PASS  proxy: new tree nests correctly (no begin before previous end)
-- PASS  proxy: new tree has no text outside a sync pair besides boot noise
-- PASS  proxy: screen identical at step boot
-- PASS  proxy: screen identical at step hover_row_4
-- PASS  proxy: screen identical at step hover_row_5
-- PASS  proxy: screen identical at step hover_row_6
-- PASS  proxy: screen identical at step hover_row_7
-- PASS  proxy: screen identical at step hover_row_8
-- PASS  proxy: screen identical at step hover_row_9
-- PASS  proxy: screen identical at step click_expand_row_5
-- PASS  proxy: screen identical at step hover_row_8_after_expand
-- PASS  proxy: screen identical at step click_collapse_row_5
-- PASS  proxy: screen identical at step scroll_up
-- PASS  proxy: screen identical at step scroll_down_past_end
-- PASS  proxy: screen identical at step search_type
-- PASS  proxy: screen identical at step search_backspace
-- PASS  proxy: screen identical at step search_commit
-- PASS  proxy: screen identical at step hover_after_all
+- FAIL  proxy: new tree has no text outside a sync pair besides boot noise
+- FAIL  proxy: screen identical at step boot  (row 2 token 0/274vs360: old="'" new="'S'(('fg',")
+- FAIL  proxy: screen identical at step hover_row_4  (row 2 token 0/274vs360: old="'" new="'S'(('fg',")
+- FAIL  proxy: screen identical at step hover_row_5  (row 2 token 0/274vs360: old="'" new="'S'(('fg',")
+- FAIL  proxy: screen identical at step hover_row_6  (row 2 token 0/274vs360: old="'" new="'S'(('fg',")
+- FAIL  proxy: screen identical at step hover_row_7  (row 2 token 0/274vs360: old="'" new="'S'(('fg',")
+- FAIL  proxy: screen identical at step hover_row_8  (row 1 length old=41 new=261 tailold="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)" tailnew="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)")
+- FAIL  proxy: screen identical at step hover_row_9  (row 1 length old=41 new=249 tailold="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)" tailnew="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)")
+- FAIL  proxy: screen identical at step click_expand_row_5  (row 1 length old=41 new=243 tailold="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)" tailnew="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)")
+- FAIL  proxy: screen identical at step hover_row_8_after_expand  (row 1 length old=41 new=243 tailold="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)" tailnew="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)")
+- FAIL  proxy: screen identical at step click_collapse_row_5  (row 1 token 51/261vs243: old="'c'(('fg'," new="'_'(('fg',")
+- FAIL  proxy: screen identical at step scroll_up  (row 2 token 0/274vs360: old="'" new="'S'(('fg',")
+- FAIL  proxy: screen identical at step scroll_down_past_end  (row 1 token 43/240vs243: old='166,' new='205,')
+- FAIL  proxy: screen identical at step search_type  (row 1 token 51/267vs270: old="'a'(('fg'," new="'/'(('fg',")
+- FAIL  proxy: screen identical at step search_backspace  (row 1 length old=249 new=41 tailold="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)" tailnew="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)")
+- FAIL  proxy: screen identical at step search_commit  (row 1 length old=246 new=41 tailold="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)" tailnew="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)")
+- FAIL  proxy: screen identical at step hover_after_all  (row 1 length old=246 new=41 tailold="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)" tailnew="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)")
 - PASS  worker_proxy: harness sanity, old tree emits clear-screen
 - PASS  worker_proxy: harness sanity, shell cursor visible before the pane starts
 - PASS  worker_proxy: harness sanity, old tree never hides the cursor  (['1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'])
 - PASS  worker_proxy: hide sequence reaches the pane before the first frame
-- PASS  worker_proxy: every frame carries the hide sequence (22 frames)
+- PASS  worker_proxy: every frame carries the hide sequence (64 frames)
 - PASS  worker_proxy: cursor hidden after boot
 - PASS  worker_proxy: cursor hidden after every step  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
 - PASS  worker_proxy: cursor hidden across a 40-event hover burst  (['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
@@ -117,26 +117,26 @@ Result: 132/132 checks passed
 - PASS  worker_proxy: cursor visible again after the pane exits (Ctrl+C)
 - PASS  worker_proxy: new tree emits no 2J
 - PASS  worker_proxy: new tree emits no 3J
-- PASS  worker_proxy: new tree frames wrapped in 2026 pairs (22 begin / 22 end)
+- PASS  worker_proxy: new tree frames wrapped in 2026 pairs (64 begin / 64 end)
 - PASS  worker_proxy: new tree nests correctly (no begin before previous end)
-- PASS  worker_proxy: new tree has no text outside a sync pair besides boot noise
-- PASS  worker_proxy: screen identical at step boot
-- PASS  worker_proxy: screen identical at step hover_row_4
-- PASS  worker_proxy: screen identical at step hover_row_5
+- FAIL  worker_proxy: new tree has no text outside a sync pair besides boot noise
+- FAIL  worker_proxy: screen identical at step boot  (row 5 token 4/275vs275: old="'▼'(('fg'," new="'▶'(('fg',")
+- FAIL  worker_proxy: screen identical at step hover_row_4  (row 4 token 3/701vs701: old='69,' new='49,')
+- FAIL  worker_proxy: screen identical at step hover_row_5  (row 5 token 1/275vs701: old="'()" new="'(('bg',")
 - PASS  worker_proxy: screen identical at step hover_row_6
 - PASS  worker_proxy: screen identical at step hover_row_7
 - PASS  worker_proxy: screen identical at step hover_row_8
-- PASS  worker_proxy: screen identical at step hover_row_9
-- PASS  worker_proxy: screen identical at step click_expand_row_5
-- PASS  worker_proxy: screen identical at step hover_row_8_after_expand
+- FAIL  worker_proxy: screen identical at step hover_row_9  (row 1 length old=46 new=41 tailold="(2, 108, 112, 134)),) '_'(('fg', (2, 137, 220, 235)),)" tailnew="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)")
+- FAIL  worker_proxy: screen identical at step click_expand_row_5  (row 1 length old=261 new=41 tailold="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)" tailnew="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)")
+- FAIL  worker_proxy: screen identical at step hover_row_8_after_expand  (row 1 length old=243 new=41 tailold="(2, 108, 112, 134)),) '0'(('fg', (2, 108, 112, 134)),)" tailnew="108, 112, 134)),) ' '(('fg', (2, 108, 112, 134)),)")
 - PASS  worker_proxy: screen identical at step click_collapse_row_5
-- PASS  worker_proxy: screen identical at step scroll_up
-- PASS  worker_proxy: screen identical at step scroll_down_past_end
-- PASS  worker_proxy: screen identical at step search_type
-- PASS  worker_proxy: screen identical at step search_backspace
-- PASS  worker_proxy: screen identical at step search_commit
-- PASS  worker_proxy: screen identical at step switch_worker_2_shorter_frame
-- PASS  worker_proxy: screen identical at step switch_worker_1_longer_frame
+- FAIL  worker_proxy: screen identical at step scroll_up  (row 1 token 43/240vs246: old='166,' new='205,')
+- FAIL  worker_proxy: screen identical at step scroll_down_past_end  (row 1 token 43/240vs249: old='166,' new='205,')
+- FAIL  worker_proxy: screen identical at step search_type  (row 1 token 51/267vs276: old="'a'(('fg'," new="'2'(('fg',")
+- FAIL  worker_proxy: screen identical at step search_backspace  (row 1 token 51/249vs258: old="'a'(('fg'," new="'2'(('fg',")
+- FAIL  worker_proxy: screen identical at step search_commit  (row 1 token 43/246vs258: old='166,' new='205,')
+- FAIL  worker_proxy: screen identical at step switch_worker_2_shorter_frame  (row 1 token 43/246vs261: old='166,' new='205,')
+- FAIL  worker_proxy: screen identical at step switch_worker_1_longer_frame  (row 1 token 43/246vs264: old='166,' new='205,')
 - PASS  worker_proxy: screen identical at step hover_after_all
 
-Frames written by new tree per pane: tokens=20, worker_tokens=22, proxy=20, worker_proxy=22
+Frames written by new tree per pane: tokens=62, worker_tokens=53, proxy=18, worker_proxy=64

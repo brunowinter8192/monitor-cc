@@ -46,7 +46,7 @@ populate `messages` for entries the deque window dropped.
 
 ## Modules
 
-### pane.py (348 LOC)
+### pane.py (352 LOC)
 
 **Purpose:** Event loop for the main proxy pane — reads the `_forwarded` dual-log incrementally, handles mouse (click expand/collapse, scroll, hover, copy, search) and keyboard input (search, undo, `n`/`N`), renders on change via the drain-refresh-render pattern.
 **Reads:** Module-level state; active project filter from `core.monitor`; stdin (keypresses, mouse events).
@@ -56,7 +56,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### worker_proxy_pane.py (350 LOC)
+### worker_proxy_pane.py (351 LOC)
 
 **Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate. The worker-switcher header itself is built by the shared `workers.worker_switch_header.format_worker_switch_header` (imported under the alias `_format_worker_proxy_header`, its pre-move name) — `_worker_proxy_workers` is enriched with token/context-% liveness via `worker_tmux.attach_worker_stats(_worker_proxy_workers, _worker_proxy_stats_cache)` before that header renders (incremental, own cache — see `workers/DOCS.md`'s `attach_worker_stats` gotcha for why this must stay incremental).
 **Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_selection.get_selection_file_path`); stdin.
@@ -76,7 +76,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### format.py (149 LOC)
+### format.py (145 LOC)
 
 **Purpose:** `format_proxy_block` — orchestrates group assignment and frozen-turn rendering (delegated to `frozen_turns`, which reuses cached turn groups), applies scroll/viewport windowing and the row-background priority chain (the only place hover is applied), returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
@@ -106,21 +106,21 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### forwarded_parser.py (301 LOC)
+### forwarded_parser.py (284 LOC)
 
-**Purpose:** Forwarded-log delta reconstruction (continue requests are kept out of the per-family accumulator, see Gotchas) — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`; also owns `_proxy_session_id_for_project` (hashes `os.path.normpath(os.path.expanduser(project_path))`, matching `tmux_launcher.generate_session_name` byte-for-byte) and `_resolve_log_id` (marker-file → log_id resolution), both shared with `parser.py`. Leaf module — does not import from `parser.py` (parser.py imports these id-resolution helpers from here instead, avoiding a circular import).
+**Purpose:** Forwarded-log delta reconstruction (continue requests are kept out of the per-family accumulator, see Gotchas) — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`; also owns `_proxy_session_id_for_project` (hashes `os.path.normpath(os.path.expanduser(project_path))`, matching `tmux_launcher.generate_session_name` byte-for-byte) and `_resolve_log_id` (marker-file → log_id resolution; a missing marker falls back to the session id and is noted once per session id in the pane error log, a short or empty marker raises), both shared with `parser.py`. Leaf module — does not import from `parser.py` (parser.py imports these id-resolution helpers from here instead, avoiding a circular import).
 **Reads:** `_forwarded` dual-log JSONL files (incremental by byte position); `.proxy_session_*` marker files (`_resolve_log_id`).
-**Writes:** Nothing — returns `(entry_list, new_position)`, `True`/`False`, a `{flow_id: messages}` dict, or a log-id string; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`).
+**Writes:** Nothing — returns `(entry_list, new_position)`, a `{flow_id: messages}` dict, or a log-id string; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`); `_lazy_load_messages_forwarded` fills `entry['messages']` in place and raises `LookupError` when the flow cannot be loaded. An entry outside the keep-last window has no `messages` key (absent means not loaded, never `None`).
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/parser.py` (`_proxy_session_id_for_project`, `_resolve_log_id`), `src/proxy_display/proxy_pane_shared.py` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `src/proxy_display/dual_log_accumulator.py` (`_infer_model_family`), `src/dual_log_cli/project_map.py` (`_proxy_session_id_for_project`)
 **Calls out:** `proxy.message_summary` (`_infer_model_family`, `_summarize_message`), `proxy.logging` (`_compute_diff`), `pane_error_log` (`log_pane_error`)
 
 ---
 
-### parser.py (93 LOC)
+### parser.py (88 LOC)
 
 **Purpose:** Proxy log path resolution — marker-file-based resolution of the current proxy session's `_forwarded`/`_stripped`/`_injected`/`_original`/`_errors`/`_response` log paths (`_find_response_log_path` derives the `_response` sibling of a main-log path), and worker log discovery via glob. The marker-file → log_id resolution itself lives in `forwarded_parser._resolve_log_id`, shared by every `find_*_log_path` function here.
 **Reads:** `.proxy_session_*` marker files under the runtime log directory (src/logs/, gitignored).
-**Writes:** Nothing — returns path objects, a session-id string, or a marker mtime/`time.time()` float; an unreadable marker file's `OSError` propagates to the caller (every pane loop already catches and logs via `pane_error_log`).
+**Writes:** Nothing — returns path objects, a session-id string, or a marker mtime float, or `None` when no marker exists; an unreadable marker file's `OSError` propagates to the caller (every pane loop already catches and logs via `pane_error_log`).
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/proxy_pane_shared.py` (`_find_dual_log_paths`), `src/proxy_display/__init__.py` (`find_worker_proxy_log`), `src/panes/warnings_pane.py` (`find_errors_log_path`, `proxy_session_id_for_project`, `get_proxy_session_start_ts`), `src/panes/token_pane.py` (`find_response_log_path`)
 **Calls out:** `forwarded_parser` (`_proxy_session_id_for_project`, `_resolve_log_id`)
 
@@ -136,7 +136,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### dual_log_accumulator.py (134 LOC)
+### dual_log_accumulator.py (112 LOC)
 
 **Purpose:** Dual-log overlay accumulation — tails `_stripped`/`_injected`/`_original` and builds the per-family accumulator state both panes' entries hold references into. `accumulate_original_tools` keeps a latest-snapshot `{tool_name -> tool_def}` map per family (the `_original` log is a full-snapshot log, not delta-encoded). `accumulate_dual_log` mutates its accumulator dict in place (`.clear()`+`.update()`, preserving Python references held by pane entries), maintaining per-flow lookup dicts (`_has_content_by_flow_id`, `_msg_idx_by_flow_id`, `_sys_idx_by_flow_id`, `_tool_name_by_flow_id`, `_lag_msg_idx_by_flow_id`) that back the REQ-header badge and the flow-scoped span lookup in `render_messages._lookup_spans`.
 **Reads:** `_stripped`/`_injected`/`_original` dual-log JSONL files (incremental by byte position).
@@ -146,17 +146,17 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### side_logs.py (82 LOC)
+### side_logs.py (57 LOC)
 
 **Purpose:** `_response`/`_errors` side-log readers. `read_response_log` reads `_response` entries incrementally (`{request_id: full entry dict}` — headers plus `cc_requested_model`/`proxy_forwarded_model`/`answering_model`, whatever the on-disk entry carries). `scan_worker_errors_logs` globs worker `_errors` dual-logs and reads them incrementally by byte position.
 **Reads:** `_response`/`_errors` dual-log JSONL files (incremental by byte position).
-**Writes:** Nothing — returns tuples; `/tmp/monitor_cc_error.log` on `read_response_log`'s `OSError` (via `pane_error_log`, retry-next-poll position unchanged).
+**Writes:** Nothing — returns tuples; `/tmp/monitor_cc_error.log` on `read_response_log`'s `OSError` and on each skipped `scan_worker_errors_logs` file (via `pane_error_log`, retry-next-poll position unchanged). `scan_worker_errors_logs` requires the project session id and `min_mtime`; without a project there is no worker-errors scan.
 **Called by:** `src/panes/token_pane.py` (`read_response_log`, lazy import), `src/panes/warnings_pane.py` (`scan_worker_errors_logs`, lazy import)
 **Calls out:** `pane_error_log` (`log_pane_error`)
 
 ---
 
-### render_turn.py (171 LOC)
+### render_turn.py (170 LOC)
 
 **Purpose:** Renders all per-request rows for an expanded turn group — REQ-header line (`▶/▼ REQ #N model Nmsg [eff:X] [think:Nk] [mods] [warns] [tag badge]`), request labels (`REQ #N` from the token pane's numbering via the flow-to-request-id join, `REQ #N.M` for a refire sharing a request_id, `REQ #?` when unmapped, `H`/`S` for standalone sidecars); a `[404]` (red) or `[pending]` (dim, no `_response` line yet) marker ends the header row of a non-200 or unfinished request, and the expanded section starts with a `status:` line, and dispatch into the expanded-request section renderers.
 **Reads:** Group dict, all entries, expand states, pane width, the flow-to-REQ-number map.
@@ -176,10 +176,10 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### render_sections_system.py (101 LOC)
+### render_sections_system.py (88 LOC)
 
 **Purpose:** `render_system_blocks` — the system-blocks section of an expanded request entry. Per-block delta visibility is content-based (`sb['preview'] == prev.get('preview')`); a first request shows all blocks, a later request skips unchanged blocks entirely. Block header color: yellow when a strip span is present, green when an inject span is present, gray otherwise.
-**Reads:** Entry dict, previous entry, expand states, modifications list.
+**Reads:** Entry dict (dual-log span overlays), previous entry, expand states.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`
 **Calls out:** `format` (`_format_k`), `render_line_helpers` (`_emit_text_lines`, `_emit_span_lines`, `_emit_inline_spans`)
@@ -196,9 +196,9 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### render_messages.py (304 LOC)
+### render_messages.py (230 LOC)
 
-**Purpose:** Renders new/modified/removed messages for an expanded request entry. `render_messages()` dispatches to `_render_new_messages` (when the message count grew) or `_render_modified_messages` (retry/abort re-send) — the request's payload delta is the only source of rendered message content. Span content rendering (inline new-format vs. legacy stacked) goes through the shared `_render_span_content`. `_lookup_spans` scopes the shared, cumulative `_stripped_spans`/`_injected_spans` accumulator dicts to the entry's own `flow_id` via the `_strip_msgs_lookup`/`_inject_msgs_lookup`/`_lag_msgs_lookup` reference sets, preventing a later request's overwrite of a message index from rendering under an earlier/neighbor request. Thinking blocks (`btype == 'thinking'`) get their own collapsed-by-default drill-down (`('think', entry_idx, msg_idx, bidx)` key) with word-wrapped content via `utils.wrap_visible`.
+**Purpose:** Renders new/modified/removed messages for an expanded request entry. `render_messages()` dispatches to `_render_new_messages` (when the message count grew) or `_render_modified_messages` (retry/abort re-send) — the request's payload delta is the only source of rendered message content; every entry must carry the dual-log overlay references (`_stripped_spans`/`_injected_spans`), the pre-overlay render paths were removed. Span content rendering (inline new-format vs. legacy stacked) goes through the shared `_render_span_content`. `_lookup_spans` scopes the shared, cumulative `_stripped_spans`/`_injected_spans` accumulator dicts to the entry's own `flow_id` via the `_strip_msgs_lookup`/`_inject_msgs_lookup`/`_lag_msgs_lookup` reference sets, preventing a later request's overwrite of a message index from rendering under an earlier/neighbor request. Thinking blocks (`btype == 'thinking'`) get their own collapsed-by-default drill-down (`('think', entry_idx, msg_idx, bidx)` key) with word-wrapped content via `utils.wrap_visible`.
 **Reads:** Entry dict, previous entry, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple; when `copy_feedback` is given, the two plain message-summary row sites (`_render_new_messages`/`_render_modified_messages`, not the `[STRIPPED]` variant) assign each row a `('msg', entry_idx, msg_idx)` key and append a `utils.append_copy_symbol` copy affordance — `None` when `copy_feedback` is omitted, unchanged. `_render_block_spans` does the same for a thinking block's own always-visible summary line (`('think', entry_idx, msg_idx, bidx)` key, not gated on that block's own expand/collapse state) and, identically, for every other block row reaching its non-thinking branch — text, tool_use, tool_result, anything else — via a `('block', entry_idx, msg_idx, bidx)` key (`_block_row_key`) — the same `_append_msg_copy_symbol` helper, reused rather than duplicated, across all three row kinds.
 **Called by:** `src/proxy_display/render_turn.py`
@@ -293,4 +293,4 @@ stream from byte 0, matched by `flow_id`, to repopulate it.
   silently absorbed as quiet.
 - `parser.get_proxy_session_start_ts` always returns an existing marker file's mtime, however old —
   a warnings-pane session-start filter keyed off this can reach back arbitrarily far if the marker
-  itself is stale (no marker at all falls back to `time.time()`).
+  itself is stale (no marker at all returns `None`; the warnings pane then shows a header notice and scans no worker errors).

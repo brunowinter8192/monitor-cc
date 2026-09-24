@@ -55,7 +55,8 @@ def _parse_command():
         cmd = ti.get("command")
         bg  = ti.get("run_in_background", False)
         return (cmd if isinstance(cmd, str) else None), (bg if isinstance(bg, bool) else False), payload.get("session_id")
-    except Exception:
+    except Exception as e:
+        log_fire("rewrite_chained_sleep", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, False, None
 
 def _find_strip_ranges(command: str, stripped: str) -> list:

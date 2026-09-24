@@ -23,6 +23,10 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
+
 def check(label, condition):
     _RESULTS.append((label, bool(condition)))
     print(f"  {_PASS if condition else _FAIL}  {label}")
@@ -77,7 +81,7 @@ def test_tokens_pane_copy_click():
                   captured[-1] == y_text and y_text)
 
     narrow_lines, narrow_keys, _, _, _ = mod_token_format.format_cache_tracker(
-        mod_tokens._cache_turns, {}, 50, 10, 0, copy_feedback={},
+        mod_tokens._cache_turns, {}, 50, 10, 0, copy_feedback={}, turn_cache=_token_turn_cache()
     )
     check("tokens: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
           not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
@@ -169,7 +173,7 @@ def test_worker_tokens_copy_click():
         os.remove(mod_workers.get_selection_file_path(project_filter))
 
     narrow_lines, narrow_keys, _, _, _ = mod_token_format.format_cache_tracker(
-        mod_workers._worker_tokens_turns, {}, 50, 10, 0, copy_feedback={},
+        mod_workers._worker_tokens_turns, {}, 50, 10, 0, copy_feedback={}, turn_cache=_token_turn_cache()
     )
     check("worker-tokens: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
           not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))

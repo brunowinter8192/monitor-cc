@@ -33,7 +33,7 @@ def _strip_inactive_messages(entries: list, expand_states: dict) -> None:
     cutoff = max(0, len(entries) - PROXY_MESSAGES_KEEP_LAST)
     for i in range(cutoff):
         e = entries[i]
-        if e.get('messages') is None:
+        if 'messages' not in e:
             continue
         is_active = (
             expand_states.get(i, False) or
@@ -131,7 +131,7 @@ def _copy_feedback_key(key, entry_idx: Optional[int]):
 def _prepare_copy_text(key, entry_idx: Optional[int], entries: list, log_path) -> str:
     if entry_idx is not None and entry_idx < len(entries) and log_path:
         e = entries[entry_idx]
-        if e.get('messages') is None:
+        if 'messages' not in e:
             fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'
             _lazy_load_messages_forwarded(e, fwd_path)
     if _is_think_key(key) or _is_block_key(key):
@@ -143,17 +143,17 @@ def _prepare_copy_text(key, entry_idx: Optional[int], entries: list, log_path) -
 def _toggle_expand_and_lazy_load(key, entry_idx: Optional[int], entries: list, log_path,
                                   expand_states: dict) -> bool:
     new_state = not expand_states.get(key, False)
-    expand_states[key] = new_state
     if new_state and entry_idx is not None and entry_idx < len(entries) and log_path:
         e = entries[entry_idx]
         fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'
-        if e.get('messages') is None:
+        if 'messages' not in e:
             _lazy_load_messages_forwarded(e, fwd_path)
         prev_idx = _resolve_prev_same(entries, entry_idx)
         if prev_idx is not None:
             pe = entries[prev_idx]
-            if pe.get('messages') is None:
+            if 'messages' not in pe:
                 _lazy_load_messages_forwarded(pe, fwd_path)
+    expand_states[key] = new_state
     return new_state
 
 def _accumulate_dual_logs_and_attach(new_entries: list, entries: list, expand_states: dict, log_path,

@@ -1,7 +1,8 @@
 # INFRASTRUCTURE
-import json
 from datetime import datetime, timezone
 from pathlib import Path
+
+from src.jsonl.jsonl_reader import JsonlReader
 
 RAG_LOG_DIR = Path("/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/MCP/RAG/src/rag/logs")
 ERRORS_FILE = RAG_LOG_DIR / "errors.jsonl"
@@ -35,15 +36,6 @@ def errors_today_by_server() -> dict[str, int]:
 
 def _read_all() -> list[dict]:
     try:
-        lines = ERRORS_FILE.read_text().splitlines()
+        return list(JsonlReader(ERRORS_FILE))
     except FileNotFoundError:
         return []
-    result = []
-    for line in lines:
-        line = line.strip()
-        if line:
-            try:
-                result.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return result

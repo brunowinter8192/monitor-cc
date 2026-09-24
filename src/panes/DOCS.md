@@ -40,7 +40,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### cache_turns.py (58 LOC)
+### cache_turns.py (70 LOC)
 
 **Purpose:** `build_cache_turns(filepath, last_position, existing_turns) -> (turns, new_position)` — incrementally reads new lines from a session JSONL since `last_position`, parses them, and merges the resulting cache turns into `existing_turns` (including the case where the last existing turn was left incomplete by a previous poll; a call re-seen in a later poll keeps the later `timestamp`).
 **Reads:** session JSONL file at `filepath` (via `jsonl.read_new_lines`/`jsonl.get_current_position`) — parameters only.
@@ -60,7 +60,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_pane.py (329 LOC)
+### warnings_pane.py (315 LOC)
 
 **Purpose:** Warnings pane event loop and module-level state owner. Reads tool errors from the current session's `_errors` dual-log plus every worker's own `_errors` dual-log, converts raw records to display dicts, and drives the same drain-refresh-render loop shape as every other pane. On project/session change, resets all state and read positions.
 **Reads:** `_errors` dual-log (incremental via `_errors_log_pos`); worker `_errors` dual-logs (incremental via `_worker_errors_positions`); shared state `monitor.active_project_filter`.
@@ -70,7 +70,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_render.py (192 LOC)
+### warnings_render.py (193 LOC)
 
 **Purpose:** Pure rendering helpers for the warnings pane — `_format_warnings_pane` returns `(rendered_str, new_error_line_map)` from caller-supplied state with no globals touched; `_format_warnings_header` builds the header line (including the `[refresh]` button and its clickable region); `_serialize_warnings` formats clipboard text for one error entry; `build_warnings_search_matches` matches directly against the underlying error dicts.
 **Reads:** all pane state passed as function arguments.
@@ -80,12 +80,12 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### log_janitor.py (167 LOC)
+### log_janitor.py (190 LOC)
 
 **Purpose:** `LogSpec` registry (12 entries, the authoritative log inventory) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — the 7-day JSONL sweep triggered from `token_pane.py::run_tokens_loop` every 24h.
 **Reads:** JSONL log files passed in as `path` arguments — no shared/module state.
-**Writes:** rewrites the passed JSONL file in place (drops records older than 7 days by their `ts` field); exception-safe, never raises.
-**Called by:** `panes/token_pane.py` (lazy import inside `_refresh_tokens_data`, gated every 24h); `dev/hook_smoke/test_log_janitor.py` (via `sys.path.insert`, bare `from log_janitor import`).
+**Writes:** rewrites the passed JSONL file atomically (tmp file plus `os.replace`), dropping records older than 7 days by their `ts` field; lines whose `ts` cannot be parsed (naive, malformed) are kept and counted in one `log_pane_note` per run; any failure goes to `log_pane_error` and the function never raises.
+**Called by:** `panes/token_pane.py` (lazy import inside `_refresh_tokens_data`, gated every 24h); `dev/hook_smoke/test_log_janitor.py` (via `sys.path.insert` of the repo root, `from src.panes.log_janitor import`).
 **Calls out:** none.
 
 ---

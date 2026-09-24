@@ -14,6 +14,10 @@ PASS = 0
 FAIL = 0
 
 
+def _turn_cache():
+    from src.proxy_display.turn_cache import TurnCache
+    return TurnCache()
+
 def assert_true(condition: bool, label: str) -> None:
     global PASS, FAIL
     if condition:
@@ -76,7 +80,7 @@ def test_proxy_no_expand() -> None:
     entries[4]['timestamp'] = turns[1]['timestamp']
     line_map: dict = {}
     expand_states: dict = {}
-    output, total = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns)
+    output, total = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns, turn_cache=_turn_cache())
     _check_line_map(line_map, PANE_HEIGHT, "proxy_no_expand")
     req_keys = [k for k in line_map.values() if isinstance(k, tuple) and k[0] == 'req']
     assert_true(len(req_keys) == 5, f"proxy_no_expand: 5 req keys in map, got {len(req_keys)}")
@@ -90,7 +94,7 @@ def test_proxy_one_req_expanded() -> None:
         e['timestamp'] = turns[0]['timestamp']
     line_map: dict = {}
     expand_states = {('req', 1): True}
-    output, total = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns)
+    output, total = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns, turn_cache=_turn_cache())
     _check_line_map(line_map, PANE_HEIGHT, "proxy_one_req_expanded")
     sys_key = ('sys', 1)
     tools_key = ('tools', 1)
@@ -109,7 +113,7 @@ def test_proxy_turns_always_expanded() -> None:
     entries[3]['timestamp'] = turns[1]['timestamp']
     line_map: dict = {}
     expand_states: dict = {}
-    output, total = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns)
+    output, total = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns, turn_cache=_turn_cache())
     turn_keys = [k for k in line_map.values() if isinstance(k, tuple) and k[0] == 'turn']
     assert_true(len(turn_keys) == 0, f"proxy_turns_always_expanded: no turn keys in map, got {len(turn_keys)}")
     req_keys = [k for k in line_map.values() if isinstance(k, tuple) and k[0] == 'req']
@@ -125,12 +129,12 @@ def test_proxy_hover_matches_row() -> None:
         e['timestamp'] = turns[0]['timestamp']
     line_map: dict = {}
     expand_states: dict = {}
-    output, _ = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns)
+    output, _ = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns, turn_cache=_turn_cache())
     req0_row = next((r for r, k in line_map.items() if k == ('req', 0)), None)
     assert_true(req0_row is not None, "proxy_hover: req(0) found in line_map")
     if req0_row is None:
         return
-    output_hover, _ = format_proxy_block(entries, expand_states, line_map, req0_row, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns)
+    output_hover, _ = format_proxy_block(entries, expand_states, line_map, req0_row, PANE_HEIGHT, PANE_WIDTH, 0, turns=turns, turn_cache=_turn_cache())
     lines = output_hover.split('\n')
     target_line = lines[req0_row - 1]
     assert_true(HOVER_BG in target_line, f"proxy_hover: HOVER_BG at terminal row {req0_row}")
@@ -152,7 +156,7 @@ def test_proxy_hover_wrap_header() -> None:
         e['timestamp'] = turns[0]['timestamp']
     line_map: dict = {}
     expand_states: dict = {}
-    output, _ = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, pane_width, 0, turns=turns)
+    output, _ = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, pane_width, 0, turns=turns, turn_cache=_turn_cache())
     req0_body_row = next((r for r, k in line_map.items() if k == ('req', 0)), None)
     assert_true(req0_body_row is not None, "proxy_wrap: req(0) in line_map")
     if req0_body_row is None:
@@ -186,7 +190,7 @@ def test_proxy_shift_uses_header_lines() -> None:
     h_lines = visual_line_count(fake_header, pane_width_narrow)
     assert_true(h_lines >= 2, f"proxy_shift: narrow pane forces header_lines={h_lines} >= 2")
     line_map: dict = {}
-    output, _ = format_proxy_block(entries, {}, line_map, None, PANE_HEIGHT, pane_width_narrow, 0, turns=turns)
+    output, _ = format_proxy_block(entries, {}, line_map, None, PANE_HEIGHT, pane_width_narrow, 0, turns=turns, turn_cache=_turn_cache())
     shifted = {r + h_lines: k for r, k in line_map.items()}
     all_shifted_rows = sorted(shifted.keys())
     assert_true(all(r >= h_lines + 1 for r in all_shifted_rows),

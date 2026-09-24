@@ -126,7 +126,7 @@ and stem/substring resolution with explicit ambiguity and unknown errors.
 
 ---
 
-### reader.py (97 LOC)
+### reader.py (90 LOC)
 
 **Purpose:** The read-only file primitives — reverse chunked line-offset scanner, cheap model
 sniff, last-conversation-request loader, small-file JSONL iterator, `infer_family` (imported from
