@@ -160,7 +160,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ## State
 
-Runtime state (`file_positions`, `active_project_filter`, `active_mode`) lives in `core/monitor.py`
+Runtime state (`active_project_filter`, `active_mode`) lives in `core/monitor.py`
 as module-level variables — see `core/DOCS.md`. Every pane package reads it via
 `from ..core import monitor as _monitor` (lazy, to avoid circular imports).
 

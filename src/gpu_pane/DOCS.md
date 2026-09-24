@@ -63,7 +63,7 @@ that lives in the RAG project.
 
 ---
 
-### errors.py (49 LOC)
+### errors.py (41 LOC)
 
 **Purpose:** Reads RAG's `errors.jsonl`, filters to anomaly codes in `ERROR_CODES` (`single_instance_alive_replaced`/`busy`/`watchdog_unlinked_dead`/`watchdog_killed_orphan`) at or after local midnight. Lifecycle events (`start_*`/`stop_*`/`state_unlinked`) are excluded — the file mixes both, and only the anomalies surface to this pane.
 **Reads:** RAG's `errors.jsonl` (hard-coded path).

@@ -106,7 +106,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### forwarded_parser.py (296 LOC)
+### forwarded_parser.py (274 LOC)
 
 **Purpose:** Forwarded-log delta reconstruction (continue requests are kept out of the per-family accumulator, see Gotchas) — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`; also owns `_proxy_session_id_for_project` (hashes `os.path.normpath(os.path.expanduser(project_path))`, matching `tmux_launcher.generate_session_name` byte-for-byte) and `_resolve_log_id` (marker-file → log_id resolution), both shared with `parser.py`. Leaf module — does not import from `parser.py` (parser.py imports these id-resolution helpers from here instead, avoiding a circular import).
 **Reads:** `_forwarded` dual-log JSONL files (incremental by byte position); `.proxy_session_*` marker files (`_resolve_log_id`).
@@ -136,7 +136,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### dual_log_accumulator.py (134 LOC)
+### dual_log_accumulator.py (112 LOC)
 
 **Purpose:** Dual-log overlay accumulation — tails `_stripped`/`_injected`/`_original` and builds the per-family accumulator state both panes' entries hold references into. `accumulate_original_tools` keeps a latest-snapshot `{tool_name -> tool_def}` map per family (the `_original` log is a full-snapshot log, not delta-encoded). `accumulate_dual_log` mutates its accumulator dict in place (`.clear()`+`.update()`, preserving Python references held by pane entries), maintaining per-flow lookup dicts (`_has_content_by_flow_id`, `_msg_idx_by_flow_id`, `_sys_idx_by_flow_id`, `_tool_name_by_flow_id`, `_lag_msg_idx_by_flow_id`) that back the REQ-header badge and the flow-scoped span lookup in `render_messages._lookup_spans`.
 **Reads:** `_stripped`/`_injected`/`_original` dual-log JSONL files (incremental by byte position).
@@ -146,7 +146,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### side_logs.py (82 LOC)
+### side_logs.py (60 LOC)
 
 **Purpose:** `_response`/`_errors` side-log readers. `read_response_log` reads `_response` entries incrementally (`{request_id: full entry dict}` — headers plus `cc_requested_model`/`proxy_forwarded_model`/`answering_model`, whatever the on-disk entry carries). `scan_worker_errors_logs` globs worker `_errors` dual-logs and reads them incrementally by byte position.
 **Reads:** `_response`/`_errors` dual-log JSONL files (incremental by byte position).

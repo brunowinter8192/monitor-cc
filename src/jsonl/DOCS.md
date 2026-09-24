@@ -10,27 +10,37 @@ touch it for display logic — that lives in the pane packages.
 
 ## Public Interface
 
-- `read_new_lines(filepath, last_position)` — read raw new lines from file
-- `parse_jsonl_lines(lines)` — parse raw lines into message dicts (+ malformed-line records)
-- `get_current_position(filepath)` — return current byte offset
+- `JsonlReader(path, start_pos)` — iterate complete JSON lines from a byte offset; `.position` is the offset after the last complete line
+- `read_json_records(path, start_pos)` — list of records plus new byte offset
+- `JsonlCorruptError` — raised for an unparseable terminated line
 - `get_message_content(message)` — extract content blocks from a message dict
 - `is_tool_use(block)` — check if a content block is a `tool_use` block
 - `extract_cache_turns(messages)` — extract per-turn cache-tracking data grouped by user prompts
 
 ## Flow
 
-`~/.claude/projects/**/*.jsonl` → `jsonl_parser` (incremental read by byte offset, line parse) →
+`~/.claude/projects/**/*.jsonl` → `jsonl_reader` (incremental read by byte offset, stops before an unterminated last line) →
 `jsonl_cache_turns.extract_cache_turns` (group into turns, dedup streaming-snapshot duplicates) →
-callers: `panes/cache_turns.py`, `workers/worker_pane.py`, `workers/worker_format.py`.
+callers: `panes/cache_turns.py`, `workers/worker_pane.py`, `workers/worker_format.py`. The same reader serves the dual-log, response and errors readers in `proxy_display`, `panes/warnings_pane.py`, `gpu_pane/errors.py` and `dual_log_cli/reader.py`.
 
 ## Modules
 
-### jsonl_parser.py (51 LOC)
+### jsonl_reader.py (38 LOC)
 
-**Purpose:** Core session JSONL reader — reads new lines incrementally by byte offset and parses them into message dicts, flagging malformed lines.
-**Reads:** Session JSONL file (by `filepath` + `last_position` byte offset).
-**Writes:** nothing — returns parsed messages / malformed-line records / byte positions.
-**Called by:** `core/monitor.py`, `panes/cache_turns.py`, `workers/worker_pane.py`, `workers/worker_format.py`.
+**Purpose:** Shared incremental JSON-lines reader that never consumes an unterminated last line and raises on interior corruption.
+**Reads:** Any JSONL file (by path plus byte offset).
+**Writes:** nothing — yields records and exposes the new byte offset.
+**Called by:** `core/monitor.py`, `panes/cache_turns.py`, `panes/warnings_pane.py`, `workers/worker_format.py`, `proxy_display/forwarded_parser.py`, `proxy_display/dual_log_accumulator.py`, `proxy_display/side_logs.py`, `gpu_pane/errors.py`, `dual_log_cli/reader.py`.
+**Calls out:** none.
+
+---
+
+### jsonl_parser.py (13 LOC)
+
+**Purpose:** Content-block helpers for a session message dict (`get_message_content`, `is_tool_use`).
+**Reads:** Message dicts (parameter only).
+**Writes:** nothing.
+**Called by:** `workers/worker_format.py`.
 **Calls out:** none.
 
 ---

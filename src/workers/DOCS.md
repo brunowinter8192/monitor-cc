@@ -39,7 +39,7 @@ path + write, imported by both this package and `proxy_display`.
 
 ---
 
-### worker_format.py (52 LOC)
+### worker_format.py (51 LOC)
 
 **Purpose:** Pure JSONL extraction for one worker — `parse_worker_stats_delta` (incremental token-sum + last-known context-% over new lines only) and `extract_worker_tool_calls` (full read, tool-call list). `_WORKER_CONTEXT_WINDOW = 1000000` — a flat 1M window, since the worker fleet runs exclusively on 1M-context models.
 **Reads:** worker JSONL file — incrementally (`parse_worker_stats_delta`, from a caller-supplied byte position) or fully (`extract_worker_tool_calls`).

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..proxy.message_summary import _infer_model_family as infer_family
+from src.jsonl.jsonl_reader import JsonlReader
 
 _MODEL_RE = re.compile(rb'"model"\s*:\s*"([^"]+)"')
 _MODEL_SNIFF_BYTES = 512
@@ -87,12 +88,4 @@ def load_last_request(original_path: Path) -> tuple:
 
 
 def iter_jsonl(path: Path):
-    with open(path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                continue
+    yield from JsonlReader(path)

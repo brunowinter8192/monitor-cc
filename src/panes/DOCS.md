@@ -60,7 +60,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_pane.py (329 LOC)
+### warnings_pane.py (309 LOC)
 
 **Purpose:** Warnings pane event loop and module-level state owner. Reads tool errors from the current session's `_errors` dual-log plus every worker's own `_errors` dual-log, converts raw records to display dicts, and drives the same drain-refresh-render loop shape as every other pane. On project/session change, resets all state and read positions.
 **Reads:** `_errors` dual-log (incremental via `_errors_log_pos`); worker `_errors` dual-logs (incremental via `_worker_errors_positions`); shared state `monitor.active_project_filter`.

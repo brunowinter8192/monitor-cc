@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 from pathlib import Path
 from typing import Dict, Optional, Set, Tuple
-import json
 import os
 import time
 
@@ -9,6 +8,7 @@ from ..constants import INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL
 from ..utils import format_timestamp
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
+from src.jsonl.jsonl_reader import read_json_records
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
@@ -52,7 +52,6 @@ def run_warnings_loop() -> None:
 
     register_ram_dump('warnings', _warnings_ram_state)
     _monitor_start_ts = time.time()
-    load_historical_warnings()
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()
@@ -120,10 +119,6 @@ def _poll_warnings_input() -> bool:
             if _handle_warnings_key(char):
                 input_changed = True
     return input_changed
-
-def load_historical_warnings() -> None:
-    from ..core import monitor as _monitor
-    _monitor.monitor_sessions()
 
 def _warnings_ram_state() -> list:
     return [
@@ -233,25 +228,11 @@ def _errors_record_to_display(rec: dict) -> dict:
     }
 
 def _read_errors_log(path: Path, last_pos: int) -> tuple:
-    records: list = []
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            f.seek(last_pos)
-            while True:
-                raw_line = f.readline()
-                if not raw_line:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    records.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-            return records, f.tell()
+        return read_json_records(path, last_pos)
     except OSError:
         log_pane_error('warnings')
-        return records, last_pos
+        return [], last_pos
 
 def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
     from ..core import monitor as _monitor
@@ -267,7 +248,6 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
     if not (_force_refresh or now - last_data_refresh >= WARNINGS_POLL_INTERVAL):
         return input_changed, last_data_refresh
     _force_refresh = False
-    _monitor.monitor_sessions()
 
     project_filter = _monitor.active_project_filter
     errors_path = find_errors_log_path(project_filter)

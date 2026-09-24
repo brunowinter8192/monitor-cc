@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
-from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
+from src.jsonl.jsonl_cache_turns import extract_cache_turns
+from src.jsonl.jsonl_reader import read_json_records
 
 # FUNCTIONS
 
@@ -33,12 +34,11 @@ def _merge_duplicate_turn(existing_turns: list, new_turns: list) -> list:
 
 
 def build_cache_turns(filepath, last_position: int, existing_turns: list):
-    from ..jsonl import get_current_position
-    lines = read_new_lines(filepath, last_position)
-    new_position = get_current_position(filepath) if filepath.exists() else last_position
-    if not lines:
+    if not filepath.exists():
         return existing_turns, last_position
-    messages, _ = parse_jsonl_lines(lines)
+    messages, new_position = read_json_records(filepath, last_position)
+    if new_position == last_position:
+        return existing_turns, last_position
     new_turns = extract_cache_turns(messages)
     if not new_turns and existing_turns and messages:
         last_turn = existing_turns[-1]
