@@ -63,7 +63,7 @@ App, hotkeys, panels
 
 Detection and discovery
 - MB13 route logging on change for `single_name_match` and `unclaimed_space` (OSC2 route already logged).
-- MB14 alternate CGS key spellings deleted: the probe of 2026-05 records `DisplayIdentifier` as
+- MB14 alternate CGS key spellings deleted: the desktop-allocation detection probe records `DisplayIdentifier` as
   never present. A missing `Display Identifier`, `Spaces` or `ManagedSpaceID` skips that entry and logs
   once per distinct problem set; `ManagedSpaceID == 0` is no longer treated as missing.
 - MB15 `_cwd_desktop_lkg` (written, never read) deleted.
