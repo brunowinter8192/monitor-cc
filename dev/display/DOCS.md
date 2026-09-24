@@ -58,8 +58,8 @@ PNG for visual review.
 
 ### A_format_cache_tracker_proof.py (113 LOC)
 
-**Purpose:** Differential-proof harness for `format_cache_tracker` — verifies its serialized
-5-tuple return is byte-identical against a captured baseline.
+**Purpose:** Verification (not a self-contained test): differential proof that `format_cache_tracker`'s serialized
+5-tuple return is byte-identical against a captured baseline. It reads live session JSONLs, so its result depends on the machine and on the date.
 **Reads:** real session JSONLs under `~/.claude/projects/`.
 **Writes:** `A_format_cache_tracker_proof_reports/baseline_<timestamp>.json` (capture mode).
 **Called by:** none — run manually (`--mode capture` then `--mode verify [--baseline PATH]`).
@@ -68,31 +68,27 @@ PNG for visual review.
 
 ---
 
-### test_hover_map.py (298 LOC)
+### test_hover_map.py (270 LOC)
 
-**Purpose:** Synthetic + real-log assertion suite for expand-model `line_map` correctness and the
-stripped-span dual-color overlay pairing.
-**Reads:** `src/logs/dual_log/*_forwarded.jsonl` + sibling `*_stripped.jsonl` (newest-first glob).
-**Writes:** stdout PASS/FAIL lines + `Results: N passed, M failed` summary; exits 1 on failure.
-**Called by:** none — run manually.
-**Calls out:** `src.proxy_display.format`, `src.proxy_display.render_messages`,
-`src.format.token_format`.
+**Purpose:** Synthetic and frozen-fixture assertion suite for expand-model `line_map` correctness and the stripped-span dual-color overlay pairing.
+**Reads:** `fixtures/api_requests_fixture_forwarded.jsonl` and its sibling `_stripped.jsonl`, a frozen dual-log pair; the pairing test asserts the fixture yields exactly 5 entries so it cannot pass vacuously.
+**Writes:** stdout verdict per strand; `md/test_hover_map.md` (fixed name); exits 1 if any strand aborts.
+**Called by:** none, run manually.
+**Calls out:** `src.proxy_display.format`, `src.proxy_display.render_messages`, `src.format.token_format`, `dev/refactoring/strand_runner.py` (one subprocess per test function, fail-fast).
 
 ---
 
-### test_strip_markers.py (186 LOC)
+### test_strip_markers.py (89 LOC)
 
-**Purpose:** Visual test for the strip-marker highlight pipeline — feeds synthetic proxy entries
-through it and prints ANSI-colored output for manual review.
-**Reads:** nothing external — synthetic entries built in-script.
-**Writes:** stdout (ANSI-colored) only.
-**Called by:** none — run manually.
-**Calls out:** `src.format.strip_marker`, `src.colors`.
+**Purpose:** Visual and assertion test for `highlight_stripped` (basic cases, multi-line chunk coverage); two parallel strands.
+**Reads:** nothing external, synthetic strings built in-script.
+**Writes:** stdout (ANSI-colored) per strand; `md/test_strip_markers.md` (fixed name).
+**Called by:** none, run manually.
+**Calls out:** `src.format.strip_marker`, `src.colors`, `dev/refactoring/strand_runner.py`.
 
 ---
 
 ## State
 
 No shared state across modules — each script owns its own module-level constants (pane layout,
-thresholds, synthetic fixtures). `test_hover_map.py`'s `PASS`/`FAIL` counters are simple global
-ints mutated only by its own `assert_true()` helper.
+thresholds, synthetic fixtures). The strand-based tests keep no results state; each strand is its own process.
