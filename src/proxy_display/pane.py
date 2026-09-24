@@ -327,7 +327,7 @@ def _build_proxy_output() -> str:
     if not proxy_entries:
         proxy_line_map.clear()
         _proxy_just_expanded = None
-        body, _total_lines = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, body_hover, content_height, pane_width, proxy_scroll_offset)
+        body, _total_lines = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, body_hover, content_height, pane_width, proxy_scroll_offset, turn_cache=_proxy_turn_cache)
         return header + '\n' + body
     current_match_entry_idx = (
         _proxy_search.matches[_proxy_search.current_idx]

@@ -76,7 +76,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### format.py (149 LOC)
+### format.py (145 LOC)
 
 **Purpose:** `format_proxy_block` — orchestrates group assignment and frozen-turn rendering (delegated to `frozen_turns`, which reuses cached turn groups), applies scroll/viewport windowing and the row-background priority chain (the only place hover is applied), returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
@@ -156,7 +156,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### render_turn.py (171 LOC)
+### render_turn.py (170 LOC)
 
 **Purpose:** Renders all per-request rows for an expanded turn group — REQ-header line (`▶/▼ REQ #N model Nmsg [eff:X] [think:Nk] [mods] [warns] [tag badge]`), request labels (`REQ #N` from the token pane's numbering via the flow-to-request-id join, `REQ #N.M` for a refire sharing a request_id, `REQ #?` when unmapped, `H`/`S` for standalone sidecars); a `[404]` (red) or `[pending]` (dim, no `_response` line yet) marker ends the header row of a non-200 or unfinished request, and the expanded section starts with a `status:` line, and dispatch into the expanded-request section renderers.
 **Reads:** Group dict, all entries, expand states, pane width, the flow-to-REQ-number map.
@@ -176,10 +176,10 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### render_sections_system.py (101 LOC)
+### render_sections_system.py (88 LOC)
 
 **Purpose:** `render_system_blocks` — the system-blocks section of an expanded request entry. Per-block delta visibility is content-based (`sb['preview'] == prev.get('preview')`); a first request shows all blocks, a later request skips unchanged blocks entirely. Block header color: yellow when a strip span is present, green when an inject span is present, gray otherwise.
-**Reads:** Entry dict, previous entry, expand states, modifications list.
+**Reads:** Entry dict (dual-log span overlays), previous entry, expand states.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`
 **Calls out:** `format` (`_format_k`), `render_line_helpers` (`_emit_text_lines`, `_emit_span_lines`, `_emit_inline_spans`)
@@ -196,9 +196,9 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### render_messages.py (304 LOC)
+### render_messages.py (230 LOC)
 
-**Purpose:** Renders new/modified/removed messages for an expanded request entry. `render_messages()` dispatches to `_render_new_messages` (when the message count grew) or `_render_modified_messages` (retry/abort re-send) — the request's payload delta is the only source of rendered message content. Span content rendering (inline new-format vs. legacy stacked) goes through the shared `_render_span_content`. `_lookup_spans` scopes the shared, cumulative `_stripped_spans`/`_injected_spans` accumulator dicts to the entry's own `flow_id` via the `_strip_msgs_lookup`/`_inject_msgs_lookup`/`_lag_msgs_lookup` reference sets, preventing a later request's overwrite of a message index from rendering under an earlier/neighbor request. Thinking blocks (`btype == 'thinking'`) get their own collapsed-by-default drill-down (`('think', entry_idx, msg_idx, bidx)` key) with word-wrapped content via `utils.wrap_visible`.
+**Purpose:** Renders new/modified/removed messages for an expanded request entry. `render_messages()` dispatches to `_render_new_messages` (when the message count grew) or `_render_modified_messages` (retry/abort re-send) — the request's payload delta is the only source of rendered message content; every entry must carry the dual-log overlay references (`_stripped_spans`/`_injected_spans`), the pre-overlay render paths were removed. Span content rendering (inline new-format vs. legacy stacked) goes through the shared `_render_span_content`. `_lookup_spans` scopes the shared, cumulative `_stripped_spans`/`_injected_spans` accumulator dicts to the entry's own `flow_id` via the `_strip_msgs_lookup`/`_inject_msgs_lookup`/`_lag_msgs_lookup` reference sets, preventing a later request's overwrite of a message index from rendering under an earlier/neighbor request. Thinking blocks (`btype == 'thinking'`) get their own collapsed-by-default drill-down (`('think', entry_idx, msg_idx, bidx)` key) with word-wrapped content via `utils.wrap_visible`.
 **Reads:** Entry dict, previous entry, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple; when `copy_feedback` is given, the two plain message-summary row sites (`_render_new_messages`/`_render_modified_messages`, not the `[STRIPPED]` variant) assign each row a `('msg', entry_idx, msg_idx)` key and append a `utils.append_copy_symbol` copy affordance — `None` when `copy_feedback` is omitted, unchanged. `_render_block_spans` does the same for a thinking block's own always-visible summary line (`('think', entry_idx, msg_idx, bidx)` key, not gated on that block's own expand/collapse state) and, identically, for every other block row reaching its non-thinking branch — text, tool_use, tool_result, anything else — via a `('block', entry_idx, msg_idx, bidx)` key (`_block_row_key`) — the same `_append_msg_copy_symbol` helper, reused rather than duplicated, across all three row kinds.
 **Called by:** `src/proxy_display/render_turn.py`

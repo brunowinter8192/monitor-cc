@@ -12,6 +12,10 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
+def _turn_cache():
+    from src.proxy_display.turn_cache import TurnCache
+    return TurnCache()
+
 def check(label, condition):
     _RESULTS.append((label, bool(condition)))
     print(f"  {_PASS if condition else _FAIL}  {label}")
@@ -48,7 +52,7 @@ def _render_expanded(entries, expand_states, pane_width=120):
     copy_feedback = {}
     mod_format.format_proxy_block(
         entries, expand_states, line_map, None, 50, pane_width, 0,
-        copy_feedback=copy_feedback, copy_rows_out=copy_rows,
+        copy_feedback=copy_feedback, copy_rows_out=copy_rows, turn_cache=_turn_cache()
     )
     mod_shared._shift_line_map_and_copy_rows(line_map, copy_rows, 1)
     return line_map, copy_rows, copy_feedback

@@ -9,7 +9,7 @@ from ..colors import (
 )
 from ..utils import append_copy_symbol, highlight_query_in_line, right_align_time
 from ..search_bar import _BG_RESTORE_SENTINEL
-from .turn_cache import sync_document, publish_nav, new_turn_cache
+from .turn_cache import sync_document, publish_nav
 
 # FUNCTIONS
 
@@ -344,14 +344,9 @@ def _build_render_inputs(expand_states: dict, pane_width: int, response_rid_map:
         'search_query': search_query, 'preamble_lines': preamble_lines,
     }
 
-def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None, copy_feedback: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '', nav_out: Optional[dict] = None, turn_cache: Optional[dict] = None) -> tuple:
+def format_cache_tracker(turns: list, expand_states: dict, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None, copy_feedback: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '', nav_out: Optional[dict] = None, *, turn_cache: dict) -> tuple:
     if not turns:
         return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0, 0
-
-    if expand_states is None:
-        expand_states = {}
-    if turn_cache is None:
-        turn_cache = new_turn_cache()
 
     inputs = _build_render_inputs(
         expand_states, pane_width, response_rid_map, copy_feedback,
