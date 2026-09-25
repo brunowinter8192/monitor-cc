@@ -14,30 +14,39 @@ MAX_LOG_LINES     = 40
 # ORCHESTRATOR
 
 def run_news_log_loop() -> None:
-    last_output = None
-    while True:
-        try:
-            term = os.get_terminal_size()
-            pane_width  = term.columns
-            pane_height = term.lines - 1
-
-            log_path = find_log_file()
-            events: list[str] = []
-            if log_path is not None:
-                events = filter_events(find_current_run_lines(log_path))
-
-            output = _render_log_pane(pane_width, pane_height, log_path, events)
-            if output != last_output:
-                print('\033[2J\033[3J\033[H', end='', flush=True)
-                print(output, end='', flush=True)
-                last_output = output
-
-            time.sleep(LOG_POLL_INTERVAL)
-        except Exception:
-            log_pane_error('news_log')
-            time.sleep(LOG_POLL_INTERVAL)
+    loop_state = {'last_output': None}
+    _loop_forever(loop_state)
 
 # FUNCTIONS
+
+def _loop_forever(loop_state: dict) -> None:
+    while True:
+        _run_iteration_guarded(loop_state)
+
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('news_log')
+        time.sleep(LOG_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    term = os.get_terminal_size()
+    pane_width  = term.columns
+    pane_height = term.lines - 1
+    log_path = find_log_file()
+    events = _load_events(log_path)
+    output = _render_log_pane(pane_width, pane_height, log_path, events)
+    if output != loop_state['last_output']:
+        print('\033[2J\033[3J\033[H', end='', flush=True)
+        print(output, end='', flush=True)
+        loop_state['last_output'] = output
+    time.sleep(LOG_POLL_INTERVAL)
+
+def _load_events(log_path) -> list:
+    if log_path is None:
+        return []
+    return filter_events(find_current_run_lines(log_path))
 
 def _format_event_line(raw: str, max_width: int) -> str:
     parsed = parse_line(raw)

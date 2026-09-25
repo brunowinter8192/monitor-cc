@@ -26,45 +26,68 @@ _gpu_search: search_bar.SearchState = search_bar.SearchState()
 # ORCHESTRATOR
 
 def run_gpu_loop() -> None:
-    last_output = None
-    last_data_refresh = 0.0
-    last_collections_refresh = 0.0
-    presets: list = []
-    arbitrary: list = []
-    anomalies: list = []
-    today_errors: list = []
-    error_counts: dict = {}
-    collections: list | None = []
+    loop_state = _new_loop_state()
+    _open_terminal()
+    _loop_until_closed(loop_state)
 
+# FUNCTIONS
+
+def _new_loop_state() -> dict:
+    return {
+        'last_output': None,
+        'last_data_refresh': 0.0,
+        'last_collections_refresh': 0.0,
+        'presets': [],
+        'arbitrary': [],
+        'anomalies': [],
+        'today_errors': [],
+        'error_counts': {},
+        'collections': [],
+    }
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed, force_refresh = _poll_gpu_input(
-                    presets, arbitrary, anomalies, today_errors, error_counts, collections)
-
-                now = time.time()
-                (presets, arbitrary, anomalies, today_errors, error_counts, collections,
-                 last_data_refresh, last_collections_refresh, refreshed) = _refresh_gpu_data(
-                    now, force_refresh, last_data_refresh, last_collections_refresh,
-                    presets, arbitrary, anomalies, today_errors, error_counts, collections)
-                input_changed = input_changed or refreshed
-
-                if input_changed:
-                    last_output = _build_gpu_output(
-                        presets, arbitrary, anomalies, today_errors, error_counts, collections,
-                        last_output)
-
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('gpu')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('gpu')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    input_changed, force_refresh = _poll_gpu_input(
+        loop_state['presets'], loop_state['arbitrary'], loop_state['anomalies'],
+        loop_state['today_errors'], loop_state['error_counts'], loop_state['collections'])
+    input_changed = _refresh_and_merge(loop_state, force_refresh, input_changed)
+    if input_changed:
+        _rebuild_output(loop_state)
+    wait_for_input(INPUT_POLL_INTERVAL)
+
+def _refresh_and_merge(loop_state: dict, force_refresh: bool, input_changed: bool) -> bool:
+    now = time.time()
+    (loop_state['presets'], loop_state['arbitrary'], loop_state['anomalies'],
+     loop_state['today_errors'], loop_state['error_counts'], loop_state['collections'],
+     loop_state['last_data_refresh'], loop_state['last_collections_refresh'], refreshed) = _refresh_gpu_data(
+        now, force_refresh, loop_state['last_data_refresh'], loop_state['last_collections_refresh'],
+        loop_state['presets'], loop_state['arbitrary'], loop_state['anomalies'],
+        loop_state['today_errors'], loop_state['error_counts'], loop_state['collections'])
+    return input_changed or refreshed
+
+def _rebuild_output(loop_state: dict) -> None:
+    loop_state['last_output'] = _build_gpu_output(
+        loop_state['presets'], loop_state['arbitrary'], loop_state['anomalies'],
+        loop_state['today_errors'], loop_state['error_counts'], loop_state['collections'],
+        loop_state['last_output'])
 
 def _toggle_server(idx: int, presets: list) -> None:
     name = PRESET_NAMES[idx]

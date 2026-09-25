@@ -20,67 +20,90 @@ _preset_failure: str | None = None
 _collections_failure: str | None = None
 _legacy_warned: bool = False
 
+_SKIP = object()
+
 _logger = logging.getLogger('gpu_pane')
-if not _logger.handlers:
-    _LOG_DIR = Path(__file__).parent / 'logs'
-    try:
-        _LOG_DIR.mkdir(parents=True, exist_ok=True)
-        _fh = TimedRotatingFileHandler(_LOG_DIR / 'gpu_pane.log', when='d', interval=1, backupCount=7)
-        _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-        _logger.addHandler(_fh)
-    except OSError:
-        log_pane_error('gpu_status')
-    _logger.setLevel(logging.WARNING)
 
 
 # ORCHESTRATOR
 
 def all_statuses() -> tuple[list[dict], list[dict]]:
+    _reset_anomalies()
+    _check_legacy_files()
+    _ensure_preset_names()
+    states_by_name, arbitrary = _load_states()
+    return _build_statuses(states_by_name, arbitrary)
+
+# FUNCTIONS
+
+def _configure_logger() -> None:
+    if not _logger.handlers:
+        _LOG_DIR = Path(__file__).parent / 'logs'
+        try:
+            _LOG_DIR.mkdir(parents=True, exist_ok=True)
+            _fh = TimedRotatingFileHandler(_LOG_DIR / 'gpu_pane.log', when='d', interval=1, backupCount=7)
+            _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+            _logger.addHandler(_fh)
+        except OSError:
+            log_pane_error('gpu_status')
+        _logger.setLevel(logging.WARNING)
+
+def _reset_anomalies() -> None:
     global _last_anomalies
     _last_anomalies = []
 
-    _check_legacy_files()
-    _ensure_preset_names()
-
+def _load_states() -> tuple:
     states_by_name: dict[str, dict] = {}
     arbitrary: list[dict] = []
-
     for sf in RAG_LOCKS_DIR.glob('server-port-*.json'):
+        state = _load_valid_state(sf)
+        if state is not _SKIP:
+            _classify_state(state, sf, states_by_name, arbitrary)
+    return states_by_name, arbitrary
+
+def _load_valid_state(sf: Path):
+    state = _read_state_file(sf)
+    if state is _SKIP:
+        return _SKIP
+    if not isinstance(state.get('port'), int):
+        _warn('missing_port', f'state file without integer port: {sf}', str(sf))
+        return _SKIP
+    if _pid_is_dead(state.get('pid'), sf):
+        return _SKIP
+    return state
+
+def _read_state_file(sf: Path):
+    try:
+        return json.loads(sf.read_text())
+    except (json.JSONDecodeError, OSError):
+        _warn('malformed_json', f'malformed state file: {sf}', str(sf))
+        return _SKIP
+
+def _pid_is_dead(pid, sf: Path) -> bool:
+    if pid is not None:
         try:
-            state = json.loads(sf.read_text())
-        except (json.JSONDecodeError, OSError):
-            _warn('malformed_json', f'malformed state file: {sf}', str(sf))
-            continue
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            _warn('dead_pid', f'stale state file: pid {pid} dead', str(sf))
+            return True
+        except PermissionError: pass
+    return False
 
-        if not isinstance(state.get('port'), int):
-            _warn('missing_port', f'state file without integer port: {sf}', str(sf))
-            continue
-
-        pid = state.get('pid')
-        if pid is not None:
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                _warn('dead_pid', f'stale state file: pid {pid} dead', str(sf))
-                continue
-            except PermissionError: pass
-
-        name = state.get('name')
-        if name in PRESET_NAMES:
-            if name in states_by_name:
-                _warn('duplicate_preset', f'duplicate preset name in state files: {name}', str(sf))
-            else:
-                states_by_name[name] = state
+def _classify_state(state: dict, sf: Path, states_by_name: dict, arbitrary: list) -> None:
+    name = state.get('name')
+    if name in PRESET_NAMES:
+        if name in states_by_name:
+            _warn('duplicate_preset', f'duplicate preset name in state files: {name}', str(sf))
         else:
-            arbitrary.append(state)
+            states_by_name[name] = state
+    else:
+        arbitrary.append(state)
 
+def _build_statuses(states_by_name: dict, arbitrary: list) -> tuple:
     preset_statuses = [_status_for_preset(n, states_by_name.get(n)) for n in PRESET_NAMES]
     arbitrary_statuses = [_status_for_state(s)
                           for s in sorted(arbitrary, key=lambda x: x.get('port', 0))]
     return preset_statuses, arbitrary_statuses
-
-
-# FUNCTIONS
 
 def get_anomalies() -> list[dict]:
     return list(_last_anomalies)
@@ -226,3 +249,6 @@ def _check_legacy_files() -> None:
                 f'legacy port file(s): {[str(f) for f in legacy]} (delete after Phase 5)')
         except Exception:
             pass
+
+
+_configure_logger()

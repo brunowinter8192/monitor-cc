@@ -32,7 +32,7 @@ Every pane loop reads the active project filter, the active mode and the session
 
 ---
 
-### monitor.py (64 LOC)
+### monitor.py (70 LOC)
 
 **Purpose:** session discovery and mode dispatcher; lazily imports the pane package for the given mode and resolves the newest main session file.
 **Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`.

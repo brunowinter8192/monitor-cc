@@ -129,7 +129,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### tmux_launcher.py (250 LOC)
+### tmux_launcher.py (258 LOC)
 
 **Purpose:** launches the tmux split-screen layout, self-heals missing windows and panes, and owns tmux session and key-binding setup.
 **Reads:** tmux session, pane, window and option listings.

@@ -20,7 +20,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ## Modules
 
-### pane.py (352 LOC)
+### pane.py (373 LOC)
 
 **Purpose:** Event loop for the main proxy pane: incremental log read, mouse and keyboard input, search, and render on change.
 **Reads:** module state; active project filter from `core/monitor.py`; stdin.
@@ -30,7 +30,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### worker_proxy_pane.py (351 LOC)
+### worker_proxy_pane.py (374 LOC)
 
 **Purpose:** Event loop for the worker proxy pane with worker switching, own header row and the same input handling as the main pane.
 **Reads:** module state; live worker list and selection file from `workers`; stdin.

@@ -15,7 +15,7 @@ Right pane: poll tick → `log_parser.py` finds the newest log, extracts the cur
 
 ## Modules
 
-### pane.py (294 LOC)
+### pane.py (303 LOC)
 
 **Purpose:** Left control pane loop with stats display, mouse and keyboard dispatch, pipeline launch and search bar.
 **Reads:** `rag-cli` collection stats; the last-run file; the pipeline process handle.
@@ -25,7 +25,7 @@ Right pane: poll tick → `log_parser.py` finds the newest log, extracts the cur
 
 ---
 
-### log_pane.py (76 LOC)
+### log_pane.py (85 LOC)
 
 **Purpose:** Right log-tail pane loop that filters the current run's events and renders them top-anchored.
 **Reads:** the newest pipeline log via `log_parser.py`.

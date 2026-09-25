@@ -36,36 +36,45 @@ _news_search: search_bar.SearchState = search_bar.SearchState()
 # ORCHESTRATOR
 
 def run_news_loop() -> None:
-    global _pipeline_proc
-    last_output       = None
-    last_data_refresh = 0.0
-    status: dict      = {}
+    loop_state = {'last_output': None, 'last_data_refresh': 0.0, 'status': {}}
+    _open_terminal()
+    _loop_until_closed(loop_state)
 
+# FUNCTIONS
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed, force_refresh = _poll_news_input(status)
-
-                now = time.time()
-                if force_refresh or now - last_data_refresh >= NEWS_POLL_INTERVAL:
-                    status = _fetch_news_status()
-                    last_data_refresh = now
-                    input_changed = True
-
-                if input_changed:
-                    last_output = _build_news_output(status, last_output)
-
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('news')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('news')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    input_changed, force_refresh = _poll_news_input(loop_state['status'])
+    input_changed = _refresh_status(loop_state, force_refresh, input_changed)
+    if input_changed:
+        loop_state['last_output'] = _build_news_output(loop_state['status'], loop_state['last_output'])
+    wait_for_input(INPUT_POLL_INTERVAL)
+
+def _refresh_status(loop_state: dict, force_refresh: bool, input_changed: bool) -> bool:
+    now = time.time()
+    if force_refresh or now - loop_state['last_data_refresh'] >= NEWS_POLL_INTERVAL:
+        loop_state['status'] = _fetch_news_status()
+        loop_state['last_data_refresh'] = now
+        return True
+    return input_changed
 
 def _poll_news_input(status: dict) -> tuple:
     input_changed = False

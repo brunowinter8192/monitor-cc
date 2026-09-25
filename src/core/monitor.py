@@ -15,11 +15,19 @@ active_project_filter: Optional[str] = None
 active_mode: str = MODE_ALL
 
 # ORCHESTRATOR
+
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> None:
+    _set_monitor_state(project_filter, mode)
+    _dispatch_mode(mode)
+
+# FUNCTIONS
+
+def _set_monitor_state(project_filter: Optional[str], mode: str) -> None:
     global active_project_filter, active_mode
     active_project_filter = project_filter
     active_mode = mode
 
+def _dispatch_mode(mode: str) -> None:
     if mode == MODE_WORKER_TOKENS:
         from src.workers import run_worker_tokens_loop
         run_worker_tokens_loop()
@@ -37,8 +45,6 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> N
         run_worker_proxy_loop()
     else:
         raise ValueError(f"Unknown monitor mode: {mode!r}")
-
-# FUNCTIONS
 
 def is_agent_file(filepath: Path) -> bool:
     return filepath.name.startswith('agent-')

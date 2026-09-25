@@ -45,48 +45,58 @@ _warnings_search: search_bar.SearchState = search_bar.SearchState()
 # ORCHESTRATOR
 
 def run_warnings_loop() -> None:
-    global tool_errors, error_expand_states, error_line_map, error_hover_row
-    global error_scroll_offset, _last_project_filter, _error_copy_feedback_until
-    global _last_refresh_ts, _force_refresh
-    global _monitor_start_ts, _errors_log_pos, _errors_log_path, _worker_errors_positions
-
     register_ram_dump('warnings', _warnings_ram_state)
-    last_output = None
-    last_data_refresh = 0.0
+    loop_state = {'last_output': None, 'last_data_refresh': 0.0}
+    _open_terminal()
+    _loop_until_closed(loop_state)
+
+# FUNCTIONS
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed = _poll_warnings_input()
-
-                now = time.time()
-                input_changed, last_data_refresh = _refresh_warnings_data(
-                    now, input_changed, last_data_refresh
-                )
-
-                _error_copy_feedback_until = {k: v for k, v in _error_copy_feedback_until.items() if v > now}
-                if _error_copy_feedback_until:
-                    input_changed = True
-
-                if input_changed:
-                    output, header = _build_warnings_output()
-                    if output != last_output:
-                        print("\033[2J\033[3J\033[H", end='', flush=True)
-                        if output:
-                            print(output, end='', flush=True)
-                            print(f"\033[H{header}\033[K", end='', flush=True)
-                        last_output = output
-
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('warnings')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('warnings')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    input_changed = _poll_warnings_input()
+    now = time.time()
+    input_changed, loop_state['last_data_refresh'] = _refresh_warnings_data(
+        now, input_changed, loop_state['last_data_refresh']
+    )
+    input_changed = _expire_copy_feedback(now, input_changed)
+    if input_changed:
+        _render_if_changed(loop_state)
+    wait_for_input(INPUT_POLL_INTERVAL)
+
+def _expire_copy_feedback(now: float, input_changed: bool) -> bool:
+    global _error_copy_feedback_until
+    _error_copy_feedback_until = {k: v for k, v in _error_copy_feedback_until.items() if v > now}
+    if _error_copy_feedback_until:
+        return True
+    return input_changed
+
+def _render_if_changed(loop_state: dict) -> None:
+    output, header = _build_warnings_output()
+    if output != loop_state['last_output']:
+        print("\033[2J\033[3J\033[H", end='', flush=True)
+        if output:
+            print(output, end='', flush=True)
+            print(f"\033[H{header}\033[K", end='', flush=True)
+        loop_state['last_output'] = output
 
 def _poll_warnings_input() -> bool:
     input_changed = False

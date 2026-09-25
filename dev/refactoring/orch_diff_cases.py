@@ -2,6 +2,7 @@
 import importlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -9,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 _ROOT = None
+_REAL_RUN = subprocess.run
 _TRIGGERS = {
     'src.proxy.strip_bd_noise:_strip_bd_noise': 'pre\nauto-export: no changes since last export\npost',
     'src.proxy.strip_hook_prefix:_strip_hook_prefix': 'PreToolUse:Bash hook error: [python3 /x/y.py]: blocked\nrest',
@@ -47,7 +49,8 @@ def _prepare_environment(root: Path) -> None:
 def _run_all_cases() -> dict:
     results = {}
     for case in (_strip_cases, _bg_escape_cases, _tool_injection_cases, _discover_cases, _ghostty_cases,
-                 _desktop_cases, _sweep_cases, _skill_cases, _hook_writer_cases, _hook_setup_cases):
+                 _desktop_cases, _sweep_cases, _skill_cases, _hook_writer_cases, _hook_setup_cases,
+                 _pane_loop_cases, _gpu_status_cases, _misc_flow_cases):
         results.update(_guard(case))
     return results
 
@@ -330,6 +333,255 @@ def _hook_setup_cases() -> dict:
                     outcome['settings'] = settings_file.read_text().replace(str(repo), '<REPO>') if settings_file.exists() else None
                     results[f'hook_setup:{script_rel}:{label}:{repeat}'] = outcome
     return results
+
+class _Stop(BaseException):
+    pass
+
+def _recorder(calls: list, name: str, script=None, default=None):
+    queue = list(script) if script is not None else None
+    def fn(*args, **kwargs):
+        calls.append((name, _clean(repr(args)), _clean(repr(sorted(kwargs.items())))))
+        if queue is None:
+            return default
+        value = queue.pop(0) if queue else default
+        if isinstance(value, Exception):
+            raise value
+        return value
+    return fn
+
+def _clean(text: str) -> str:
+    text = re.sub(r' at 0x[0-9a-f]+', '', text)
+    return re.sub(r"from '[^']*'", "from '<M>'", text)
+
+def _install_common(module, calls: list, stop_after: int, wait_name: str = 'wait_for_input') -> None:
+    waits = {'n': 0}
+    def wait(*args, **kwargs):
+        calls.append((wait_name, repr(args), repr(kwargs)))
+        waits['n'] += 1
+        if waits['n'] >= stop_after:
+            raise _Stop()
+    setattr(module, wait_name, wait)
+    for name in ('setup_keyboard_input', 'enable_mouse', 'disable_mouse', 'restore_terminal', 'hide_cursor', 'show_cursor', 'register_ram_dump', 'log_pane_error', 'write_frame'):
+        if hasattr(module, name):
+            setattr(module, name, _recorder(calls, name))
+    clock = {'t': 1000.0}
+    def fake_time():
+        clock['t'] += 1.7
+        return clock['t']
+    import time as time_module
+    time_module.time = fake_time
+
+def _run_loop(loop_fn, calls: list) -> None:
+    import contextlib, io
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buffer):
+            loop_fn()
+    except _Stop:
+        calls.append(('STOP',))
+    calls.append(('stdout', buffer.getvalue()))
+
+def _pane_loop_cases() -> dict:
+    results = {}
+    results.update(_gpu_loop_case())
+    results.update(_news_loop_cases())
+    for label, module_name, fn_name, prefix, feedback in (
+            ('tokens', 'src.panes.token_pane', 'run_tokens_loop', 'tokens', '_cache_copy_feedback_until'),
+            ('warnings', 'src.panes.warnings_pane', 'run_warnings_loop', 'warnings', '_error_copy_feedback_until'),
+            ('proxy', 'src.proxy_display.pane', 'run_proxy_loop', 'proxy', '_copy_feedback_until'),
+            ('worker_proxy', 'src.proxy_display.worker_proxy_pane', 'run_worker_proxy_loop', 'worker_proxy', '_worker_copy_feedback_until'),
+            ('worker_tokens', 'src.workers.worker_tokens_pane', 'run_worker_tokens_loop', 'worker_tokens', '_worker_tokens_copy_feedback_until')):
+        results.update(_data_pane_case(label, module_name, fn_name, prefix, feedback))
+    return results
+
+def _gpu_loop_case() -> dict:
+    module = importlib.import_module('src.gpu_pane.pane')
+    calls = []
+    _install_common(module, calls, 6)
+    module._poll_gpu_input = _recorder(calls, 'poll', [(False, True), RuntimeError('x'), (False, False), (True, False), (False, False)])
+    tuples = [
+        (['p1'], ['a1'], ['n1'], ['t1'], {'e': 1}, ['c1'], 5.0, 6.0, True),
+        (['p2'], ['a2'], ['n2'], ['t2'], {'e': 2}, ['c2'], 7.0, 8.0, False),
+        (['p3'], ['a3'], ['n3'], ['t3'], {'e': 3}, None, 9.0, 10.0, False),
+        (['p4'], ['a4'], ['n4'], ['t4'], {'e': 4}, ['c4'], 11.0, 12.0, True),
+    ]
+    module._refresh_gpu_data = _recorder(calls, 'refresh', tuples)
+    module._build_gpu_output = _recorder(calls, 'build', ['out1', 'out2', 'out3'])
+    _run_loop(module.run_gpu_loop, calls)
+    return {'loop:gpu': calls}
+
+def _news_loop_cases() -> dict:
+    results = {}
+    module = importlib.import_module('src.news_pane.pane')
+    calls = []
+    _install_common(module, calls, 7)
+    module._poll_news_input = _recorder(calls, 'poll', [(False, False), (False, True), RuntimeError('y'), (True, False), (False, False), (False, False)])
+    module._fetch_news_status = _recorder(calls, 'fetch', [{'s': 1}, {'s': 2}, {'s': 3}, {'s': 4}])
+    module._build_news_output = _recorder(calls, 'build', ['n1', 'n2', 'n3'])
+    _run_loop(module.run_news_loop, calls)
+    results['loop:news'] = calls
+    module = importlib.import_module('src.news_pane.log_pane')
+    calls = []
+    class Term:
+        columns, lines = 100, 40
+    module.os.get_terminal_size = lambda: Term()
+    module.find_log_file = _recorder(calls, 'find_log', ['/log/a', None, RuntimeError('z'), '/log/a', '/log/a'])
+    module.find_current_run_lines = _recorder(calls, 'run_lines', [['l1'], ['l2'], ['l3']])
+    module.filter_events = _recorder(calls, 'filter', [['e1'], ['e2']])
+    module._render_log_pane = _recorder(calls, 'render', ['A', 'A', 'B', 'B'])
+    module.log_pane_error = _recorder(calls, 'log_err')
+    sleeps = {'n': 0}
+    def sleep(secs):
+        calls.append(('sleep', secs))
+        sleeps['n'] += 1
+        if sleeps['n'] >= 6:
+            raise _Stop()
+    module.time.sleep = sleep
+    _run_loop(module.run_news_log_loop, calls)
+    results['loop:news_log'] = calls
+    return results
+
+def _data_pane_case(label: str, module_name: str, fn_name: str, prefix: str, feedback: str) -> dict:
+    module = importlib.import_module(module_name)
+    calls = []
+    _install_common(module, calls, 8)
+    monitor = importlib.import_module('src.core.monitor')
+    monitor._get_newest_main_session = _recorder(calls, 'newest_session', default='sess-1')
+    monitor._get_session_start_ts = _recorder(calls, 'session_start', default=42.0)
+    poll_name = {'tokens': '_poll_tokens_input', 'warnings': '_poll_warnings_input', 'proxy': '_poll_proxy_input',
+                 'worker_proxy': '_poll_worker_proxy_input', 'worker_tokens': '_poll_worker_tokens_input'}[label]
+    refresh_name = poll_name.replace('_poll_', '_refresh_').replace('_input', '_data')
+    build_name = poll_name.replace('_poll_', '_build_').replace('_input', '_output')
+    setattr(module, poll_name, _recorder(calls, 'poll', [False, False, RuntimeError('q'), True, False, False, False]))
+    if label == 'tokens':
+        refreshes = [(False, 1.0, 2.0), (True, 3.0, 4.0), (False, 5.0, 6.0), (False, 7.0, 8.0), (False, 9.0, 10.0), (False, 11.0, 12.0), (False, 13.0, 14.0)]
+    else:
+        refreshes = [(False, 1.0), (True, 3.0), (False, 5.0), (False, 7.0), (False, 9.0), (False, 11.0), (False, 13.0)]
+    setattr(module, refresh_name, _recorder(calls, 'refresh', refreshes))
+    if label == 'warnings':
+        builds = [('out1', 'h1'), ('out1', 'h1'), ('', 'h3'), ('out4', 'h4'), ('out5', 'h5')]
+    else:
+        builds = ['o1', 'o1', 'o3', 'o4', 'o5']
+    setattr(module, build_name, _recorder(calls, 'build', builds))
+    setattr(module, feedback, {'a': 1e9, 'b': 0.0})
+    _run_loop(getattr(module, fn_name), calls)
+    state = {'feedback': dict(getattr(module, feedback))}
+    for name in ('_proxy_current_main_session', '_proxy_session_start_ts'):
+        if hasattr(module, name):
+            state[name] = getattr(module, name)
+    return {f'loop:{label}': {'calls': calls, 'state': state}}
+
+def _gpu_status_cases() -> dict:
+    module = importlib.import_module('src.gpu_pane.status')
+    tmp = Path(tempfile.mkdtemp())
+    module.RAG_LOCKS_DIR = tmp
+    files = {
+        'server-port-1.json': {'port': 1, 'pid': 100, 'name': 'presetA'},
+        'server-port-2.json': {'port': 2, 'pid': 200, 'name': 'presetA'},
+        'server-port-3.json': {'port': 3, 'pid': 300, 'name': 'other'},
+        'server-port-4.json': {'pid': 400, 'name': 'noport'},
+        'server-port-5.json': {'port': 5, 'pid': 500, 'name': 'dead'},
+        'server-port-6.json': {'port': 6, 'pid': 600, 'name': 'perm'},
+        'server-port-7.json': {'port': 7, 'name': 'nopid'},
+    }
+    for name, state in files.items():
+        (tmp / name).write_text(json.dumps(state))
+    (tmp / 'server-port-8.json').write_text('{not json')
+    warns = []
+    module._warn = lambda *a: warns.append(a)
+    module._check_legacy_files = lambda: warns.append(('legacy',))
+    module._ensure_preset_names = lambda: warns.append(('ensure',))
+    module.PRESET_NAMES[:] = ['presetA', 'presetB']
+    module._status_for_preset = lambda n, st: {'preset': n, 'state': st}
+    module._status_for_state = lambda st: {'arb': st}
+    def kill(pid, sig):
+        if pid == 500:
+            raise ProcessLookupError()
+        if pid == 600:
+            raise PermissionError()
+    module.os.kill = kill
+    module._last_anomalies = ['old']
+    out = module.all_statuses()
+    return {'gpu_status': {'out': out, 'warns': [[str(x).replace(str(tmp), '<TMP>') for x in w] for w in sorted(warns, key=repr)], 'anomalies': list(module._last_anomalies)}}
+
+def _misc_flow_cases() -> dict:
+    results = {}
+    monitor = importlib.import_module('src.core.monitor')
+    calls = []
+    for mode_name in ('MODE_WORKER_TOKENS', 'MODE_TOKENS', 'MODE_WARNINGS', 'MODE_PROXY', 'MODE_WORKER_PROXY', 'bogus'):
+        mode = getattr(monitor, mode_name, mode_name)
+        pkg = {'MODE_WORKER_TOKENS': ('src.workers', 'run_worker_tokens_loop'), 'MODE_TOKENS': ('src.panes', 'run_tokens_loop'),
+               'MODE_WARNINGS': ('src.panes', 'run_warnings_loop'), 'MODE_PROXY': ('src.proxy_display', 'run_proxy_loop'),
+               'MODE_WORKER_PROXY': ('src.proxy_display', 'run_worker_proxy_loop')}.get(mode_name)
+        if pkg:
+            setattr(importlib.import_module(pkg[0]), pkg[1], lambda n=mode_name: calls.append(n))
+        try:
+            monitor.run_monitor('projX', mode)
+            outcome = 'ok'
+        except ValueError as exc:
+            outcome = repr(exc)
+        results[f'monitor:{mode_name}'] = {'outcome': outcome, 'calls': calls[:], 'filter': monitor.active_project_filter, 'mode': monitor.active_mode}
+        calls.clear()
+    launcher = importlib.import_module('src.tmux_launcher')
+    launch_scenarios = {'no_tmux': (False, False, True, None), 'inside': (True, True, True, None), 'stale': (True, False, True, 'proj'), 'fresh': (True, False, False, None), 'no_limit': (True, False, False, 'p2')}
+    for label, (installed, inside, exists, project) in launch_scenarios.items():
+        calls = []
+        launcher.is_tmux_installed = lambda v=installed: v
+        launcher.is_inside_tmux = lambda v=inside: v
+        launcher.generate_session_name = lambda p: 'sess-' + str(p)
+        launcher.check_session_exists = lambda n, v=exists: v
+        launcher.kill_session = lambda n: calls.append(('kill', n))
+        launcher._build_mode_commands = lambda sp, pf: {'cmds': (sp, pf)}
+        launcher.get_global_history_limit = lambda l=label: None if l == 'no_limit' else '2000'
+        launcher.restore_global_history_limit = lambda v: calls.append(('restore', v))
+        launcher._create_windows = lambda n, c: calls.append(('windows', n, c))
+        launcher.configure_tmux_session = lambda n, sp, pa: calls.append(('configure', n, sp, pa))
+        launcher.subprocess.run = lambda cmd, **kw: calls.append(('run', cmd))
+        import contextlib, io
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                launcher.launch_split_screen(project, '/s.py')
+            outcome = 'ok'
+        except SystemExit as exc:
+            outcome = f'exit {exc.code}'
+        results[f'launch:{label}'] = {'outcome': outcome, 'calls': calls, 'stdout': buf.getvalue()}
+    cli = importlib.import_module('src.dual_log_cli.__main__')
+    tmp = Path(tempfile.mkdtemp())
+    for label, exists in (('missing', False), ('present', True)):
+        cli.resolve_dual_log_dir = lambda e=exists: (tmp if e else tmp / 'absent')
+        for name in ('_run_sessions', '_run_search', '_run_reqs', '_run_msgs', '_run_expand'):
+            setattr(cli, name, lambda d, a, n=name: n)
+        outs = {}
+        for command in ('sessions', 'search', 'reqs', 'msgs', 'expand'):
+            cli._parse_args = lambda argv, c=command: type('A', (), {'command': c})()
+            import contextlib, io
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                outs[command] = [cli.main([]), buf.getvalue().replace(str(tmp), '<TMP>')]
+        results[f'dual_main:{label}'] = outs
+    wf = importlib.import_module('src.ccwrap.wrapper')
+    results['ccwrap_run'] = _ccwrap_cases()
+    return results
+
+def _ccwrap_cases() -> dict:
+    subprocess.run = _REAL_RUN
+    out = {}
+    argv_cases = {'default': [], 'project': ['--project', '/p', 'x', 'y'], 'missing': ['--project'], 'pass_only': ['a', '--project', '/q']}
+    for label, argv in argv_cases.items():
+        code = ('import sys\nsys.argv = ["m"] + %r\nimport src.ccwrap.wrapper as w\ncaptured = {}\n'
+                'w.run = lambda cmd, log_dir: captured.update(cmd=cmd) or 7\nimport runpy\n'
+                'try:\n    runpy.run_module("src.ccwrap", run_name="__main__")\nexcept SystemExit as e:\n    print("EXIT", e.code)\nprint(captured)\n') % (argv,)
+        proc = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, cwd=str(_ROOT))
+        out[f'main:{label}'] = [proc.returncode, proc.stdout, proc.stderr[-200:]]
+    for label, cmd in (('echo', ['/bin/sh', '-c', 'printf abc; exit 0']), ('exit3', ['/bin/sh', '-c', 'exit 3'])):
+        tmp = Path(tempfile.mkdtemp())
+        code = ('import sys\nfrom pathlib import Path\nfrom src.ccwrap.wrapper import run\n'
+                'w = __import__("src.ccwrap.wrapper", fromlist=["x"])\nw._get_winsize = lambda: (24, 80)\n'
+                'print("RC", run(%r, Path(%r)))\n') % (cmd, str(tmp))
+        proc = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, cwd=str(_ROOT), stdin=subprocess.DEVNULL)
+        out[f'run:{label}'] = [proc.returncode, proc.stdout, proc.stderr[-300:], sorted(p.suffix for p in tmp.iterdir())]
+    return out
 
 if __name__ == '__main__':
     orch_diff_workflow()

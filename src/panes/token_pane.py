@@ -45,46 +45,57 @@ _tokens_turn_cache: dict = new_turn_cache()
 # ORCHESTRATOR
 
 def run_tokens_loop() -> None:
-    global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
-    global _cache_jsonl_position, _cache_turns, _cache_current_filepath, _cache_copy_feedback_until
-
     register_ram_dump('tokens', _tokens_ram_state)
-    last_output = None
-    last_data_refresh = 0.0
-    last_janitor_ts = 0.0
+    loop_state = {'last_output': None, 'last_data_refresh': 0.0, 'last_janitor_ts': 0.0}
+    _open_terminal()
+    _loop_until_closed(loop_state)
+
+# FUNCTIONS
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
     hide_cursor()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed = _poll_tokens_input()
-
-                now = time.time()
-                input_changed, last_data_refresh, last_janitor_ts = _refresh_tokens_data(
-                    now, input_changed, last_data_refresh, last_janitor_ts
-                )
-
-                _cache_copy_feedback_until = {k: v for k, v in _cache_copy_feedback_until.items() if v > now}
-                if _cache_copy_feedback_until:
-                    input_changed = True
-
-                if input_changed:
-                    output = _build_tokens_output()
-                    if output != last_output:
-                        write_frame(output)
-                        last_output = output
-
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('tokens')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         show_cursor()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('tokens')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    input_changed = _poll_tokens_input()
+    now = time.time()
+    input_changed, loop_state['last_data_refresh'], loop_state['last_janitor_ts'] = _refresh_tokens_data(
+        now, input_changed, loop_state['last_data_refresh'], loop_state['last_janitor_ts']
+    )
+    input_changed = _expire_copy_feedback(now, input_changed)
+    if input_changed:
+        _render_if_changed(loop_state)
+    wait_for_input(INPUT_POLL_INTERVAL)
+
+def _expire_copy_feedback(now: float, input_changed: bool) -> bool:
+    global _cache_copy_feedback_until
+    _cache_copy_feedback_until = {k: v for k, v in _cache_copy_feedback_until.items() if v > now}
+    if _cache_copy_feedback_until:
+        return True
+    return input_changed
+
+def _render_if_changed(loop_state: dict) -> None:
+    output = _build_tokens_output()
+    if output != loop_state['last_output']:
+        write_frame(output)
+        loop_state['last_output'] = output
 
 def _poll_tokens_input() -> bool:
     input_changed = False

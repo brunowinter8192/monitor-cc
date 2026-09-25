@@ -10,18 +10,31 @@ from typing import Callable, Optional
 def sync_document(cache: dict, turns: list, inputs: dict, render_turn: Callable) -> dict:
     signature = _global_signature(inputs)
     _reset_on_signature_change(cache, signature)
+    dirty, structure_changed = _collect_changes(cache, turns, inputs)
+    _render_dirty_turns(cache, turns, inputs, dirty, render_turn)
+    if _needs_rebuild(cache, dirty, structure_changed):
+        _rebuild_document(cache, inputs)
+    return _current_document(cache)
+
+# FUNCTIONS
+
+def _collect_changes(cache: dict, turns: list, inputs: dict) -> tuple:
     dirty, structure_changed = _turn_structure_changes(cache, turns)
     dirty |= _expand_changes(cache, inputs)
     dirty |= _flash_changes(cache, inputs)
     dirty |= _search_changes(cache, inputs)
     dirty |= _response_data_changes(cache, turns, inputs)
-    _render_dirty_turns(cache, turns, inputs, dirty, render_turn)
-    if dirty or structure_changed or cache['document'] is None:
-        cache['document'] = _assemble_document(cache, inputs)
-        cache['generation'] += 1
-    return cache['document']
+    return dirty, structure_changed
 
-# FUNCTIONS
+def _needs_rebuild(cache: dict, dirty, structure_changed) -> bool:
+    return dirty or structure_changed or cache['document'] is None
+
+def _rebuild_document(cache: dict, inputs: dict) -> None:
+    cache['document'] = _assemble_document(cache, inputs)
+    cache['generation'] += 1
+
+def _current_document(cache: dict) -> dict:
+    return cache['document']
 
 def new_turn_cache() -> dict:
     return {

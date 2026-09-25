@@ -20,37 +20,45 @@ _WINDOW_LAYOUT = [
 ]
 
 # ORCHESTRATOR
+
 def launch_split_screen(project_filter: Optional[str] = None, script_path: str = '') -> None:
+    _require_tmux()
+    _require_outside_tmux()
+    session_name = generate_session_name(project_filter)
+    _clear_stale_session(session_name)
+    project_arg = _project_arg(project_filter)
+    mode_cmds = _build_mode_commands(script_path, project_filter)
+    _create_session_windows(session_name, mode_cmds)
+    configure_tmux_session(session_name, script_path, project_arg)
+    subprocess.run(["tmux", "attach-session", "-t", session_name])
+
+# FUNCTIONS
+
+def _require_tmux() -> None:
     if not is_tmux_installed():
         print("Error: tmux is not installed. Install with: brew install tmux")
         sys.exit(1)
 
+def _require_outside_tmux() -> None:
     if is_inside_tmux():
         print("Error: Already inside tmux session. Use --mode tokens")
         sys.exit(1)
 
-    session_name = generate_session_name(project_filter)
-
+def _clear_stale_session(session_name: str) -> None:
     if check_session_exists(session_name):
         print(f"Warning: Session '{session_name}' already exists for this project.")
         print("This might be a stale session. Killing it and creating fresh one...")
         kill_session(session_name)
 
-    project_arg = f"--project {project_filter}" if project_filter else ""
-    mode_cmds = _build_mode_commands(script_path, project_filter)
+def _project_arg(project_filter: Optional[str]) -> str:
+    return f"--project {project_filter}" if project_filter else ""
 
+def _create_session_windows(session_name: str, mode_cmds: dict) -> None:
     original_history_limit = get_global_history_limit()
     subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
-
     _create_windows(session_name, mode_cmds)
-
     if original_history_limit is not None:
         restore_global_history_limit(original_history_limit)
-    configure_tmux_session(session_name, script_path, project_arg)
-
-    subprocess.run(["tmux", "attach-session", "-t", session_name])
-
-# FUNCTIONS
 
 def _create_windows(session_name: str, cmds: dict) -> None:
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, cmds['tokens']], check=True)

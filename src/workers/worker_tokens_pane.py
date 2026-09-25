@@ -50,39 +50,61 @@ _worker_tokens_turn_cache: dict = new_turn_cache()
 # ORCHESTRATOR
 
 def run_worker_tokens_loop() -> None:
-    from src.core import monitor as _monitor
-    global _worker_tokens_copy_feedback_until
-
+    monitor = _load_monitor()
     register_ram_dump('worker_tokens', _worker_tokens_ram_state)
-    last_output = None
-    last_data_refresh = 0.0
+    loop_state = {'last_output': None, 'last_data_refresh': 0.0, 'monitor': monitor}
+    _open_terminal()
+    _loop_until_closed(loop_state)
+
+# FUNCTIONS
+
+def _load_monitor():
+    from src.core import monitor
+    return monitor
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
     hide_cursor()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed = _poll_worker_tokens_input(_monitor)
-                now = time.time()
-                input_changed, last_data_refresh = _refresh_worker_tokens_data(now, input_changed, last_data_refresh, _monitor)
-                _worker_tokens_copy_feedback_until = {k: v for k, v in _worker_tokens_copy_feedback_until.items() if v > now}
-                if _worker_tokens_copy_feedback_until:
-                    input_changed = True
-                if input_changed:
-                    output = _build_worker_tokens_output(_monitor)
-                    if output != last_output:
-                        write_frame(output)
-                        last_output = output
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('worker_tokens')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         show_cursor()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('worker_tokens')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    monitor = loop_state['monitor']
+    input_changed = _poll_worker_tokens_input(monitor)
+    now = time.time()
+    input_changed, loop_state['last_data_refresh'] = _refresh_worker_tokens_data(now, input_changed, loop_state['last_data_refresh'], monitor)
+    input_changed = _expire_copy_feedback(now, input_changed)
+    if input_changed:
+        _render_if_changed(loop_state)
+    wait_for_input(INPUT_POLL_INTERVAL)
+
+def _expire_copy_feedback(now: float, input_changed: bool) -> bool:
+    global _worker_tokens_copy_feedback_until
+    _worker_tokens_copy_feedback_until = {k: v for k, v in _worker_tokens_copy_feedback_until.items() if v > now}
+    if _worker_tokens_copy_feedback_until:
+        return True
+    return input_changed
+
+def _render_if_changed(loop_state: dict) -> None:
+    output = _build_worker_tokens_output(loop_state['monitor'])
+    if output != loop_state['last_output']:
+        write_frame(output)
+        loop_state['last_output'] = output
 
 def _poll_worker_tokens_input(monitor) -> bool:
     input_changed = False
