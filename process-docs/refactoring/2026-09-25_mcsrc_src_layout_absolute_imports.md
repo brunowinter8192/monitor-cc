@@ -145,3 +145,34 @@ Fix: one owner. `src/copy_proxy_live.sh <live_addon_path> <live_dir_path>` copie
 Proof: `dev/refactoring/worker_proxy_sandbox.py <iterative-dev tree>`: with iterative-dev `integration` it reproduces the failure (`setup_rc=1`, `did not come up on port 18941`); with branch `mcsrcid` it starts the worker proxy, forwards a request and writes the five dual-log files. `dev/refactoring/live_proxy_sandbox.py` now builds its live layout through the script (main path, five dual-log files). `verify_proxy_start_equivalence.py` 12/12 (its fixture copies the new script), `test_live_copy_bootstrap.py` 4/4, `test_proxy_start_fallbacks.py` 7/7.
 
 Other readers of `proxy_addon.py` or `.proxy_live_` found under `~/Documents/ai`: monitor-cc `proxy_start_janitor.sh` (hashes the sources, removes `.proxy_live_*` recursively, layout independent), monitor-cc dev tests (`test_version_purge.sh` stubs `proxy_addon.py` for the hash, `test_proxy_start_fallbacks.py` checks leftovers, `addon_hook_byte_identity.py` imports the class), iterative-dev `dev/worker_spawn/test_spawn_flow.sh` (fake monitor root, adapted with a stub copy script). Only `worker_proxy.sh` copied. The plugin cache holds a stale copy of `worker_proxy.sh`, its test and process-docs; it needs the plugin republished.
+
+## Later work in this session (2026-09-25)
+
+### One owner for the proxy live copy
+
+`src/copy_proxy_live.sh <live_addon_path> <live_dir_path>` copies the shim and the `src/` mirror; `claude_proxy_start.sh` calls it and iterative-dev `_proxy_launch` calls `<monitor_cc_root>/src/copy_proxy_live.sh` (root from marker line 3, aborts cleanly when missing). The script has the three section markers and one orchestrator (`copy_proxy_live_workflow`); its shebang is `#!/bin/bash` because the start-script sandbox has no `env` target on PATH. Details, the production failure and the proofs are in the section "Production failure: a second copier of the live copy" above.
+
+### Copy-flash marker: check mark replaced by `v`
+
+The 7 emoji scan hits were all `✓` (U+2713), the flash shown for a moment after a copy click; the normal copy symbol `⎘` is unchanged. Now `COPY_FLASH_SYMBOL = 'v'` in `src/constants.py`, used by `format/token_format.py`, `proxy_display/render_messages.py` and `proxy_display/render_turn.py`; `src/utils.py` has `is_copy_row(line, pane_width)` for the row detection in `panes/token_pane.py`, `panes/warnings_render.py`, `workers/worker_tokens_pane.py` and `proxy_display/format.py`.
+
+- **Width trap.** `utils._cell_width` counts anything in U+2600..U+27BF as 2 cells, so `✓` counted 2 while `⎘` and `v` count 1. The pad before a flash symbol grows by one space: the flash glyph now sits in the same column as `⎘` (before it sat one column left) and a flash row is `pane_width` wide instead of `pane_width - 1`. Example at pane width 60 from the differential case: old ` ...   ✓` becomes ` ...    v`, one more space, nothing else.
+- **Detection trap.** The old test `'⎘' in line or '✓' in line` relied on the glyph being unique. `'v' in line` would match nearly every row. `is_copy_row` keeps `'⎘' in line` and accepts the flash symbol only when the ANSI-stripped line ends in `' v'` and its computed width equals `pane_width` (the exact place `append_copy_symbol` puts it).
+- **Residual case (hypothesis, not observed in real output).** A key row whose natural text ends in `' v'` at exactly `pane_width` is detected as a copy row. Consequence: a harmless extra click target on that row. The synthetic line `'x' * (width - 2) + ' v'` in `orch_diff_cases.py` (`flash_rows:*`, copy-row index 5) shows it; that is the only differing case.
+- **Proof.** 17 flash cases in `dev/refactoring/orch_diff_cases.py` (row functions of tokens, worker-tokens and warnings at three widths, `format_cache_tracker` and `format_proxy_block` on the snapshot log, flash on and off). After mapping old `✓` to "one extra space plus `v`", old and new are equal, including the real proxy copy-row sets. Pinned harnesses: only `dev/panes/render_byte_identity.py` changed (`0c0da71e...` to `8bd148c7...`, its cache-tracker fixture renders a flash); all others unchanged. `dev/pane_flicker/m2_byte_identity_test.py` compares against an old git ref and fails on flash steps by design (it already failed before).
+- **Pitfall.** A "before" baseline must come from a stash of the working tree, not from an old result directory: the first comparison showed proxy hash changes that were only earlier `integration` work.
+- The `p2_copy_click_probe.py` asserts now use `is_copy_row(line, 10)`; `'v' not in line` would have been meaningless. The three `proxy_copy_*_probe.py` files only had the glyph in a printed label.
+
+### Tiny tokens pane: `IndexError` in `_compute_cache_viewport`
+
+`token_pane._build_tokens_output` gives `format_cache_tracker` `pane_height = terminal lines - 2` (one line lost, one for the search bar). With `viewport_lines = pane_height - 1 <= 0` the sticky-header loop indexed `line_keys[start]` past the end. Evidence in a real tmux pane (private socket, rows set at creation): 2 and 3 rows raised, 4 and 5 rows rendered. Direct calls raise for pane heights -1, 0 and 1 at every width; proxy and warnings formatters do not raise. The pane loop's `except Exception` hid it as one logged error per rebuild. Fix: `viewport_lines = max(1, pane_height - 1)`; heights of 2 and up are byte-identical. Test: `dev/panes/test_tiny_pane_viewport.py` (three parallel strands; two fail without the fix).
+
+`p2_copy_click_probe.py` had hit the same error only because it ran under a pty of 0 rows and 0 columns (a width of 0 also caused a later `ZeroDivisionError` in the worker-tokens header, impossible in tmux). The probe now pins `os.get_terminal_size` to 100x40 and passes 21/21 without a tty. Check to repeat: run such probes inside `script -q out sh -c 'stty rows 40 cols 100; ...'` or pin the size, never rely on the default pty size.
+
+### Sandboxes never touch the real `~/.mitmproxy`
+
+mitmdump writes its CA files under `$HOME/.mitmproxy`. `live_proxy_sandbox.py` and `worker_proxy_sandbox.py` now start it with `HOME` set to a directory inside their temp tree; `find ~/.mitmproxy -mmin -10` found nothing after both runs.
+
+### Docs state
+
+Every DOCS.md LOC heading (root, `src/**`, `dev/**`) matches `wc -l` at the end of this session; the layout scan (`dev/refactoring/src_layout_scan.py`) reports no findings, including 0 emoji lines in `src/`.

@@ -5,6 +5,7 @@ from src.colors import (
     SOFT_RESET, RED, GREEN, WHITE, YELLOW, DIM,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
+from src.constants import COPY_FLASH_SYMBOL
 from src.utils import _ANSI_ESCAPE_RE, _cell_width, highlight_query_in_line, right_align_time
 from src.proxy_display.format import _shorten_model, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
 from src.proxy_display.render_messages import _aggregate_req_buckets
@@ -102,7 +103,7 @@ def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symb
         _stripped_h = _ANSI_ESCAPE_RE.sub('', header_raw)
         visible_len = sum(_cell_width(ch) for ch in _stripped_h)
         is_flash = copy_feedback.get(entry_idx, 0) > time.time()
-        copy_sym = '✓' if is_flash else '⎘'
+        copy_sym = COPY_FLASH_SYMBOL if is_flash else '⎘'
         sym_cells = _cell_width(copy_sym)
         pad = pane_width - 1 - sym_cells - visible_len
         if pad >= 0:

@@ -21,7 +21,7 @@ Synthetic pane entries, worker lists and coordinates go in. Each script seeds a 
 
 ---
 
-### p2_copy_click_probe.py (233 LOC)
+### p2_copy_click_probe.py (235 LOC)
 
 **Purpose:** Proves each pane's copy-row registry has an entry per copyable row and a symbol-column click copies exactly what the key copies.
 **Reads:** nothing external; seeds pane data, clipboard stubbed.

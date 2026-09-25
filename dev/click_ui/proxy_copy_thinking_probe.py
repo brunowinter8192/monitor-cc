@@ -116,7 +116,7 @@ def test_worker_pane_thinking_copy_click():
 
 
 def test_width_guard_suppresses_thinking_row_symbol():
-    print("P5.10 -- width guard: no ⎘/✓ symbol or copy-row registration on a thinking row on a too-narrow pane")
+    print("P5.10 -- width guard: no copy symbol or copy-row registration on a thinking row on a too-narrow pane")
     entries = [_make_entry_with_thinking()]
     expand_states = {('req', 0): True}
     line_map, copy_rows, _ = _render_expanded(entries, expand_states, pane_width=10)

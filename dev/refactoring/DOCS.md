@@ -131,7 +131,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### orch_diff_cases.py (623 LOC)
+### orch_diff_cases.py (692 LOC)
 
 **Purpose:** Runs scripted scenarios against refactored orchestrators (strip passes, tool injection, bg escape, discover, ghostty, desktop detection, sweep, skills, hook writer, hook setup, pane loops, gpu status, monitor, launcher, ccwrap) and dumps a JSON result for diffing two roots.
 **Reads:** the given root.
@@ -141,7 +141,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### live_proxy_sandbox.py (92 LOC)
+### live_proxy_sandbox.py (93 LOC)
 
 **Purpose:** Starts a real mitmdump on private ports from a hand-built live-copy layout that lacks the repo src/proxy, sends one request through a local upstream and checks the dual-log files.
 **Reads:** src/proxy_addon.py, constants, monitor_root and the proxy package of this checkout.
@@ -161,7 +161,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### worker_proxy_sandbox.py (135 LOC)
+### worker_proxy_sandbox.py (137 LOC)
 
 **Purpose:** Runs the real `_worker_proxy_setup` of a given iterative-dev tree against a temp monitor root, temp marker and private ports and checks the worker proxy forwards a request and writes dual logs.
 **Reads:** the iterative-dev tree passed as argument, monitor-cc `src/`.

@@ -14,7 +14,7 @@ from src.input.click_handler import (
 )
 from src.format.token_format import format_cache_tracker
 from src.format.turn_cache import new_turn_cache
-from src.utils import truncate_visible
+from src.utils import is_copy_row, truncate_visible
 from src.frame_writer import write_frame, hide_cursor, show_cursor
 from src.ram_audit import register_ram_dump
 from src.pane_error_log import log_pane_error
@@ -329,7 +329,7 @@ def _render_tokens_rows(visible_lines: list, visible_keys: list, phys_row: int, 
         else:
             chosen_bg = zebra_bg
         line = search_bar.resolve_bg_restore(line, chosen_bg)
-        if key is not None and ('⎘' in line or '✓' in line):
+        if key is not None and is_copy_row(line, pane_width):
             cache_copy_rows.add(phys_row)
         trunc = truncate_visible(line, pane_width)
         result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")

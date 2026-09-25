@@ -29,9 +29,9 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### constants.py (50 LOC)
+### constants.py (51 LOC)
 
-**Purpose:** process-wide timing and size-limit values shared by two or more packages.
+**Purpose:** process-wide timing and size-limit values and the copy-flash marker shared by two or more packages.
 **Reads:** nothing.
 **Writes:** nothing.
 **Called by:** `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy/payload_helpers.py`, `proxy/tools.py`, several `proxy_display/` modules, `tmux_launcher.py`, `utils.py`, `workers/worker_tokens_pane.py`.
@@ -149,7 +149,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### utils.py (170 LOC)
+### utils.py (177 LOC)
 
 **Purpose:** shared no-I/O formatting primitives: timestamps, cell-width-aware truncation and wrapping, highlighting, right-aligned time column.
 **Reads:** nothing.

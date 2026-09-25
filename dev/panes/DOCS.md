@@ -31,6 +31,16 @@ The identity harness renders over a fixed real or synthetic input, hashes the re
 
 ---
 
+### test_tiny_pane_viewport.py (61 LOC)
+
+**Purpose:** Three parallel strands proving the tokens viewport renders panes of one row or less without raising, keeps one line there, and is unchanged from two rows up.
+**Reads:** the rate-limit turn fixture of `render_byte_identity.py`.
+**Writes:** stdout only.
+**Called by:** none; manual test.
+**Calls out:** `src.format`, `dev/refactoring/strand_runner.py`.
+
+---
+
 ### test_display_tripwires.py (138 LOC)
 
 **Purpose:** Five parallel strands: janitor partition and atomic write, janitor failure logged, synthetic-user fallback noted once per turn, timestamp states, rate-limit header states.
