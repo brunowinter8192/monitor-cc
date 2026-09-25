@@ -78,3 +78,7 @@ The earlier list named `src/core/monitor.py:55-57` and `src/utils.py:25` as read
 
 - `utils.format_timestamp` and `_get_session_start_ts` were left as they are (no data path feeds them the legacy value).
 - The proxy running from its `.proxy_live_*` copy keeps writing the old format until it is restarted; that is expected and covered by the legacy handling.
+
+### Review follow-up (second task): call-only orchestrator
+
+`dev/proxy/test_writer_timestamps.py`: `main()` held the `with tempfile.TemporaryDirectory()` block and the env setup. Moved into `_run_sandboxed_checks()` (FUNCTIONS); `main()` now only calls it and prints PASS. Test unchanged in behaviour (PASS, file now 139 LOC). The older `dev/proxy/test_api_errors_ts.py` `main()` has the same `with` shape and was not changed (outside the review note); a successor touching it should apply the same split.
