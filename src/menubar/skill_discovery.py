@@ -22,11 +22,17 @@ class Skill(NamedTuple):
 
 def discover_skills_workflow(cwd: str, claude_dir: Path = CLAUDE_DIR) -> List[Skill]:
     project = _project_skills(cwd)
-    personal = _dir_skills(claude_dir / 'skills', _SOURCE_PERSONAL)
+    personal = _personal_skills(claude_dir)
     plugin = _plugin_skills(claude_dir)
-    return project + personal + plugin
+    return _concat_skills(project, personal, plugin)
 
 # FUNCTIONS
+
+def _personal_skills(claude_dir: Path) -> List[Skill]:
+    return _dir_skills(claude_dir / 'skills', _SOURCE_PERSONAL)
+
+def _concat_skills(project: List[Skill], personal: List[Skill], plugin: List[Skill]) -> List[Skill]:
+    return project + personal + plugin
 
 class PluginProblem(Exception):
     pass

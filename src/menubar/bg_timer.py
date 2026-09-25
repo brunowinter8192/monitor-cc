@@ -10,15 +10,13 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 from src.menubar.proc_cache import _cc_proc_cache
 from src.menubar.menubar_log import log_menubar, log_menubar_change
 
-# ORCHESTRATOR
-
-# FUNCTIONS
-
 _WORKER_CLI_WAIT_DEFAULT_TIMEOUT = 3300
 
 class BgSleepInfo(NamedTuple):
     min_remaining: int
     sleep_pids:    List[int]
+
+# FUNCTIONS
 
 def _parse_etime(etime: str) -> Optional[int]:
     try:

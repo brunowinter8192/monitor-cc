@@ -1,10 +1,10 @@
 # INFRASTRUCTURE
-import json
 import os
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.claude_settings import SETTINGS_FILE, guard_not_worktree, load_settings, save_settings
 
-_SETTINGS_FILE  = Path("~/.claude/settings.json").expanduser()
 _HOOK_WRITER    = Path(__file__).resolve().parent / "hook_writer.py"
 _HOOK_COMMAND   = f"python3 {_HOOK_WRITER}"
 _HOOK_TIMEOUT   = 5
@@ -14,40 +14,38 @@ _HOOK_EVENTS = ["UserPromptSubmit", "Stop", "StopFailure"]
 # ORCHESTRATOR
 
 def hook_setup_workflow() -> None:
-    _guard_not_worktree()
-    settings = _load_settings()
+    guard_not_worktree(__file__)
+    settings = load_settings()
     swept = _sweep_stale_hooks(settings)
     if swept:
-        _save_settings(settings)
-    hooks = settings.setdefault("hooks", {})
-    added = []
-    for event in _HOOK_EVENTS:
-        if _already_installed(hooks, event):
-            print(f"  skip {event}: already present")
-        else:
-            _add_hook(hooks, event)
-            added.append(event)
-            print(f"  added {event}")
+        save_settings(settings)
+    added = _install_missing_hooks(settings)
     if added:
-        _save_settings(settings)
-        print(f"Done. Installed {len(added)} hook(s) into {_SETTINGS_FILE}")
-        print("Restart Claude Code to activate the new hooks.")
+        save_settings(settings)
+        _report_installed(added)
     elif not swept:
         print("All hooks already installed — nothing changed.")
 
 # FUNCTIONS
 
-def _guard_not_worktree() -> None:
-    parts = Path(__file__).resolve().parts
-    for i in range(len(parts) - 1):
-        if parts[i] == '.claude' and parts[i + 1] == 'worktrees':
-            print(
-                f"ERROR: This script must be run from the main repo root, not from a worktree at "
-                f"{Path(__file__).resolve()}.\n"
-                "Wechsel in den Main-Repo-Root und rufe das Skript dort auf.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+def _install_missing_hooks(settings: dict) -> list:
+    hooks = settings.setdefault("hooks", {})
+    added = []
+    for event in _HOOK_EVENTS:
+        _install_event(hooks, event, added)
+    return added
+
+def _install_event(hooks: dict, event: str, added: list) -> None:
+    if _already_installed(hooks, event):
+        print(f"  skip {event}: already present")
+    else:
+        _add_hook(hooks, event)
+        added.append(event)
+        print(f"  added {event}")
+
+def _report_installed(added: list) -> None:
+    print(f"Done. Installed {len(added)} hook(s) into {SETTINGS_FILE}")
+    print("Restart Claude Code to activate the new hooks.")
 
 def _sweep_stale_hooks(settings: dict) -> int:
     hooks = settings.get("hooks", {})
@@ -87,21 +85,6 @@ def _add_hook(hooks: dict, event: str) -> None:
         "hooks": [{"type": "command", "command": _HOOK_COMMAND,
                    "timeout": _HOOK_TIMEOUT, "async": True}]
     })
-
-def _load_settings() -> dict:
-    try:
-        return json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError as e:
-        print(f"ERROR: cannot parse {_SETTINGS_FILE}: {e}", file=sys.stderr)
-        sys.exit(1)
-
-def _save_settings(settings: dict) -> None:
-    tmp = _SETTINGS_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    os.replace(tmp, _SETTINGS_FILE)
-
 
 if __name__ == "__main__":
     hook_setup_workflow()

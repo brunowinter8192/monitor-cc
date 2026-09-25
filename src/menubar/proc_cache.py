@@ -32,8 +32,6 @@ _proxy_log_mtime_cache: Dict[str, Tuple[float, Optional[float]]] = {}
 _hook_state_cache: Dict[str, dict] = {}
 _hook_state_last_read: float = 0.0
 
-# ORCHESTRATOR
-
 # FUNCTIONS
 
 def _has_active_bg(encoded_dir: str, session_id: str) -> bool:

@@ -57,19 +57,29 @@ def detect_main_desktop_numbers(
     cwd_tty_map:  Dict[str, str],
     now: float,
 ) -> Dict[str, Optional[int]]:
-    global _det_cache, _det_cache_ts, _det_cache_cwds, _cgw_title_diag_logged
-    _cgw_title_diag_logged = False
+    _reset_title_diag()
     cwds = frozenset(cwd_uuid_map.keys())
-    if cwds == _det_cache_cwds and (now - _det_cache_ts) < _DET_CACHE_TTL:
+    if _cache_valid(cwds, now):
         return _det_cache
     result, cwd_ctx = _resolve_cwds_to_desktops(cwd_uuid_map, cwd_tty_map)
     _log_transitions(result, cwd_ctx)
-    _det_cache = result
-    _det_cache_ts = now
-    _det_cache_cwds = cwds
+    _store_cache(result, now, cwds)
     return result
 
 # FUNCTIONS
+
+def _reset_title_diag() -> None:
+    global _cgw_title_diag_logged
+    _cgw_title_diag_logged = False
+
+def _cache_valid(cwds: frozenset, now: float) -> bool:
+    return cwds == _det_cache_cwds and (now - _det_cache_ts) < _DET_CACHE_TTL
+
+def _store_cache(result: Dict[str, Optional[int]], now: float, cwds: frozenset) -> None:
+    global _det_cache, _det_cache_ts, _det_cache_cwds
+    _det_cache = result
+    _det_cache_ts = now
+    _det_cache_cwds = cwds
 
 def _resolve_cwds_to_desktops(
     cwd_uuid_map: Dict[str, str],

@@ -358,7 +358,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### hook_setup.py (207 LOC)
+### hook_setup.py (189 LOC)
 
 **Purpose:** idempotent installer registering every hook script into the user-level Claude Code settings file, sweeping stale entries first.
 **Reads:** the user-level settings file; local main-branch git state; the working tree.

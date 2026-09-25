@@ -23,18 +23,25 @@ _started = False
 # ORCHESTRATOR
 
 def start_discovery_worker() -> None:
-    global _started
-    if _started:
-        return
-    _started = True
-    t = threading.Thread(target=_worker_loop, name='discovery-worker', daemon=True)
-    t.start()
+    if _claim_start():
+        _spawn_worker_thread()
+
+# FUNCTIONS
 
 def get_latest_snapshot() -> DiscoverySnapshot:
     with _lock:
         return _snapshot
 
-# FUNCTIONS
+def _claim_start() -> bool:
+    global _started
+    if _started:
+        return False
+    _started = True
+    return True
+
+def _spawn_worker_thread() -> None:
+    t = threading.Thread(target=_worker_loop, name='discovery-worker', daemon=True)
+    t.start()
 
 def _worker_loop() -> None:
     global _snapshot

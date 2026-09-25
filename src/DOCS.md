@@ -89,6 +89,16 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
+### claude_settings.py (35 LOC)
+
+**Purpose:** Shared read, write and worktree guard for the user-level Claude settings file used by both hook-setup scripts.
+**Reads:** the user-level Claude settings file.
+**Writes:** the same file (atomic replace).
+**Called by:** `hooks/hook_setup.py`, `menubar/hook_setup.py`.
+**Calls out:** none
+
+---
+
 ### search_bar.py (147 LOC)
 
 **Purpose:** shared search-bar state, rendering, key and mouse handling, and search-highlight embedding used by every pane.

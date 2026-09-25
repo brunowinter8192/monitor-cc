@@ -177,7 +177,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### discovery_worker.py (63 LOC)
+### discovery_worker.py (70 LOC)
 
 **Purpose:** Background daemon thread that produces session-discovery snapshots off the main thread, self-paced.
 **Reads:** nothing directly; delegates to discovery, background-timer and orphan-scan modules.
@@ -187,7 +187,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### monitor_sweep_scheduler.py (63 LOC)
+### monitor_sweep_scheduler.py (70 LOC)
 
 **Purpose:** At-most-once-per-24h tick-driven sweep of stale monitor tmux sessions, gated by an on-disk timestamp.
 **Reads:** the sweep state file.
@@ -207,7 +207,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### hotkey_controller.py (123 LOC)
+### hotkey_controller.py (120 LOC)
 
 **Purpose:** Global Cmd+L/Cmd+K hotkey registration plus the controller for digit and arrow hotkey lifecycle.
 **Reads:** nothing.
@@ -327,7 +327,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### skill_discovery.py (125 LOC)
+### skill_discovery.py (131 LOC)
 
 **Purpose:** Discovers the skills offered for one main session (project, personal and enabled-plugin skills).
 **Reads:** Claude Code settings, plugin manifests and skill files, project and personal skill directories.
@@ -357,7 +357,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### discover.py (234 LOC)
+### discover.py (246 LOC)
 
 **Purpose:** Session discovery: scans project directories and returns live main and worker sessions with status, background flag and desktop number.
 **Reads:** project JSONL mtimes and last lines; delegates process, tmux and hook state to `proc_cache.py`, terminal mapping to `ghostty.py`, desktop numbers to `desktop_detection.py`.
@@ -367,7 +367,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### desktop_detection.py (345 LOC)
+### desktop_detection.py (355 LOC)
 
 **Purpose:** Batch detection of Mission Control desktop numbers for all main sessions via private CoreGraphics Services plus one AppleScript round-trip.
 **Reads:** CGS and window-list APIs; Ghostty window names via `osascript`; maps from the caller.
@@ -377,7 +377,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### proc_cache.py (204 LOC)
+### proc_cache.py (202 LOC)
 
 **Purpose:** Process and state caches shared by discovery: CC processes, tmux sessions, background-task handles, proxy-log mtimes and hook state.
 **Reads:** process table, `lsof`, tmux; proxy log mtimes; the hook state file.
@@ -387,7 +387,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### ghostty.py (195 LOC)
+### ghostty.py (223 LOC)
 
 **Purpose:** Ghostty terminal UUID mapping via an OSC title-marker probe, plus a scoped single-tty reprobe for repairing one stale entry.
 **Reads:** process table; terminal device files; `osascript` terminal id and name queries.
@@ -397,7 +397,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### bg_timer.py (159 LOC)
+### bg_timer.py (157 LOC)
 
 **Purpose:** Scans orchestrator wake-up processes, attributes them per project and aborts them on request.
 **Reads:** process table; the CC process cache; per-PID open files via `lsof`.
@@ -417,7 +417,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### hook_writer.py (76 LOC)
+### hook_writer.py (85 LOC)
 
 **Purpose:** Claude Code hook handler writing working/idle status to the hook state file, the primary status signal for discovery.
 **Reads:** stdin (hook JSON); the hook state file (inside a file lock).
@@ -427,7 +427,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### hook_setup.py (107 LOC)
+### hook_setup.py (90 LOC)
 
 **Purpose:** Idempotent installer for the activity-monitor hooks in the user settings file, with a worktree guard and stale-entry sweep.
 **Reads:** the user settings file.
@@ -447,7 +447,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### menubar_main.py (7 LOC)
+### menubar_main.py (19 LOC)
 
 **Purpose:** py2app entry wrapper kept minimal so the bundle import trace excludes non-menubar packages.
 **Reads:** nothing.

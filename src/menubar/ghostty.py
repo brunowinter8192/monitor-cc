@@ -19,40 +19,68 @@ _ghostty_cwd_uuid_last: dict = {}
 # ORCHESTRATOR
 
 def _refresh_ghostty_tty_to_id(now: float) -> None:
-    global _ghostty_tty_to_id, _ghostty_tty_last_refresh
-    if now - _ghostty_tty_last_refresh < _GHOSTTY_TTY_REFRESH_INTERVAL:
+    if _refresh_not_due(now):
         return
     ghostty_pid = _ghostty_pid()
     if not ghostty_pid:
         return
     all_ttys = _ghostty_child_ttys(ghostty_pid)
+    _prune_gone_ttys(all_ttys)
+    new_ttys = _unmapped_ttys(all_ttys)
+    if not new_ttys:
+        _mark_refreshed(now)
+        return
+    tty_marker, r3 = _probe_terminal_names(new_ttys)
+    if _query_failed(r3):
+        _log_query_failure(r3)
+        return
+    log_menubar_change('ghostty', 'osascript_names', None)
+    _assign_terminal_ids(tty_marker, _parse_name_to_id(r3.stdout))
+    _mark_refreshed(now)
+
+# FUNCTIONS
+
+def _refresh_not_due(now: float) -> bool:
+    return now - _ghostty_tty_last_refresh < _GHOSTTY_TTY_REFRESH_INTERVAL
+
+def _prune_gone_ttys(all_ttys: List[str]) -> None:
     for tty in list(_ghostty_tty_to_id):
         if tty not in all_ttys:
             del _ghostty_tty_to_id[tty]
-    new_ttys = [t for t in all_ttys if t not in _ghostty_tty_to_id]
-    if not new_ttys:
-        _ghostty_tty_last_refresh = now
-        return
+
+def _unmapped_ttys(all_ttys: List[str]) -> List[str]:
+    return [t for t in all_ttys if t not in _ghostty_tty_to_id]
+
+def _mark_refreshed(now: float) -> None:
+    global _ghostty_tty_last_refresh
+    _ghostty_tty_last_refresh = now
+
+def _probe_terminal_names(new_ttys: List[str]) -> tuple:
     tty_marker = _write_markers(new_ttys)
     time.sleep(0.12)
     r3 = _query_terminal_names()
     _clear_markers(tty_marker)
-    if not r3 or r3.returncode != 0:
-        if r3:
-            log_menubar_change('ghostty', 'osascript_names', f'osascript rc={r3.returncode} stderr={r3.stderr.strip()[:80]!r}')
-        return
-    log_menubar_change('ghostty', 'osascript_names', None)
+    return tty_marker, r3
+
+def _query_failed(r3) -> bool:
+    return not r3 or r3.returncode != 0
+
+def _log_query_failure(r3) -> None:
+    if r3:
+        log_menubar_change('ghostty', 'osascript_names', f'osascript rc={r3.returncode} stderr={r3.stderr.strip()[:80]!r}')
+
+def _parse_name_to_id(stdout: str) -> Dict[str, str]:
     name_to_id: Dict[str, str] = {}
-    for line in r3.stdout.strip().split('\n'):
+    for line in stdout.strip().split('\n'):
         if '|||' in line:
             tid, _, tname = line.partition('|||')
             name_to_id[tname.strip()] = tid.strip()
+    return name_to_id
+
+def _assign_terminal_ids(tty_marker: List[tuple], name_to_id: Dict[str, str]) -> None:
     for tty, marker in tty_marker:
         if marker in name_to_id:
             _ghostty_tty_to_id[tty] = name_to_id[marker]
-    _ghostty_tty_last_refresh = now
-
-# FUNCTIONS
 
 def _write_markers(new_ttys: List[str]) -> List[tuple]:
     tty_marker: List[tuple] = []

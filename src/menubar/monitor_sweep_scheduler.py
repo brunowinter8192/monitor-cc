@@ -14,19 +14,26 @@ _sweep_in_progress = False
 # ORCHESTRATOR
 
 def maybe_run_sweep_workflow(now: float) -> None:
-    global _last_sweep_ts, _sweep_in_progress
     if _sweep_in_progress:
         return
-    if _last_sweep_ts is None:
-        _last_sweep_ts = _read_last_sweep_ts()
+    _load_last_sweep_ts()
     if not _is_sweep_due(_last_sweep_ts, now):
         return
+    _start_sweep(now)
+
+# FUNCTIONS
+
+def _load_last_sweep_ts() -> None:
+    global _last_sweep_ts
+    if _last_sweep_ts is None:
+        _last_sweep_ts = _read_last_sweep_ts()
+
+def _start_sweep(now: float) -> None:
+    global _last_sweep_ts, _sweep_in_progress
     _last_sweep_ts = now
     _write_last_sweep_ts(now)
     _sweep_in_progress = True
     threading.Thread(target=_run_sweep, name='monitor-sweep', daemon=True).start()
-
-# FUNCTIONS
 
 def _is_sweep_due(last_ts: float, now: float) -> bool:
     return now - last_ts >= SWEEP_INTERVAL_SECS

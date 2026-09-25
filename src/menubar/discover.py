@@ -35,54 +35,66 @@ _last_timings: Dict[str, float] = {}
 # ORCHESTRATOR
 
 def list_alive_sessions() -> List[SessionInfo]:
-    global _last_timings
     now = time.time()
     timings: Dict[str, float] = {}
-    t0 = time.monotonic()
-    _refresh_cc_proc_cache(now)
-    timings['proc_cache'] = time.monotonic() - t0
-    t0 = time.monotonic()
-    _refresh_ghostty_tty_to_id(now)
-    timings['ghostty'] = time.monotonic() - t0
-    t0 = time.monotonic()
-    _refresh_tmux_state(now)
-    timings['tmux_state'] = time.monotonic() - t0
-    t0 = time.monotonic()
-    _refresh_bg_task_cache(now)
-    timings['bg_task_lsof'] = time.monotonic() - t0
-    t0 = time.monotonic()
-    _read_hook_state(now)
-    _write_cwd_uuid_map()
-    results = []
-    for project_dir in get_project_directories():
-        try:
-            info = _process_project_dir(project_dir, now)
-            if info is not None:
-                results.append(info)
-        except Exception as exc:
-            log_menubar_change('discover', f'project:{project_dir.name}',
-                               f'project skipped dir={project_dir.name} err={exc!r}')
-            continue
-        log_menubar_change('discover', f'project:{project_dir.name}', None)
-    timings['per_project_loop'] = time.monotonic() - t0
-    t0 = time.monotonic()
-    main_cwds = {s.cwd for s in results if not s.is_worker and s.cwd}
-    if main_cwds:
-        cwd_tty_map  = {cwd: tty for _pid, (tty, cwd) in _cc_proc_cache.items() if tty and cwd}
-        cwd_uuid_map = {cwd: _ghostty_tty_to_id[tty]
-                        for _pid, (tty, cwd) in _cc_proc_cache.items()
-                        if tty and cwd and tty in _ghostty_tty_to_id}
-        dno_map = detect_main_desktop_numbers(cwd_uuid_map, cwd_tty_map, now)
-        results = [s._replace(desktop_no=dno_map.get(s.cwd)) if not s.is_worker else s
-                   for s in results]
-    timings['desktop_detection'] = time.monotonic() - t0
-    _last_timings = timings
+    _timed(timings, 'proc_cache', _refresh_cc_proc_cache, now)
+    _timed(timings, 'ghostty', _refresh_ghostty_tty_to_id, now)
+    _timed(timings, 'tmux_state', _refresh_tmux_state, now)
+    _timed(timings, 'bg_task_lsof', _refresh_bg_task_cache, now)
+    results = _timed(timings, 'per_project_loop', _scan_project_dirs, now)
+    results = _timed(timings, 'desktop_detection', _assign_desktop_numbers, results, now)
+    _store_timings(timings)
     return results
+
+# FUNCTIONS
 
 def get_last_session_timings() -> Dict[str, float]:
     return dict(_last_timings)
 
-# FUNCTIONS
+def _timed(timings: Dict[str, float], name: str, fn, *args):
+    t0 = time.monotonic()
+    result = fn(*args)
+    timings[name] = time.monotonic() - t0
+    return result
+
+def _store_timings(timings: Dict[str, float]) -> None:
+    global _last_timings
+    _last_timings = timings
+
+def _scan_project_dirs(now: float) -> List[SessionInfo]:
+    _read_hook_state(now)
+    _write_cwd_uuid_map()
+    results = []
+    for project_dir in get_project_directories():
+        _collect_project(results, project_dir, now)
+    return results
+
+def _collect_project(results: List[SessionInfo], project_dir: Path, now: float) -> None:
+    try:
+        info = _process_project_dir(project_dir, now)
+        if info is not None:
+            results.append(info)
+    except Exception as exc:
+        log_menubar_change('discover', f'project:{project_dir.name}',
+                           f'project skipped dir={project_dir.name} err={exc!r}')
+        return
+    log_menubar_change('discover', f'project:{project_dir.name}', None)
+
+def _assign_desktop_numbers(results: List[SessionInfo], now: float) -> List[SessionInfo]:
+    main_cwds = {s.cwd for s in results if not s.is_worker and s.cwd}
+    if not main_cwds:
+        return results
+    cwd_tty_map, cwd_uuid_map = _build_cwd_maps()
+    dno_map = detect_main_desktop_numbers(cwd_uuid_map, cwd_tty_map, now)
+    return [s._replace(desktop_no=dno_map.get(s.cwd)) if not s.is_worker else s
+            for s in results]
+
+def _build_cwd_maps() -> tuple:
+    cwd_tty_map  = {cwd: tty for _pid, (tty, cwd) in _cc_proc_cache.items() if tty and cwd}
+    cwd_uuid_map = {cwd: _ghostty_tty_to_id[tty]
+                    for _pid, (tty, cwd) in _cc_proc_cache.items()
+                    if tty and cwd and tty in _ghostty_tty_to_id}
+    return cwd_tty_map, cwd_uuid_map
 
 def _newest_jsonl(project_dir: Path) -> Optional[Path]:
     files = [f for f in project_dir.glob('*.jsonl') if f.is_file()]

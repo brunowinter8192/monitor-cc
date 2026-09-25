@@ -18,6 +18,51 @@ _CMD_K_ID            = 30
 
 # FUNCTIONS
 
+class HotkeyController:
+    def __init__(self, app) -> None:
+        self.app = app
+        self._hotkey_digits_cb   = None
+        self._hotkey_digits_refs = []
+        self._hotkey_arr_right_ref = None
+        self._hotkey_arr_left_ref  = None
+        self.global_handles = None
+
+    def reregister_digits(self, desktop_to_cwd: dict) -> None:
+        if self._hotkey_digits_refs:
+            unregister_hotkeys(self._hotkey_digits_refs)
+            self._hotkey_digits_refs = []
+            self._hotkey_digits_cb   = None
+        slots = {dn: cwd for dn, cwd in desktop_to_cwd.items() if dn <= 9 and cwd}
+        if not slots:
+            return
+        def _make_digit_cb(slot, cwd):
+            def _cb():
+                log_menubar('hotkey', f'cmd+{slot} → focus {cwd}')
+                _focus_session(cwd)
+            return _cb
+        cb_map = {slot: _make_digit_cb(slot, cwd) for slot, cwd in slots.items()}
+        self._hotkey_digits_cb, self._hotkey_digits_refs = register_cmd_digits(cb_map)
+
+    def register_arrow_right(self, callback) -> None:
+        _, self._hotkey_arr_right_ref = register_cmd_arrow_right(callback)
+
+    def register_arrow_left(self, callback) -> None:
+        _, self._hotkey_arr_left_ref = register_cmd_arrow_left(callback)
+
+    def unregister_arrow_right(self) -> None:
+        unregister_cmd_arrow_right(self._hotkey_arr_right_ref)
+        self._hotkey_arr_right_ref = None
+
+    def unregister_arrow_left(self) -> None:
+        unregister_cmd_arrow_left(self._hotkey_arr_left_ref)
+        self._hotkey_arr_left_ref = None
+
+    def unregister_digits(self) -> None:
+        if self._hotkey_digits_refs:
+            unregister_hotkeys(self._hotkey_digits_refs)
+            self._hotkey_digits_refs = []
+            self._hotkey_digits_cb   = None
+
 def register_cmd_l(callback) -> tuple:
     carbon = _load_carbon()
     target = carbon.GetApplicationEventTarget()
@@ -73,51 +118,3 @@ def register_cmd_k(callback) -> tuple:
         _EventHotKeyID(_MBAR_SIG, _CMD_K_ID),
         target, 0, ctypes.byref(hk_ref)), 'cmd+k')
     return cb, hk_ref
-
-
-# ORCHESTRATOR
-
-class HotkeyController:
-    def __init__(self, app) -> None:
-        self.app = app
-        self._hotkey_digits_cb   = None
-        self._hotkey_digits_refs = []
-        self._hotkey_arr_right_ref = None
-        self._hotkey_arr_left_ref  = None
-        self.global_handles = None
-
-    def reregister_digits(self, desktop_to_cwd: dict) -> None:
-        if self._hotkey_digits_refs:
-            unregister_hotkeys(self._hotkey_digits_refs)
-            self._hotkey_digits_refs = []
-            self._hotkey_digits_cb   = None
-        slots = {dn: cwd for dn, cwd in desktop_to_cwd.items() if dn <= 9 and cwd}
-        if not slots:
-            return
-        def _make_digit_cb(slot, cwd):
-            def _cb():
-                log_menubar('hotkey', f'cmd+{slot} → focus {cwd}')
-                _focus_session(cwd)
-            return _cb
-        cb_map = {slot: _make_digit_cb(slot, cwd) for slot, cwd in slots.items()}
-        self._hotkey_digits_cb, self._hotkey_digits_refs = register_cmd_digits(cb_map)
-
-    def register_arrow_right(self, callback) -> None:
-        _, self._hotkey_arr_right_ref = register_cmd_arrow_right(callback)
-
-    def register_arrow_left(self, callback) -> None:
-        _, self._hotkey_arr_left_ref = register_cmd_arrow_left(callback)
-
-    def unregister_arrow_right(self) -> None:
-        unregister_cmd_arrow_right(self._hotkey_arr_right_ref)
-        self._hotkey_arr_right_ref = None
-
-    def unregister_arrow_left(self) -> None:
-        unregister_cmd_arrow_left(self._hotkey_arr_left_ref)
-        self._hotkey_arr_left_ref = None
-
-    def unregister_digits(self) -> None:
-        if self._hotkey_digits_refs:
-            unregister_hotkeys(self._hotkey_digits_refs)
-            self._hotkey_digits_refs = []
-            self._hotkey_digits_cb   = None
