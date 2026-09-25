@@ -11,8 +11,6 @@ _RETENTION = 7 * 86400
 _LEGACY_TS_SUFFIX = '+00:00Z'
 
 
-# FUNCTIONS
-
 @dataclass(frozen=True)
 class LogSpec:
     name: str
@@ -138,6 +136,8 @@ _LOG_REGISTRY: tuple = (
     ),
 )
 
+
+# FUNCTIONS
 
 def sweep_eligible_specs(logs_dir: Path) -> list:
     return [
