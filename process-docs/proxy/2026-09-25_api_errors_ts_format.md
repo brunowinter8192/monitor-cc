@@ -36,3 +36,13 @@ Related but different: `src/hooks/block_rag_cli_document_repeat.py:139` reads a 
 ## Review follow-up: frozen fixture
 
 `dev/proxy/test_api_errors_ts.py` first read the live main-checkout `src/logs/api_errors.jsonl`; those lines age out 7 days after the fix is live, which would make the test non-reproducible. The first 5 real lines (ts 2026-05-30, all `+00:00Z`) are frozen in `dev/proxy/fixtures/api_errors_legacy_ts.jsonl` with `request_payload` set to null (the 5 lines were 3.3 MB, the janitor only reads `ts`); all other fields are verbatim. The test reads only that fixture and no longer touches live paths.
+
+## Follow-up: log_janitor section order
+
+Four-eyes review found `_LOG_REGISTRY` (a module-level assignment) after the `# FUNCTIONS` marker in `src/panes/log_janitor.py`. The `LogSpec` dataclass and `_LOG_REGISTRY` moved into INFRASTRUCTURE, below `_RETENTION` and `_LEGACY_TS_SUFFIX`; nothing else changed (file stays 202 LOC). Equality check: all 11 `LogSpec` entries of the pre-move version (imported from `git show HEAD:`) equal the moved ones. `cleanup_old_jsonl` still mixes orchestration and logic; the module has no separate ORCHESTRATOR function (not addressed, outside this task).
+
+## Test-run gotchas for a successor
+
+- The venv is at `/Users/brunowinter2000/Documents/ai/monitor-cc/venv/bin/python` (main checkout), not inside the worktree. Only the AppKit test needs it; the proxy/janitor tests run with system `python3`.
+- Running `dev/model_selector/verify_four_tab_ring.py` rewrites its report `md/verify_four_tab_ring.md` (one-line diff noise); revert it before committing.
+- macOS `sed -i` needs `-i ''`; a failed sed silently left a weak assertion once.
