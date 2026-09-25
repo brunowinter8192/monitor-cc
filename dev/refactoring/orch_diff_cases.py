@@ -607,29 +607,12 @@ def _ccwrap_cases() -> dict:
     return out
 
 
-def _guard(case) -> dict:
-    try:
-        return case()
-    except Exception as exc:
-        return {case.__name__: f'CASE ERROR {exc!r}'}
-
-
-def _write_results(results: dict, out_path: Path) -> None:
-    out_path.write_text(json.dumps(results, indent=1, sort_keys=True, default=repr))
-    print(f'cases={len(results)}')
-
-
-def _flash_symbol() -> str:
-    try:
-        return importlib.import_module('src.constants').COPY_FLASH_SYMBOL
-    except AttributeError:
-        return '\u2713'
-
 def _flash_cases() -> dict:
     results = {}
     results.update(_flash_row_cases())
     results.update(_flash_render_cases())
     return results
+
 
 def _flash_row_cases() -> dict:
     utils = importlib.import_module('src.utils')
@@ -657,6 +640,14 @@ def _flash_row_cases() -> dict:
                 out = getattr(module, fn_name)(lines, keys, 1, 0, width, None, copy_rows)
                 results[f'flash_rows:{label}:{width}'] = {'out': out, 'copy_rows': sorted(copy_rows)}
     return results
+
+
+def _flash_symbol() -> str:
+    try:
+        return importlib.import_module('src.constants').COPY_FLASH_SYMBOL
+    except AttributeError:
+        return '\u2713'
+
 
 def _flash_render_cases() -> dict:
     results = {}
@@ -687,6 +678,19 @@ def _flash_render_cases() -> dict:
                                          copy_rows_out=rows, turn_cache=turn_cache_cls())
             results[f'flash_proxy:{width}:{active}'] = {'out': out, 'rows': sorted(rows)}
     return results
+
+
+def _guard(case) -> dict:
+    try:
+        return case()
+    except Exception as exc:
+        return {case.__name__: f'CASE ERROR {exc!r}'}
+
+
+def _write_results(results: dict, out_path: Path) -> None:
+    out_path.write_text(json.dumps(results, indent=1, sort_keys=True, default=repr))
+    print(f'cases={len(results)}')
+
 
 if __name__ == '__main__':
     orch_diff_workflow()

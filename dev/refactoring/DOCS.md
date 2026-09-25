@@ -151,7 +151,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### orch_diff_cases.py (692 LOC)
+### orch_diff_cases.py (696 LOC)
 
 **Purpose:** Runs scripted scenarios against refactored orchestrators (strip passes, tool injection, bg escape, discover, ghostty, desktop detection, sweep, skills, hook writer, hook setup, pane loops, gpu status, monitor, launcher, ccwrap) and dumps a JSON result for diffing two roots.
 **Reads:** the given root.
