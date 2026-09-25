@@ -99,7 +99,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### copy_proxy_live.sh (25 LOC)
+### copy_proxy_live.sh (33 LOC)
 
 **Purpose:** Single owner of the proxy live-copy layout: copies the shim and a `src/` mirror (`__init__.py`, `constants.py`, `monitor_root.py`, `proxy/`) to the given targets.
 **Reads:** `proxy_addon.py`, `__init__.py`, `constants.py`, `monitor_root.py`, `proxy/` next to itself.
