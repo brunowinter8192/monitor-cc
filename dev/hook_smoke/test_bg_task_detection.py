@@ -7,7 +7,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.menubar import proc_cache
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home("test_bg_task_detection_")
+
+from src.menubar import menubar_log, proc_cache
 from case_strands import case_runners, report_case, run_case_strands
 
 _FIXED_NOW = 1000.0
@@ -44,7 +48,8 @@ def _case_match_true() -> tuple:
 def _scratch_tasks_base():
     with tempfile.TemporaryDirectory(prefix='bg_probe_') as tmp:
         base = Path(tmp).resolve()
-        with patch.object(proc_cache, '_TASKS_BASE', base), \
+        with patch.object(menubar_log, 'MENUBAR_LOG', base / 'menubar.log'), \
+                patch.object(proc_cache, '_TASKS_BASE', base), \
                 patch.object(proc_cache, '_TASKS_BASE_REAL', str(base)), \
                 patch.object(proc_cache, '_bg_task_open_paths', set()), \
                 patch.object(proc_cache, '_bg_task_holder_pids', {}), \

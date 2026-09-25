@@ -11,7 +11,7 @@ Every case builds its own synthetic state, drives the `src.menubar.system` funct
 
 ## Modules
 
-### test_open_or_focus_monitor.py (159 LOC)
+### test_open_or_focus_monitor.py (163 LOC)
 
 **Purpose:** Proves session-name reuse, kill-then-relaunch of an existing session, cwd quoting, launchd-PATH python resolution and absence of a Ghostty fallback.
 **Reads:** nothing external; monkeypatches module-level functions and restores them per case; one case spawns a subprocess with a temp plist.

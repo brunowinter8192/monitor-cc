@@ -43,7 +43,7 @@ Converted suites run as parallel strands through the strand runner in `dev/refac
 
 ---
 
-### proxy_176_agent_types_tests.py (148 LOC)
+### proxy_176_agent_types_tests.py (152 LOC)
 
 **Purpose:** Unit tests for the CC 2.1.176 agent-types system-reminder strip and its attribution code.
 **Reads:** nothing; synthetic fixture text.

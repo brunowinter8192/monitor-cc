@@ -11,7 +11,7 @@ Each case runs in its own parallel subprocess, builds a temp directory and fake 
 
 ## Modules
 
-### test_monitor_root.py (210 LOC)
+### test_monitor_root.py (214 LOC)
 
 **Purpose:** Proves env precedence, computed root, empty env as unset, missing-directory raise, report-once and the reporter wiring of the callers.
 **Reads:** the repo sources; nothing persistent.

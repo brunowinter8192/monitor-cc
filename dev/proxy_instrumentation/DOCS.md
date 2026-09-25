@@ -111,7 +111,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p9_response_entry_abort_survival_test.py (143 LOC)
+### p9_response_entry_abort_survival_test.py (147 LOC)
 
 **Purpose:** Regression guard for the response-entry writer and the response/error dual-hook wiring across abort, duplicate and override scenarios.
 **Reads:** nothing on disk; fake flow objects.
@@ -131,7 +131,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p10_model_mismatch_warning_test.py (204 LOC)
+### p10_model_mismatch_warning_test.py (208 LOC)
 
 **Purpose:** Regression guard for the model-mismatch entry writers: exactly one sentence, dedup and real pane rendering.
 **Reads:** nothing on disk; fake flow, response and identity objects.
@@ -141,7 +141,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p11_request_identity_encoding_test.py (59 LOC)
+### p11_request_identity_encoding_test.py (63 LOC)
 
 **Purpose:** Regression guard that the request hook sets and overwrites the identity accept-encoding header on the outbound request.
 **Reads:** nothing on disk; fake flow.

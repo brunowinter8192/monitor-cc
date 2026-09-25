@@ -10,6 +10,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home("verify_bg_task_detection_")
+
 from src.menubar import proc_cache
 
 _POLL_DEADLINE_SECS = 10.0

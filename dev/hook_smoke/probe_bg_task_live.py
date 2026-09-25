@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.menubar import proc_cache
 
 _REPORT_DIR = Path(__file__).parent / 'md'

@@ -29,7 +29,7 @@ cumulative duplication, and evaluates the 3 recognition mechanisms against each 
 
 ---
 
-### p2_bg_escape_probe.py (313 LOC)
+### p2_bg_escape_probe.py (317 LOC)
 
 **Purpose:** Verifies `bg_escape.py` — dedup-by-task-id, both ack wordings, main-context never
 fires, tmux session-name derivation, a real tmux round trip, and failure isolation.
@@ -42,7 +42,7 @@ session for the round-trip test.
 
 ---
 
-### p3_strip_interrupt_marker_probe.py (215 LOC)
+### p3_strip_interrupt_marker_probe.py (219 LOC)
 
 **Purpose:** Verifies `strip_interrupt_marker.py` and its wiring through the message-pass,
 rules, vocab, and delta-attribution modules against the real payload shape.

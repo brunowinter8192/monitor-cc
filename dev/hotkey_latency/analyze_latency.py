@@ -6,11 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-WORKTREE_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(WORKTREE_ROOT))
-
-from src.menubar.menubar_log import MENUBAR_LOG
-
+MENUBAR_LOG = Path('~/Library/Application Support/com.brunowinter.monitor-cc-menubar/menubar.log').expanduser()
 REPORT_DIR       = Path(__file__).parent / 'md'
 N_SLOWEST        = 10
 _LATENCY_RE      = re.compile(r'^(\S+) \[latency\] (.*)$')

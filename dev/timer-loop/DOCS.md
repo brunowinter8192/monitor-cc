@@ -1,10 +1,10 @@
 # dev/timer-loop/
 
 ## Role
-Measurement and verification scripts around the background-task wake-up chain: an inventory of real completion and kill notice wordings, a dead probe for a removed proxy-side design (historical), and a guard for the menubar-side abort-scoping fix.
+Measurement and verification scripts around the background-task wake-up chain: an inventory of real completion and kill notice wordings and a guard for the menubar-side abort-scoping fix.
 
 ## Public Interface
-No `__init__.py`. Entry paths: `./venv/bin/python dev/timer-loop/p1_scan_bg_completion_wordings.py [log_dir]`, `dev/timer-loop/p3_project_scope_incident_probe.py` (dead) and `python3 dev/timer-loop/test_abort_stamp_scope.py`.
+No `__init__.py`. Entry paths: `./venv/bin/python dev/timer-loop/p1_scan_bg_completion_wordings.py [log_dir]`, and `python3 dev/timer-loop/test_abort_stamp_scope.py`.
 
 ## Flow
 The wording scan reads the dual-log corpus and writes a findings report. The abort test drives the real menubar abort function against spawned subprocesses and asserts on file and process state as one fail-fast strand.
@@ -41,17 +41,7 @@ The wording scan reads the dual-log corpus and writes a findings report. The abo
 
 ---
 
-### p3_project_scope_incident_probe.py (223 LOC)
-
-**Purpose:** Replays a cross-project false-block incident where one project's session was blocked by another's pending background-task entry.
-**Reads:** nothing persistent; seeds its own state file per case in a temp dir.
-**Writes:** a report that is never reached.
-**Called by:** none. Dead code: the hook and state-writer modules it imports no longer exist, so it raises before completing.
-**Calls out:** nothing reachable.
-
----
-
-### test_abort_stamp_scope.py (130 LOC)
+### test_abort_stamp_scope.py (134 LOC)
 
 **Purpose:** Integration guard for the menubar abort-stamp scoping fix: spawns two subprocesses, aborts one PID and asserts only that pair is touched.
 **Reads:** nothing persistent; spawns its own subprocesses and temp dir.

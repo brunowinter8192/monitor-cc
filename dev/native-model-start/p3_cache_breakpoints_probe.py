@@ -9,6 +9,10 @@ from unittest import mock
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("p3_cache_breakpoints_pro_")
+
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
 from src.proxy.addon import ProxyAddon, _derive_worker_context
 

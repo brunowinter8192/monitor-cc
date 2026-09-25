@@ -61,7 +61,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_bg_task_detection.py (107 LOC)
+### test_bg_task_detection.py (112 LOC)
 
 **Purpose:** Smoke for the active-background check: match, no-match, prefix boundary, fail-open and TTL gate; hermetic, no real process table.
 **Reads:** nothing external; the tasks base is redirected to a scratch dir.
@@ -201,7 +201,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_worker_kill_while_working.py (115 LOC)
+### test_block_worker_kill_while_working.py (118 LOC)
 
 **Purpose:** Smoke for the worker-kill decision function using the real shell-strip and a stub status function.
 **Reads:** nothing.
@@ -211,7 +211,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_worker_send_while_working.py (131 LOC)
+### test_block_worker_send_while_working.py (134 LOC)
 
 **Purpose:** Smoke for the worker-send decision function via the same stub pattern, plus one real subprocess for malformed-stdin fail-open.
 **Reads:** nothing.
@@ -231,7 +231,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_header_capture.py (190 LOC)
+### test_header_capture.py (194 LOC)
 
 **Purpose:** Smoke for proxy header-capture logic: beta-header extraction and response-header filtering.
 **Reads:** its own mock header objects; no live mitmproxy.
@@ -301,7 +301,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### verify_bg_task_detection_live.py (90 LOC)
+### verify_bg_task_detection_live.py (94 LOC)
 
 **Purpose:** Verification of the active-background check against a real writer subprocess and the real `lsof`: detected while open, cleared after close.
 **Reads:** the real process table via `lsof`; a scratch tasks dir.

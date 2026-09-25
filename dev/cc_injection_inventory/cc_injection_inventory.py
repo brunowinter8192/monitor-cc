@@ -1,7 +1,14 @@
 # INFRASTRUCTURE
 import argparse
 import glob as globmod
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("cc_injection_inventory_")
 
 from cc_injection_extraction import _process_file
 from cc_injection_aggregation import _finalize_pending_user_text

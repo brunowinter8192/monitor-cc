@@ -5,6 +5,10 @@ import sys
 import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("poread_inject_tests_")
+
 
 from src.proxy.rules import apply_modification_rules
 from src.proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX

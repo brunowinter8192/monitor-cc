@@ -6,6 +6,10 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("p3_strip_interrupt_marke_")
+
 
 from src.proxy.strip_interrupt_marker import _strip_interrupt_marker
 from src.proxy.message_passes_simple import _apply_interrupt_marker_strip

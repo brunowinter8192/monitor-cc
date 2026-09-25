@@ -31,7 +31,7 @@ Synthetic payloads, temp paths or in-memory fixtures go in. Each script drives r
 
 ---
 
-### verify_model_cycle_and_io.py (315 LOC)
+### verify_model_cycle_and_io.py (319 LOC)
 
 **Purpose:** Regression guard for model-selection cycle logic and its selection and proxy-rules JSON read-modify-write I/O, as parallel fail-fast strands.
 **Reads:** nothing persistent; temp paths or in-memory fixtures.

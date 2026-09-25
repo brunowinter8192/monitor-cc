@@ -10,6 +10,12 @@ from pathlib import Path
 
 _DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 
+sys.path.insert(0, str(_DEFAULT_ROOT))
+
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home('p5_home_')
+
 # FUNCTIONS
 
 def root() -> Path:

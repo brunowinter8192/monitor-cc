@@ -10,6 +10,10 @@ from types import SimpleNamespace
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home("model_controller_byte_id_")
+
 from Foundation import NSObject
 
 _REAL_PROXY_RULES = Path.home() / '.claude' / 'shared-rules' / 'proxy_rules.json'

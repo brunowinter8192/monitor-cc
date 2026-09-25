@@ -13,6 +13,10 @@ _ROOT = Path(__file__).resolve().parents[2]
 os.environ.setdefault('MONITOR_CC_ROOT', str(_ROOT))
 sys.path.insert(0, str(_ROOT / 'src'))
 sys.path.insert(0, str(_ROOT))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("test_role_keyed_rules_")
+
 
 from src.proxy import rules_config
 from src.proxy.rules_config import _load_system2_rules

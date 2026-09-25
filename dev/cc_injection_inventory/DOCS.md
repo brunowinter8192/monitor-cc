@@ -11,7 +11,7 @@ CLI args select the dual-log files. Each file is streamed, every text segment is
 
 ## Modules
 
-### cc_injection_inventory.py (121 LOC)
+### cc_injection_inventory.py (128 LOC)
 
 **Purpose:** Entry script: parses CLI args, resolves the dual-log file set and drives extraction, aggregation and report.
 **Reads:** CLI args; the dual-log directory listing.
