@@ -27,6 +27,7 @@ _MODULES = [
     'test_block_rag_docs_layer',
     'test_block_unauthorized_background',
     'test_block_worker_kill_while_working',
+    'test_block_worker_spawn_placement',
     'test_block_worker_send_while_working',
     'test_fire_log',
     'test_hook_setup_main_branch_gate',

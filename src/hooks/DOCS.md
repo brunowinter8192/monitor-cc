@@ -258,9 +258,9 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 ---
 
-### block_worker_spawn_placement.py (92 LOC)
+### block_worker_spawn_placement.py (50 LOC)
 
-**Purpose:** PreToolUse Bash hook blocking worker spawns that target a foreign git root or disable the worktree; skipped inside worktrees.
+**Purpose:** PreToolUse Bash hook blocking worker spawns that disable the worktree; skipped inside worktrees.
 **Reads:** stdin (PreToolUse JSON payload). Current working directory.
 **Writes:** stderr block message; exit 2.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.
@@ -278,9 +278,9 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 ---
 
-### rewrite_worker_wait.py (90 LOC)
+### rewrite_worker_wait.py (76 LOC)
 
-**Purpose:** PreToolUse Bash hook normalising every worker wait mention (forced background, leading cd collapse); blocks unfixable chains.
+**Purpose:** PreToolUse Bash hook normalising every worker wait mention (forced background); blocks every chain including a leading cd.
 **Reads:** stdin (PreToolUse JSON payload).
 **Writes:** updated input JSON on stdout when rewritten; stderr and exit 2 on an unfixable chain.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.
