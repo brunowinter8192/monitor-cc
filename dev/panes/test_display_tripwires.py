@@ -42,7 +42,7 @@ def case_janitor_partition_and_atomic_write() -> None:
         path = Path(td) / 'x.jsonl'
         old = '{"ts": "2020-01-01T00:00:00+00:00"}\n'
         fresh = '{"ts": "2099-01-01T00:00:00+00:00"}\n'
-        bad_ts = '{"ts": "2099-01-01T00:00:00+00:00Z"}\n'
+        bad_ts = '{"ts": "not-a-date"}\n'
         naive = '{"ts": "2020-01-01T00:00:00"}\n'
         no_ts = '{"other": 1}\n'
         path.write_text(old + fresh + bad_ts + naive + no_ts + 'not json\n')
