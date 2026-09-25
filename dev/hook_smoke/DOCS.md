@@ -31,7 +31,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### run_all.py (75 LOC)
+### run_all.py (76 LOC)
 
 **Purpose:** Runs every test module of this directory as one parallel fail-fast strand and writes a fixed-name report.
 **Reads:** the `test_*.py` modules (executed via `runpy`).
@@ -117,6 +117,16 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 **Reads:** nothing.
 **Writes:** stdout only.
 **Called by:** none; manual CLI.
+**Calls out:** none; drives the hook via `subprocess`.
+
+---
+
+### test_block_git_add_deps.py (71 LOC)
+
+**Purpose:** Smoke for the git-add-dependency hook: heredoc, quoted and chained false positives from the fire log, plus real venv and node_modules adds.
+**Reads:** nothing.
+**Writes:** stdout only.
+**Called by:** `run_all.py`; manual CLI from the project root.
 **Calls out:** none; drives the hook via `subprocess`.
 
 ---
@@ -261,7 +271,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_hook_trace_lines.py (259 LOC)
+### test_hook_trace_lines.py (254 LOC)
 
 **Purpose:** Provokes each observed hook degradation and asserts the trace line while exit semantics stay unchanged.
 **Reads:** nothing.

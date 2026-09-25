@@ -1,6 +1,6 @@
 # hook_smoke run_all
 
-24/24 strands passed
+25/25 strands passed
 
 ## PASS _strand_test_bg_task_detection
 
@@ -143,6 +143,29 @@ PASS  case_12_non_gh_cli_command_untouched_PASS
 PASS  case_13_pattern_inside_single_quotes_PASS_shell_stripped
 PASS  case_14_pattern_inside_heredoc_body_PASS_shell_stripped
 15/15 strands passed
+
+## PASS _strand_test_block_git_add_deps
+
+PASS  case_00_FP_09_23_python_heredoc_after_git_checkout_PASS
+PASS  case_01_FP_09_24_sed_i_then_cat_heredoc_mentioning_git_add_venv_PASS
+PASS  case_02_FP_09_25_python_heredoc_then_cat_heredoc_with_ln_s_venv_PASS
+PASS  case_03_FP_09_25_worker_cat_heredoc_with_venv_bin_python_then_git_ad
+PASS  case_04_FP_09_25_orchestrator_prompt_file_heredoc_naming_positives_P
+PASS  case_05_FP_git_add_A_chained_with_venv_python_in_another_command_PAS
+PASS  case_06_FP_quoted_commit_message_naming_git_add_venv_PASS
+PASS  case_07_git_add_A_alone_PASS
+PASS  case_08_git_add_regular_file_PASS
+PASS  case_09_git_add_path_containing_venv_as_substring_PASS
+PASS  case_10_git_add_venv_BLOCK
+PASS  case_11_git_add_venv_without_slash_BLOCK
+PASS  case_12_git_add_venv_BLOCK
+PASS  case_13_git_add_node_modules_BLOCK
+PASS  case_14_git_C_path_add_venv_BLOCK
+PASS  case_15_git_add_A_venv_BLOCK
+PASS  case_16_git_add_file_and_venv_BLOCK
+PASS  case_17_chained_cd_then_git_add_node_modules_BLOCK
+PASS  case_18_git_add_venv_after_heredoc_in_same_call_BLOCK
+19/19 strands passed
 
 ## PASS _strand_test_block_git_destructive
 
@@ -419,11 +442,10 @@ PASS  case_status_fn_raises
 PASS  case_strip_raw_fallback
 PASS  case_sweep_prints
 PASS  case_unpack_entry_gone
-PASS  case_unterminated_quote
 PASS  case_worker_cli_missing
 PASS  case_worker_cli_rc
 PASS  case_worker_cli_timeout
-17/17 strands passed
+16/16 strands passed
 
 ## PASS _strand_test_log_janitor
 

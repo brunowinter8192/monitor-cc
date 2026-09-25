@@ -18,6 +18,7 @@ _MODULES = [
     'test_block_cli_chained',
     'test_block_dangerous_kill',
     'test_block_gh_cli_local_path',
+    'test_block_git_add_deps',
     'test_block_git_destructive',
     'test_block_manual_worker_cleanup',
     'test_block_po_read',
