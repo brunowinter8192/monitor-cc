@@ -61,7 +61,8 @@ def _start_upstream() -> http.server.HTTPServer:
 
 def _start_mitmdump(tmp: Path, shim: Path) -> subprocess.Popen:
     env = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
-    env.update({'MONITOR_CC_ROOT': str(tmp), 'PROXY_SESSION_ID': 'sbx', 'PROXY_LOG_ID': 'opus_sbx_1', 'PROXY_PROJECT_PATH': str(tmp)})
+    (tmp / 'home').mkdir()
+    env.update({'HOME': str(tmp / 'home'), 'MONITOR_CC_ROOT': str(tmp), 'PROXY_SESSION_ID': 'sbx', 'PROXY_LOG_ID': 'opus_sbx_1', 'PROXY_PROJECT_PATH': str(tmp)})
     proc = subprocess.Popen([sys.executable, '-c', _MITMDUMP_CODE, '-p', str(_PROXY_PORT), '-s', str(shim), '--set', 'flow_detail=0', '-q'],
                             env=env, cwd='/', stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     time.sleep(4)

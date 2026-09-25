@@ -12,6 +12,8 @@ os.environ.setdefault('MONITOR_CC_ROOT', str(WORKTREE_ROOT))
 from src.format.turn_cache import new_turn_cache
 
 _ROOT_PKG = 'src'
+_PROBE_TERMINAL = os.terminal_size((100, 40))
+os.get_terminal_size = lambda *args: _PROBE_TERMINAL
 mod_tokens = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
 mod_token_format = importlib.import_module(f'{_ROOT_PKG}.format.token_format')
 mod_warnings = importlib.import_module(f'{_ROOT_PKG}.panes.warnings_pane')

@@ -326,7 +326,7 @@ def shorten_tool_name(name: str) -> str:
     return name
 
 def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int, parent_prefix: Optional[list] = None) -> tuple:
-    viewport_lines = pane_height - 1
+    viewport_lines = max(1, pane_height - 1)
     max_scroll = max(0, len(all_lines) - viewport_lines)
     clamped_offset = min(scroll_offset, max_scroll)
     start = max(0, len(all_lines) - viewport_lines - clamped_offset)
