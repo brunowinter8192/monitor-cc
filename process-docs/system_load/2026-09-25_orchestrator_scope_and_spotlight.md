@@ -43,6 +43,13 @@ Action handed to the user (manual, no code): add `monitor-cc/src/logs` and `webs
 
 No authoritative list exists. Consensus of all sources read: never kill macOS system processes (launchd, WindowServer, kernel_task, mDNSResponder); launchd respawns them, so killing brings no relief anyway. User-installed application processes are generally terminable; the test is "what breaks if this stops?". This is why the triage is agent-driven and why the lever is our own processes (monitor sessions, stale workers, proxies, background shells) plus user apps.
 
+## First real cleanup run (2026-09-25, orchestrator, by hand along dev/system_load/SKILL.md)
+
+- Killable actions: three `monitor_cc_*` sessions and two Firefox pids. `confirm` returned `ok` for four targets; the second Firefox pid returned `changed` because it had already exited with its parent. `diff`: killable 37 -> 0 processes, all five actions `gone`, no respawn.
+- Shell gotcha: in zsh, `S="env PYTHONPATH=... python3 -m sysload"; $S confirm ...` fails (no word splitting); every confirm then printed nothing and no kill ran, so the guard held. Use `export PYTHONPATH=<dir>` and call `python3 -m sysload` directly.
+- llama-server: both instances had exited during the session and were running again 80 s after a `rag-cli update_docs` call, so they come back when RAG is used (observed once). Terminating them before a convert therefore costs only a restart on the next RAG call.
+- Spotlight after the cleanup: `mds_stores` still indexed `monitor-cc/src/logs/dual_log` (42 of ~66 sampled open files) and the Mineru repo. The privacy-list exclusion had not been applied yet at that time.
+
 ## Memory observation
 
 Memory free was 49% while ten `worker-general-dsia-*` sessions were alive, and 84% after they ended (same afternoon). Parallel worker fleets in other projects are a main memory consumer during a convert.
