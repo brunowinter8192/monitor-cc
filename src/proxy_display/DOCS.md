@@ -130,7 +130,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### render_turn.py (170 LOC)
+### render_turn.py (171 LOC)
 
 **Purpose:** Renders the per-request rows of an expanded turn group: header line, request labels, status markers and dispatch to the section renderers.
 **Reads:** group, entries, expand states, pane width, request number map.
@@ -170,7 +170,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### render_messages.py (238 LOC)
+### render_messages.py (239 LOC)
 
 **Purpose:** Renders new, modified and removed messages of an expanded request with span overlay, thinking drill-down and copy affordances.
 **Reads:** entry, previous entry, all entries, expand states, pane width.

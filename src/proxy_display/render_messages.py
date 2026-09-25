@@ -6,6 +6,7 @@ from src.colors import (
     SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, DIM_GREEN_BG, LIGHT_RED_BG, RESET,
 )
 from src.proxy.strip_vocab import classify_req
+from src.constants import COPY_FLASH_SYMBOL
 from src.utils import wrap_visible, append_copy_symbol
 
 _BLOCK_CONTENT_INDENT = "        "
@@ -60,7 +61,7 @@ def _append_msg_copy_symbol(line: str, key: tuple, copy_feedback, pane_width: in
     if copy_feedback is None:
         return line
     is_flash = copy_feedback.get(key, 0) > time.time()
-    return append_copy_symbol(line, '✓' if is_flash else '⎘', pane_width)
+    return append_copy_symbol(line, COPY_FLASH_SYMBOL if is_flash else '⎘', pane_width)
 
 
 def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entry: dict, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:

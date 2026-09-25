@@ -7,7 +7,7 @@ from src.colors import (
     DIM_YELLOW_BG, DIM_GREEN_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
 from src.format.token_format import _format_k
-from src.utils import truncate_visible
+from src.utils import is_copy_row, truncate_visible
 from src.proxy_display.turn_cache import TurnCache
 from src.search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 
@@ -118,7 +118,7 @@ def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_en
             is_msg_line = isinstance(key, tuple) and key[0] == 'msg'
             is_think_line = isinstance(key, tuple) and key[0] == 'think'
             is_block_line = isinstance(key, tuple) and key[0] == 'block'
-            if (is_req_line or is_msg_line or is_think_line or is_block_line) and ('⎘' in line or '✓' in line):
+            if (is_req_line or is_msg_line or is_think_line or is_block_line) and is_copy_row(line, pane_width):
                 copy_rows_out.add(row)
         if key is not None:
             zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A

@@ -101,7 +101,9 @@ def _start_upstream() -> http.server.HTTPServer:
 
 def _run_setup(tree: Path, project: Path, monitor_root: Path, bin_dir: Path) -> dict:
     driver = _DRIVER.format(script=tree / 'src' / 'spawn' / 'worker_proxy.sh', project=project)
-    env = {**os.environ, 'PATH': f'{bin_dir}:{os.environ["PATH"]}'}
+    home = bin_dir.parent / 'home'
+    home.mkdir()
+    env = {**os.environ, 'HOME': str(home), 'PATH': f'{bin_dir}:{os.environ["PATH"]}'}
     proc = subprocess.run(['bash', '-c', driver], capture_output=True, text=True, env=env, timeout=60)
     values = dict(line.split('=', 1) for line in proc.stdout.splitlines() if '=' in line)
     return {'rc': proc.returncode, 'values': values, 'stderr': proc.stderr.replace(str(monitor_root), '<ROOT>')}

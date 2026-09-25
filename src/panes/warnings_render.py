@@ -10,7 +10,7 @@ from src.colors import (
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
 from src.constants import NO_TIME_PLACEHOLDER, WARNINGS_POLL_INTERVAL
-from src.utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
+from src.utils import is_copy_row, truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
 from src.format.strip_marker import highlight_stripped
 from src.search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 
@@ -168,7 +168,7 @@ def _render_warnings_rows(visible_lines: list, visible_keys: list, phys_row: int
             key_type, key_idx = key
             if key_type == 'error':
                 new_error_line_map[phys_row] = key_idx
-                if copy_rows_out is not None and ('⎘' in line or '✓' in line):
+                if copy_rows_out is not None and is_copy_row(line, pane_width):
                     copy_rows_out.add(phys_row)
         rendered.append(f"{chosen_bg}{truncate_visible(line, pane_width)}\033[K{RESET}")
         phys_row += 1

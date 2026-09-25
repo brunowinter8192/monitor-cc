@@ -103,7 +103,7 @@ def test_worker_pane_message_copy_click():
 
 
 def test_width_guard_suppresses_msg_row_symbol():
-    print("P5.5 -- width guard: no ⎘/✓ symbol or copy-row registration on a too-narrow pane")
+    print("P5.5 -- width guard: no copy symbol or copy-row registration on a too-narrow pane")
     entries = [_make_entry()]
     expand_states = {('req', 0): True}
     line_map, copy_rows, _ = _render_expanded(entries, expand_states, pane_width=10)
