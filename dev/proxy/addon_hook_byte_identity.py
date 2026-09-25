@@ -26,10 +26,10 @@ def main():
     orig_path = _source_log()
     payloads = _load_payloads(orig_path)
     digest = collect_digest(payloads)
-    print(f'source: {orig_path.name}')
-    print(f'payloads: {len(payloads)}')
+    print_source(orig_path)
+    print_payloads(payloads)
     _report_skipped_lines()
-    print(f'HASH: {digest}')
+    print_hash(digest)
 
 
 # FUNCTIONS
@@ -170,8 +170,20 @@ def _normalize_for_hash(obj):
     return obj
 
 
+def print_source(orig_path):
+    print(f'source: {orig_path.name}')
+
+
+def print_payloads(payloads):
+    print(f'payloads: {len(payloads)}')
+
+
 def _report_skipped_lines() -> None:
     print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
+
+def print_hash(digest):
+    print(f'HASH: {digest}')
 
 
 if __name__ == '__main__':

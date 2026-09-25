@@ -11,13 +11,14 @@ from probe03_ghostty_detail import _collect_ghostty_as_window_properties, _colle
 from probe03_report import _write_report
 from probe03_windows import _collect_full_cgwindow_data, _ghostty_pid
 
+
 # ORCHESTRATOR
 
 def probe_workflow() -> None:
     ap = argparse.ArgumentParser(description='CGWindow field availability probe — Monitor_CC probe03')
     ap.add_argument('--tag', choices=['ccbash', 'launchd', 'bundle'], required=True)
     args = ap.parse_args()
-    print(f'[probe03] tag={args.tag} pid={os.getpid()} exe={sys.executable}', flush=True)
+    print_probe_tag(args)
 
     cid         = _CG.CGSMainConnectionID()
     ctx         = _collect_context_diagnostics()
@@ -26,7 +27,7 @@ def probe_workflow() -> None:
 
     all_keys, field_summary, raw_ptr = _collect_full_cgwindow_data(cid, ghostty_pid)
 
-    ghostty_detail: List[Dict] = []
+    assign_values()
     if ghostty_pid:
         ghostty_detail = _collect_ghostty_windows_detailed(cid, ghostty_pid, raw_ptr)
 
@@ -45,6 +46,20 @@ def probe_workflow() -> None:
     }
 
     path = _write_report(payload)
+    print_probe_report(path)
+
+
+# FUNCTIONS
+
+def print_probe_tag(args):
+    print(f'[probe03] tag={args.tag} pid={os.getpid()} exe={sys.executable}', flush=True)
+
+
+def assign_values():
+    ghostty_detail: List[Dict] = []
+
+
+def print_probe_report(path):
     print(f'[probe03] report → {path}', flush=True)
 
 

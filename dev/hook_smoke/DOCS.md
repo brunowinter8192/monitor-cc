@@ -51,7 +51,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### probe_replay_cli_chained.py (139 LOC)
+### probe_replay_cli_chained.py (151 LOC)
 
 **Purpose:** Replays every historical block fire of the hooks the chained-CLI hook replaced, reporting still-blocks versus now-passes per old hook.
 **Reads:** the main checkout hook-fire log.
@@ -301,7 +301,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### verify_bg_task_detection_live.py (86 LOC)
+### verify_bg_task_detection_live.py (90 LOC)
 
 **Purpose:** Verification of the active-background check against a real writer subprocess and the real `lsof`: detected while open, cleared after close.
 **Reads:** the real process table via `lsof`; a scratch tasks dir.

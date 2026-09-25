@@ -29,12 +29,12 @@ def main() -> None:
     ids = space_ids()
     home_idx = compute_home_idx(ids, home_space)
     near_idx, far_idx = _pick_targets(home_idx)
-    state: Dict[str, object] = {'reversed': {}, 'preferred': ['a1', 'b']}
+    state = assign_values()
     perms = permission_state()
     results = []
-    print_build_variants(home_idx, near_idx, far_idx, ids, state, home_space, results)
+    run_variants_until_return_fails(home_idx, near_idx, far_idx, ids, state, home_space, results)
     path = write_report(__file__, _build_report(results, perms, home_idx))
-    print(f'report: {path}')
+    print_report(path)
 
 
 # FUNCTIONS
@@ -49,7 +49,12 @@ def _pick_targets(home_idx: int) -> Tuple[int, int]:
     return near, far
 
 
-def print_build_variants(home_idx, near_idx, far_idx, ids, state, home_space, results):
+def assign_values():
+    state: Dict[str, object] = {'reversed': {}, 'preferred': ['a1', 'b']}
+    return state
+
+
+def run_variants_until_return_fails(home_idx, near_idx, far_idx, ids, state, home_space, results):
     for variant in _build_variants(home_idx, near_idx, far_idx, ids, state):
         result = _run_variant(variant, home_space, ids, state)
         results.append(result)
@@ -153,6 +158,10 @@ def _build_report(results: List[dict], perms: Dict[str, bool], home_idx: int) ->
         lines.append(f'| {r["name"]} | {"yes" if r["ok"] else "no"} | {ms} | {r["observed_idx"]} | {r["returned"]} | {r["note"]} |')
     lines.append('')
     return '\n'.join(lines)
+
+
+def print_report(path):
+    print(f'report: {path}')
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import json
 import os
 import subprocess
 import sys
@@ -16,13 +17,17 @@ CASES = ('janitor_partition_and_atomic_write', 'janitor_failure_logged', 'synthe
 
 def main() -> int:
     if len(sys.argv) > 2 and sys.argv[1] == '--case':
-        return run_case(sys.argv[2])
+        return compute_result()
     results = collect_results()
     print_results(results)
     return compute_exit_code(results)
 
 
 # FUNCTIONS
+
+def compute_result():
+    return run_case(sys.argv[2])
+
 
 def run_case(case: str) -> int:
     sys.path.insert(0, TREE)
@@ -79,7 +84,6 @@ def case_janitor_failure_logged() -> None:
 
 
 def case_synthetic_user_noted_once() -> None:
-    import json
     from src.panes import cache_turns
     notes = []
     cache_turns.log_pane_note = lambda name, message: notes.append(message)

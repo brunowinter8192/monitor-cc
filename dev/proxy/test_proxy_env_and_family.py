@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import json
 import importlib
 import os
 import subprocess
@@ -152,7 +153,6 @@ def case_unknown_family_is_logged_once_and_request_still_forwarded() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         log = prepare(tmp)
         addon = importlib.import_module('src.proxy.addon').ProxyAddon()
-        import json
         for i in range(2):
             flow = FakeFlow(FakeRequest(json.dumps({'model': 'mystery-model', 'system': [], 'tools': [], 'messages': []}).encode(), {'x-request-id': f'r{i}'}))
             addon.request(flow)

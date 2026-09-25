@@ -48,7 +48,7 @@ def span_inline_probe_workflow() -> None:
     now = datetime.now(timezone.utc)
     report_path = compute_report_path(now)
     report_path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"Report: {report_path}")
+    print_report(report_path)
 
 
 # FUNCTIONS
@@ -67,6 +67,10 @@ def compute_blocks(b1, b2, b3):
 
 def compute_report_path(now):
     return REPORT_DIR / f"{now.strftime('%Y%m%d')}.md"
+
+
+def print_report(report_path):
+    print(f"Report: {report_path}")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ from pathlib import Path
 _AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
+from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages
+from src.proxy.diff_engine import _span_counts
 
 PREVIEW_CHARS = 120
 
@@ -155,7 +157,6 @@ def _match_requests(orig_entries: list, fwd_entries: list, fwd_states: list) -> 
 
 
 def _print_report(matched: list, filename: str) -> None:
-    from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages
     print(f"\ndiff_strip_inject — {filename}")
     print(f"  {len(matched)} matched request pairs\n")
 
@@ -185,7 +186,6 @@ def _print_report(matched: list, filename: str) -> None:
 
 
 def _print_system_diff(o_sys: list, f_sys: list, diff_system) -> tuple:
-    from src.proxy.diff_engine import _span_counts
     sys_diffs = diff_system(o_sys, f_sys)
     sys_s = sys_i = 0
     for d in sys_diffs:
@@ -210,7 +210,6 @@ def _preview(text: str, n: int = PREVIEW_CHARS) -> str:
 
 
 def _print_tools_diff(o_tools: list, f_tools: list, diff_tools) -> tuple:
-    from src.proxy.diff_engine import _span_counts
     td = diff_tools(o_tools, f_tools)
     desc_stripped = [(n, len(od)) for n, od, fd, _ in td["desc_changes"] if not fd]
     desc_other    = [(n, od, fd, sp) for n, od, fd, sp in td["desc_changes"] if fd]
@@ -232,7 +231,6 @@ def _print_tools_diff(o_tools: list, f_tools: list, diff_tools) -> tuple:
 
 
 def _print_messages_diff(o_msgs: list, f_msgs: list, diff_messages) -> tuple:
-    from src.proxy.diff_engine import _span_counts
     msg_diffs = diff_messages(o_msgs, f_msgs)
     msgs_s = msgs_i = 0
     changed_msgs = []

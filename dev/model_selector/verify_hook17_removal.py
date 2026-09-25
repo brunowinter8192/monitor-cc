@@ -13,7 +13,7 @@ REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook17_remov
 # ORCHESTRATOR
 
 def verify_hook17_removal_workflow() -> None:
-    lines = ["# Hook 17 (block_worker_spawn_opus.py) removal verification", ""]
+    lines = compute_lines()
 
     hook_setup = importlib.import_module('src.hooks.hook_setup')
 
@@ -32,6 +32,10 @@ def verify_hook17_removal_workflow() -> None:
 
 
 # FUNCTIONS
+
+def compute_lines():
+    return ["# Hook 17 (block_worker_spawn_opus.py) removal verification", ""]
+
 
 def _check_file_deleted(lines) -> None:
     hook_path = REPO_ROOT / "src" / "hooks" / "block_worker_spawn_opus.py"

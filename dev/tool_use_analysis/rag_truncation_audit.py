@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import glob
 import argparse
 import sys
 from datetime import datetime
@@ -27,7 +28,6 @@ def main():
     if args.proxy_jsonl:
         paths = args.proxy_jsonl
     else:
-        glob = load_imports()
         root  = Path(__file__).parent.parent.parent
         paths = compute_paths(glob, root)
         if not paths:
@@ -44,10 +44,6 @@ def main():
 
 
 # FUNCTIONS
-
-def load_imports():
-    import glob
-    return glob
 
 
 def compute_paths(glob, root):

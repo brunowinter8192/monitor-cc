@@ -12,6 +12,7 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src' / 'hooks'))
+from src.proxy.addon import ProxyAddon, _derive_worker_context
 
 HOOK_PATH = str(WORKTREE_ROOT / "src" / "hooks" / "block_timer_pending_bg.py")
 REPORT_DIR = Path(__file__).parent / 'md'
@@ -137,7 +138,6 @@ def test_expired_entry_allows_regardless_of_project():
 def test_writer_stamps_project_e2e():
     print("\n[Test 5] Writer side — real ProxyAddon.request() stamps project")
     from src.proxy.pending_bg_state import _read_state_file, _resolve_pending_bg_state_file
-    from src.proxy.addon import ProxyAddon, _derive_worker_context
 
     with tempfile.TemporaryDirectory() as tmp_root:
         with mock.patch.dict(os.environ, {"PROXY_LOG_ID": "opus_websearch_1786100000",

@@ -20,7 +20,7 @@ def main():
     instrument = _import_instrument()
     dump_text = _trigger_dump(instrument)
     normalized = _normalize(dump_text)
-    print(f'HASH: {hashlib.sha256(normalized.encode()).hexdigest()}')
+    print_hash(normalized)
 
 
 # FUNCTIONS
@@ -83,6 +83,10 @@ def _normalize(text: str) -> str:
             continue
         kept.append(line)
     return '\n'.join(kept)
+
+
+def print_hash(normalized):
+    print(f'HASH: {hashlib.sha256(normalized.encode()).hexdigest()}')
 
 
 if __name__ == '__main__':

@@ -10,6 +10,8 @@ _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 from A_render_refactor_proof_cases import _build_cases
+from src.proxy_display.format import format_proxy_block
+from src.proxy_display.turn_cache import TurnCache
 
 _REPORTS = _AREA_ROOT / 'A_render_refactor_proof_reports'
 
@@ -37,7 +39,6 @@ def _parse_args():
 
 
 def _run_capture(cases, output):
-    from src.proxy_display.format import format_proxy_block
     _REPORTS.mkdir(exist_ok=True)
     results = {}
     for case in cases:
@@ -79,12 +80,10 @@ def _render_fixpoint(entries, kw, format_proxy_block):
 
 
 def _turn_cache():
-    from src.proxy_display.turn_cache import TurnCache
     return TurnCache()
 
 
 def _run_verify(cases, baseline_path):
-    from src.proxy_display.format import format_proxy_block
     if not baseline_path:
         baselines = sorted(_REPORTS.glob('baseline_*.json'))
         if not baselines:

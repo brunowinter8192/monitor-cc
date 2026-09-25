@@ -27,19 +27,19 @@ _DETAIL_PATH = os.path.join(
 # ORCHESTRATOR
 
 def main():
-    _log_path = compute_log_path()
+    _log_path = compute_log_path_argument()
     if _log_path is None:
-        _log_path = compute_log_path_2()
+        _log_path = select_existing_log_path()
     replay_workflow(_log_path)
 
 
 # FUNCTIONS
 
-def compute_log_path():
+def compute_log_path_argument():
     return sys.argv[1] if len(sys.argv) > 1 else None
 
 
-def compute_log_path_2():
+def select_existing_log_path():
     return _WORKTREE_LOG if os.path.exists(_WORKTREE_LOG) else _MAIN_CHECKOUT_LOG
 
 

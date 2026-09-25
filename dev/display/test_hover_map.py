@@ -8,6 +8,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 from src.proxy_display.format import format_proxy_block
 from src.format.token_format import format_cache_tracker
 from dev.refactoring.strand_runner import check, strand_workflow
+from src.proxy_display.turn_cache import TurnCache
+from src.colors import HOVER_BG
+from src.utils import visual_line_count
+from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
+from src.proxy_display.dual_log_accumulator import accumulate_dual_log
+from src.proxy_display.render_messages import render_messages
 
 PANE_HEIGHT = 30
 PANE_WIDTH = 120
@@ -34,7 +40,6 @@ def run_tests() -> None:
 # FUNCTIONS
 
 def _turn_cache():
-    from src.proxy_display.turn_cache import TurnCache
     return TurnCache()
 
 def assert_true(condition: bool, label: str) -> None:
@@ -132,7 +137,6 @@ def test_proxy_turns_always_expanded() -> None:
 
 def test_proxy_hover_matches_row() -> None:
     print("\n[proxy] Hover applied at correct terminal row")
-    from src.colors import HOVER_BG
     entries = [_make_entry(i) for i in range(3)]
     turns = _make_turns(1)
     for e in entries:
@@ -154,8 +158,6 @@ def test_proxy_hover_matches_row() -> None:
 
 def test_proxy_hover_wrap_header() -> None:
     print("\n[proxy] Header wrap: hover row adjusted by header_lines")
-    from src.utils import visual_line_count
-    from src.colors import HOVER_BG
     pane_width = 64
     entries = [_make_entry(i) for i in range(3)]
     turns = _make_turns(1)
@@ -186,7 +188,6 @@ def test_proxy_hover_wrap_header() -> None:
 
 def test_proxy_shift_uses_header_lines() -> None:
     print("\n[proxy] Shift: line_map rows >= header_lines+1 after shift")
-    from src.utils import visual_line_count
     fake_header = "WORKER-PROXY  [1*]worker-one  [2]worker-two  [3]worker-three"
     pane_width_narrow = 50
     pane_width_wide = 200
@@ -209,8 +210,6 @@ def test_proxy_shift_uses_header_lines() -> None:
 
 
 def _collect_stripped_pair_entries(dual_dir) -> list:
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
-    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
 
     fwd_candidates = sorted(dual_dir.glob('api_requests_*_forwarded.jsonl'), key=lambda p: p.stat().st_mtime, reverse=True)
 
@@ -252,7 +251,6 @@ def _collect_stripped_pair_entries(dual_dir) -> list:
 
 def test_stripped_msg_pair_alignment() -> None:
     print("\n[render_messages] Stripped-msg lines/keys exact pairing (no line_map drift)")
-    from src.proxy_display.render_messages import render_messages
 
     tested_entries = _collect_stripped_pair_entries(FIXTURE_DIR)
     assert_true(len(tested_entries) == FIXTURE_ENTRY_COUNT,

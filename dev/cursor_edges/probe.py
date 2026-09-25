@@ -16,13 +16,13 @@ from cursor_edges_panel import _make_probe_panel
 def main() -> None:
     args = _parse_args()
 
-    cec._LEAF_RECTS_ENABLED = compute_value(args)
+    cec._LEAF_RECTS_ENABLED = compute_fix_with_leaf_rects(args)
     cec._TRACKING_ENABLED   = args.tracking
 
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
-    install_signal_handler(app)
+    install_sigint_terminate_handler(app)
 
     panel = _make_probe_panel(fix=args.fix, no_resizable=args.no_resizable)
 
@@ -61,11 +61,11 @@ def _parse_args():
     return parser.parse_args()
 
 
-def compute_value(args):
+def compute_fix_with_leaf_rects(args):
     return args.fix and args.leaf_rects
 
 
-def install_signal_handler(app):
+def install_sigint_terminate_handler(app):
     signal.signal(signal.SIGINT, lambda *_: app.terminate_(None))
 
 

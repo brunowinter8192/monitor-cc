@@ -46,8 +46,8 @@ def main() -> None:
     text = _build_report(results)
     path = write_report(__file__, text)
     print(text)
-    print(f'report: {path}')
-    if check_condition(results):
+    print_report(path)
+    if any_case_failed(results):
         sys.exit(1)
 
 
@@ -98,7 +98,11 @@ def _build_report(results) -> str:
     return '\n'.join(lines)
 
 
-def check_condition(results):
+def print_report(path):
+    print(f'report: {path}')
+
+
+def any_case_failed(results):
     return any(not r['ok'] for r in results)
 
 

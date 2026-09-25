@@ -30,10 +30,10 @@ def main():
     collapse_points = detect_cr_collapse_points(mapped)
     range_pairs = compute_range_pairs(args)
     auto_pairs = compute_auto_pairs(collapse_points, args)
-    pairs = compute_pairs(range_pairs, auto_pairs)
-    pairs = compute_pairs_2(pairs, mapped)
+    pairs = merge_pairs(range_pairs, auto_pairs)
+    pairs = filter_available_pairs(pairs, mapped)
 
-    orig_by_flow = None
+    orig_by_flow = compute_orig_by_flow()
     if original_path:
         target_flow_ids = collect_target_flow_ids(mapped, pairs)
         orig_by_flow = load_original_payloads(original_path, target_flow_ids)
@@ -49,7 +49,7 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_path = compute_report_path(ts)
     report_path.write_text(report)
-    print(f"Report: {report_path}")
+    print_report(report_path)
 
 
 # FUNCTIONS
@@ -77,12 +77,16 @@ def compute_auto_pairs(collapse_points, args):
     return [(c - 1, c) for c in collapse_points] if args.auto_detect else []
 
 
-def compute_pairs(range_pairs, auto_pairs):
+def merge_pairs(range_pairs, auto_pairs):
     return sorted(set(range_pairs) | set(auto_pairs))
 
 
-def compute_pairs_2(pairs, mapped):
+def filter_available_pairs(pairs, mapped):
     return [(p1, p2) for p1, p2 in pairs if pair_available(mapped, p1, p2)]
+
+
+def compute_orig_by_flow():
+    return None
 
 
 def compute_pair_results(mapped, orig_by_flow, pairs):
@@ -91,6 +95,10 @@ def compute_pair_results(mapped, orig_by_flow, pairs):
 
 def compute_report_path(ts):
     return REPORTS_DIR / f"{ts}_quartet_prefix_diff.md"
+
+
+def print_report(report_path):
+    print(f"Report: {report_path}")
 
 
 if __name__ == "__main__":

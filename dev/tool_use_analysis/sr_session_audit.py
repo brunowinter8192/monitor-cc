@@ -38,9 +38,7 @@ def sr_session_audit_workflow(project_filter, since_date, output_path, top_n):
 
     process_iter_sessions(project_filter, scan, since_date, preserved, known, unknown)
 
-    scan['n_classified'] = (
-        compute_value(known, preserved, unknown)
-    )
+    assign_values(scan, known, preserved, unknown)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text('\n'.join(_build_report(known, preserved, unknown, scan)), encoding='utf-8')
     print(output_path)
@@ -200,7 +198,13 @@ def _add(stat, layer, version, entry_date):
     stat['versions'].add(version)
 
 
-def compute_value(known, preserved, unknown):
+def assign_values(scan, known, preserved, unknown):
+    scan['n_classified'] = (
+        compute_grand_total(known, preserved, unknown)
+    )
+
+
+def compute_grand_total(known, preserved, unknown):
     return (sum(s['total'] for s in known.values()) + preserved['total']
             + sum(s['total'] for s in unknown.values()))
 

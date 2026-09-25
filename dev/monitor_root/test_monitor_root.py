@@ -20,7 +20,7 @@ sys.path.insert(0, str(_ROOT))
 
 def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == '--case':
-        run_case(sys.argv[2])
+        run_run_case()
         return
     names = collect_cases()
     results = collect_results(names)
@@ -28,6 +28,10 @@ def main() -> None:
 
 
 # FUNCTIONS
+
+def run_run_case():
+    run_case(sys.argv[2])
+
 
 def run_case(name: str) -> None:
     globals()['case_' + name]()

@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import traceback
 from pathlib import Path
 
 from green_overlay_probe_diff import (
@@ -17,7 +18,7 @@ def green_overlay_probe_workflow():
     REPORT_DIR.mkdir(exist_ok=True)
     lines = []
 
-    emit = run_step(lines)
+    emit = make_emitter(lines)
 
     emit("# Green Overlay Probe Report (Level 2)")
     emit()
@@ -32,12 +33,12 @@ def green_overlay_probe_workflow():
     report_path = compute_report_path()
     run_with_open(report_path, lines)
 
-    print(f"Report written to: {report_path}")
+    print_report_written_to(report_path)
 
 
 # FUNCTIONS
 
-def run_step(lines):
+def make_emitter(lines):
     def emit(*parts):
         lines.append("".join(str(p) for p in parts) + "\n")
     return emit
@@ -87,7 +88,7 @@ def _emit_gating_soundness(emit) -> None:
         emit("Only `_apply_bg_exit_strip` (bg-done, 78 cases) correctly avoids gating.")
     except Exception as ex:
         emit(f"ERROR in soundness scan: {ex}")
-        import traceback; traceback.print_exc()
+        traceback.print_exc()
 
 
 def _emit_primary_bug_case(emit) -> None:
@@ -111,7 +112,7 @@ def _emit_primary_bug_case(emit) -> None:
 
     except Exception as ex:
         emit(f"ERROR in primary bug case: {ex}")
-        import traceback; traceback.print_exc()
+        traceback.print_exc()
 
 
 def _emit_bug_case_variants(emit, r: dict, cp_len: int) -> None:
@@ -190,7 +191,7 @@ def _emit_regression_spotcheck(emit) -> None:
 
     except Exception as ex:
         emit(f"ERROR in regression cases: {ex}")
-        import traceback; traceback.print_exc()
+        traceback.print_exc()
 
 
 def _emit_summary(emit) -> None:
@@ -221,6 +222,10 @@ def compute_report_path():
 def run_with_open(report_path, lines):
     with open(report_path, "w") as fout:
         fout.writelines(lines)
+
+
+def print_report_written_to(report_path):
+    print(f"Report written to: {report_path}")
 
 
 if __name__ == "__main__":

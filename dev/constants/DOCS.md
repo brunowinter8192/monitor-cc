@@ -11,7 +11,7 @@ Resolves a fixed list of top-level constant names to their current module, reads
 
 ## Modules
 
-### split_byte_identity.py (68 LOC)
+### split_byte_identity.py (72 LOC)
 
 **Purpose:** Verification aid, not a test: hashes the values of a fixed constant list across the split modules for before/after comparison.
 **Reads:** nothing external; the imported constants themselves.

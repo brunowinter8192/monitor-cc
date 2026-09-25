@@ -50,16 +50,20 @@ _PATH_NORM_RE = re.compile(r'Output is being written to:\s*\S+')
 def main():
     findings = {}
     raw_dup_counter = defaultdict(int)
-    total_requests = 0
+    total_requests = compute_total_requests()
     total_requests = collect_total_requests(total_requests, findings, raw_dup_counter)
     report = _build_report(findings, total_requests, raw_dup_counter)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = compute_out_path()
     out_path.write_text(report, encoding='utf-8')
-    print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned')
+    print_wrote(out_path, findings, total_requests)
 
 
 # FUNCTIONS
+
+def compute_total_requests():
+    return 0
+
 
 def collect_total_requests(total_requests, findings, raw_dup_counter):
     for fname in CORPUS_FILES:
@@ -296,6 +300,10 @@ def _report_additional_wordings_note():
 
 def compute_out_path():
     return REPORT_DIR / 'launch_ack_wordings_20260729.md'
+
+
+def print_wrote(out_path, findings, total_requests):
+    print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned')
 
 
 if __name__ == '__main__':

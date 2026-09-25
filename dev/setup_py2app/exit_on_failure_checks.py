@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import os
 import ast
 import io
 import shutil
@@ -34,7 +35,6 @@ def _prune_checks() -> list:
     cwd = Path.cwd()
     tmp = Path(tempfile.mkdtemp())
     try:
-        import os
         os.chdir(tmp)
         code, out = _exit_code(ns['_prune_bundle_bloat'])
     finally:
@@ -93,7 +93,6 @@ def _run_install(codesign_rc: int, bootstrap_rc: int, succeed_on_retry: bool = F
     home = Path(tempfile.mkdtemp())
     ns = _load_functions(fake_run)
     cwd = Path.cwd()
-    import os
     try:
         (home / 'proj' / 'dist' / 'monitor-cc-menubar.app').mkdir(parents=True)
         (home / 'proj' / 'src' / 'menubar').mkdir(parents=True)

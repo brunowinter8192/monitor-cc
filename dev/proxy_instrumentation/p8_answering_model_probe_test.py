@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import gzip
 import sys
 from pathlib import Path
 
@@ -91,7 +92,6 @@ def _test_budget_exceeded_stops_inspection() -> None:
 
 
 def _test_gzip_body_defeats_parsing() -> None:
-    import gzip
     compressed = gzip.compress(_SSE_MESSAGE_START + _SSE_PING)
     probe, state = make_answering_model_probe()
     returned = probe(compressed)

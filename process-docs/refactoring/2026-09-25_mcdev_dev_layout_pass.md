@@ -1,6 +1,6 @@
 # mcdev: dev/ module layout pass (2026-09-25)
 
-Branch mcdev (based on integration 9cd11f70). Scope: every Python module under `dev/` brought to INFRASTRUCTURE, ORCHESTRATOR, FUNCTIONS layout, one orchestrator that only calls functions, stepdown order, absolute imports of project code. Zero behaviour change of every script and test, except the two documented cases at the end.
+Branch mcdev (based on integration 9cd11f70). Scope: every Python module under `dev/` brought to INFRASTRUCTURE, ORCHESTRATOR, FUNCTIONS layout, one orchestrator that only calls functions, stepdown order, absolute imports of project code. Zero behaviour change of every script and test, except the intended cases listed under "Decisions and rules for a successor" (two probe guards, import-time registration in `verify_proxy_start_equivalence.py`) and the working `analyze_latency.py`.
 
 ## Rules as implemented in the scan (dev/refactoring/layout_scan.py)
 
@@ -46,7 +46,7 @@ The earlier "155 files with several functions and no ORCHESTRATOR" were 142 no-g
 - Module-level `main()` calls in `cursor_edges/probe.py` and `nsgridview_migration/probe.py` became `if __name__ == '__main__': main()`. Running the script is unchanged; importing the module no longer opens a window (the hazard noted in the 2026-09-16 pass).
 - Orchestrators with `try/finally` around a `return` (`test_proxy_start_fallbacks.fallback_workflow_case`) and with a `return` inside a loop (`s2_ghostty_window_probe.main`) were restructured by hand: the loop moved into `_run_cycles` which returns the results, the abort branch and the normal path write the same report (identical text in both), so behaviour is the same.
 - `verbosity/extract_turns.py` was a script without functions. Now three functions and an orchestrator; the statements are verbatim. Same output file bytes (md5 identical, run before and after against the real session files).
-- Function local imports stay where they are: 227 statements in 61 files remain inside functions (lazy imports after sys.path setup or after env setup). The standard says imports live in INFRASTRUCTURE; moving them changes import order and failure timing, so this is left and reported, not counted by the scan. The scan flags only imports inside an orchestrator (they were moved to their own functions).
+- Function local imports: superseded by the review round below (this pass first left all 227 in place).
 
 ## Proof
 
@@ -72,3 +72,92 @@ Result on the final tree, 206 touched files: 178 executed, 28 not executed (live
 - `sed` on macOS has no `\b`; the first attempt to rename `DESKTOP_METHODS` did nothing silently. Use Python.
 - `gcommit` stages everything in the worktree; run it from the worktree root.
 - The scan treats `if` tests as free logic on purpose (the standard lets the orchestrator decide with a condition); everything else that computes is extracted.
+
+## Review round (four-eyes findings F3 to F11, same day)
+
+Scan rules added (`layout_scan.py`, with the import rules split into `layout_scan_imports.py` because the scan grew past 400 LOC): `raise` and `assert` are logic statements in an orchestrator (F3); subscripts and f-strings count as expression logic there (F7); an assignment of a literal (constant, tuple or non-empty list, dict, set of literals) in an orchestrator is a violation, empty `[]`/`{}` accumulators are not (F7); every function local import is a violation unless one of the reasons below holds (F4); `scan_workflow()` takes no argv and the report no longer carries a date, so reruns leave `md/layout_scan_report.md` unchanged (F11). Before the fixes the extended scan reported 149 violations in 76 files (22 literal assignments, 101 f-strings, 23 subscripts, 2 raises, 1 stepdown) and 222 local imports in 61 files; after: 0 violations on 414 files.
+
+Fixes and how they were made:
+- F3/F7: the extraction tool was rerun from the previous commit with the wider rules. Literal constants assigned once in an orchestrator (about 20) became module constants in INFRASTRUCTURE (`x = 5` becomes `DEFAULT_X`/`X` at the end of INFRASTRUCTURE, uses renamed); literal lists and dicts and every f-string or subscript statement moved into helpers; the two `raise RuntimeError(...)` (`cc_injection_inventory`, `attribution_coverage`) are helpers that raise, the orchestrator keeps only `if not ...:` and the call.
+- F8: the numbered and misleading helpers were renamed by reading each body: `install_signal_handler_2` became `install_sigint_exit_handler` (the SIGTERM twin `install_sigterm_exit_handler`), `update_lines*` became `append_whole_tool_coverage`, `append_tool_content_stability`, `append_system_stability`, `append_recording_pattern`, `update_rows*` became `append_forwarded_rows`/`append_transcript_rows`, `print_project_without_a` became `print_missing_project_value_verdict`, `print_build_variants` became `run_variants_until_return_fails`, the three `compute_value` became `make_fixed_clock`, `make_terminal_size_getter`, `compute_grand_total` (and `compute_fix_with_leaf_rects` in `cursor_edges/probe.py`), `run_step` (returns an emitter) became `make_emitter`, `check_condition` (any case failed) became `any_case_failed`, `raise_error` became `raise_no_log_files_matched`/`raise_no_pairs_found`, and so on in `render_recorded_request`, `07_quartet_prefix_diff`, `p5_mid_turn_user_msg_preserve_probe`, `rs_truncation_preserve_replay`. Identical small helpers (`exit_with_status`, `collect_results`, `compute_exit_code`, `write_report_text`) stay copied per module: the scripts are independent.
+- F4: function local imports moved into INFRASTRUCTURE (stdlib always; project imports when nothing at runtime depends on their order). Helpers that only hosted an import (`load_imports` in four modules) were deleted together with their call sites. Where a base helper returned an imported name and the caller assigned it under another name (`is_nuke_text`, `render_pane`, `toggle_state`, `button_regions`, `format_warnings_pane`, `proxy_addon_cls`) the top level import keeps that name through `as`; the helpers `_import_gpu`, `_import_panes`, `_shape_classifier` remain and return the now global names. A first version of the move used a weaker rule and broke 15 scripts in the before/after run (`No module named 'src'` because a loader function or the caller sets `sys.path` later, `PROXY_LOG_ID is not set` because a function sets the environment between the helper call and the import). The whole round was reverted to the previous commit and redone with the rule below. A second slip was caught by the same run: `import traceback; traceback.print_exc()` sat on one line in `green_overlay_probe.py`, the move removed both statements; the three `traceback.print_exc()` calls were restored. Lesson: a statement multiset comparison must also list lost expression statements, not only assignments.
+- Remaining function local imports, all justified (scan rule in `layout_scan_imports.local_import_allowed`, the first line of each block is the reason, lines refer to the final tree):
+
+```
+module has no sys.path setup; the caller or a loader function puts the repo root on the path
+  dev/click_ui/proxy_copy_probe_shared.py:18
+  dev/proxy/test_strip_fix_cases_badge.py:33
+  dev/proxy/test_strip_fix_cases_badge.py:47
+  dev/proxy/test_strip_fix_cases_badge.py:179
+  dev/proxy/test_strip_fix_cases_badge.py:183
+  dev/proxy/test_strip_fix_cases_badge.py:183
+  dev/proxy/test_strip_fix_cases_badge_nudge.py:90
+  dev/proxy/test_strip_fix_cases_badge_nudge.py:105
+  dev/proxy_dual_log/groundtruth_message_spans_probe/groundtruth_spans_cases.py:31
+  dev/proxy_dual_log/test_composition_invariant/composition_probe_passes.py:27
+module mutates os.environ/sys.path/sys.modules at runtime; the import order relative to that mutation is behaviour
+  dev/jsonl/test_jsonl_reader.py:59
+  dev/jsonl/test_jsonl_reader.py:73
+  dev/jsonl/test_jsonl_reader.py:86
+  dev/jsonl/test_jsonl_reader.py:103
+  dev/jsonl/test_jsonl_reader.py:118
+  dev/monitor_root/test_monitor_root.py:71
+  dev/monitor_root/test_monitor_root.py:80
+  dev/monitor_root/test_monitor_root.py:88
+  dev/monitor_root/test_monitor_root.py:94
+  dev/monitor_root/test_monitor_root.py:105
+  dev/monitor_root/test_monitor_root.py:119
+  dev/pane_flicker/scenario_lib.py:245
+  dev/pane_flicker/scenario_lib.py:38
+  dev/pane_flicker/scenario_lib.py:39
+  dev/pane_flicker/scenario_lib.py:40
+  dev/pane_flicker/scenario_lib.py:100
+  dev/pane_flicker/scenario_lib.py:212
+  dev/panes/test_display_tripwires.py:60
+  dev/panes/test_display_tripwires.py:78
+  dev/panes/test_display_tripwires.py:87
+  dev/panes/test_display_tripwires.py:109
+  dev/panes/test_display_tripwires.py:110
+  dev/panes/test_display_tripwires.py:121
+  dev/proxy/addon_hook_byte_identity.py:87
+  dev/proxy/test_proxy_env_and_family.py:144
+  dev/proxy/test_proxy_env_and_family.py:165
+  dev/proxy/test_proxy_env_and_family.py:167
+  dev/proxy_display/test_forwarded_tripwires.py:64
+  dev/proxy_display/test_forwarded_tripwires.py:75
+  dev/proxy_display/test_forwarded_tripwires.py:94
+  dev/proxy_display/test_forwarded_tripwires.py:102
+  dev/proxy_display/test_pd10_lazy_messages.py:63
+  dev/proxy_display/test_pd10_lazy_messages.py:71
+  dev/proxy_display/test_pd10_lazy_messages.py:72
+  dev/proxy_display/test_pd10_lazy_messages.py:73
+  dev/proxy_display/test_pd10_lazy_messages.py:74
+  dev/proxy_display/test_pd10_lazy_messages.py:82
+  dev/proxy_display/test_pd10_lazy_messages.py:96
+  dev/proxy_display/test_pd10_lazy_messages.py:111
+  dev/proxy_display/test_session_marker_states.py:65
+  dev/proxy_display/test_session_marker_states.py:66
+  dev/proxy_display/test_session_marker_states.py:76
+  dev/proxy_display/test_session_marker_states.py:96
+  dev/proxy_display/test_session_marker_states.py:111
+  dev/proxy_display/test_session_marker_states.py:112
+  dev/proxy_display/test_session_marker_states.py:113
+  dev/proxy_display/test_session_marker_states.py:123
+  dev/workers/test_worker_probes.py:61
+  dev/workers/test_worker_probes.py:70
+  dev/workers/test_worker_probes.py:71
+  dev/workers/test_worker_probes.py:99
+  dev/workers/test_worker_probes.py:114
+optional dependency guarded by ImportError
+  dev/pane_flicker/scenario_lib.py:57
+  dev/pane_flicker/scenario_lib.py:60
+target module or names do not exist (dead import)
+  dev/timer-loop/p3_project_scope_incident_probe.py:140
+```
+
+- F5: bare sibling imports (`from case_strands import ...`, `from hook_runner import ...`, 270 statements in 157 files) stay. Documented exception: dev scripts are started by path (`python3 dev/<area>/<script>.py`, from any working directory), Python puts the script directory on `sys.path[0]`, so the sibling is found under its bare module name; an absolute form would need `dev/<area>` to be a package with `__init__.py` files (there are none, and the area directory names contain hyphens: `native-model-start`, `timer-loop`) plus the repo root on the path in every script, and would break the direct `python3 script.py` runs that the DOCS.md files describe. Imports of project code from `src/` and the shared dev helpers (`dev.refactoring...`) are absolute. The scan exempts a bare import only when a `.py` file or directory with that name exists next to the script (`is_local_sibling`); a bare import of a `src` top-level name is a violation (L8).
+- F6 (not requested, recorded): INFRASTRUCTURE still holds executed statements (sys.path and environment setup that must precede the imports, `atexit.register`, `os.makedirs`, two `Path.write_bytes` fixtures in `test_block_po_read.py`). The scan allows plain expression statements there by decision.
+- F9: the first paragraph and step 4 of this file were corrected (see the changed lines above); with the scan rules of this round `assert` and `raise` in orchestrators are counted.
+- F10: `dev/refactoring/DOCS.md` was checked: the Public Interface wording (strand runner, check group, repo-root resolvers) is right, `check_group.py` exists as a separate module next to `check` in `strand_runner.py`. The DOCS gained `layout_scan_imports.py`; LOC headings equal `wc -l`.
+
+Proof for the round (2026-09-25): 187 touched scripts executed against the base commit 9cd11f70: 145 identical, 14 identical up to traceback frames of baseline failures, 28 differences, all explained (report file names with timestamps, live corpus growth in `session_analysis/01_extract`, `replay_*_strip`, `render_byte_identity` (rerun with a frozen corpus copy through `RENDER_BYTE_IDENTITY_LOG_DIR`: identical HASH), modules that now define constants or import names at top, dead scripts failing the same way). `hook_smoke/run_all.py` and `menubar/p5_run_all.py` identical. Undefined-name check: 0 new. Run with the src of branch mcsrc: same picture as before, `test_live_copy_bootstrap.py` still needs mcsrc's own update of that test. The eight new mcsrc modules in `dev/refactoring/` were left to mcsrc as instructed.

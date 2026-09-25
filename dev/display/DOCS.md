@@ -67,7 +67,7 @@ PNG for visual review.
 
 ---
 
-### test_hover_map.py (274 LOC)
+### test_hover_map.py (272 LOC)
 
 **Purpose:** Synthetic and frozen-fixture assertion suite for expand-model line-map correctness and the stripped-span dual-color overlay pairing.
 **Reads:** `fixtures/api_requests_fixture_forwarded.jsonl` and its sibling `_stripped.jsonl`, a frozen dual-log pair; the pairing test asserts the fixture yields exactly 5 entries so it cannot pass vacuously.

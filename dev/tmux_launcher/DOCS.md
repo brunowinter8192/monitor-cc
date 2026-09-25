@@ -21,7 +21,7 @@ Each scenario is a parallel fail-fast strand (strand runner in `dev/refactoring/
 
 ---
 
-### fallback_tripwire_checks.py (131 LOC)
+### fallback_tripwire_checks.py (135 LOC)
 
 **Purpose:** Proves the failure paths of the launcher and the monitor janitor against a real tmux server on a private socket.
 **Reads:** nothing external; the monitor root points at a temp dir.

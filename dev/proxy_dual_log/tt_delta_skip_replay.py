@@ -8,6 +8,12 @@ from pathlib import Path
 _AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 WORKTREE_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(WORKTREE_ROOT))
+from src.proxy import strip_inject_delta as sid
+from src.proxy.rules import apply_modification_rules
+from src.proxy_display import dual_log_accumulator as _accumulator
+from src.proxy_display.dual_log_accumulator import accumulate_dual_log
+from src.proxy_display.proxy_badge import badge_flags
+from src.proxy_display.proxy_badge import _is_total_tokens_nuke_text
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -77,8 +83,6 @@ def compare_workflow(stem: str) -> int:
 
 
 def replay(stem: str) -> list:
-    from src.proxy import strip_inject_delta as sid
-    from src.proxy.rules import apply_modification_rules
 
     if True:
         orig_entries = _load_jsonl(LOG_DIR / f'{stem}_original.jsonl')
@@ -119,8 +123,6 @@ def _load_jsonl(path: Path) -> list:
 
 
 def has_content_map(entries: list, which: int, baseline: bool = False) -> dict:
-    from src.proxy_display import dual_log_accumulator as _accumulator
-    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     saved = _accumulator._msgs_delta_is_substantial
     if baseline:
         _accumulator._msgs_delta_is_substantial = lambda md, et: bool(md)
@@ -141,7 +143,6 @@ def has_content_map(entries: list, which: int, baseline: bool = False) -> dict:
 
 
 def badge_maps(entries: list) -> tuple:
-    from src.proxy_display.proxy_badge import badge_flags
     hc_s = has_content_map(entries, 1)
     hc_i = has_content_map(entries, 2)
     mi_s = msg_idx_map(entries, 1)
@@ -159,7 +160,6 @@ def badge_maps(entries: list) -> tuple:
 
 
 def msg_idx_map(entries: list, which: int) -> dict:
-    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     with tempfile.NamedTemporaryFile('w', suffix='.jsonl', delete=False) as f:
         for row in entries:
             f.write(json.dumps(row[which]) + '\n')
@@ -214,7 +214,6 @@ def _is_tt_msg(msg: dict) -> bool:
 
 
 def _shape_classifier():
-    from src.proxy_display.proxy_badge import _is_total_tokens_nuke_text
     return _is_total_tokens_nuke_text
 
 

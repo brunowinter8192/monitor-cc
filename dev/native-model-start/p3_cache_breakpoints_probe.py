@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import tempfile
 import json
 import os
 import sys
@@ -9,6 +10,7 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
+from src.proxy.addon import ProxyAddon, _derive_worker_context
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -26,30 +28,26 @@ SESSIONS = [
 
 def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# Surface 1 — cache breakpoint placement (issue #63, CC 2.1.223)', '']
+    lines = compute_lines()
     lines.append('Real `ProxyAddon.request()` replay of all recorded requests, in chronological order, '
                   'per session. Cache-control positions inspected on the actual bytes about to be sent.')
     lines.append('')
 
     all_analyses = {}
-    tempfile = load_imports()
     process_sessions(tempfile, all_analyses, lines)
 
     stats = _overall_stats(all_analyses)
     lines.extend(_verdict_report_lines(stats))
 
     REPORT_PATH.write_text('\n'.join(lines))
-    print(f'Report written: {REPORT_PATH}')
-    print(f"Verdict: {stats['verdict']}  (bootstrap={stats['total_bootstrap']}, tail_edit={stats['total_tail']}, "
-          f"deep_history={stats['total_deep']}, mid_turn_marker={stats['total_marker']}, "
-          f"bp1_missing={stats['total_bp1_missing']}, bp2_missing={stats['total_bp2_missing']})")
+    print_report_written()
+    print_verdict(stats)
 
 
 # FUNCTIONS
 
-def load_imports():
-    import tempfile
-    return tempfile
+def compute_lines():
+    return ['# Surface 1 — cache breakpoint placement (issue #63, CC 2.1.223)', '']
 
 
 def process_sessions(tempfile, all_analyses, lines):
@@ -63,7 +61,6 @@ def process_sessions(tempfile, all_analyses, lines):
 
 
 def _replay_session(tag: str, stem: str, tmp_root: str) -> list:
-    from src.proxy.addon import ProxyAddon, _derive_worker_context
     requests = _load_session_requests(stem)
     with mock.patch.dict(os.environ, {
         "PROXY_LOG_ID": f"opus_{tag}_probe",
@@ -287,6 +284,16 @@ def _verdict_report_lines(stats: dict) -> list:
                  f'**real finding, THE interaction this probe was built to check**')
     lines.append('')
     return lines
+
+
+def print_report_written():
+    print(f'Report written: {REPORT_PATH}')
+
+
+def print_verdict(stats):
+    print(f"Verdict: {stats['verdict']}  (bootstrap={stats['total_bootstrap']}, tail_edit={stats['total_tail']}, "
+          f"deep_history={stats['total_deep']}, mid_turn_marker={stats['total_marker']}, "
+          f"bp1_missing={stats['total_bp1_missing']}, bp2_missing={stats['total_bp2_missing']})")
 
 
 if __name__ == '__main__':

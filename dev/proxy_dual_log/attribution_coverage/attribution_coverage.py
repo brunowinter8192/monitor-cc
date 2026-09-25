@@ -28,7 +28,7 @@ _REPORT_DIR = _AREA_ROOT / "attribution_coverage_reports"
 def attribution_coverage_workflow() -> None:
     pairs = _find_pairs(_DUAL_LOG_DIR)
     if not pairs:
-        raise RuntimeError(f"No stripped/injected pairs found in {_DUAL_LOG_DIR}")
+        raise_no_pairs_found()
 
     strip_stats, inject_stats, residuals, false_positives = _analyse_all_pairs(pairs, attribute_chunk)
     report = _build_report(strip_stats, inject_stats, residuals, false_positives, len(pairs))
@@ -41,6 +41,10 @@ def attribution_coverage_workflow() -> None:
 
 
 # FUNCTIONS
+
+def raise_no_pairs_found():
+    raise RuntimeError(f"No stripped/injected pairs found in {_DUAL_LOG_DIR}")
+
 
 def compute_report_path(ts):
     return _REPORT_DIR / f"{ts}.md"

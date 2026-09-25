@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import re as _re
 import importlib
 import json
 import tempfile
@@ -175,7 +176,6 @@ def tt08_other_sections_unaffected():
 
 
 def tt09_rendered_header_badge_words():
-    import re as _re
     from src.proxy_display.render_turn import _build_req_header_line
     _ansi = _re.compile(r'\x1b\[[0-9;]*m')
 

@@ -22,7 +22,7 @@ _PATCHED_NAMES = [
 def main():
     discover_mod = _import_discover()
     results = compute_results(discover_mod)
-    print(f'HASH: {_hash_results(results)}')
+    print_hash(results)
 
 
 # FUNCTIONS
@@ -136,6 +136,10 @@ def _scenario_main_idle_proxy_override() -> dict:
         has_bg=False,
         proxy_mtime=_NOW - 100,
     )
+
+
+def print_hash(results):
+    print(f'HASH: {_hash_results(results)}')
 
 
 def _hash_results(results) -> str:

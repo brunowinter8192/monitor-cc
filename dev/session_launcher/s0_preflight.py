@@ -37,7 +37,7 @@ def main() -> None:
     text = '\n'.join(sections)
     path = write_report(__file__, text)
     print(text)
-    print(f'report: {path}')
+    print_report(path)
 
 
 # FUNCTIONS
@@ -117,6 +117,10 @@ def _section_ghostty() -> str:
 def _section_tools() -> str:
     lines = ['## Tools', '', f'- clang: {shutil.which("clang")}', f'- osascript: {shutil.which("osascript")}', '']
     return '\n'.join(lines)
+
+
+def print_report(path):
+    print(f'report: {path}')
 
 
 if __name__ == '__main__':

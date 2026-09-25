@@ -14,6 +14,9 @@ sys.path.insert(0, str(_ROOT))
 
 from dev.session_launcher.space_lib import write_report
 from dev.session_launcher.test_env import isolate_home
+from AppKit import NSAttributedString, NSFontAttributeName, NSPanel
+from Foundation import NSMakeRect
+from Foundation import NSMakeSize
 
 _LABELS = ('Sessions', 'RAG', 'Models', 'Launch')
 _KEYS = ('main', 'rag', 'models', 'launch')
@@ -38,8 +41,8 @@ def main() -> None:
     text = _build_report(results)
     path = write_report(__file__, text)
     print(text)
-    print(f'report: {path}')
-    if check_condition(results):
+    print_report(path)
+    if any_case_failed(results):
         sys.exit(1)
 
 
@@ -155,8 +158,6 @@ def _case_visual_equivalence() -> str:
 
 
 def _pixel_stats(active: str):
-    from AppKit import NSAttributedString, NSFontAttributeName, NSPanel
-    from Foundation import NSMakeRect
     panel = _imp('panel')
     pt = _imp('panel_tabs')
     width, height = 422 - 22, panel._TOP_BAR_H - 1
@@ -271,7 +272,6 @@ class _SyncQueue:
 
 
 def _case_header_recentering() -> str:
-    from Foundation import NSMakeSize
     panel = _imp('panel')
     out = []
     for label in _LABELS:
@@ -316,7 +316,11 @@ def _build_report(results) -> str:
     return '\n'.join(lines)
 
 
-def check_condition(results):
+def print_report(path):
+    print(f'report: {path}')
+
+
+def any_case_failed(results):
     return any(not r['ok'] for r in results)
 
 

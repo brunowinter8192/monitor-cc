@@ -24,7 +24,7 @@ def groundtruth_message_spans_probe_workflow():
 
     lines = []
 
-    emit = run_step(lines)
+    emit = make_emitter(lines)
 
     _emit_intro(emit)
     cases_raw = _load_cases(emit)
@@ -41,12 +41,12 @@ def groundtruth_message_spans_probe_workflow():
     report_path = compute_report_path(ts_file)
     run_with_open(report_path, lines)
 
-    print(f"Report: {report_path}")
+    print_report(report_path)
 
 
 # FUNCTIONS
 
-def run_step(lines):
+def make_emitter(lines):
     def emit(*parts):
         lines.append("".join(str(p) for p in parts) + "\n")
     return emit
@@ -106,6 +106,10 @@ def compute_report_path(ts_file):
 def run_with_open(report_path, lines):
     with open(report_path, "w") as fout:
         fout.writelines(lines)
+
+
+def print_report(report_path):
+    print(f"Report: {report_path}")
 
 
 if __name__ == "__main__":

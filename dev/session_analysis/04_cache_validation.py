@@ -29,24 +29,28 @@ def main():
 
     log_path = Path(args.log_file)
     if not log_path.exists():
-        print(f"Error: {log_path} not found", file=sys.stderr)
+        print_error(log_path)
         sys.exit(1)
 
     entries = _load_entries(log_path)
 
-    print(f"Requests with messages: {len(entries)}")
+    print_requests_with_messages(entries)
     print()
-    print(f"{'#':>4} {'msgs':>4} {'tools':>3} {'mods':>3} {'CC BPs':>30}  {'mods_before_bp':>20}  {'flag':>10}")
+    print_msgs()
     print_output()
 
     total_at_risk = _print_request_rows(entries, args.limit, args.rebuilds_only)
 
     print()
-    print(f"Total requests: {len(entries)}")
+    print_total_requests(entries)
     print_at_risk_mods(total_at_risk, entries)
 
 
 # FUNCTIONS
+
+def print_error(log_path):
+    print(f"Error: {log_path} not found", file=sys.stderr)
+
 
 def _load_entries(log_path: Path) -> list:
     entries = []
@@ -60,6 +64,14 @@ def _load_entries(log_path: Path) -> list:
             if raw.get("messages"):
                 entries.append(entry)
     return entries
+
+
+def print_requests_with_messages(entries):
+    print(f"Requests with messages: {len(entries)}")
+
+
+def print_msgs():
+    print(f"{'#':>4} {'msgs':>4} {'tools':>3} {'mods':>3} {'CC BPs':>30}  {'mods_before_bp':>20}  {'flag':>10}")
 
 
 def print_output():
@@ -163,6 +175,10 @@ def _find_modifiable_indices(messages: list) -> list:
         if "Plan mode is active" in text or "task tools haven" in text or "<task-notification>" in text:
             mod_indices.append(i)
     return mod_indices
+
+
+def print_total_requests(entries):
+    print(f"Total requests: {len(entries)}")
 
 
 def print_at_risk_mods(total_at_risk, entries):

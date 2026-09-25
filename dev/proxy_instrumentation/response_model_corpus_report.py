@@ -17,7 +17,7 @@ def build_response_model_report_workflow() -> None:
     entries = _load_entries(log_files)
     stats = _compute_stats(entries)
     _write_report(log_files, stats)
-    print(f"[response_model_corpus_report] {stats['total']} entries across {len(log_files)} files -> {REPORT_PATH}")
+    print_response_model_corpus(stats, log_files)
 
 
 # FUNCTIONS
@@ -190,6 +190,10 @@ def _report_model_comparison_lines(stats: dict) -> list:
         )
     lines.append('')
     return lines
+
+
+def print_response_model_corpus(stats, log_files):
+    print(f"[response_model_corpus_report] {stats['total']} entries across {len(log_files)} files -> {REPORT_PATH}")
 
 
 if __name__ == '__main__':

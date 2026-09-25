@@ -3,8 +3,11 @@ import ast
 import io
 import sys
 import tokenize
-from datetime import date
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from dev.refactoring.layout_scan_imports import check_bare_src_imports, check_imports, check_local_imports
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCAN_ROOT = PROJECT_ROOT / 'dev'
@@ -13,13 +16,13 @@ SECTIONS = ('INFRASTRUCTURE', 'ORCHESTRATOR', 'FUNCTIONS')
 STRAND_ENTRY = 'strand_workflow'
 ALLOWED_INFRA_STATEMENTS = (ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign, ast.Expr)
 HARD_EXPR = (ast.ListComp, ast.DictComp, ast.SetComp, ast.GeneratorExp, ast.Lambda)
-SOFT_EXPR = (ast.BinOp, ast.BoolOp, ast.IfExp, ast.Compare, ast.UnaryOp)
-HARD_STMT = (ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.FunctionDef, ast.ClassDef, ast.AugAssign, ast.Delete, ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)
+SOFT_EXPR = (ast.BinOp, ast.BoolOp, ast.IfExp, ast.Compare, ast.UnaryOp, ast.Subscript, ast.JoinedStr)
+HARD_STMT = (ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.FunctionDef, ast.ClassDef, ast.AugAssign, ast.Delete, ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal, ast.Raise, ast.Assert)
 
 
 # ORCHESTRATOR
 
-def scan_workflow(argv: list) -> int:
+def scan_workflow() -> int:
     files = list_python_files(SCAN_ROOT)
     findings = collect_findings(files)
     report_path = write_report(REPORT_DIR, files, findings)
@@ -57,6 +60,7 @@ def analyze_file(path: Path) -> list:
     found += check_stepdown(tree, spans)
     found += check_imports(tree)
     found += check_bare_src_imports(tree, path)
+    found += check_local_imports(tree, path)
     return found
 
 
@@ -149,6 +153,8 @@ def orchestrator_logic(body: list) -> list:
         elif isinstance(stmt, ast.If):
             found += orchestrator_logic(stmt.body) + orchestrator_logic(stmt.orelse)
             found += expression_logic(stmt.test, allow_top_test=True)
+        elif is_literal_assignment(stmt):
+            found.append(('L5-orchestrator-literal', stmt.lineno, 'literal assignment belongs in INFRASTRUCTURE or a helper'))
         else:
             found += expression_logic(stmt, allow_top_test=False)
     return found
@@ -164,6 +170,20 @@ def expression_logic(node, allow_top_test: bool) -> list:
         elif isinstance(sub, SOFT_EXPR) and not allow_top_test:
             found.append(('L5-orchestrator-logic', sub.lineno, type(sub).__name__))
     return found[:1]
+
+
+def is_literal_assignment(stmt) -> bool:
+    return isinstance(stmt, (ast.Assign, ast.AnnAssign)) and stmt.value is not None and is_literal(stmt.value, top=True)
+
+
+def is_literal(node, top: bool) -> bool:
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return bool(node.elts) and all(is_literal(e, False) for e in node.elts)
+    if isinstance(node, ast.Dict):
+        return bool(node.keys) and all(k is not None and is_literal(k, False) for k in node.keys) and all(is_literal(v, False) for v in node.values)
+    return False
 
 
 def check_entry(tree, spans: dict, path: Path) -> list:
@@ -281,41 +301,11 @@ def signature_expressions(func, include_decorators: bool = True) -> list:
     return exprs
 
 
-def check_imports(tree) -> list:
-    found = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.level > 0:
-            found.append(('L8-relative-import', node.lineno, ast.unparse(node)))
-        elif isinstance(node, ast.Import) and any(a.name == 'src' or a.name.startswith('src.') for a in node.names):
-            found.append(('L8-import-src-module', node.lineno, ast.unparse(node)))
-    return found
-
-
-def check_bare_src_imports(tree, path: Path) -> list:
-    found = []
-    top_names = src_top_level_names() - {'src'}
-    for node in ast.walk(tree):
-        module = node.module if isinstance(node, ast.ImportFrom) and node.level == 0 else None
-        if isinstance(node, ast.Import):
-            module = node.names[0].name
-        if module and module.split('.')[0] in top_names and not is_local_sibling(module.split('.')[0], path):
-            found.append(('L8-bare-src-import', node.lineno, ast.unparse(node)))
-    return found
-
-
-def src_top_level_names() -> set:
-    return {p.stem for p in (PROJECT_ROOT / 'src').iterdir() if (p.suffix == '.py' or p.is_dir()) and p.stem != '__pycache__'}
-
-
-def is_local_sibling(name: str, path: Path) -> bool:
-    return (path.parent / f'{name}.py').exists() or (path.parent / name).is_dir()
-
-
 def write_report(report_dir: Path, files: list, findings: list) -> Path:
     report_dir.mkdir(parents=True, exist_ok=True)
     path = report_dir / f'{Path(__file__).stem}_report.md'
     counts = rule_counts(findings)
-    lines = [f'# layout_scan report {date.today().isoformat()}', '', f'files scanned: {len(files)}', f'files with violations: {len({f[0] for f in findings})}', f'violations: {len(findings)}', '']
+    lines = ['# layout_scan report', '', f'files scanned: {len(files)}', f'files with violations: {len({f[0] for f in findings})}', f'violations: {len(findings)}', '']
     lines += [f'- {rule}: {count}' for rule, count in sorted(counts.items())]
     lines += ['', '## Findings', '']
     lines += [f'{f}:{line} {rule} {detail}' for f, rule, line, detail in findings]
@@ -343,4 +333,4 @@ def exit_code(findings: list) -> int:
 
 
 if __name__ == '__main__':
-    sys.exit(scan_workflow(sys.argv))
+    sys.exit(scan_workflow())

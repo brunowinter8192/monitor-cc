@@ -61,7 +61,7 @@ Synthetic argv, mocked config or recorded dual-log payloads go in. Each script d
 
 ---
 
-### p3_cache_breakpoints_probe.py (293 LOC)
+### p3_cache_breakpoints_probe.py (300 LOC)
 
 **Purpose:** Replays two recorded pin-bump-era sessions through a real proxy addon and checks cache-breakpoint positional stability.
 **Reads:** two pinned dual-log session stems, currently rotated out of the live corpus, so the script raises before writing.
@@ -71,7 +71,7 @@ Synthetic argv, mocked config or recorded dual-log payloads go in. Each script d
 
 ---
 
-### p4_dual_log_integrity_probe.py (252 LOC)
+### p4_dual_log_integrity_probe.py (263 LOC)
 
 **Purpose:** Verifies the composition invariant and top-level payload and schema stability on the same two recorded sessions.
 **Reads:** the same two pinned session stems, currently absent.
@@ -81,7 +81,7 @@ Synthetic argv, mocked config or recorded dual-log payloads go in. Each script d
 
 ---
 
-### p5_strip_wordings_probe.py (205 LOC)
+### p5_strip_wordings_probe.py (217 LOC)
 
 **Purpose:** Checks strip coverage of background-launch, completion and task-notification wordings via a dual-log census plus a current-code replay.
 **Reads:** the same two pinned sessions' log streams, currently absent.

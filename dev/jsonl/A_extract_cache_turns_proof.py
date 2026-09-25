@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
+from src.jsonl.jsonl_cache_turns import extract_cache_turns
 
 _HERE = Path(__file__).parent
 _REPORTS = _HERE / 'A_extract_cache_turns_proof_reports'
@@ -59,7 +60,6 @@ def _run_capture(sessions, output_path):
 
 
 def _run_one(session_path):
-    from src.jsonl.jsonl_cache_turns import extract_cache_turns
     messages = _load_messages(session_path)
     turns = extract_cache_turns(messages)
     return json.dumps(turns, sort_keys=True, default=str)

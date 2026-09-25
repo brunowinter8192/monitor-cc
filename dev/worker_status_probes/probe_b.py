@@ -21,11 +21,11 @@ def probe_b_workflow():
     args = _parse_args()
     Path(args.outfile).parent.mkdir(parents=True, exist_ok=True)
     atexit.register(_cleanup_all)
-    install_signal_handler()
-    install_signal_handler_2()
+    install_sigterm_exit_handler()
+    install_sigint_exit_handler()
     _setup_pipes(args.sessions)
     _run_probe(args.sessions, args.duration, args.outfile)
-    print(f"[probe_b] done → {args.outfile}")
+    print_probe_b_done(args)
 
 
 # FUNCTIONS
@@ -48,11 +48,11 @@ def _cleanup_all():
     print("[probe_b] cleanup done")
 
 
-def install_signal_handler():
+def install_sigterm_exit_handler():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
 
-def install_signal_handler_2():
+def install_sigint_exit_handler():
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 
@@ -122,6 +122,10 @@ def _read_mtime(path):
     if not os.path.exists(path):
         return 0.0
     return os.stat(path).st_mtime
+
+
+def print_probe_b_done(args):
+    print(f"[probe_b] done → {args.outfile}")
 
 
 if __name__ == "__main__":

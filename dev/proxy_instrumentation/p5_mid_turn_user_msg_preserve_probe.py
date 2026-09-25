@@ -6,6 +6,7 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
+from src.proxy.message_passes import _apply_role_system_strip
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -36,17 +37,17 @@ def main() -> None:
             'The date has changed.',
         ),
     ]
-    lines = ['# Mid-turn user message preserve-guard probe (issue #61, CC 2.1.223)', '']
-    lines.append(f'Preserve case session: `{POSTS_STEM}`. Regression-noise session: `{WEBSEARCH_STEM}`.')
+    lines = compute_lines()
+    append_session_stems_line(lines)
     lines.append('')
     lines.append('| case | pass | detail |')
     lines.append('|---|---|---|')
-    all_pass = True
+    all_pass = compute_all_pass()
     all_pass = collect_all_pass(results, all_pass, lines)
     lines.append('')
-    run_append(lines, all_pass)
+    append_overall_verdict(lines, all_pass)
     REPORT_PATH.write_text('\n'.join(lines))
-    print(f'Report written: {REPORT_PATH}')
+    print_report_written()
     print_results(results)
     print_all_pass(all_pass)
     exit_with_status(all_pass)
@@ -55,7 +56,6 @@ def main() -> None:
 # FUNCTIONS
 
 def _check_preserve_case() -> dict:
-    from src.proxy.message_passes import _apply_role_system_strip
     flow_id = '4b4d396b-a26e-4b44-ac32-144763cc786b'
     msg_idx = 274
     messages = _load_messages_for_flow(POSTS_STEM, flow_id)
@@ -89,7 +89,6 @@ def _load_messages_for_flow(stem: str, flow_id: str) -> list:
 
 
 def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected_prefix: str) -> dict:
-    from src.proxy.message_passes import _apply_role_system_strip
     messages = _load_messages_for_flow(WEBSEARCH_STEM, flow_id)
     original_content = messages[msg_idx]['content']
     new_messages, mods, _removed, changed_idxs, _injected, _ops = _apply_role_system_strip(messages)
@@ -107,6 +106,18 @@ def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected
     }
 
 
+def compute_lines():
+    return ['# Mid-turn user message preserve-guard probe (issue #61, CC 2.1.223)', '']
+
+
+def append_session_stems_line(lines):
+    lines.append(f'Preserve case session: `{POSTS_STEM}`. Regression-noise session: `{WEBSEARCH_STEM}`.')
+
+
+def compute_all_pass():
+    return True
+
+
 def collect_all_pass(results, all_pass, lines):
     for r in results:
         all_pass = all_pass and r['ok']
@@ -114,8 +125,12 @@ def collect_all_pass(results, all_pass, lines):
     return all_pass
 
 
-def run_append(lines, all_pass):
+def append_overall_verdict(lines, all_pass):
     lines.append(f"## Overall: {'ALL PASS' if all_pass else 'FAILURES PRESENT'}")
+
+
+def print_report_written():
+    print(f'Report written: {REPORT_PATH}')
 
 
 def print_results(results):

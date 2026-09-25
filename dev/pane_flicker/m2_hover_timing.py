@@ -29,7 +29,7 @@ PANES = ['tokens', 'worker_tokens']
 
 def timing_workflow() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == '--child':
-        return child_measure(sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5]))
+        return compute_timing_result()
     work_dir = Path(tempfile.mkdtemp(prefix='flicker_m2_timing_'))
     old_root = extract_old_tree(work_dir)
     rows = collect_rows(old_root)
@@ -38,6 +38,10 @@ def timing_workflow() -> int:
 
 
 # FUNCTIONS
+
+def compute_timing_result():
+    return child_measure(sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5]))
+
 
 def child_measure(root: str, pane: str, jsonl_path: str, scale: int) -> int:
     sys.path.insert(0, root)

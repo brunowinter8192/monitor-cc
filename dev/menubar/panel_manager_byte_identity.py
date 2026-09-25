@@ -11,6 +11,7 @@ from AppKit import NSForegroundColorAttributeName
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from Foundation import NSObject
 
 _BgInfo = namedtuple('_BgInfo', ['min_remaining', 'sleep_pids'])
 
@@ -65,7 +66,6 @@ def _run(pm_mod, discover_mod) -> str:
 class _FakeApp:
     def __init__(self):
         self.settings = SimpleNamespace(panel_width=422, panel_min_height=460)
-        from Foundation import NSObject
 
         class _FakePanelController(NSObject):
             pass

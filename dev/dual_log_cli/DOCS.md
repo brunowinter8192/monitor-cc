@@ -11,7 +11,7 @@ The tests in `tests/` run the real functions against synthetic fixtures. The pro
 
 ## Modules
 
-### probe_sys_tool_original_chars.py (292 LOC)
+### probe_sys_tool_original_chars.py (304 LOC)
 
 **Purpose:** Measures whether the last original request reliably recovers an earlier request's pre-strip system and tool sizes, backing the overlay design.
 **Reads:** every original and stripped log pair of the resolved dual-log directory.

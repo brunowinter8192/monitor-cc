@@ -23,7 +23,7 @@ FAIL_LIST = []
 def test_composition_invariant_workflow() -> None:
     entries = load_fixture()
 
-    print(f"Loaded {len(entries)} fixture entries from {FIXTURE_PATH.name}")
+    print_loaded(entries)
     print()
 
     blocks_checked, blocks_passed = run_all_cases(entries)
@@ -32,11 +32,11 @@ def test_composition_invariant_workflow() -> None:
     run_check(blocks_checked)
 
     total = compute_total()
-    print(f"{len(PASS_LIST)}/{total} checks passed")
-    print(f"entries={len(entries)}  blocks_checked={blocks_checked}  blocks_passed={blocks_passed}")
+    print_checks_passed(total)
+    print_entries(entries, blocks_checked, blocks_passed)
 
     if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
+        print_failed()
         sys.exit(1)
 
     print("ALL PASS")
@@ -60,6 +60,10 @@ def load_fixture() -> list:
                 print(f"FIXTURE PARSE ERROR line {lineno}: {e}", file=sys.stderr)
                 sys.exit(1)
     return entries
+
+
+def print_loaded(entries):
+    print(f"Loaded {len(entries)} fixture entries from {FIXTURE_PATH.name}")
 
 
 def run_all_cases(entries: list) -> tuple:
@@ -115,6 +119,18 @@ def run_check(blocks_checked):
 
 def compute_total():
     return len(PASS_LIST) + len(FAIL_LIST)
+
+
+def print_checks_passed(total):
+    print(f"{len(PASS_LIST)}/{total} checks passed")
+
+
+def print_entries(entries, blocks_checked, blocks_passed):
+    print(f"entries={len(entries)}  blocks_checked={blocks_checked}  blocks_passed={blocks_passed}")
+
+
+def print_failed():
+    print(f"\nFAILED: {FAIL_LIST}")
 
 
 if __name__ == "__main__":

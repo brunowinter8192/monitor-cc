@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import traceback as tb
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +9,7 @@ sys.path.insert(0, ".")
 from composition_probe_ops import _strip_cache_control, _block_text, compose_block, check_invariants
 from composition_probe_passes import run_passes_and_collect_ops
 from composition_probe_corpus import run_corpus, get_money_shot_case
+from src.proxy.strip_bg_completed import _WAKEUP_TEXT
 
 _AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 REPORT_DIR = _AREA_ROOT / "01_reports"
@@ -16,7 +18,6 @@ REPORT_DIR = _AREA_ROOT / "01_reports"
 # ORCHESTRATOR
 
 def composition_probe_workflow():
-    _WAKEUP_TEXT = load_imports()
     wakeup_core = _WAKEUP_TEXT.rstrip('\n')
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -25,7 +26,7 @@ def composition_probe_workflow():
     report_path = compute_report_path(ts)
 
     lines = []
-    emit = run_step(lines)
+    emit = make_emitter(lines)
 
     _emit_intro(emit, ts_human)
     _emit_money_shot(emit, wakeup_core)
@@ -34,21 +35,17 @@ def composition_probe_workflow():
     _emit_verdict(emit, R)
 
     run_with_open(report_path, lines)
-    print(f"Report: {report_path}")
+    print_report(report_path)
 
 
 # FUNCTIONS
-
-def load_imports():
-    from src.proxy.strip_bg_completed import _WAKEUP_TEXT
-    return _WAKEUP_TEXT
 
 
 def compute_report_path(ts):
     return REPORT_DIR / f"composition_probe_{ts}.md"
 
 
-def run_step(lines):
+def make_emitter(lines):
     def emit(*parts):
         lines.append("".join(str(p) for p in parts) + "\n")
     return emit
@@ -112,7 +109,6 @@ def _emit_money_shot(emit, wakeup_core: str) -> None:
             emit(f"- Inv2 Cfwd recon: {'✅ PASS' if 'Cfwd_recon_FAIL' not in detail else '❌ FAIL'}")
             emit(f"- **Overall: {'✅ BYTE-EXACT' if ok else '❌ ' + detail}**")
     except Exception as ex:
-        import traceback as tb
         emit(f"ERROR: {ex}")
         emit("```"); emit(tb.format_exc()); emit("```")
 
@@ -136,7 +132,6 @@ def _emit_corpus_run(emit):
         return R
 
     except Exception as ex:
-        import traceback as tb
         emit(f"ERROR in corpus run: {ex}")
         emit("```"); emit(tb.format_exc()); emit("```")
         return None
@@ -224,6 +219,10 @@ def _emit_verdict(emit, R) -> None:
 def run_with_open(report_path, lines):
     with open(report_path, "w") as fout:
         fout.writelines(lines)
+
+
+def print_report(report_path):
+    print(f"Report: {report_path}")
 
 
 if __name__ == "__main__":

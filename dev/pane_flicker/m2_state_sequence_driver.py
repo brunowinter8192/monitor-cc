@@ -22,7 +22,7 @@ _FAR_FUTURE = 10 ** 10
 # ORCHESTRATOR
 
 def sequence_workflow() -> None:
-    os.get_terminal_size = compute_value()
+    os.get_terminal_size = make_terminal_size_getter()
     pane = make_adapter(PANE)
     records = []
     run_sequence(pane, records)
@@ -31,7 +31,7 @@ def sequence_workflow() -> None:
 
 # FUNCTIONS
 
-def compute_value():
+def make_terminal_size_getter():
     return lambda *a: os.terminal_size((_TERM['cols'], _TERM['lines']))
 
 

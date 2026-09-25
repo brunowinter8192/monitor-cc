@@ -13,10 +13,10 @@ from pathlib import Path
 def probe_a_workflow():
     args = _parse_args()
     Path(args.outfile).parent.mkdir(parents=True, exist_ok=True)
-    install_signal_handler()
-    install_signal_handler_2()
+    install_sigterm_exit_handler()
+    install_sigint_exit_handler()
     _run_probe(args.sessions, args.duration, args.outfile)
-    print(f"[probe_a] done → {args.outfile}")
+    print_probe_a_done(args)
 
 
 # FUNCTIONS
@@ -29,11 +29,11 @@ def _parse_args():
     return p.parse_args()
 
 
-def install_signal_handler():
+def install_sigterm_exit_handler():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
 
-def install_signal_handler_2():
+def install_sigint_exit_handler():
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 
@@ -68,6 +68,10 @@ def _get_window_activity(session):
     )
     val = r.stdout.strip()
     return int(val) if val.isdigit() else 0
+
+
+def print_probe_a_done(args):
+    print(f"[probe_a] done → {args.outfile}")
 
 
 if __name__ == "__main__":

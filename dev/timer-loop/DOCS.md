@@ -11,7 +11,7 @@ The wording scan reads the dual-log corpus and writes a findings report. The abo
 
 ## Modules
 
-### p1_scan_bg_completion_wordings.py (67 LOC)
+### p1_scan_bg_completion_wordings.py (79 LOC)
 
 **Purpose:** Entry script: resolves the corpus dir, drives the per-file scan loop and writes the report.
 **Reads:** all `*_original.jsonl` files of the dual log (dir overridable by first argument).

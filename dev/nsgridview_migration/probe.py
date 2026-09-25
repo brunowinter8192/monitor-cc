@@ -40,7 +40,7 @@ _MENLO = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
 # ORCHESTRATOR
 
 def main():
-    install_signal_handler()
+    install_sigint_exit_handler()
 
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
@@ -63,7 +63,7 @@ def main():
 
 # FUNCTIONS
 
-def install_signal_handler():
+def install_sigint_exit_handler():
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 

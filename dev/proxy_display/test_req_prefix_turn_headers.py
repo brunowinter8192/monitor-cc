@@ -10,6 +10,20 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dev.refactoring.strand_runner import strand_workflow
+from src.proxy_display.turn_cache import TurnCache
+from src.format.turn_cache import new_turn_cache
+from src.utils import _ANSI_ESCAPE_RE
+from src.proxy_display.forwarded_parser import _parse_forwarded_log
+from src.proxy_display.proxy_pane_shared import _attach_overlay_references
+from src.proxy_display.forwarded_parser import _infer_model_family
+from src.proxy_display.forwarded_parser import _lazy_load_messages_forwarded, _parse_forwarded_log
+from src.proxy_display.format import format_proxy_block
+from src.format.token_format import format_cache_tracker
+from src.utils import _cell_width
+from src.utils import format_timestamp
+from src.panes.token_search import build_token_search_matches
+from src.jsonl.jsonl_cache_turns import extract_cache_turns
+from src.proxy_display.proxy_pane_shared import _accumulate_request_ids, _attach_http_status
 
 _SYSTEM_DELTA = {"0": {"type": "text", "text": "x-anthropic-billing-header: cc_version=1"}}
 _TOOLS_DELTA = {"0": {"name": "Bash", "description": "d", "input_schema": {}}}
@@ -43,11 +57,9 @@ def run_workflow() -> int:
 # FUNCTIONS
 
 def _turn_cache():
-    from src.proxy_display.turn_cache import TurnCache
     return TurnCache()
 
 def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
     return new_turn_cache()
 
 def check(name, condition, detail=""):
@@ -116,23 +128,18 @@ def _request_id_by_flow() -> dict:
     return {"f1": "r1", "f2": "r2", "f3": "r3", "f4": "r4"}
 
 def _plain_lines(ansi: str) -> list:
-    from src.utils import _ANSI_ESCAPE_RE
     return [_ANSI_ESCAPE_RE.sub("", line).replace("\x1b[K", "").rstrip() for line in ansi.split("\n")]
 
 def _parsed_entries() -> list:
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log
     path = _write_forwarded()
     try:
         entries, _ = _parse_forwarded_log(path, 0, {}, keep_last=None)
     finally:
         path.unlink()
-    from src.proxy_display.proxy_pane_shared import _attach_overlay_references
-    from src.proxy_display.forwarded_parser import _infer_model_family
     _attach_overlay_references(entries, {}, {}, _infer_model_family)
     return entries
 
 def test_continue_entries_do_not_corrupt_accumulator():
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log
     print("\n[Test 1] forwarded parser: continue requests leave the family accumulator alone")
     path = _write_forwarded()
     acc = {}
@@ -149,7 +156,6 @@ def test_continue_entries_do_not_corrupt_accumulator():
           entries[4]["diff_from_prev"]["messages_added"] == 4)
 
 def test_lazy_load_of_continue_and_following_create():
-    from src.proxy_display.forwarded_parser import _lazy_load_messages_forwarded, _parse_forwarded_log
     print("\n[Test 2] lazy load replays continue and create entries consistently")
     path = _write_forwarded()
     try:
@@ -165,7 +171,6 @@ def test_lazy_load_of_continue_and_following_create():
     check("the create after it lazy-loads to its full 6 messages", len(create["messages"]) == 6)
 
 def test_req_prefix_and_turn_headers():
-    from src.proxy_display.format import format_proxy_block
     print("\n[Test 3] format_proxy_block: REQ #n prefix and Turn header rows")
     entries = _parsed_entries()
     ansi, _ = format_proxy_block(entries, {}, None, None, 200, 120, 0, _turns(), request_id_by_flow=_request_id_by_flow(), turn_cache=_turn_cache())
@@ -183,8 +188,6 @@ def test_req_prefix_and_turn_headers():
     check("Turn 2 header carries the prompt text", '"second prompt"' in lines[headers[1]], lines[headers[1]])
 
 def test_numbering_matches_token_pane():
-    from src.format.token_format import format_cache_tracker
-    from src.proxy_display.format import format_proxy_block
     print("\n[Test 4] proxy numbering and turn headers equal the token pane's for the same requests")
     turns = _turns()
     token_ansi, _keys, _sticky, _start, _count = format_cache_tracker(turns, {}, 200, 120, 0, turn_cache=_token_turn_cache())
@@ -200,7 +203,6 @@ def test_numbering_matches_token_pane():
     check("Turn header rows are byte-identical", proxy_headers == token_headers, (proxy_headers, token_headers))
 
 def test_refire_and_unmapped_labels():
-    from src.proxy_display.format import format_proxy_block
     print("\n[Test 5] a refire sharing a request_id shows REQ #n.m")
     entries = _parsed_entries()
     mapping = {"f1": "r1", "f2": "r2", "f3": "r2", "f4": "r4"}
@@ -209,16 +211,12 @@ def test_refire_and_unmapped_labels():
     check("the second entry of one request_id is REQ #2.1", labels[1:3] == ["REQ #2", "REQ #2.1"], labels)
 
 def _cells(text: str) -> int:
-    from src.utils import _cell_width
     return sum(_cell_width(ch) for ch in text)
 
 def _local(iso: str) -> str:
-    from src.utils import format_timestamp
     return format_timestamp(iso)
 
 def _pane_rows(pane: str, width: int) -> list:
-    from src.format.token_format import format_cache_tracker
-    from src.proxy_display.format import format_proxy_block
     turns = _turns()
     if pane == "token":
         ansi = format_cache_tracker(turns, {}, 200, width, 0, copy_feedback={}, turn_cache=_token_turn_cache())[0]
@@ -266,7 +264,6 @@ def test_time_survives_truncation():
         check(f"{pane} w={width}: REQ rows contain the ellipsis cut", all("…" in r for r in req_rows), req_rows)
         check(f"{pane} w={width}: REQ rows still end in time and copy symbol, width {width} exact",
               all(re.search(r"\d\d:\d\d:\d\d\s+⎘$", r) and _cells(r) == width for r in req_rows), [(_cells(r), r) for r in req_rows])
-    from src.panes.token_search import build_token_search_matches
     matches = build_token_search_matches(_local(_CALL_TIMES["r2"]), _turns(), 120, {})
     check("token pane search matches a REQ by its time text", (0, 1) in matches, matches)
 
@@ -288,7 +285,6 @@ def test_same_time_for_same_req_in_both_panes():
         check(f"w={width}: proxy pane REQ times equal the token pane's", proxy == token, (proxy, token))
 
 def test_transcript_parser_records_last_entry_time():
-    from src.jsonl.jsonl_cache_turns import extract_cache_turns
     print("\n[Test 9] extract_cache_turns keeps the LAST assistant entry time of a request")
     usage = {"cache_read_input_tokens": 10, "cache_creation_input_tokens": 1, "input_tokens": 2, "output_tokens": 3}
     messages = [
@@ -307,8 +303,6 @@ def _status_entries() -> list:
     return entries
 
 def test_http_status_marker_and_line() -> None:
-    from src.proxy_display.format import format_proxy_block
-    from src.proxy_display.proxy_pane_shared import _accumulate_request_ids, _attach_http_status
     print("\n[Test 10] HTTP status: marker on the header row, status line in the expanded section")
     handle = tempfile.NamedTemporaryFile(mode="w", suffix="_response.jsonl", delete=False)
     with handle:

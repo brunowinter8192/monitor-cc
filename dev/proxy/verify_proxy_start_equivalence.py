@@ -32,7 +32,7 @@ def equivalence_workflow_case(name: str) -> None:
     case_dir = make_case_dir()
     project = compute_project(case_dir)
     project.mkdir()
-    spec = resolve_spec(CASES[name], project)
+    spec = compute_spec(name, project)
     old, new = collect_old(spec, case_dir, project)
     assert_equal(name, old, drop_launcher_log_lines(new))
 
@@ -41,6 +41,10 @@ def equivalence_workflow_case(name: str) -> None:
 
 def compute_project(case_dir):
     return case_dir / 'proj'
+
+
+def compute_spec(name, project):
+    return resolve_spec(CASES[name], project)
 
 
 def resolve_spec(spec: dict, project: Path) -> dict:

@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import time as _time_mod
 import contextlib
 import io
 import os
@@ -60,7 +61,6 @@ def _patch_module_for_loop(module, use_time_sleep, fakes):
         saved_wait_for_input = getattr(module, 'wait_for_input')
         module.wait_for_input = fakes['tick']
 
-    import time as _time_mod
     saved_sleep = _time_mod.sleep
     if use_time_sleep:
         _time_mod.sleep = fakes['tick']
@@ -74,7 +74,6 @@ def _restore_module_io(module, saved, saved_wait_for_input, use_time_sleep, save
     if saved_wait_for_input is not None:
         module.wait_for_input = saved_wait_for_input
     if use_time_sleep:
-        import time as _time_mod
         _time_mod.sleep = saved_sleep
 
 
@@ -136,7 +135,6 @@ def _run_poll_only_loop_and_capture(pane_id: str, module, run_fn_name: str, inje
 
     setattr(module, inject_attr, _fake_inject)
 
-    import time as _time_mod
     saved_sleep = _time_mod.sleep
 
     def _fake_tick(*_a, **_kw):

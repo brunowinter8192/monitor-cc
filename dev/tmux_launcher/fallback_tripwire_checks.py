@@ -22,7 +22,7 @@ _SESSION = 'monitor_cc_probe'
 def main():
     workdir = Path(tempfile.mkdtemp(prefix='mcfix_tmux_'))
     _install_shim(workdir)
-    os.environ['MONITOR_CC_ROOT'] = str(workdir)
+    assign_values(workdir)
     os.environ.pop('TMUX', None)
     tmux_launcher = importlib.import_module('src.tmux_launcher')
     janitor = importlib.import_module('src.monitor_janitor')
@@ -41,6 +41,10 @@ def _install_shim(workdir: Path) -> None:
     shim.write_text(f'#!/bin/sh\nexec {_REAL_TMUX} -L {_SOCKET} "$@"\n')
     shim.chmod(0o755)
     os.environ['PATH'] = f'{workdir}:{os.environ["PATH"]}'
+
+
+def assign_values(workdir):
+    os.environ['MONITOR_CC_ROOT'] = str(workdir)
 
 
 def collect_results(results, tmux_launcher, janitor, workdir):

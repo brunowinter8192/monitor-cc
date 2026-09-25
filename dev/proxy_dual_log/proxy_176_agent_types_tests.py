@@ -12,6 +12,7 @@ from src.proxy.rule_ops import _ops_from_content_change
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dev.refactoring.strand_runner import strand_workflow
+from src.proxy.strip_sr import _strip_system_reminder
 
 _AGENT_TYPES_SR = (
     "<system-reminder>\n"
@@ -128,7 +129,6 @@ def test_skills_and_agent_types_coexist():
 def test_attribution_at_code():
     print("Item 3f — attribution: agent-types chunk → code='AT', fn='_apply_cumulative_sr_strips'")
     orig_content = "intro\n" + _AGENT_TYPES_SR + "outro"
-    from src.proxy.strip_sr import _strip_system_reminder
     fwd_content = _strip_system_reminder(orig_content, "Available agent types for the Agent tool")
     orig_msgs = [{"role": "user", "content": orig_content}]
     fwd_msgs  = [{"role": "user", "content": fwd_content}]

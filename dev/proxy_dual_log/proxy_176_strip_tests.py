@@ -12,6 +12,7 @@ from src.proxy.logging import _normalize_msg_shape_for_hash
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dev.refactoring.strand_runner import strand_workflow
+from src.proxy.rule_ops import _ops_from_content_change
 
 _SYSTEM_CONTENT = (
     "The following deferred tools are now available via ToolSearch. "
@@ -138,7 +139,6 @@ def test_attribution_rs_code():
     orig_norm = [_normalize_msg_shape_for_hash(m) for m in orig_msgs]
     fwd_norm  = [_normalize_msg_shape_for_hash(m) for m in fwd_msgs]
     msg_diffs = _diff_messages(orig_norm, fwd_norm)
-    from src.proxy.rule_ops import _ops_from_content_change
     all_ops = {0: _ops_from_content_change(_SYSTEM_CONTENT, ".")}
     s_msgs, _, _, _, s_fn, _ = _process_messages_section(
         msg_diffs, orig_norm, is_first=True, prev_stripped=None, prev_injected=None, all_ops=all_ops
@@ -157,7 +157,6 @@ def test_attribution_user_unaffected():
     orig_norm = [_normalize_msg_shape_for_hash(m) for m in orig_msgs]
     fwd_norm  = [_normalize_msg_shape_for_hash(m) for m in fwd_msgs]
     msg_diffs = _diff_messages(orig_norm, fwd_norm)
-    from src.proxy.rule_ops import _ops_from_content_change
     all_ops = {0: _ops_from_content_change(orig_msgs[0]["content"], ".")}
     _, _, _, _, s_fn, _ = _process_messages_section(
         msg_diffs, orig_norm, is_first=True, prev_stripped=None, prev_injected=None, all_ops=all_ops

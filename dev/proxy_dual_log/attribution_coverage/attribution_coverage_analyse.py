@@ -6,6 +6,7 @@ from pathlib import Path
 from attribution_coverage_classify import (
     _SYS_INJECT_FN, _classify_strip_msg, _classify_inject_msg, _inject_text,
 )
+from attribution_coverage_classify import _FIELD_STRIP_FN, _FIELD_INJECT_FN
 
 # FUNCTIONS
 
@@ -101,7 +102,6 @@ def _analyse_messages_delta(pair_name: str, s_entry: dict, i_entry: dict, strip_
 
 def _analyse_fields_delta(pair_name: str, s_entry: dict, i_entry: dict, strip_stats: dict,
                           inject_stats: dict, residuals: list) -> None:
-    from attribution_coverage_classify import _FIELD_STRIP_FN, _FIELD_INJECT_FN
     for key, orig_val in s_entry.get("fields_delta", {}).items():
         fn = _FIELD_STRIP_FN.get(key, f"UNATTR:{key}")
         strip_stats["fields"][fn] += 1

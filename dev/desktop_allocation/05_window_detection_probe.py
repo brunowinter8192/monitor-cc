@@ -13,24 +13,49 @@ def probe_workflow() -> None:
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     cid = _CG.CGSMainConnectionID()
     space_map, active_space = _build_space_map(cid)
-    active_desktop = space_map.get(active_space, ("?", "?"))[1]
+    active_desktop = compute_active_desktop(space_map, active_space)
 
     print("=== Window Detection Probe 05 ===")
-    print(f"  active_space={active_space}  desktop={active_desktop}")
-    print(f"  spaces: {sorted(space_map.keys())}")
-    print(f"  reports: {_REPORTS_DIR}")
+    print_active_space(active_space, active_desktop)
+    print_spaces(space_map)
+    print_reports()
     print()
 
     win_types      = [_WIN_TMUX, _WIN_OSC2, _WIN_COT]
-    trial_schedule = [(1, True), (2, True), (3, False)]
+    trial_schedule = compute_trial_schedule()
 
-    all_results: List[dict] = []
+    all_results = assign_values()
     print_win_types(win_types, trial_schedule, cid, space_map, all_results)
 
     _print_summary(all_results)
 
 
 # FUNCTIONS
+
+def compute_active_desktop(space_map, active_space):
+    return space_map.get(active_space, ("?", "?"))[1]
+
+
+def print_active_space(active_space, active_desktop):
+    print(f"  active_space={active_space}  desktop={active_desktop}")
+
+
+def print_spaces(space_map):
+    print(f"  spaces: {sorted(space_map.keys())}")
+
+
+def print_reports():
+    print(f"  reports: {_REPORTS_DIR}")
+
+
+def compute_trial_schedule():
+    return [(1, True), (2, True), (3, False)]
+
+
+def assign_values():
+    all_results: List[dict] = []
+    return all_results
+
 
 def print_win_types(win_types, trial_schedule, cid, space_map, all_results):
     for win_type in win_types:

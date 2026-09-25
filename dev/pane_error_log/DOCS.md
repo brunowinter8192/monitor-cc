@@ -41,7 +41,7 @@ Each pane loop is imported directly and driven through a few ticks with a marker
 
 ---
 
-### p1_loop_harness.py (170 LOC)
+### p1_loop_harness.py (168 LOC)
 
 **Purpose:** Drives one pane loop under monkeypatched I/O and captures the outcome, for keyboard and mouse loops and the poll-only log loop.
 **Reads:** the scratch log via the shared reader.

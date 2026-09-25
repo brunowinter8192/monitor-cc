@@ -7,6 +7,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
 from dev.refactoring.strand_runner import strand_workflow
+from src.format.token_format import _render_answering_model_line, _render_rate_limit_lines, _render_expanded_call_lines
+from src.colors import RED, DIM, SOFT_RESET
 
 _STRAND_NAMES = [
     '_test_equal_models_render_dim',
@@ -30,10 +32,6 @@ def main():
 # FUNCTIONS
 
 def _import_target():
-    from src.format.token_format import (
-        _render_answering_model_line, _render_rate_limit_lines, _render_expanded_call_lines,
-    )
-    from src.colors import RED, DIM, SOFT_RESET
     return SimpleNamespace(
         answering_model_line=_render_answering_model_line,
         rate_limit_lines=_render_rate_limit_lines,

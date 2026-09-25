@@ -25,15 +25,15 @@ def main():
     raw_dup_counter = defaultdict(int)
     bare_hits = defaultdict(int)
     session_is_worker = {}
-    total_requests = 0
-    total_parse_errors = 0
+    total_requests = compute_total_requests()
+    total_parse_errors = compute_total_parse_errors()
     total_requests, total_parse_errors = collect_total_requests(corpus_files, findings, cmd_variant_counts, raw_dup_counter, bare_hits, session_is_worker, total_requests, total_parse_errors)
     report = _build_report(findings, cmd_variant_counts, total_requests, total_parse_errors,
                             raw_dup_counter, bare_hits, corpus_files, session_is_worker)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = compute_out_path()
     out_path.write_text(report, encoding='utf-8')
-    print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned, {total_parse_errors} parse errors')
+    print_wrote(out_path, findings, total_requests, total_parse_errors)
 
 
 # FUNCTIONS
@@ -49,6 +49,14 @@ def compute_corpus_files(log_dir):
         ))
 
 
+def compute_total_requests():
+    return 0
+
+
+def compute_total_parse_errors():
+    return 0
+
+
 def collect_total_requests(corpus_files, findings, cmd_variant_counts, raw_dup_counter, bare_hits, session_is_worker, total_requests, total_parse_errors):
     for path in corpus_files:
         print(f'scanning {path.name} ...')
@@ -61,6 +69,10 @@ def collect_total_requests(corpus_files, findings, cmd_variant_counts, raw_dup_c
 
 def compute_out_path():
     return REPORT_DIR / 'bg_completion_wordings_20260806.md'
+
+
+def print_wrote(out_path, findings, total_requests, total_parse_errors):
+    print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned, {total_parse_errors} parse errors')
 
 
 if __name__ == '__main__':

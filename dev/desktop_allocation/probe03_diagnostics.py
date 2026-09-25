@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import sqlite3
 import ctypes
 import os
 import subprocess
@@ -49,7 +50,6 @@ def _collect_context_diagnostics() -> Dict[str, Any]:
 def _collect_tcc_state() -> Dict[str, Any]:
     db_path = str(_TCC_DB)
     try:
-        import sqlite3
         conn = sqlite3.connect(db_path)
         rows = conn.execute(
             "SELECT service, client, auth_value FROM access "

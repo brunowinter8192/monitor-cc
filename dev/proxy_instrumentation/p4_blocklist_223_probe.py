@@ -6,6 +6,9 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+from src.proxy.tools import _strip_unused_tools
+from src.constants import TOOL_BLOCKLIST
+from src.proxy_display.forwarded_parser import _parse_forwarded_log
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -44,8 +47,6 @@ def _select_session_stem() -> str:
 
 
 def _run_checks(stem: str) -> list:
-    from src.proxy.tools import _strip_unused_tools
-    from src.constants import TOOL_BLOCKLIST
 
     payload = _load_original_payload(stem)
     orig_names = {t.get('name') for t in payload.get('tools', [])}
@@ -119,7 +120,6 @@ def _invoked_tool_names(stem: str) -> set:
 
 
 def _forwarded_tool_names(stem: str) -> set:
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log
     fwd_path = LOG_DIR / f'{stem}_forwarded.jsonl'
     entries, _ = _parse_forwarded_log(fwd_path, 0, {})
     names = set()

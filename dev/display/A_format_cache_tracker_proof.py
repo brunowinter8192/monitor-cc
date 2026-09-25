@@ -6,6 +6,9 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
+from src.jsonl.jsonl_cache_turns import extract_cache_turns
+from src.format.token_format import format_cache_tracker
+from src.format.turn_cache import new_turn_cache
 
 _HERE = Path(__file__).parent
 _REPORTS = _HERE / 'A_format_cache_tracker_proof_reports'
@@ -65,7 +68,6 @@ def _run_capture(sessions, output_path):
 
 
 def _load_turns(jsonl_path):
-    from src.jsonl.jsonl_cache_turns import extract_cache_turns
     messages = []
     with open(jsonl_path, encoding='utf-8') as f:
         for line in f:
@@ -77,13 +79,11 @@ def _load_turns(jsonl_path):
 
 
 def _run_one_case(turns, pane_height, pane_width):
-    from src.format.token_format import format_cache_tracker
     result = format_cache_tracker(turns, pane_height=pane_height, pane_width=pane_width, turn_cache=_token_turn_cache())
     return json.dumps(result, sort_keys=True, default=str)
 
 
 def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
     return new_turn_cache()
 
 

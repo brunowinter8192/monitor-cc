@@ -156,7 +156,7 @@ helpfulness evaluation.
 
 ---
 
-### rag_truncation_audit.py (90 LOC)
+### rag_truncation_audit.py (86 LOC)
 
 **Purpose:** CLI entry point — classifies every truncation-marker occurrence in opus proxy logs by
 hypothesis A/B/C using split-position and rag-cli detection.
@@ -254,7 +254,7 @@ summary.
 
 ---
 
-### sr_session_audit.py (337 LOC)
+### sr_session_audit.py (341 LOC)
 
 **Purpose:** Longitudinal system-reminder audit across all Claude Code sessions, classifying blocks
 against the live strip catalog into known/preserved/unknown buckets.

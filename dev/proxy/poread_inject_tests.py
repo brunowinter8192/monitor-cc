@@ -12,6 +12,7 @@ from src.proxy.strip_vocab import attribute_chunk
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dev.refactoring.strand_runner import strand_workflow
+from src.proxy import inject_poread as inject_poread_mod
 
 _PINNED_MARKER_PREFIX = '<poread-export '
 _PINNED_HASH_LEN = 16
@@ -182,7 +183,6 @@ def test_oversize_declared_marker_refused_regardless_of_actual_file():
         f.write(data)
         path = f.name
     try:
-        import hashlib
         fake_digest = hashlib.sha256(data).hexdigest()[:16]
         crafted_marker = f'<poread-export path="{path}" bytes="999999999" sha256="{fake_digest}"/>\n{POREAD_NOTICE}'
         payload = _payload_with_marker(crafted_marker)
@@ -256,7 +256,6 @@ def test_source_is_read_only_once_per_marker():
         marker = _mint_marker(path)
         payload = _payload_with_marker(marker)
 
-        from src.proxy import inject_poread as inject_poread_mod
         open_calls = []
         real_open = open
 
@@ -287,7 +286,6 @@ def test_marker_without_notice_is_ineligible():
         f.write(data)
         path = f.name
     try:
-        import hashlib
         digest = hashlib.sha256(data).hexdigest()[:16]
         marker_only = f'<poread-export path="{os.path.realpath(path)}" bytes="{len(data)}" sha256="{digest}"/>'
         payload = _payload_with_marker(marker_only)
@@ -307,7 +305,6 @@ def test_marker_with_notice_expands_to_content():
         f.write(data)
         path = f.name
     try:
-        import hashlib
         digest = hashlib.sha256(data).hexdigest()[:16]
         marker_plus_notice = f'<poread-export path="{os.path.realpath(path)}" bytes="{len(data)}" sha256="{digest}"/>\n{POREAD_NOTICE}'
         payload = _payload_with_marker(marker_plus_notice)

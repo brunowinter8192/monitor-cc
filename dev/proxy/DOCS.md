@@ -11,7 +11,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ## Modules
 
-### pipeline_byte_identity.py (142 LOC)
+### pipeline_byte_identity.py (154 LOC)
 
 **Purpose:** Verification aid: hashes the full modification pipeline over a bounded prefix of a real original log for both worker contexts.
 **Reads:** the newest original log, or a pinned path via an env var.
@@ -21,7 +21,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### addon_hook_byte_identity.py (178 LOC)
+### addon_hook_byte_identity.py (190 LOC)
 
 **Purpose:** Verification aid: hashes the addon's hook behavior by driving a real addon with a fake flow.
 **Reads:** the newest original log, or a pinned path via an env var; sets its own env and a temp monitor root.
@@ -41,7 +41,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### replay_sn_notice_strip.py (202 LOC)
+### replay_sn_notice_strip.py (206 LOC)
 
 **Purpose:** Replay proof of the SN-notice strip over every captured dual log: byte-exact untouched versus reconstructable-changed, plus counts.
 **Reads:** all original logs of the main checkout's dual log (hardcoded path).
@@ -51,7 +51,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### replay_strip_v2.py (236 LOC)
+### replay_strip_v2.py (252 LOC)
 
 **Purpose:** Two-part validator of the template-based system-reminder strip against an old proxy's recorded removal field.
 **Reads:** a hardcoded log directory under a pre-rename path, absent now; a glob on it yields zero entries.
@@ -61,7 +61,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### scan_sr_catalog.py (327 LOC)
+### scan_sr_catalog.py (343 LOC)
 
 **Purpose:** Scans proxy request logs into a catalog of stripped and missed system-reminder and task-notification content, classified by heuristic.
 **Reads:** the same absent pre-rename log directory.
@@ -191,7 +191,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### replay_env_context_strip.py (202 LOC)
+### replay_env_context_strip.py (206 LOC)
 
 **Purpose:** Before and after replay for env-context strip fixes, bucketed by outcome and by date and git-status form.
 **Reads:** all original logs of the main checkout's dual log (hardcoded path).
@@ -211,7 +211,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### poread_inject_tests.py (323 LOC)
+### poread_inject_tests.py (320 LOC)
 
 **Purpose:** End-to-end regression guard for the poread marker-expansion pass, mint through apply, across expansion, determinism, false-positive and race cases.
 **Reads:** nothing external; writes its own temp files and marker fixtures.
@@ -281,7 +281,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### verify_proxy_start_equivalence.py (81 LOC)
+### verify_proxy_start_equivalence.py (85 LOC)
 
 **Purpose:** Verification that the launcher behaves identically to the base ref across argument, model-config, port, marker and janitor cases; one parallel strand per case.
 **Reads:** the sandbox module.

@@ -8,6 +8,9 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dev.refactoring.strand_runner import strand_workflow
+from src.proxy_display.format import _is_standalone_entry
+from src.proxy_display.render_turn import render_turn_expanded
+from src.utils import _ANSI_ESCAPE_RE
 
 _STRANDS = [
     'test_is_standalone_entry_observed_shapes',
@@ -32,7 +35,6 @@ def _strip(line: str, ansi_re) -> str:
     return ansi_re.sub('', line)
 
 def test_is_standalone_entry_observed_shapes():
-    from src.proxy_display.format import _is_standalone_entry
     print("\n[Test 1] _is_standalone_entry: covers every sidecar shape observed in real data")
     check("haiku model, zero tools, non-zero system -> standalone "
           "(the exact shape every sidecar on disk has: session-titling/quota calls both carry "
@@ -67,8 +69,6 @@ def _labels(lines, ansi_re):
     return out
 
 def test_haiku_sidecar_does_not_consume_a_req_number():
-    from src.proxy_display.render_turn import render_turn_expanded
-    from src.utils import _ANSI_ESCAPE_RE
     print("\n[Test 2] render_turn_expanded: a haiku sidecar between two real requests keeps REQ numbering intact")
     entries = [
         _entry('claude-opus-4-8', 2, 500, 1000, 2, 'f1', '2026-09-15T10:00:00.000Z'),

@@ -6,12 +6,24 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from src.proxy_display.forwarded_parser import _parse_forwarded_log
+from src.proxy_display.forwarded_parser import _infer_model_family
+from src.proxy_display.dual_log_accumulator import accumulate_dual_log, accumulate_original_tools
+from src.proxy_display.proxy_pane_shared import _attach_overlay_references
+from src.proxy_display.format import format_proxy_block
+from src.proxy_display.turn_cache import TurnCache
+from src.proxy_display.format import _is_standalone_entry
+from src.proxy_display.render_turn import _resolve_prev_same_family
+from src.proxy_display.render_sections import render_tools
+from src.proxy_display.render_sections_system import render_system_blocks
+from src.proxy_display.render_messages import render_messages
 
 _MAIN_LOG_DIR = Path(os.environ.get(
     'RENDER_BYTE_IDENTITY_LOG_DIR',
     '/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log',
 ))
 _PANE_WIDTHS = (60, 80, 100, 120)
+
 
 # ORCHESTRATOR
 
@@ -23,10 +35,10 @@ def main():
     digest = hashlib.sha256()
     _hash_format_proxy_block(entries, expand_states, digest)
     _hash_section_functions(entries, expand_states, digest)
-    print(f'source: {fwd_path.name}')
-    print(f'entries: {len(entries)}')
-    print(f'expand_states keys: {len(expand_states)}')
-    print(f'HASH: {digest.hexdigest()}')
+    print_source(fwd_path)
+    print_entries(entries)
+    print_expand_states_keys(expand_states)
+    print_hash(digest)
 
 
 # FUNCTIONS
@@ -39,15 +51,11 @@ def _newest_forwarded_log() -> Path:
 
 
 def _load_entries(fwd_path: Path) -> list:
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log
     entries, _ = _parse_forwarded_log(fwd_path, 0, {}, keep_last=None)
     return entries
 
 
 def _attach_overlays(entries: list, fwd_path: Path) -> None:
-    from src.proxy_display.forwarded_parser import _infer_model_family
-    from src.proxy_display.dual_log_accumulator import accumulate_dual_log, accumulate_original_tools
-    from src.proxy_display.proxy_pane_shared import _attach_overlay_references
     stem = fwd_path.name[:-len('_forwarded.jsonl')]
     stripped_path = fwd_path.parent / f'{stem}_stripped.jsonl'
     injected_path = fwd_path.parent / f'{stem}_injected.jsonl'
@@ -60,8 +68,6 @@ def _attach_overlays(entries: list, fwd_path: Path) -> None:
 
 
 def _grow_expand_states(entries: list) -> dict:
-    from src.proxy_display.format import format_proxy_block
-    from src.proxy_display.turn_cache import TurnCache
     expand_states = {}
     prev_count = -1
     while len(expand_states) != prev_count:
@@ -76,8 +82,6 @@ def _grow_expand_states(entries: list) -> dict:
 
 
 def _hash_format_proxy_block(entries: list, expand_states: dict, digest) -> None:
-    from src.proxy_display.format import format_proxy_block
-    from src.proxy_display.turn_cache import TurnCache
     for width in _PANE_WIDTHS:
         item_positions = {}
         line_map = {}
@@ -91,11 +95,6 @@ def _hash_format_proxy_block(entries: list, expand_states: dict, digest) -> None
 
 
 def _hash_section_functions(entries: list, expand_states: dict, digest) -> None:
-    from src.proxy_display.format import _is_standalone_entry
-    from src.proxy_display.render_turn import _resolve_prev_same_family
-    from src.proxy_display.render_sections import render_tools
-    from src.proxy_display.render_sections_system import render_system_blocks
-    from src.proxy_display.render_messages import render_messages
     for entry_idx, entry in enumerate(entries):
         is_standalone = _is_standalone_entry(entry)
         prev_same = _resolve_prev_same_family(entries, entry_idx)
@@ -110,6 +109,22 @@ def _hash_section_functions(entries: list, expand_states: dict, digest) -> None:
             digest.update(repr((t_lines, t_keys)).encode())
             digest.update(f'msgs|{entry_idx}|{width}|'.encode())
             digest.update(repr((m_lines, m_keys)).encode())
+
+
+def print_source(fwd_path):
+    print(f'source: {fwd_path.name}')
+
+
+def print_entries(entries):
+    print(f'entries: {len(entries)}')
+
+
+def print_expand_states_keys(expand_states):
+    print(f'expand_states keys: {len(expand_states)}')
+
+
+def print_hash(digest):
+    print(f'HASH: {digest.hexdigest()}')
 
 
 if __name__ == '__main__':

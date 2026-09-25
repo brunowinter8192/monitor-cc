@@ -30,14 +30,13 @@ def probe_workflow() -> None:
     run_ts = time.strftime('%Y%m%d_%H%M%S')
     log_path = compute_log_path(run_ts)
     logf = open(log_path, 'a', encoding='utf-8')
-    print(f'Log: {log_path}')
-    logf.write(f'=== Space-Jump Probe started {_timestamp()} '
-               f'(poll={_POLL_HZ}Hz buffer={_BUFFER_SECONDS}s edge_px={_EDGE_PX}) ===\n')
+    print_log(log_path)
+    run_write(logf)
     logf.flush()
 
     cid = _CG.CGSMainConnectionID()
-    buffer: Deque[Dict] = deque(maxlen=_BUFFER_LEN)
-    state = {'running': True}
+    buffer = assign_values()
+    state = compute_state()
 
     _shutdown = make_shutdown_handler(state)
 
@@ -54,10 +53,28 @@ def compute_log_path(run_ts):
     return _REPORTS_DIR / f'space_jump_{run_ts}.log'
 
 
+def print_log(log_path):
+    print(f'Log: {log_path}')
+
+
+def run_write(logf):
+    logf.write(f'=== Space-Jump Probe started {_timestamp()} '
+               f'(poll={_POLL_HZ}Hz buffer={_BUFFER_SECONDS}s edge_px={_EDGE_PX}) ===\n')
+
+
 def _timestamp() -> str:
     t = time.time()
     ms = int((t - int(t)) * 1000)
     return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(t)) + f'.{ms:03d}'
+
+
+def assign_values():
+    buffer: Deque[Dict] = deque(maxlen=_BUFFER_LEN)
+    return buffer
+
+
+def compute_state():
+    return {'running': True}
 
 
 def make_shutdown_handler(state):

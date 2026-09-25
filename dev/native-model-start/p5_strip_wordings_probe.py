@@ -6,6 +6,8 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
+from src.proxy.rules import apply_modification_rules
+from src.proxy.payload_helpers import _top_level_content_contains
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -30,7 +32,7 @@ MARKERS = {
 
 def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# Surface 3 — strip wordings on CC 2.1.223 (issue #63)', '']
+    lines = compute_lines()
 
     census_lines, all_fn_counts = _part_a_census_lines()
     lines.extend(census_lines)
@@ -47,12 +49,15 @@ def main() -> None:
     lines.extend(verdict_lines)
 
     REPORT_PATH.write_text('\n'.join(lines))
-    print(f'Report written: {REPORT_PATH}')
-    print(f'Verdict: {verdict}  (bg_launch_fired={bg_launch_fired}, tn_or_bg_exit_fired={tn_or_bg_exit_fired}, '
-          f'survived={total_survived}/{total_marker_hits})')
+    print_report_written()
+    print_verdict(verdict, bg_launch_fired, tn_or_bg_exit_fired, total_survived, total_marker_hits)
 
 
 # FUNCTIONS
+
+def compute_lines():
+    return ['# Surface 3 — strip wordings on CC 2.1.223 (issue #63)', '']
+
 
 def _part_a_census_lines():
     lines = []
@@ -147,8 +152,6 @@ def _load_session_requests(stem: str) -> list:
 
 
 def _check_markers_stripped(payload: dict) -> list:
-    from src.proxy.rules import apply_modification_rules
-    from src.proxy.payload_helpers import _top_level_content_contains
     modified, *_ = apply_modification_rules(payload, 'opus', '', 'main')
     orig_messages = payload.get('messages', [])
     fwd_messages = modified.get('messages', [])
@@ -199,6 +202,15 @@ def _overall_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, total_survived,
                  f'background") rather than an explicit `run_in_background=true` launch-ack — a '
                  f'structurally different message our proxy does not strip (and was not asked to).')
     return lines, verdict
+
+
+def print_report_written():
+    print(f'Report written: {REPORT_PATH}')
+
+
+def print_verdict(verdict, bg_launch_fired, tn_or_bg_exit_fired, total_survived, total_marker_hits):
+    print(f'Verdict: {verdict}  (bg_launch_fired={bg_launch_fired}, tn_or_bg_exit_fired={tn_or_bg_exit_fired}, '
+          f'survived={total_survived}/{total_marker_hits})')
 
 
 if __name__ == '__main__':

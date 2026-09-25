@@ -12,6 +12,7 @@ sys.path.insert(0, str(_ROOT))
 
 from dev.session_launcher.space_lib import write_report
 from dev.session_launcher.test_env import isolate_home
+from Foundation import NSMakeRect
 
 _JSON_DIR = Path('/tmp/session_launcher_p2_panel_snapshot')
 _SETTINGS_VARIANTS = ((422, 460), (500, 300), (380, 700), (600, 520))
@@ -29,12 +30,12 @@ def main() -> None:
         _JSON_DIR.mkdir(parents=True, exist_ok=True)
         path = compute_path(args)
         path.write_text(json.dumps(_take_snapshot(), indent=1, sort_keys=True), encoding='utf-8')
-        print(f'snapshot: {path}')
+        print_snapshot(path)
         return
     text, ok = _compare_snapshots()
     path = write_report(__file__, text)
     print(text)
-    print(f'report: {path}')
+    print_report(path)
     if not ok:
         sys.exit(1)
 
@@ -167,7 +168,6 @@ class _FakeWindow:
         self._frame = frame
 
     def frame(self):
-        from Foundation import NSMakeRect
         return NSMakeRect(*self._frame)
 
 
@@ -177,6 +177,10 @@ def _reposition_function(name: str):
         return lifecycle._reposition_panel
     old = getattr(lifecycle, _REPOSITION_OLD_NAMES[name], None)
     return old if old is not None else lifecycle._reposition_tab_panel
+
+
+def print_snapshot(path):
+    print(f'snapshot: {path}')
 
 
 def _compare_snapshots():
@@ -214,6 +218,10 @@ def _flatten(value, prefix=''):
             yield from _flatten(item, f'{prefix}[{i}]')
     else:
         yield prefix, value
+
+
+def print_report(path):
+    print(f'report: {path}')
 
 
 if __name__ == '__main__':

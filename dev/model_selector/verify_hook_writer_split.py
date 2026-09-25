@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import importlib.util
 import importlib
 import io
 import json
@@ -15,7 +16,7 @@ REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook_writer_
 # ORCHESTRATOR
 
 def verify_hook_writer_split_workflow() -> None:
-    lines = ["# hook_writer.py split verification", ""]
+    lines = compute_lines()
     run_with_temporarydirectory(lines)
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -24,6 +25,10 @@ def verify_hook_writer_split_workflow() -> None:
 
 
 # FUNCTIONS
+
+def compute_lines():
+    return ["# hook_writer.py split verification", ""]
+
 
 def run_with_temporarydirectory(lines):
     with tempfile.TemporaryDirectory() as tmp:
@@ -54,7 +59,6 @@ def run_with_temporarydirectory(lines):
 
 def _load_hook_writer_with_tmp_app_support(tmp_dir: Path):
     spec_path = REPO_ROOT / "src" / "menubar" / "hook_writer.py"
-    import importlib.util
     spec = importlib.util.spec_from_file_location("hook_writer_under_test", spec_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

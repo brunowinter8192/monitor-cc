@@ -36,7 +36,7 @@ def main():
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUT_FILE.write_text(report)
     print(report)
-    print(f'Written to {OUT_FILE}')
+    print_written_to()
 
 
 # FUNCTIONS
@@ -196,6 +196,10 @@ def _render_summary_lines(stats):
         'which measured 2 pure CLAUDE.md-preserved occurrences in a different corpus window).',
         '',
     ]
+
+
+def print_written_to():
+    print(f'Written to {OUT_FILE}')
 
 
 if __name__ == '__main__':

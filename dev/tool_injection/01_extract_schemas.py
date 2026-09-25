@@ -55,12 +55,12 @@ print(json.dumps(schemas))
 # ORCHESTRATOR
 
 def extract_schemas_workflow() -> None:
-    total_written = 0
+    total_written = compute_total_written()
     all_samples = []
 
     total_written = collect_total_written(total_written, all_samples)
 
-    print(f"\nTotal: {total_written} schemas written to {_OUTPUT_BASE}/")
+    print_total(total_written)
     print("\nMCP prefix patterns (verified against api_requests_opus_monitor_cc_1776092124.jsonl):")
     print_items()
 
@@ -69,6 +69,10 @@ def extract_schemas_workflow() -> None:
 
 
 # FUNCTIONS
+
+def compute_total_written():
+    return 0
+
 
 def collect_total_written(total_written, all_samples):
     for plugin_name, server_path, server_project_dir, venv_dir in _SERVERS:
@@ -117,6 +121,10 @@ def _write_schemas(plugin_name: str, schemas: list[dict]) -> int:
         out_path = out_dir / f"{tool_bare_name}.json"
         out_path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
     return len(schemas)
+
+
+def print_total(total_written):
+    print(f"\nTotal: {total_written} schemas written to {_OUTPUT_BASE}/")
 
 
 def print_items():

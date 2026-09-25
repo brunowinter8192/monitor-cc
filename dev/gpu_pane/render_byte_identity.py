@@ -8,6 +8,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from src.gpu_pane.pane import _render_pane, _toggle_state, _button_regions
 
 _FIXED_TS = 1800000000.0
 _PANE_WIDTHS = (100, 40)
@@ -19,18 +20,17 @@ _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')
 def main():
     render_pane, toggle_state, button_regions = _import_gpu()
     orig_time = _time_mod.time
-    _time_mod.time = compute_value()
+    _time_mod.time = make_fixed_clock()
     guarded_sha256(toggle_state, render_pane, button_regions, orig_time)
 
 
 # FUNCTIONS
 
 def _import_gpu():
-    from src.gpu_pane.pane import _render_pane, _toggle_state, _button_regions
     return _render_pane, _toggle_state, _button_regions
 
 
-def compute_value():
+def make_fixed_clock():
     return lambda: _FIXED_TS
 
 

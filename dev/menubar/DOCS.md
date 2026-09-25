@@ -11,7 +11,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ## Modules
 
-### discover_byte_identity.py (148 LOC)
+### discover_byte_identity.py (152 LOC)
 
 **Purpose:** Identity harness for the project-directory scan of `discover.py`: patches every I/O boundary and hashes four scenarios.
 **Reads:** nothing external; inline fixtures.
@@ -21,7 +21,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### model_controller_byte_identity.py (166 LOC)
+### model_controller_byte_identity.py (169 LOC)
 
 **Purpose:** Identity harness for the model controller: hashes a sandboxed persistence cycle and a headless UI subview dump.
 **Reads:** the real proxy rules file under the user's shared-rules directory (read-only seed), so a changed file changes the hash.

@@ -38,13 +38,13 @@ def inventory_workflow() -> None:
     args = _parse_args()
     log_files, excluded_files = _resolve_log_files(args.logs_glob)
     if not log_files:
-        raise RuntimeError(f"No log files matched: {args.logs_glob}")
+        raise_no_log_files_matched(args)
 
     registry: dict = {}
     pending_user_text: dict = {}
     dedup_seen: dict = {}
     file_stats = []
-    counters = {"raw_segments": 0, "distinct_segments": 0, "raw_messages": 0, "distinct_messages": 0}
+    counters = compute_counters()
     msg_dedup_seen: set = set()
 
     process_log_files(log_files, registry, pending_user_text, dedup_seen, counters, args, msg_dedup_seen, file_stats)
@@ -100,6 +100,14 @@ def _is_own_live_session_log(path: Path, task_name: str | None) -> bool:
     if task_name is None:
         return False
     return path.name.startswith(_WORKER_LOG_PREFIX) and task_name in path.name
+
+
+def raise_no_log_files_matched(args):
+    raise RuntimeError(f"No log files matched: {args.logs_glob}")
+
+
+def compute_counters():
+    return {"raw_segments": 0, "distinct_segments": 0, "raw_messages": 0, "distinct_messages": 0}
 
 
 def process_log_files(log_files, registry, pending_user_text, dedup_seen, counters, args, msg_dedup_seen, file_stats):

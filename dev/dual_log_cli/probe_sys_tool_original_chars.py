@@ -25,21 +25,15 @@ def probe_sys_tool_original_chars_workflow() -> None:
     report_path = compute_report_path()
     if not stems:
         report_path.write_text("# probe_sys_tool_original_chars\n\nno sessions found\n", encoding="utf-8")
-        print(f"no sessions found; report written to {report_path}")
+        print_no_sessions_found(report_path)
         return
-    lines = [
-        "# probe_sys_tool_original_chars",
-        "",
-        f"Run {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')} against {len(stems)} sessions "
-        f"under `{dual_log_dir}`.",
-        "",
-    ]
-    lines = update_lines(lines, stems)
-    lines = update_lines_2(lines, stems)
-    lines = update_lines_3(lines, stems)
-    lines = update_lines_4(lines, stems)
+    lines = compute_lines(stems, dual_log_dir)
+    lines = append_whole_tool_coverage(lines, stems)
+    lines = append_tool_content_stability(lines, stems)
+    lines = append_system_stability(lines, stems)
+    lines = append_recording_pattern(lines, stems)
     write_report_text(report_path, lines)
-    print(f"report written to {report_path}")
+    print_report_written_to(report_path)
     _report_skipped_lines()
 
 
@@ -68,7 +62,21 @@ def compute_report_path():
     return REPORT_DIR / f"probe_sys_tool_original_chars_{date.today().isoformat()}.md"
 
 
-def update_lines(lines, stems):
+def print_no_sessions_found(report_path):
+    print(f"no sessions found; report written to {report_path}")
+
+
+def compute_lines(stems, dual_log_dir):
+    return [
+        "# probe_sys_tool_original_chars",
+        "",
+        f"Run {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')} against {len(stems)} sessions "
+        f"under `{dual_log_dir}`.",
+        "",
+    ]
+
+
+def append_whole_tool_coverage(lines, stems):
     lines += _measure_whole_tool_coverage(stems)
     return lines
 
@@ -149,7 +157,7 @@ def _infer_family(model: str) -> str:
     return "opus"
 
 
-def update_lines_2(lines, stems):
+def append_tool_content_stability(lines, stems):
     lines += _measure_tool_content_stability(stems)
     return lines
 
@@ -191,7 +199,7 @@ def _delta_hash(element) -> str:
     return hashlib.md5(json.dumps(element, sort_keys=True).encode("utf-8")).hexdigest()[:10]
 
 
-def update_lines_3(lines, stems):
+def append_system_stability(lines, stems):
     lines += _measure_system_stability(stems)
     return lines
 
@@ -231,7 +239,7 @@ def _measure_system_stability(stems: list) -> list:
     return lines
 
 
-def update_lines_4(lines, stems):
+def append_recording_pattern(lines, stems):
     lines += _measure_recording_pattern(stems)
     return lines
 
@@ -278,6 +286,10 @@ def _measure_recording_pattern(stems: list) -> list:
 
 def write_report_text(report_path, lines):
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def print_report_written_to(report_path):
+    print(f"report written to {report_path}")
 
 
 def _report_skipped_lines() -> None:

@@ -1,10 +1,18 @@
 # INFRASTRUCTURE
+import json
 import re
 import sys
 from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
+from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
+from src.proxy_display.dual_log_accumulator import accumulate_dual_log
+from src.proxy_display.render_messages import render_messages
+from src.proxy_display.render_turn import _resolve_prev_same_family
+from src.proxy_display import render_messages as rm
+from src.proxy_display.proxy_badge import badge_flags
+from src.proxy_display.proxy_badge import _msg_delta_entry_is_substantial
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -29,16 +37,16 @@ _ACC_KEYS = ('system', 'tools', 'messages', 'fields', '_has_content_by_flow_id',
 def main() -> None:
     stems = compute_stems()
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# No-prepend probe — the expanded body is the request payload delta only', '']
+    lines = compute_lines()
     lines.append('The out-of-window flow-extra prepend was removed on 2026-08-30. These invariants')
     lines.append('are self-contained: there is no pre-change rendering left to diff against, and')
     lines.append('counts are reported rather than asserted so log growth cannot break them.')
     lines.append('')
-    all_pass = True
+    all_pass = compute_all_pass()
     lines, all_pass = collect_lines(stems, lines, all_pass)
     run_append(lines, all_pass)
     write_report_text(lines)
-    print(f'\nReport written: {REPORT_PATH}')
+    print_report_written()
     print_all_pass(all_pass)
     exit_with_status(all_pass)
 
@@ -47,6 +55,14 @@ def main() -> None:
 
 def compute_stems():
     return sys.argv[1:] or list(DEFAULT_STEMS)
+
+
+def compute_lines():
+    return ['# No-prepend probe — the expanded body is the request payload delta only', '']
+
+
+def compute_all_pass():
+    return True
 
 
 def collect_lines(stems, lines, all_pass):
@@ -114,8 +130,6 @@ def _check_session(stem: str) -> tuple:
 
 
 def _load_session(stem: str) -> list:
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
-    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     entries, _ = _parse_forwarded_log(LOG_DIR / f'{stem}_forwarded.jsonl', 0, {}, keep_last=None)
     acc_s: dict = {}
     acc_i: dict = {}
@@ -136,8 +150,6 @@ def _load_session(stem: str) -> list:
 
 
 def _render_all(entries: list) -> dict:
-    from src.proxy_display.render_messages import render_messages
-    from src.proxy_display.render_turn import _resolve_prev_same_family
     out: dict = {}
     for idx, entry in enumerate(entries):
         if entry.get('messages') is None:
@@ -186,7 +198,6 @@ def _header_indices(body: str) -> list:
 
 
 def _removed_symbols_absent() -> tuple:
-    from src.proxy_display import render_messages as rm
     gone = [name for name in ('_render_flow_extra_messages', '_own_msgs') if hasattr(rm, name)]
     src = (WORKTREE_ROOT / 'src' / 'proxy_display' / 'parser.py').read_text()
     acc_key = '_msg_idx_sub_by_flow_id' in src
@@ -194,7 +205,6 @@ def _removed_symbols_absent() -> tuple:
 
 
 def _badge_silence_stats(entries: list, rendered: dict, stem: str) -> tuple:
-    from src.proxy_display.proxy_badge import badge_flags
     badges = {idx: badge_flags(entries[idx]) for idx in rendered}
     verdicts = _substantial_touches(stem)
     with_outside = [idx for idx, (_b, _s, outside) in rendered.items() if outside]
@@ -208,8 +218,6 @@ def _badge_silence_stats(entries: list, rendered: dict, stem: str) -> tuple:
 
 
 def _substantial_touches(stem: str) -> dict:
-    import json
-    from src.proxy_display.proxy_badge import _msg_delta_entry_is_substantial
     verdicts: dict = {}
     for side, is_injected in (('stripped', False), ('injected', True)):
         for raw in (LOG_DIR / f'{stem}_{side}.jsonl').read_text(encoding='utf-8').splitlines():
@@ -261,6 +269,10 @@ def run_append(lines, all_pass):
 
 def write_report_text(lines):
     REPORT_PATH.write_text('\n'.join(lines) + '\n')
+
+
+def print_report_written():
+    print(f'\nReport written: {REPORT_PATH}')
 
 
 def print_all_pass(all_pass):

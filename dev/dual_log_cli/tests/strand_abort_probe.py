@@ -19,12 +19,16 @@ _STRAND_LIST_HEAD = "_STRANDS = [\n"
 # ORCHESTRATOR
 
 def strand_abort_probe_workflow() -> int:
-    targets = parse_targets(sys.argv[1:])
+    targets = compute_targets()
     verdicts = compute_verdicts(targets)
     return report_verdicts(verdicts)
 
 
 # FUNCTIONS
+
+def compute_targets():
+    return parse_targets(sys.argv[1:])
+
 
 def parse_targets(argv: list) -> list:
     if not argv:

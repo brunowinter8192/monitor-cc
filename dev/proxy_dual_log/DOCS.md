@@ -23,7 +23,7 @@ Converted suites run as parallel strands through the strand runner in `dev/refac
 
 ---
 
-### tt_delta_skip_replay.py (282 LOC)
+### tt_delta_skip_replay.py (281 LOC)
 
 **Purpose:** Replays an original log through the real modification, delta-build and accumulator pipeline to prove the token-badge suppression fix.
 **Reads:** one stem's original, stripped and injected logs under the main checkout's dual log.
@@ -33,7 +33,7 @@ Converted suites run as parallel strands through the strand runner in `dev/refac
 
 ---
 
-### diff_strip_inject.py (265 LOC)
+### diff_strip_inject.py (263 LOC)
 
 **Purpose:** Span-level strip/inject diff of an original versus forwarded log pair, classifying spans as equal, stripped or injected.
 **Reads:** an original and forwarded log pair.
@@ -53,7 +53,7 @@ Converted suites run as parallel strands through the strand runner in `dev/refac
 
 ---
 
-### proxy_176_strip_tests.py (171 LOC)
+### proxy_176_strip_tests.py (170 LOC)
 
 **Purpose:** Unit tests for two CC 2.1.176 proxy drift fixes: the Workflow tool blocklist entry and the system-role message strip.
 **Reads:** nothing; synthetic fixture text.

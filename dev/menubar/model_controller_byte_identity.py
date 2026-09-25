@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from Foundation import NSObject
 
 _REAL_PROXY_RULES = Path.home() / '.claude' / 'shared-rules' / 'proxy_rules.json'
 
@@ -26,7 +27,7 @@ _SYNTHETIC_RULES = '''{
 def main():
     mc = _import_model_controller()
     ms = _import_model_selection()
-    print(f'PERSISTENCE_HASH: {_hash_persistence(ms)}')
+    print_persistence_hash(ms)
     guarded_print(mc)
 
 
@@ -38,6 +39,10 @@ def _import_model_controller():
 
 def _import_model_selection():
     return importlib.import_module('.'.join(['src', 'menubar', 'model_selection']))
+
+
+def print_persistence_hash(ms):
+    print(f'PERSISTENCE_HASH: {_hash_persistence(ms)}')
 
 
 def _hash_persistence(ms) -> str:
@@ -91,7 +96,6 @@ def guarded_print(mc):
 
 
 def _hash_ui(mc) -> str:
-    from Foundation import NSObject
 
     class _FakePanelController(NSObject):
         pass
@@ -147,7 +151,6 @@ def _safe_call(obj, method_name: str):
 
 
 def _smoke_import_and_open(mc) -> None:
-    from Foundation import NSObject
 
     class _FakePanelController(NSObject):
         pass

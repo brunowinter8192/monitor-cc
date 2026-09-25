@@ -7,6 +7,11 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from src.proxy.rules import apply_modification_rules
+from src.proxy.cache import _strip_all_cache_control, _set_cache_breakpoints
+from src.proxy.logging import _build_forwarded_delta, _build_errors_entries
+from src.proxy.strip_inject_delta import _build_stripped_injected_deltas
+from src.proxy.message_summary import _summarize_message
 
 _MAIN_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 _PREFIX_LINES = 60
@@ -23,10 +28,10 @@ def main():
     payloads = _load_payloads(orig_path)
     digest = hashlib.sha256()
     process_worker_contexts(payloads, digest)
-    print(f'source: {orig_path.name}')
-    print(f'payloads: {len(payloads)}')
+    print_source(orig_path)
+    print_payloads(payloads)
     _report_skipped_lines()
-    print(f'HASH: {digest.hexdigest()}')
+    print_hash(digest)
 
 
 # FUNCTIONS
@@ -72,11 +77,6 @@ def process_worker_contexts(payloads, digest):
 
 
 def _hash_pipeline_run(payloads: list, worker_context: str, digest) -> None:
-    from src.proxy.rules import apply_modification_rules
-    from src.proxy.cache import _strip_all_cache_control, _set_cache_breakpoints
-    from src.proxy.logging import _build_forwarded_delta, _build_errors_entries
-    from src.proxy.strip_inject_delta import _build_stripped_injected_deltas
-    from src.proxy.message_summary import _summarize_message
 
     prev_mod_messages = None
     prev_delta_hashes = None
@@ -134,8 +134,20 @@ def _normalize_for_hash(obj):
     return obj
 
 
+def print_source(orig_path):
+    print(f'source: {orig_path.name}')
+
+
+def print_payloads(payloads):
+    print(f'payloads: {len(payloads)}')
+
+
 def _report_skipped_lines() -> None:
     print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
+
+def print_hash(digest):
+    print(f'HASH: {digest.hexdigest()}')
 
 
 if __name__ == '__main__':

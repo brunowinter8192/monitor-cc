@@ -23,7 +23,7 @@ def replay_sn_notice_strip_workflow():
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUT_FILE.write_text(report)
     print(report)
-    print(f'\nWritten to {OUT_FILE}')
+    print_written_to()
     if stats['byte_exact_failures']:
         sys.exit(1)
 
@@ -196,6 +196,10 @@ def render_report(stats):
                   'untouched message (including all tool_result/mid-content data occurrences) is provably unmodified.')
     lines.append('')
     return '\n'.join(lines)
+
+
+def print_written_to():
+    print(f'\nWritten to {OUT_FILE}')
 
 
 if __name__ == '__main__':

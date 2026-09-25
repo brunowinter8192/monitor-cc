@@ -25,7 +25,7 @@ def verify_four_tab_ring_workflow() -> None:
     launch_controller = _imp('src.menubar.launch_controller')
     panel_lifecycle = _imp('src.menubar.panel_lifecycle')
 
-    lines = ["# Four-tab ring verification", ""]
+    lines = compute_lines()
 
     app = _FakeApp(panel_manager, rag_controller, model_controller, launch_controller)
 
@@ -44,6 +44,10 @@ def verify_four_tab_ring_workflow() -> None:
 
 def _imp(module_name: str):
     return importlib.import_module(module_name)
+
+
+def compute_lines():
+    return ["# Four-tab ring verification", ""]
 
 
 class _FakeApp:

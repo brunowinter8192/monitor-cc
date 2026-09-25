@@ -11,7 +11,7 @@ The parent starts one subprocess per case, each case patches subprocess calls or
 
 ## Modules
 
-### test_worker_probes.py (126 LOC)
+### test_worker_probes.py (130 LOC)
 
 **Purpose:** Four parallel strands: selection write failure logged, selection read swallows only a missing file, worker status probe states, worker list carries no model field.
 **Reads:** fakes only; an env var selects the source tree so the file can run against an older tree.

@@ -20,14 +20,26 @@ _WORKERS = [
 # ORCHESTRATOR
 
 def drive_workflow() -> None:
-    monitor = importlib.import_module(f'{_ROOT_PKG}.core.monitor')
+    monitor = compute_monitor()
     monitor.active_project_filter = PROJECT_FILTER
     if PANE in ('worker_tokens', 'worker_proxy'):
-        importlib.import_module(f'{_ROOT_PKG}.workers.worker_selection')._write_selection(PROJECT_FILTER, 'w1')
-    seed_and_run()[PANE]()
+        run_write_selection()
+    run_seed_and_run()
 
 
 # FUNCTIONS
+
+def compute_monitor():
+    return importlib.import_module(f'{_ROOT_PKG}.core.monitor')
+
+
+def run_write_selection():
+    importlib.import_module(f'{_ROOT_PKG}.workers.worker_selection')._write_selection(PROJECT_FILTER, 'w1')
+
+
+def run_seed_and_run():
+    seed_and_run()[PANE]()
+
 
 def seed_and_run():
     return {

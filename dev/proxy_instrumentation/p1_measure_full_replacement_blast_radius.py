@@ -26,16 +26,20 @@ EXCLUDED_FILES = {
 
 def main():
     records = []
-    total_requests = 0
+    total_requests = compute_total_requests()
     total_requests = collect_total_requests(total_requests, records)
     report = _build_report(records, total_requests, CORPUS_FILES, EXCLUDED_FILES)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = compute_out_path()
     out_path.write_text(report, encoding='utf-8')
-    print(f'wrote {out_path} — {len(records)} ops captured, {total_requests} requests scanned')
+    print_wrote(out_path, records, total_requests)
 
 
 # FUNCTIONS
+
+def compute_total_requests():
+    return 0
+
 
 def collect_total_requests(total_requests, records):
     for fname in CORPUS_FILES:
@@ -47,6 +51,10 @@ def collect_total_requests(total_requests, records):
 
 def compute_out_path():
     return REPORT_DIR / 'full_replacement_blast_radius_20260729.md'
+
+
+def print_wrote(out_path, records, total_requests):
+    print(f'wrote {out_path} — {len(records)} ops captured, {total_requests} requests scanned')
 
 
 if __name__ == '__main__':

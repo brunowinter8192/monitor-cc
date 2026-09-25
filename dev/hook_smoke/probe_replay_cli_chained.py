@@ -31,12 +31,12 @@ def probe_replay_cli_chained_workflow() -> None:
 
     total_block = compute_total_block(results)
     total_pass = compute_total_pass(results)
-    print(f"Replayed {len(records)} historical block fires from {log_path}")
+    print_replayed(records, log_path)
     print_old_hooks(results)
-    print(f"TOTAL: {total_block} still block, {total_pass} now pass")
+    print_total(total_block, total_pass)
 
     _write_report(log_path, results, total_block, total_pass)
-    print(f"Report: {_REPORT_PATH}")
+    print_report()
 
 
 # FUNCTIONS
@@ -93,10 +93,18 @@ def compute_total_pass(results):
     return sum(len(r["pass"]) for r in results.values())
 
 
+def print_replayed(records, log_path):
+    print(f"Replayed {len(records)} historical block fires from {log_path}")
+
+
 def print_old_hooks(results):
     for hook in _OLD_HOOKS:
         r = results[hook]
         print(f"  {hook}: {len(r['block'])} still block, {len(r['pass'])} now pass")
+
+
+def print_total(total_block, total_pass):
+    print(f"TOTAL: {total_block} still block, {total_pass} now pass")
 
 
 def _write_report(log_path: str, results: dict, total_block: int, total_pass: int) -> None:
@@ -133,6 +141,10 @@ def _write_report(log_path: str, results: dict, total_block: int, total_pass: in
             lines.append("")
     with open(_REPORT_PATH, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
+
+
+def print_report():
+    print(f"Report: {_REPORT_PATH}")
 
 
 if __name__ == "__main__":

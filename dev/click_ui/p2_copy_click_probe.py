@@ -9,6 +9,7 @@ from types import SimpleNamespace
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 os.environ.setdefault('MONITOR_CC_ROOT', str(WORKTREE_ROOT))
+from src.format.turn_cache import new_turn_cache
 
 _ROOT_PKG = 'src'
 mod_tokens = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
@@ -110,7 +111,6 @@ def _patch_clipboard(mod):
 
 
 def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
     return new_turn_cache()
 
 

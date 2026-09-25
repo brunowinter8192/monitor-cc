@@ -6,6 +6,8 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
+from src.proxy.rules import apply_modification_rules
+from src.proxy.diff_engine import compose_block, _get_inner_text
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -30,9 +32,9 @@ KNOWN_PAYLOAD_KEYS = {
 
 def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# Surface 2 — dual_log integrity + schema drift (issue #63, CC 2.1.223)', '']
+    lines = compute_lines()
 
-    total_checks = 0
+    total_checks = compute_total_checks()
     failures = []
     keys_seen, sys_shapes_seen, block_types_seen = set(), set(), set()
     sample_payload_by_key: dict = {}
@@ -53,11 +55,19 @@ def main() -> None:
     lines.extend(verdict_lines)
 
     REPORT_PATH.write_text('\n'.join(lines))
-    print(f'Report written: {REPORT_PATH}')
+    print_report_written()
     print_verdict(verdict, total_fail_inv1, total_fail_inv2, total_checks, new_keys, keys_dropped, new_block_types)
 
 
 # FUNCTIONS
+
+def compute_lines():
+    return ['# Surface 2 — dual_log integrity + schema drift (issue #63, CC 2.1.223)', '']
+
+
+def compute_total_checks():
+    return 0
+
 
 def collect_total_checks(keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key, lines, total_checks, failures):
     for tag, stem in SESSIONS:
@@ -108,8 +118,6 @@ def _load_session_requests(stem: str) -> list:
 
 
 def _check_composition(payload: dict) -> tuple:
-    from src.proxy.rules import apply_modification_rules
-    from src.proxy.diff_engine import compose_block, _get_inner_text
 
     result = apply_modification_rules(payload, 'opus', '', 'main')
     modified_payload, _mods, _os2, _smi, _smo, _smr, _ima, all_ops = result
@@ -210,7 +218,6 @@ def _pass_through_section_lines(new_keys, sample_payload_by_key):
 
 
 def _verify_unknown_keys_pass_through(new_keys: set, requests_by_key: dict) -> dict:
-    from src.proxy.rules import apply_modification_rules
     results = {}
     for key in new_keys:
         payload = requests_by_key.get(key)
@@ -241,6 +248,10 @@ def _overall_verdict_lines(total_fail_inv1, total_fail_inv2, total_checks, new_k
                  + (f' — **DROPPED, real finding**: {keys_dropped}' if keys_dropped else ''))
     lines.append(f'- New content-block types: {"CLEAN (none)" if not new_block_types else f"FINDING: {sorted(new_block_types)} not in message_summary.py\'s handled set (falls through to its generic json.dumps summary — display-only gap, not a strip-pipeline correctness issue; composition invariant above already confirms no pass mishandles these blocks)"}')
     return lines, verdict, keys_dropped
+
+
+def print_report_written():
+    print(f'Report written: {REPORT_PATH}')
 
 
 def print_verdict(verdict, total_fail_inv1, total_fail_inv2, total_checks, new_keys, keys_dropped, new_block_types):

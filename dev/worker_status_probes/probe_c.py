@@ -18,10 +18,10 @@ def probe_c_workflow():
     args = _parse_args()
     Path(args.outfile).parent.mkdir(parents=True, exist_ok=True)
     atexit.register(_cleanup_all)
-    install_signal_handler()
-    install_signal_handler_2()
+    install_sigterm_exit_handler()
+    install_sigint_exit_handler()
     _run_probe(args.sessions, args.duration, args.outfile)
-    print(f"[probe_c] done → {args.outfile}")
+    print_probe_c_done(args)
 
 
 # FUNCTIONS
@@ -55,11 +55,11 @@ def _stop_control_client(session):
         proc.wait()
 
 
-def install_signal_handler():
+def install_sigterm_exit_handler():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
 
-def install_signal_handler_2():
+def install_sigint_exit_handler():
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 
@@ -150,6 +150,10 @@ def _parse_output_event(line):
                 payload = payload[2:]
             return parts[0], payload
     return None, None
+
+
+def print_probe_c_done(args):
+    print(f"[probe_c] done → {args.outfile}")
 
 
 if __name__ == "__main__":

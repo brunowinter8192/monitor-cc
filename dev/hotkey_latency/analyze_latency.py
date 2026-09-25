@@ -30,8 +30,8 @@ def main() -> None:
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     out_path = compute_out_path(stamp)
     out_path.write_text(report, encoding='utf-8')
-    print(f'ticks={len(ticks)} bg_refreshes={len(bg_refreshes)} hotkeys={len(hotkeys)} focuses={len(focuses)}')
-    print(f'report written to {out_path}')
+    print_ticks(ticks, bg_refreshes, hotkeys, focuses)
+    print_report_written_to(out_path)
 
 
 # FUNCTIONS
@@ -152,6 +152,14 @@ def _focus_section(focuses: List[dict]) -> str:
 
 def compute_out_path(stamp):
     return REPORT_DIR / f'latency_report_{stamp}.md'
+
+
+def print_ticks(ticks, bg_refreshes, hotkeys, focuses):
+    print(f'ticks={len(ticks)} bg_refreshes={len(bg_refreshes)} hotkeys={len(hotkeys)} focuses={len(focuses)}')
+
+
+def print_report_written_to(out_path):
+    print(f'report written to {out_path}')
 
 
 if __name__ == '__main__':

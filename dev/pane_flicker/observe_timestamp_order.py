@@ -5,6 +5,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from src.jsonl import read_json_records, extract_cache_turns
 
 _MAIN_LOGS = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs')
 _PROJECTS = Path.home() / '.claude' / 'projects'
@@ -17,15 +18,15 @@ _SKIPPED_LINES = 0
 
 def main():
     rows = []
-    rows = update_rows(rows)
-    rows = update_rows_2(rows)
+    rows = append_forwarded_rows(rows)
+    rows = append_transcript_rows(rows)
     _write_report(rows)
     _report_skipped_lines()
 
 
 # FUNCTIONS
 
-def update_rows(rows):
+def append_forwarded_rows(rows):
     rows += [_check_forwarded(p) for p in sorted(_MAIN_LOGS.rglob('*_forwarded.jsonl'))]
     return rows
 
@@ -55,13 +56,12 @@ def _first_disorder(stamps: list):
     return None
 
 
-def update_rows_2(rows):
+def append_transcript_rows(rows):
     rows += [_check_transcript(p) for p in sorted(_PROJECTS.rglob('*.jsonl')) if 'subagents' not in p.parts]
     return rows
 
 
 def _check_transcript(path: Path) -> tuple:
-    from src.jsonl import read_json_records, extract_cache_turns
     try:
         messages, _ = read_json_records(path, 0)
         turns = extract_cache_turns(messages)

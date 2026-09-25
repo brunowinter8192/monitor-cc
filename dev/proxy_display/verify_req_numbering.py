@@ -5,6 +5,16 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from src.proxy_display.forwarded_parser import _parse_forwarded_log
+from src.proxy_display.proxy_pane_shared import _accumulate_request_ids
+from src.dual_log_cli.usage import _find_transcript
+from src.panes.cache_turns import build_cache_turns
+from src.proxy_display.format import format_proxy_block
+from src.proxy_display.turn_cache import TurnCache
+from src.utils import _ANSI_ESCAPE_RE
+from src.format.token_format import format_cache_tracker
+from src.format.turn_cache import new_turn_cache
+from src.utils import _cell_width
 
 _LOG_DIR = Path("/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log")
 _PROJECTS_ROOT = Path("~/.claude/projects").expanduser()
@@ -28,8 +38,6 @@ def verify_workflow(stem: str, turn_number: int) -> None:
 # FUNCTIONS
 
 def _load_proxy_side(stem: str) -> tuple:
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log
-    from src.proxy_display.proxy_pane_shared import _accumulate_request_ids
     entries, _ = _parse_forwarded_log(_LOG_DIR / f"{stem}_forwarded.jsonl", 0, {}, keep_last=None)
     request_id_by_flow = {}
     _accumulate_request_ids(_LOG_DIR / f"{stem}_response.jsonl", 0, request_id_by_flow)
@@ -37,8 +45,6 @@ def _load_proxy_side(stem: str) -> tuple:
 
 
 def _load_turns(request_id_by_flow: dict) -> list:
-    from src.dual_log_cli.usage import _find_transcript
-    from src.panes.cache_turns import build_cache_turns
     directories = [path for path in _PROJECTS_ROOT.iterdir() if path.is_dir()]
     transcript = next(path for path in (_find_transcript(rid, directories) for rid in request_id_by_flow.values()) if path)
     turns, _ = build_cache_turns(transcript, 0, [])
@@ -46,29 +52,24 @@ def _load_turns(request_id_by_flow: dict) -> list:
 
 
 def _proxy_plain_lines(entries: list, turns: list, request_id_by_flow: dict) -> list:
-    from src.proxy_display.format import format_proxy_block
     ansi, _ = format_proxy_block(entries, {}, None, None, 100000, _PANE_WIDTH, 0, turns, request_id_by_flow=request_id_by_flow, turn_cache=_turn_cache())
     return _plain(ansi)
 
 
 def _turn_cache():
-    from src.proxy_display.turn_cache import TurnCache
     return TurnCache()
 
 
 def _plain(ansi: str) -> list:
-    from src.utils import _ANSI_ESCAPE_RE
     return [_ANSI_ESCAPE_RE.sub("", line).replace("\x1b[K", "").rstrip() for line in ansi.split("\n")]
 
 
 def _token_plain_lines(turns: list) -> list:
-    from src.format.token_format import format_cache_tracker
     lines, _keys, _sticky, _start, _count = format_cache_tracker(turns, {}, 100000, _PANE_WIDTH, 0, turn_cache=_token_turn_cache())
     return _plain("\n".join(lines))
 
 
 def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
     return new_turn_cache()
 
 
@@ -132,12 +133,10 @@ def _side_by_side(left: list, right: list) -> list:
 
 
 def _pad_cells(text: str, width: int) -> str:
-    from src.utils import _cell_width
     return text + " " * (width - sum(_cell_width(ch) for ch in text))
 
 
 def _cut_cells(text: str, width: int) -> str:
-    from src.utils import _cell_width
     used = 0
     for i, ch in enumerate(text):
         used += _cell_width(ch)

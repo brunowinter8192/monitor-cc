@@ -21,7 +21,7 @@ A running pane process registers a SIGUSR1 handler at startup. Sending the signa
 
 ---
 
-### dump_byte_identity.py (89 LOC)
+### dump_byte_identity.py (93 LOC)
 
 **Purpose:** Verification aid, not a test: registers a fake pane, signals itself, normalizes the dump's non-deterministic lines and hashes the rest.
 **Reads:** its own freshly written dump file under `dumps/`.

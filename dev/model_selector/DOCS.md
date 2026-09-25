@@ -11,7 +11,7 @@ Synthetic payloads, temp paths or in-memory fixtures go in. Each script drives r
 
 ## Modules
 
-### verify_hook_writer_split.py (85 LOC)
+### verify_hook_writer_split.py (89 LOC)
 
 **Purpose:** Regression guard for the hook-state half of the menubar hook writer: status transitions and no queue-file side effect.
 **Reads:** nothing persistent; builds its own temp dir.
@@ -31,7 +31,7 @@ Synthetic payloads, temp paths or in-memory fixtures go in. Each script drives r
 
 ---
 
-### verify_four_tab_ring.py (148 LOC)
+### verify_four_tab_ring.py (152 LOC)
 
 **Purpose:** Regression guard for the four-tab keyboard ring, driving the real unmocked ring functions against a fake app wrapping real panel controllers.
 **Reads:** nothing persistent; HOME is redirected to a temp dir.
@@ -51,7 +51,7 @@ Synthetic payloads, temp paths or in-memory fixtures go in. Each script drives r
 
 ---
 
-### verify_hook17_removal.py (96 LOC)
+### verify_hook17_removal.py (100 LOC)
 
 **Purpose:** Confirms a retired hook's removal: file gone, no longer registered, stale-hook sweep removes a dead entry and keeps a live one.
 **Reads:** nothing persistent; synthetic dict.

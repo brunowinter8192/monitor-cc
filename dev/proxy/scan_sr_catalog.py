@@ -45,16 +45,16 @@ def scan_sr_catalog_workflow():
     print('Scanning logs...', flush=True)
     total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr = scan_all_logs()
 
-    print(f'Done. {len(logs)} logs, {total_entries} entries.')
-    print(f'  Stripped SR templates: {len(stripped_sr)}')
+    print_done(logs, total_entries)
+    print_stripped_sr_templates(stripped_sr)
     print_false_positives(false_positives)
     print_missed_srs(missed_sr)
-    print(f'  TNs stripped: {stripped_tn["count"]}')
+    print_tns_stripped(stripped_tn)
     _report_skipped_lines()
 
     report = write_report(total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr)
     OUT_FILE.write_text(report, encoding='utf-8')
-    print(f'\nReport: {OUT_FILE}')
+    print_report()
 
 
 # FUNCTIONS
@@ -218,12 +218,24 @@ def _note_skipped_line() -> None:
     _SKIPPED_LINES += 1
 
 
+def print_done(logs, total_entries):
+    print(f'Done. {len(logs)} logs, {total_entries} entries.')
+
+
+def print_stripped_sr_templates(stripped_sr):
+    print(f'  Stripped SR templates: {len(stripped_sr)}')
+
+
 def print_false_positives(false_positives):
     print(f'  False positives: {sum(d["count"] for d in false_positives.values())}')
 
 
 def print_missed_srs(missed_sr):
     print(f'  Missed SRs: {sum(d["count"] for d in missed_sr.values())}')
+
+
+def print_tns_stripped(stripped_tn):
+    print(f'  TNs stripped: {stripped_tn["count"]}')
 
 
 def _report_skipped_lines() -> None:
@@ -321,6 +333,10 @@ def _render_tn_and_summary_lines(stripped_tn: dict, stripped_sr: dict, total_fp:
     lines.append(f'| Missed SRs (reached Claude) | {total_missed} |\n')
     lines.append(f'| TN blocks stripped | {stripped_tn["count"]} |\n')
     return lines
+
+
+def print_report():
+    print(f'\nReport: {OUT_FILE}')
 
 
 if __name__ == '__main__':

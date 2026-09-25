@@ -116,7 +116,7 @@ detected rebuild.
 
 ---
 
-### 04_cache_validation.py (173 LOC)
+### 04_cache_validation.py (189 LOC)
 
 **Purpose:** Validates proxy-side cache breakpoint placement and stability — per request, shows
 breakpoint positions, modified messages, and stability between requests.
@@ -127,7 +127,7 @@ breakpoint positions, modified messages, and stability between requests.
 
 ---
 
-### 05_req_breakdown.py (65 LOC)
+### 05_req_breakdown.py (73 LOC)
 
 **Purpose:** Entry point — forensic per-segment token attribution for one API request, comparing
 `tiktoken` estimates against session-JSONL ground truth.
@@ -184,7 +184,7 @@ attribution, rule-edit correlation, conclusion).
 
 ---
 
-### 06_char_token_ratio.py (31 LOC)
+### 06_char_token_ratio.py (46 LOC)
 
 **Purpose:** Entry point — single-session Opus char-to-token ratio analysis plus a tiktoken
 drift comparison; auto-detects the newest proxy log and session JSONL.
@@ -229,7 +229,7 @@ drift estimate per request.
 
 ---
 
-### 07_quartet_prefix_diff.py (97 LOC)
+### 07_quartet_prefix_diff.py (105 LOC)
 
 **Purpose:** Entry point — forensic per-segment prefix diff for cache rebuilds: replays the
 `_forwarded` dual-log delta chain and diffs consecutive requests.

@@ -11,7 +11,7 @@ The test loads a synthetic fixture corpus and asserts the two composition invari
 
 ## Modules
 
-### test_composition_invariant.py (121 LOC)
+### test_composition_invariant.py (137 LOC)
 
 **Purpose:** Regression test asserting the two composition invariants for every modified block of a synthetic corpus.
 **Reads:** `fixtures/invariant_corpus.jsonl` at the area root, not in this subfolder.
@@ -21,7 +21,7 @@ The test loads a synthetic fixture corpus and asserts the two composition invari
 
 ---
 
-### composition_probe.py (230 LOC)
+### composition_probe.py (229 LOC)
 
 **Purpose:** CLI entry point proving multi-pass span composition over the original content and validating two reconstruction invariants.
 **Reads:** the dual-log corpus present at run time.

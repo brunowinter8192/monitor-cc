@@ -21,7 +21,7 @@ The probe takes no data in: it registers a live hotkey and prints a delay per ke
 
 ---
 
-### analyze_latency.py (158 LOC)
+### analyze_latency.py (166 LOC)
 
 **Purpose:** Parses the menubar log's latency lines into tick, hotkey and focus buckets and writes a distribution report.
 **Reads:** the menubar log (default path from `src.menubar`, override via first argument).

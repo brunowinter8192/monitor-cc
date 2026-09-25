@@ -49,8 +49,8 @@ def main() -> None:
     path = compute_path()
     path.write_text(text, encoding='utf-8')
     print(text)
-    print(f'report: {path}')
-    if check_condition(results):
+    print_report(path)
+    if any_case_failed(results):
         sys.exit(1)
 
 
@@ -106,7 +106,11 @@ def compute_path():
     return _REPORT_DIR / f'{Path(__file__).stem}.md'
 
 
-def check_condition(results):
+def print_report(path):
+    print(f'report: {path}')
+
+
+def any_case_failed(results):
     return any(not r['ok'] for r in results)
 
 

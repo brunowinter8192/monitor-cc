@@ -35,7 +35,7 @@ def main() -> None:
     perms = permission_state()
     results = _run_cycles(targets, home_space, ids, args.method)
     path = write_report(__file__, _build_report(results, perms, home_idx, args.method))
-    print(f'report: {path}')
+    print_report(path)
 
 
 # FUNCTIONS
@@ -194,6 +194,10 @@ def _build_report(results: List[dict], perms: Dict[str, bool], home_idx: int, me
 
 def _fmt_ms(v: Optional[float]) -> str:
     return f'{v:.0f}' if v is not None else '-'
+
+
+def print_report(path):
+    print(f'report: {path}')
 
 
 if __name__ == '__main__':

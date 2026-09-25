@@ -28,14 +28,14 @@ _SKIPPED_LINES = 0
 def main():
     print('Running replay validation...', flush=True)
     result = scan_all()
-    print(f'Done. {result["total_entries"]} entries in {result["total_logs"]} logs.')
-    print(f'Part A: FPs_old={result["fps_old"]}, FPs_new={result["fps_new"]} | Real_old={result["real_old"]}, drops={result["real_new_drops"]}')
-    print(f'Part B: Missed_old={result["missed_old"]}, now_stripped={result["now_stripped"]}, still_missed={result["still_missed"]}')
+    print_done(result)
+    print_part_a_fps(result)
+    print_part_b_missed(result)
     _report_skipped_lines()
 
     report = write_report(result)
     OUT_FILE.write_text(report)
-    print(f'\nReport: {OUT_FILE}')
+    print_report()
 
     failed = _failures(result)
     if failed:
@@ -169,6 +169,18 @@ def _note_skipped_line() -> None:
     _SKIPPED_LINES += 1
 
 
+def print_done(result):
+    print(f'Done. {result["total_entries"]} entries in {result["total_logs"]} logs.')
+
+
+def print_part_a_fps(result):
+    print(f'Part A: FPs_old={result["fps_old"]}, FPs_new={result["fps_new"]} | Real_old={result["real_old"]}, drops={result["real_new_drops"]}')
+
+
+def print_part_b_missed(result):
+    print(f'Part B: Missed_old={result["missed_old"]}, now_stripped={result["now_stripped"]}, still_missed={result["still_missed"]}')
+
+
 def _report_skipped_lines() -> None:
     print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
@@ -216,6 +228,10 @@ def write_report(r):
             lines.append(f'- tid={ex["tid"]}: `{ex["chunk"]}`\n')
 
     return ''.join(lines)
+
+
+def print_report():
+    print(f'\nReport: {OUT_FILE}')
 
 
 def _failures(result: dict) -> list:

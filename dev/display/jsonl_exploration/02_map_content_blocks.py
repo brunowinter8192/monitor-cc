@@ -17,7 +17,7 @@ _SKIPPED_LINES = 0
 
 def main():
     if len(sys.argv) > 1:
-        filepath = Path(sys.argv[1])
+        filepath = compute_filepath()
     else:
         filepath = find_latest_jsonl(DEFAULT_PROJECT)
 
@@ -27,11 +27,15 @@ def main():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     output_path = compute_output_path(timestamp)
     output_path.write_text(report, encoding='utf-8')
-    print(f'Report written to: {output_path}')
+    print_report_written_to(output_path)
     _report_skipped_lines()
 
 
 # FUNCTIONS
+
+def compute_filepath():
+    return Path(sys.argv[1])
+
 
 def find_latest_jsonl(project_name: str = None) -> Path:
     if project_name:
@@ -270,6 +274,10 @@ def _clean_detail_example(example: dict) -> dict:
 
 def compute_output_path(timestamp):
     return REPORTS_DIR / f'content_blocks_{timestamp}.md'
+
+
+def print_report_written_to(output_path):
+    print(f'Report written to: {output_path}')
 
 
 def _report_skipped_lines() -> None:

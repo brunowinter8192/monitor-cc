@@ -41,12 +41,22 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### layout_scan.py (346 LOC)
+### layout_scan.py (336 LOC)
 
-**Purpose:** Scans every module under dev/ against the module layout rules and writes a violation report.
+**Purpose:** Scans every module under dev/ against the module layout rules and writes a violation report without a date, so reruns leave it unchanged.
 **Reads:** all `.py` files under `dev/` and the top-level names of `src/`.
 **Writes:** stdout summary; `md/layout_scan_report.md`, overwritten per run.
 **Called by:** none; manual, exit code 1 while violations exist.
+**Calls out:** none.
+
+---
+
+### layout_scan_imports.py (110 LOC)
+
+**Purpose:** Import rules of the layout scan: relative and bare project imports, and function-local imports that no runtime reason justifies.
+**Reads:** the parsed module handed in by `layout_scan.py`, the top-level names of `src/`.
+**Writes:** nothing; returns findings.
+**Called by:** `layout_scan.py`.
 **Calls out:** none.
 
 ---

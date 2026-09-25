@@ -42,7 +42,7 @@ _NEW_LOCATIONS.update({n: 'src.pane_error_log' for n in _PANE_ERROR_LOG_NAMES})
 
 def main():
     dump = _dump_values(_NAMES)
-    print(f'HASH: {hashlib.sha256(dump.encode()).hexdigest()}')
+    print_hash(dump)
 
 
 # FUNCTIONS
@@ -62,6 +62,10 @@ def _resolve(name: str):
     module_path = _NEW_LOCATIONS.get(name, 'src.constants')
     module = importlib.import_module(module_path)
     return getattr(module, name)
+
+
+def print_hash(dump):
+    print(f'HASH: {hashlib.sha256(dump.encode()).hexdigest()}')
 
 
 if __name__ == '__main__':

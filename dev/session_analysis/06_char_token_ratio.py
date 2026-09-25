@@ -6,13 +6,14 @@ from char_token_ratio_load import (
 from char_token_ratio_compute import compute_ratios, compute_tiktoken_drift
 from char_token_ratio_report import build_report, write_report
 
+
 # ORCHESTRATOR
 
 def main():
     proxy_path = find_latest_proxy_log()
     session_path = find_latest_session_jsonl()
-    print(f"Proxy log:    {proxy_path}")
-    print(f"Session JSONL: {session_path}")
+    print_proxy_log(proxy_path)
+    print_session_jsonl(session_path)
 
     proxy_rows = load_proxy_rows(proxy_path)
     session_events = load_session_events(session_path)
@@ -24,6 +25,20 @@ def main():
     report = build_report(paired, msg_ratios, prefix_ratio, prefix_info, tiktoken_drift, proxy_path, session_path)
     report_path = write_report(report)
     print(report)
+    print_report_written_to(report_path)
+
+
+# FUNCTIONS
+
+def print_proxy_log(proxy_path):
+    print(f"Proxy log:    {proxy_path}")
+
+
+def print_session_jsonl(session_path):
+    print(f"Session JSONL: {session_path}")
+
+
+def print_report_written_to(report_path):
     print(f"\nReport written to: {report_path}")
 
 

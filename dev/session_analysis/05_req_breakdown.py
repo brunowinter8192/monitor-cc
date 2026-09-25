@@ -25,7 +25,7 @@ def main():
     cr, cc, d, out = load_session_ground_truth(session_path, req_n)
     sys_rows, tools_rows, msg_rows, estimate = tokenize_segments(target_entry)
 
-    attribution = None
+    attribution = compute_attribution()
     if prev_proxy_path and cr > 0:
         attribution = compute_prefix_attribution(target_entry, prev_proxy_path, cr, cc)
 
@@ -39,7 +39,7 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_path = compute_report_path(ts, req_n)
     report_path.write_text(report)
-    print(f"Report: {report_path}")
+    print_report(report_path)
 
 
 # FUNCTIONS
@@ -57,8 +57,16 @@ def compute_prev_proxy_path(args):
     return Path(args.prev_proxy_log).expanduser() if args.prev_proxy_log else None
 
 
+def compute_attribution():
+    return None
+
+
 def compute_report_path(ts, req_n):
     return REPORTS_DIR / f"{ts}_req{req_n}.md"
+
+
+def print_report(report_path):
+    print(f"Report: {report_path}")
 
 
 if __name__ == '__main__':

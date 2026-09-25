@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import tempfile
 import hashlib
 import json
 import os
@@ -8,6 +9,10 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 os.environ.setdefault('MONITOR_CC_ROOT', str(_ROOT))
+from src.panes.cache_turns import build_cache_turns
+from src.panes.warnings_render import _format_warnings_pane
+from src.format import format_cache_tracker
+from src.format.turn_cache import new_turn_cache
 
 _FIXTURE_JSONL = Path(__file__).resolve().parent / 'fixtures' / 'session_prefix_300.jsonl'
 _PREFIX_LINES = 300
@@ -22,20 +27,16 @@ def main():
     _hash_cache_turns(digest, build_cache_turns)
     _hash_warnings_pane(digest, format_warnings_pane)
     _hash_format_cache_tracker(digest, format_cache_tracker)
-    print(f'HASH: {digest.hexdigest()}')
+    print_hash(digest)
 
 
 # FUNCTIONS
 
 def _import_panes():
-    from src.panes.cache_turns import build_cache_turns
-    from src.panes.warnings_render import _format_warnings_pane
-    from src.format import format_cache_tracker
     return build_cache_turns, _format_warnings_pane, format_cache_tracker
 
 
 def _hash_cache_turns(digest, build_cache_turns) -> None:
-    import tempfile
     source = _session_jsonl()
     lines = _frozen_prefix_lines(source)
     with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False, encoding='utf-8') as f:
@@ -168,8 +169,11 @@ def _make_rate_limit_turns() -> tuple:
 
 
 def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
     return new_turn_cache()
+
+
+def print_hash(digest):
+    print(f'HASH: {digest.hexdigest()}')
 
 
 if __name__ == '__main__':

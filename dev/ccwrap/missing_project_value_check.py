@@ -11,7 +11,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 def main():
     result = subprocess.run([sys.executable, '-m', 'src.ccwrap', '--project'], cwd=_ROOT, capture_output=True, text=True)
     ok = compute_ok(result)
-    print_project_without_a(ok)
+    print_missing_project_value_verdict(ok)
     exit_with_status(ok)
 
 
@@ -21,7 +21,7 @@ def compute_ok(result):
     return result.returncode == 2 and '--project requires a value' in result.stderr
 
 
-def print_project_without_a(ok):
+def print_missing_project_value_verdict(ok):
     print(('PASS: ' if ok else 'FAIL: ') + '--project without a value exits 2 with a message')
 
 
