@@ -65,7 +65,7 @@ Dedicated tmux pane event loops for the token/cache tracker and the warnings pan
 
 ---
 
-### log_janitor.py (190 LOC)
+### log_janitor.py (202 LOC)
 
 **Purpose:** Registry of the project's log files and the age-based JSONL cleanup triggered from the token pane.
 **Reads:** JSONL files passed in as paths.

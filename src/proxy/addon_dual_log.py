@@ -115,7 +115,7 @@ def _log_4xx_error(flow, errors_log_file: Path) -> None:
         log_proxy_error("addon_dual_log.4xx_request_payload", e)
         req_payload = None
     error_data = {
-        "ts": datetime.now(timezone.utc).isoformat() + "Z",
+        "ts": datetime.now(timezone.utc).isoformat(),
         "status_code": flow.response.status_code,
         "error_response": resp_body,
         "request_url": flow.request.pretty_url,
