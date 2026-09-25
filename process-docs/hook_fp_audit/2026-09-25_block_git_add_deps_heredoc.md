@@ -20,4 +20,4 @@ Observed example 2026-09-25T14:18:01Z: `cat >> process-docs/... <<'EOF'` with `.
 
 ## Tests
 
-`dev/hook_smoke/test_block_git_add_deps.py`: 10 PASS cases (the observed fire-log commands, reduced, plus chained and substring forms) and 8 BLOCK cases (`git add venv/`, `venv`, `.venv`, `node_modules/`, `git -C /repo add venv`, `git add -A venv`, `git add README.md venv/`, `cd /repo && git add node_modules`, and a `git add venv/` after a heredoc). Registered in `run_all.py`; full run 25/25 strands.
+`dev/hook_smoke/test_block_git_add_deps.py`: 10 PASS cases (the observed fire-log commands, reduced, plus chained and substring forms) and 9 BLOCK cases (`git add venv/`, `venv`, `.venv`, `node_modules/`, `git -C /repo add venv`, `git add -A venv`, `git add README.md venv/`, `cd /repo && git add node_modules`, and a `git add venv/` after a heredoc). Registered in `run_all.py`; full run 25/25 strands.
