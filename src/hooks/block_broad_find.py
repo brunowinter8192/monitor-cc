@@ -27,22 +27,30 @@ def block_broad_find_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
+    if _is_violation(command):
+        _block(command, session_id)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _is_violation(command: str) -> bool:
     stripped = _strip_non_shell_active(command)
     segment, after = _find_segment(stripped)
     if segment is None:
-        sys.exit(0)
-    roots = _extract_roots(segment)
-    if not any(_is_broad_root(r) for r in roots):
-        sys.exit(0)
+        return False
+    if not _has_broad_root(_extract_roots(segment)):
+        return False
     if _has_maxdepth(segment):
-        sys.exit(0)
-    if _is_head_bounded(after):
-        sys.exit(0)
+        return False
+    return not _is_head_bounded(after)
+
+def _has_broad_root(roots: list) -> bool:
+    return any(_is_broad_root(r) for r in roots)
+
+def _block(command: str, session_id) -> None:
     print(_BLOCK_MESSAGE, file=sys.stderr, end="")
     log_fire("block_broad_find", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
     sys.exit(2)
-
-# FUNCTIONS
 
 def _parse_command():
     try:

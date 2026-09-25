@@ -42,10 +42,16 @@ def block_rag_cli_document_repeat_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
+    target = _find_repeat_target(command, session_id)
+    if target is not None:
+        _block(command, session_id, target)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _find_repeat_target(command: str, session_id):
     stripped = _strip_non_shell_active(command)
     matches = list(_RAG_RE.finditer(stripped))
-    if not matches:
-        sys.exit(0)
     for m in matches:
         subcommand = m.group(1)
         seg_end = _segment_end(stripped, m.end())
@@ -55,11 +61,8 @@ def block_rag_cli_document_repeat_workflow() -> None:
             continue
         count = _record_and_count(session_id or "", target)
         if count >= _THRESHOLD:
-            _block(command, session_id, target)
-    sys.exit(0)
-
-
-# FUNCTIONS
+            return target
+    return None
 
 def _parse_command():
     try:

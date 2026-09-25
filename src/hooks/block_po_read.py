@@ -29,17 +29,21 @@ def block_po_read_workflow() -> None:
     command, session_id, cwd = _parse_command()
     if command is None:
         sys.exit(0)
-    stripped = _strip_non_shell_active(command)
-    segments = [s for s in _SEGMENT_SPLIT.split(stripped) if s.strip()]
-    for seg in segments:
-        if _is_po_read_segment(seg, cwd):
-            print(_BLOCK_MSG, file=sys.stderr, end="")
-            log_fire("block_po_read", "block", "Bash", command, reason=_BLOCK_MSG, session_id=session_id)
-            sys.exit(2)
+    if _is_violation(command, cwd):
+        _block(command, session_id)
     sys.exit(0)
 
-
 # FUNCTIONS
+
+def _is_violation(command: str, cwd) -> bool:
+    stripped = _strip_non_shell_active(command)
+    segments = [s for s in _SEGMENT_SPLIT.split(stripped) if s.strip()]
+    return any(_is_po_read_segment(seg, cwd) for seg in segments)
+
+def _block(command: str, session_id) -> None:
+    print(_BLOCK_MSG, file=sys.stderr, end="")
+    log_fire("block_po_read", "block", "Bash", command, reason=_BLOCK_MSG, session_id=session_id)
+    sys.exit(2)
 
 def _parse_command():
     try:

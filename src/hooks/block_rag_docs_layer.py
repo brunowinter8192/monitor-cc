@@ -31,23 +31,27 @@ def block_rag_docs_layer_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
+    if _is_violation(command):
+        _block(command, session_id)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _is_violation(command: str) -> bool:
     stripped = _strip_non_shell_active(command)
     matches = list(_RAG_RE.finditer(stripped))
-    if not matches:
-        sys.exit(0)
-
     for m in matches:
         seg_end = _segment_end(stripped, m.end())
         original_segment = command[m.start():seg_end]
         if _segment_violates(original_segment):
-            print(_BLOCK_MESSAGE, file=sys.stderr, end="")
-            log_fire("block_rag_docs_layer", "block", "Bash", command,
-                     reason=_BLOCK_MESSAGE, session_id=session_id)
-            sys.exit(2)
-    sys.exit(0)
+            return True
+    return False
 
-
-# FUNCTIONS
+def _block(command: str, session_id) -> None:
+    print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+    log_fire("block_rag_docs_layer", "block", "Bash", command,
+             reason=_BLOCK_MESSAGE, session_id=session_id)
+    sys.exit(2)
 
 def _parse_command():
     try:

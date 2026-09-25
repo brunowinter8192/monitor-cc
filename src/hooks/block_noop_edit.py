@@ -14,12 +14,15 @@ def block_noop_edit_workflow() -> None:
     if old_string is None or new_string is None:
         sys.exit(0)
     if old_string == new_string:
-        print(_BLOCK_MESSAGE, file=sys.stderr, end="")
-        log_fire("block_noop_edit", "block", "Edit", file_path or "", reason=_BLOCK_MESSAGE, session_id=session_id)
-        sys.exit(2)
+        _block(file_path, session_id)
     sys.exit(0)
 
 # FUNCTIONS
+
+def _block(file_path, session_id) -> None:
+    print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+    log_fire("block_noop_edit", "block", "Edit", file_path or "", reason=_BLOCK_MESSAGE, session_id=session_id)
+    sys.exit(2)
 
 def _parse_input():
     try:

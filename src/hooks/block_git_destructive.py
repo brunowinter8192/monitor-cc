@@ -38,26 +38,30 @@ def block_git_destructive_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
+    reason = _find_reason(command)
+    if reason is not None:
+        _block(command, session_id, reason)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _find_reason(command: str):
     stripped = _strip_quoted(command)
     for pat, label, suggestion in _PATTERNS:
         if pat.search(stripped):
-            reason = _BLOCK_TEMPLATE.format(label=label, suggestion=suggestion)
-            print(reason, file=sys.stderr, end="")
-            log_fire("block_git_destructive", "block", "Bash", command, reason=reason, session_id=session_id)
-            sys.exit(2)
+            return _BLOCK_TEMPLATE.format(label=label, suggestion=suggestion)
     m = _GIT_CONFIG_RE.search(stripped)
     if m and not _GIT_CONFIG_READONLY.search(m.group(1)):
-        reason = _BLOCK_TEMPLATE.format(
+        return _BLOCK_TEMPLATE.format(
             label="git config (modify)",
             suggestion="Never modify git config — config changes are deliberate user decisions, "
                        "not Opus-driven.")
-        print(reason, file=sys.stderr, end="")
-        log_fire("block_git_destructive", "block", "Bash", command, reason=reason, session_id=session_id)
-        sys.exit(2)
-    sys.exit(0)
+    return None
 
-
-# FUNCTIONS
+def _block(command: str, session_id, reason: str) -> None:
+    print(reason, file=sys.stderr, end="")
+    log_fire("block_git_destructive", "block", "Bash", command, reason=reason, session_id=session_id)
+    sys.exit(2)
 
 def _parse_command():
     try:

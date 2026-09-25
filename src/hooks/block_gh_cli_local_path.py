@@ -31,6 +31,14 @@ def block_gh_cli_local_path_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
+    violation = _find_violation(command)
+    if violation is not None:
+        _block(command, session_id, violation)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _find_violation(command: str):
     stripped = _strip_non_shell_active(command)
     for m in _GH_LOCAL_PATH_RE.finditer(stripped):
         subcommand = m.group(1)
@@ -38,15 +46,16 @@ def block_gh_cli_local_path_workflow() -> None:
         segment = command[m.start():seg_end]
         bad_path = _find_local_path(subcommand, segment)
         if bad_path is not None:
-            message = _BLOCK_MESSAGE.format(sub=subcommand, path=bad_path)
-            print(message, file=sys.stderr, end="")
-            log_fire("block_gh_cli_local_path", "block", "Bash", command,
-                     reason=message, session_id=session_id)
-            sys.exit(2)
-    sys.exit(0)
+            return subcommand, bad_path
+    return None
 
-
-# FUNCTIONS
+def _block(command: str, session_id, violation: tuple) -> None:
+    subcommand, bad_path = violation
+    message = _BLOCK_MESSAGE.format(sub=subcommand, path=bad_path)
+    print(message, file=sys.stderr, end="")
+    log_fire("block_gh_cli_local_path", "block", "Bash", command,
+             reason=message, session_id=session_id)
+    sys.exit(2)
 
 def _parse_command():
     try:

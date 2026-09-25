@@ -38,18 +38,22 @@ def block_cli_chained_workflow() -> None:
     command, session_id, cwd = _parse_command()
     if command is None:
         sys.exit(0)
+    _check_rules(command, session_id, cwd)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _check_rules(command: str, session_id, cwd) -> None:
     stripped = _strip_non_shell_active(command)
     chain_segments = _build_chain_segments(stripped, command)
-    if not any(_segment_stages_with_cli(seg, stripped, cwd) for seg in chain_segments):
-        sys.exit(0)
-
+    if not _any_segment_stages_with_cli(chain_segments, stripped, cwd):
+        return
     _check_rule1_pipe(chain_segments, stripped, command, session_id, cwd)
     _check_rule2_redirect(chain_segments, stripped, command, session_id, cwd)
     _check_rule3_readback(chain_segments, stripped, command, session_id, cwd)
-    sys.exit(0)
 
-
-# FUNCTIONS
+def _any_segment_stages_with_cli(chain_segments: list, stripped: str, cwd) -> bool:
+    return any(_segment_stages_with_cli(seg, stripped, cwd) for seg in chain_segments)
 
 def _parse_command():
     try:

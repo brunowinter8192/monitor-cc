@@ -19,23 +19,32 @@ _BLOCK_MESSAGE = (
 # ORCHESTRATOR
 
 def block_worker_send_while_working_workflow() -> None:
-    try:
-        command, session_id = _parse_command()
-        if command is None:
-            sys.exit(0)
-        block, name = decide(command, _live_worker_status)
-        if block:
-            msg = _BLOCK_MESSAGE.format(name=name)
-            print(msg, file=sys.stderr, end="")
-            log_fire("block_worker_send_while_working", "block", "Bash", command,
-                     reason=msg, session_id=session_id)
-            sys.exit(2)
-    except Exception as e:
-        log_fire("block_worker_send_while_working", "trace", "Bash", "", reason=f"workflow failed, allowing: {type(e).__name__}: {e}")
-        sys.exit(0)
+    _run_guarded_check()
     sys.exit(0)
 
 # FUNCTIONS
+
+def _run_guarded_check() -> None:
+    try:
+        _check_command()
+    except Exception as e:
+        log_fire("block_worker_send_while_working", "trace", "Bash", "", reason=f"workflow failed, allowing: {type(e).__name__}: {e}")
+        sys.exit(0)
+
+def _check_command() -> None:
+    command, session_id = _parse_command()
+    if command is None:
+        sys.exit(0)
+    block, name = decide(command, _live_worker_status)
+    if block:
+        _block(command, session_id, name)
+
+def _block(command: str, session_id, name: str) -> None:
+    msg = _BLOCK_MESSAGE.format(name=name)
+    print(msg, file=sys.stderr, end="")
+    log_fire("block_worker_send_while_working", "block", "Bash", command,
+             reason=msg, session_id=session_id)
+    sys.exit(2)
 
 def decide(command: str, status_fn) -> tuple:
     stripped = _strip_non_shell_active(command)
