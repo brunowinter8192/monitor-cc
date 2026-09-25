@@ -115,12 +115,6 @@ def _typical_set_lines(typical_set: list) -> list:
     return lines
 
 
-def _fake_workers_for_paths(paths: list) -> tuple:
-    workers = [{'name': f'w{i}', 'session': f'sess-{i}'} for i in range(len(paths))]
-    path_by_session = {w['session']: p for w, p in zip(workers, paths)}
-    return workers, path_by_session
-
-
 def _time_cold_then_warm(paths: list) -> dict:
     workers, path_by_session = _fake_workers_for_paths(paths)
     orig_find = mod_worker_tmux.find_worker_jsonl
@@ -137,6 +131,12 @@ def _time_cold_then_warm(paths: list) -> dict:
     finally:
         mod_worker_tmux.find_worker_jsonl = orig_find
     return {'cold_s': cold_elapsed, 'warm_s': warm_elapsed, 'workers': workers}
+
+
+def _fake_workers_for_paths(paths: list) -> tuple:
+    workers = [{'name': f'w{i}', 'session': f'sess-{i}'} for i in range(len(paths))]
+    path_by_session = {w['session']: p for w, p in zip(workers, paths)}
+    return workers, path_by_session
 
 
 def _cold_warm_summary_lines(cold_typical: float, warm_typical: float) -> list:

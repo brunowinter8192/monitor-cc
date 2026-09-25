@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import argparse
 import json
 import os
@@ -10,14 +8,11 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-_src_dir = os.path.join(
-    os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent)),
-    'src',
-)
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
+_root_dir = os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent))
+if _root_dir not in sys.path:
+    sys.path.insert(0, _root_dir)
 
-from proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
+from src.proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
 
 _CC_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 
@@ -36,15 +31,38 @@ _NOISE_CONTAINS = (
 # ORCHESTRATOR
 
 def sr_session_audit_workflow(project_filter, since_date, output_path, top_n):
-    scan = {
-        'n_files': 0, 'n_entries': 0, 'n_parse_errors': 0,
-        'n_total_srs': 0, 'n_code_noise': 0, 'n_data_noise': 0,
-        'since': since_date, 'project_filter': project_filter or 'none', 'top': top_n,
-    }
-    known = {tid: _empty_stat() for tid in _SR_TEMPLATES}
+    scan = compute_scan(since_date, project_filter, top_n)
+    known = compute_known()
     preserved = _empty_stat()
     unknown = {}
 
+    process_iter_sessions(project_filter, scan, since_date, preserved, known, unknown)
+
+    assign_values(scan, known, preserved, unknown)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text('\n'.join(_build_report(known, preserved, unknown, scan)), encoding='utf-8')
+    print(output_path)
+
+
+# FUNCTIONS
+
+def compute_scan(since_date, project_filter, top_n):
+    return ({
+            'n_files': 0, 'n_entries': 0, 'n_parse_errors': 0,
+            'n_total_srs': 0, 'n_code_noise': 0, 'n_data_noise': 0,
+            'since': since_date, 'project_filter': project_filter or 'none', 'top': top_n,
+        })
+
+
+def compute_known():
+    return {tid: _empty_stat() for tid in _SR_TEMPLATES}
+
+
+def _empty_stat():
+    return {'total': 0, 'text': 0, 'tool_result': 0, 'first': None, 'last': None, 'versions': set()}
+
+
+def process_iter_sessions(project_filter, scan, since_date, preserved, known, unknown):
     for proj_name, session_path in _iter_sessions(project_filter):
         scan['n_files'] += 1
         for entry_date, version, content in _iter_user_messages(session_path, since_date, scan):
@@ -69,16 +87,6 @@ def sr_session_audit_workflow(project_filter, since_date, output_path, top_n):
                     _add(unknown[key], layer, version, entry_date)
                     unknown[key]['projects'].add(proj_name)
 
-    scan['n_classified'] = (
-        sum(s['total'] for s in known.values()) + preserved['total']
-        + sum(s['total'] for s in unknown.values())
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text('\n'.join(_build_report(known, preserved, unknown, scan)), encoding='utf-8')
-    print(output_path)
-
-
-# FUNCTIONS
 
 def _iter_sessions(project_filter):
     if not _CC_PROJECTS_DIR.is_dir():
@@ -112,6 +120,15 @@ def _iter_user_messages(session_path, since_date, scan):
                 yield entry_date, ev.get('version', 'unknown'), ev.get('message', {}).get('content', '')
     except OSError:
         pass
+
+
+def _parse_date(ts_raw):
+    if not ts_raw:
+        return None
+    try:
+        return datetime.fromisoformat(ts_raw.replace('Z', '+00:00')).date()
+    except (ValueError, AttributeError):
+        return None
 
 
 def _extract_sr_hits(content):
@@ -181,25 +198,25 @@ def _add(stat, layer, version, entry_date):
     stat['versions'].add(version)
 
 
-def _empty_stat():
-    return {'total': 0, 'text': 0, 'tool_result': 0, 'first': None, 'last': None, 'versions': set()}
-
-
-def _parse_date(ts_raw):
-    if not ts_raw:
-        return None
-    try:
-        return datetime.fromisoformat(ts_raw.replace('Z', '+00:00')).date()
-    except (ValueError, AttributeError):
-        return None
-
-
-def _row(label, s):
-    return (
-        f"| {label} | {s['total']} | {s['text']} | {s['tool_result']} "
-        f"| {s['first'] or '—'} | {s['last'] or '—'} "
-        f"| {', '.join(sorted(s['versions']))[:40]} |"
+def assign_values(scan, known, preserved, unknown):
+    scan['n_classified'] = (
+        compute_grand_total(known, preserved, unknown)
     )
+
+
+def compute_grand_total(known, preserved, unknown):
+    return (sum(s['total'] for s in known.values()) + preserved['total']
+            + sum(s['total'] for s in unknown.values()))
+
+
+def _build_report(known, preserved, unknown, scan):
+    top_n = scan['top']
+    L = _render_scan_header(scan)
+    L += _render_known_and_preserved(known, preserved)
+    unknown_lines, sorted_unknown = _render_unknown_table(unknown, top_n)
+    L += unknown_lines
+    L += _render_unknown_samples(sorted_unknown, top_n)
+    return L
 
 
 def _render_scan_header(scan):
@@ -249,6 +266,14 @@ def _render_known_and_preserved(known, preserved):
     return L
 
 
+def _row(label, s):
+    return (
+        f"| {label} | {s['total']} | {s['text']} | {s['tool_result']} "
+        f"| {s['first'] or '—'} | {s['last'] or '—'} "
+        f"| {', '.join(sorted(s['versions']))[:40]} |"
+    )
+
+
 def _render_unknown_table(unknown, top_n):
     sorted_unknown = sorted(unknown.items(), key=lambda x: -x[1]['total'])[:top_n]
     L = [
@@ -286,16 +311,6 @@ def _render_unknown_samples(sorted_unknown, top_n):
             '```',
         ]
     L.append('')
-    return L
-
-
-def _build_report(known, preserved, unknown, scan):
-    top_n = scan['top']
-    L = _render_scan_header(scan)
-    L += _render_known_and_preserved(known, preserved)
-    unknown_lines, sorted_unknown = _render_unknown_table(unknown, top_n)
-    L += unknown_lines
-    L += _render_unknown_samples(sorted_unknown, top_n)
     return L
 
 

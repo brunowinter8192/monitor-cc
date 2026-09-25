@@ -45,10 +45,18 @@ _STRANDS = [
     'test_context_management_strip_is_attributed',
 ]
 
+
 # ORCHESTRATOR
 
 def run_probe_workflow() -> int:
+    return compute_run_probe_result()
+
+
+# FUNCTIONS
+
+def compute_run_probe_result():
     return strand_workflow(globals(), __file__, _STRANDS, report_path=str(WORKTREE_ROOT / 'dev' / 'native-model-start' / 'md' / 'p2_model_params_probe.md'), title='p2_model_params_probe')
+
 
 if __name__ == '__main__':
     sys.exit(run_probe_workflow())

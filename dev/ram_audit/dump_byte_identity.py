@@ -13,24 +13,20 @@ sys.path.insert(0, str(_ROOT))
 
 _PANE_NAME = 'byteidentity'
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     instrument = _import_instrument()
     dump_text = _trigger_dump(instrument)
     normalized = _normalize(dump_text)
-    print(f'HASH: {hashlib.sha256(normalized.encode()).hexdigest()}')
+    print_hash(normalized)
 
 
 # FUNCTIONS
 
 def _import_instrument():
     return importlib.import_module('src.ram_audit.instrument')
-
-
-def _fake_provider() -> list:
-    return [('fake_list', [1, 2, 3]), ('fake_counter', 42)]
 
 
 def _trigger_dump(instrument) -> str:
@@ -52,6 +48,10 @@ def _trigger_dump(instrument) -> str:
     dump_path.unlink(missing_ok=True)
     pid_file.unlink(missing_ok=True)
     return text
+
+
+def _fake_provider() -> list:
+    return [('fake_list', [1, 2, 3]), ('fake_counter', 42)]
 
 
 def _normalize(text: str) -> str:
@@ -83,6 +83,10 @@ def _normalize(text: str) -> str:
             continue
         kept.append(line)
     return '\n'.join(kept)
+
+
+def print_hash(normalized):
+    print(f'HASH: {hashlib.sha256(normalized.encode()).hexdigest()}')
 
 
 if __name__ == '__main__':

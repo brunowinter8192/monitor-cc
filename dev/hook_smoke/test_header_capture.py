@@ -7,31 +7,35 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
-from proxy.addon import _filter_response_headers
+from src.proxy.addon import _filter_response_headers
+
+
+# ORCHESTRATOR
+
+def header_capture_workflow() -> int:
+    tests = collect_tests()
+    passed, failed = run_tests(tests)
+    return report_results(passed, failed)
+
 
 # FUNCTIONS
 
-def _mock_headers(pairs: list) -> object:
-    data = dict(pairs)
-
-    class _Headers:
-        def items(self):
-            return data.items()
-        def get(self, key, default=""):
-            return data.get(key, default)
-
-    return _Headers()
-
-
-def _mock_request_flow(beta_header: str) -> object:
-    req = SimpleNamespace(headers=_mock_headers([("anthropic-beta", beta_header)]))
-    return SimpleNamespace(request=req)
-
-
-
-def _extract_beta(beta_header: str) -> list:
-    raw_beta = beta_header
-    return [f.strip() for f in raw_beta.split(",") if f.strip()]
+def collect_tests() -> list:
+    return [
+        test_beta_typical,
+        test_beta_single,
+        test_beta_empty_header,
+        test_beta_strips_whitespace,
+        test_beta_drops_empty_segments,
+        test_filter_keeps_exact_request_id,
+        test_filter_keeps_retry_after_on_429,
+        test_filter_keeps_ratelimit_family,
+        test_filter_keeps_organization_id,
+        test_filter_normalizes_to_lowercase,
+        test_filter_prefix_anthropic_priority,
+        test_filter_prefix_anthropic_fast,
+        test_filter_empty_headers,
+    ]
 
 
 def test_beta_typical():
@@ -41,6 +45,11 @@ def test_beta_typical():
         "computer-use-2025-01-24",
         "token-counting-2024-11-01",
     ], f"unexpected: {result}"
+
+
+def _extract_beta(beta_header: str) -> list:
+    raw_beta = beta_header
+    return [f.strip() for f in raw_beta.split(",") if f.strip()]
 
 
 def test_beta_single():
@@ -63,11 +72,22 @@ def test_beta_drops_empty_segments():
     assert result == ["flag-a", "flag-b"], f"unexpected: {result}"
 
 
-
 def test_filter_keeps_exact_request_id():
     h = _mock_headers([("request-id", "req_abc123"), ("content-type", "application/json")])
     result = _filter_response_headers(h)
     assert result == {"request-id": "req_abc123"}, f"unexpected: {result}"
+
+
+def _mock_headers(pairs: list) -> object:
+    data = dict(pairs)
+
+    class _Headers:
+        def items(self):
+            return data.items()
+        def get(self, key, default=""):
+            return data.get(key, default)
+
+    return _Headers()
 
 
 def test_filter_keeps_retry_after_on_429():
@@ -142,23 +162,7 @@ def test_filter_empty_headers():
     assert result == {}, f"expected empty dict, got: {result}"
 
 
-
-if __name__ == "__main__":
-    tests = [
-        test_beta_typical,
-        test_beta_single,
-        test_beta_empty_header,
-        test_beta_strips_whitespace,
-        test_beta_drops_empty_segments,
-        test_filter_keeps_exact_request_id,
-        test_filter_keeps_retry_after_on_429,
-        test_filter_keeps_ratelimit_family,
-        test_filter_keeps_organization_id,
-        test_filter_normalizes_to_lowercase,
-        test_filter_prefix_anthropic_priority,
-        test_filter_prefix_anthropic_fast,
-        test_filter_empty_headers,
-    ]
+def run_tests(tests: list) -> tuple:
     passed = 0
     failed = 0
     for t in tests:
@@ -169,5 +173,18 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"  FAIL  {t.__name__}: {e}")
             failed += 1
+    return passed, failed
+
+
+def report_results(passed: int, failed: int) -> int:
     print(f"\n{passed}/{passed + failed} passed")
-    sys.exit(0 if failed == 0 else 1)
+    return 0 if failed == 0 else 1
+
+
+def _mock_request_flow(beta_header: str) -> object:
+    req = SimpleNamespace(headers=_mock_headers([("anthropic-beta", beta_header)]))
+    return SimpleNamespace(request=req)
+
+
+if __name__ == "__main__":
+    sys.exit(header_capture_workflow())

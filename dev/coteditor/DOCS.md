@@ -11,7 +11,7 @@ The probe samples mouse, Space and frontmost-app state at 10 Hz and keeps a shor
 
 ## Modules
 
-### 07_space_jump_probe.py (122 LOC)
+### 07_space_jump_probe.py (160 LOC)
 
 **Purpose:** Polls mouse, Space and frontmost-app state at 10 Hz and dumps the trailing rolling buffer on every Space change.
 **Reads:** live mouse and window state through AppKit and the raw CoreGraphics bridge.

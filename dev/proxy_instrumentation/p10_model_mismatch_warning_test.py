@@ -12,9 +12,12 @@ sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
 
-from proxy.addon import _write_response_and_mismatch, _write_model_mismatch_entry
-from proxy.logging import _build_errors_entries
+from src.proxy.addon import _write_response_and_mismatch, _write_model_mismatch_entry
+from src.proxy.logging import _build_errors_entries
 from dev.refactoring.strand_runner import strand_workflow
+from src.panes.warnings_pane import _errors_record_to_display
+from src.panes.warnings_render import _build_one_warning_lines
+from src.colors import DIM, SOFT_RESET, WHITE
 
 _STRAND_NAMES = [
     '_test_mismatch_writes_exactly_one_sentence',
@@ -136,9 +139,6 @@ def _test_double_write_guard() -> None:
 
 
 def _test_sentence_renders_through_real_pane_pipeline() -> None:
-    from src.panes.warnings_pane import _errors_record_to_display
-    from src.panes.warnings_render import _build_one_warning_lines
-    from src.colors import DIM, SOFT_RESET, WHITE
 
     with _tmp_paths() as paths:
         identity = _Identity()

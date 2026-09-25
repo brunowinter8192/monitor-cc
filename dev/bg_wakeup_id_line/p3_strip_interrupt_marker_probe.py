@@ -7,11 +7,11 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 
-from proxy.strip_interrupt_marker import _strip_interrupt_marker
-from proxy.message_passes_simple import _apply_interrupt_marker_strip
-from proxy.rules import apply_modification_rules
-from proxy.strip_vocab import attribute_chunk, RULES
-from proxy.strip_inject_delta import _MSG_CODE_TO_FN, _build_stripped_injected_deltas
+from src.proxy.strip_interrupt_marker import _strip_interrupt_marker
+from src.proxy.message_passes_simple import _apply_interrupt_marker_strip
+from src.proxy.rules import apply_modification_rules
+from src.proxy.strip_vocab import attribute_chunk, RULES
+from src.proxy.strip_inject_delta import _MSG_CODE_TO_FN, _build_stripped_injected_deltas
 
 _INTERRUPT_MARKER = '[Request interrupted by user]\n'
 _INTERRUPT_MARKER_TOOL_USE = '[Request interrupted by user for tool use]\n'
@@ -22,13 +22,36 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
+# ORCHESTRATOR
+
+def main():
+    ok = run_probe_workflow()
+    exit_with_status(ok)
 
 
 # FUNCTIONS
+
+def run_probe_workflow():
+    print("=" * 70)
+    print("strip_interrupt_marker probe — [Request interrupted by user] strip")
+    print("=" * 70)
+    test_real_shape_neighbors_untouched()
+    test_four_content_shapes()
+    test_tool_use_wording()
+    test_marker_embedded_in_longer_text_untouched()
+    test_message_pass_wiring()
+    test_attribution_vocab()
+    test_full_pipeline_attribution()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+
+    _write_report(passed, total)
+    return passed == total
+
 
 def test_real_shape_neighbors_untouched():
     print("\n[Test 1] Real 3-block shape (tool_result / marker / wake-up) — neighbors intact")
@@ -42,6 +65,12 @@ def test_real_shape_neighbors_untouched():
     check("marker block emptied to '.'", new_content[1] == {"type": "text", "text": "."})
     check("preceding tool_result block byte-identical", new_content[0] == tool_result_block)
     check("following wake-up block byte-identical", new_content[2] == wakeup_block)
+
+
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
 
 
 def test_four_content_shapes():
@@ -159,30 +188,6 @@ def test_full_pipeline_attribution():
     check("messages_delta carries the stripped marker text", stripped_entry["messages_delta"].get("0", {}).get("1") == [_INTERRUPT_MARKER])
 
 
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("strip_interrupt_marker probe — [Request interrupted by user] strip")
-    print("=" * 70)
-    test_real_shape_neighbors_untouched()
-    test_four_content_shapes()
-    test_tool_use_wording()
-    test_marker_embedded_in_longer_text_untouched()
-    test_message_pass_wiring()
-    test_attribution_vocab()
-    test_full_pipeline_attribution()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-
-    _write_report(passed, total)
-    return passed == total
-
-
 def _write_report(passed, total):
     md_dir = WORKTREE_ROOT / "dev" / "bg_wakeup_id_line" / "md"
     md_dir.mkdir(parents=True, exist_ok=True)
@@ -202,6 +207,9 @@ def _write_report(passed, total):
     print(f"\nReport written to: {out_path}")
 
 
-if __name__ == "__main__":
-    ok = run_probe_workflow()
+def exit_with_status(ok):
     sys.exit(0 if ok else 1)
+
+
+if __name__ == '__main__':
+    main()

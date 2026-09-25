@@ -97,18 +97,18 @@ def test_block_worker_kill_while_working_workflow() -> None:
 
 # FUNCTIONS
 
+def _check_case(case: tuple) -> None:
+    label, command, stub_map, expect = case
+    block, name = decide(command, make_stub(stub_map))
+    report_case(label, block == expect, f" (blocking: {name})" if block else "")
+
+
 def make_stub(name_to_status: dict):
     def stub(name: str) -> str:
         if name == 'raises':
             raise RuntimeError("simulated status_fn error")
         return name_to_status.get(name, '')
     return stub
-
-
-def _check_case(case: tuple) -> None:
-    label, command, stub_map, expect = case
-    block, name = decide(command, make_stub(stub_map))
-    report_case(label, block == expect, f" (blocking: {name})" if block else "")
 
 
 if __name__ == "__main__":

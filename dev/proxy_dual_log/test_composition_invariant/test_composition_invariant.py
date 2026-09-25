@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 from pathlib import Path
@@ -7,9 +6,7 @@ from pathlib import Path
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE))
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
@@ -19,6 +16,30 @@ FIXTURE_PATH = _AREA_ROOT / "fixtures" / "invariant_corpus.jsonl"
 
 PASS_LIST = []
 FAIL_LIST = []
+
+
+# ORCHESTRATOR
+
+def test_composition_invariant_workflow() -> None:
+    entries = load_fixture()
+
+    print_loaded(entries)
+    print()
+
+    blocks_checked, blocks_passed = run_all_cases(entries)
+
+    print()
+    run_check(blocks_checked)
+
+    total = compute_total()
+    print_checks_passed(total)
+    print_entries(entries, blocks_checked, blocks_passed)
+
+    if FAIL_LIST:
+        print_failed()
+        sys.exit(1)
+
+    print("ALL PASS")
 
 
 # FUNCTIONS
@@ -41,12 +62,8 @@ def load_fixture() -> list:
     return entries
 
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        PASS_LIST.append(name)
-    else:
-        FAIL_LIST.append(name)
-        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+def print_loaded(entries):
+    print(f"Loaded {len(entries)} fixture entries from {FIXTURE_PATH.name}")
 
 
 def run_all_cases(entries: list) -> tuple:
@@ -84,32 +101,36 @@ def run_all_cases(entries: list) -> tuple:
     return blocks_checked, blocks_passed
 
 
-# ORCHESTRATOR
+def check(name: str, condition: bool, detail: str = "") -> None:
+    if condition:
+        PASS_LIST.append(name)
+    else:
+        FAIL_LIST.append(name)
+        print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
 
-def test_composition_invariant_workflow() -> None:
-    entries = load_fixture()
 
-    print(f"Loaded {len(entries)} fixture entries from {FIXTURE_PATH.name}")
-    print()
-
-    blocks_checked, blocks_passed = run_all_cases(entries)
-
-    print()
+def run_check(blocks_checked):
     check(
         "blocks_checked > 0",
         blocks_checked > 0,
         f"fixture produced 0 modified blocks — fixture may be empty or have no trigger patterns",
     )
 
-    total = len(PASS_LIST) + len(FAIL_LIST)
+
+def compute_total():
+    return len(PASS_LIST) + len(FAIL_LIST)
+
+
+def print_checks_passed(total):
     print(f"{len(PASS_LIST)}/{total} checks passed")
+
+
+def print_entries(entries, blocks_checked, blocks_passed):
     print(f"entries={len(entries)}  blocks_checked={blocks_checked}  blocks_passed={blocks_passed}")
 
-    if FAIL_LIST:
-        print(f"\nFAILED: {FAIL_LIST}")
-        sys.exit(1)
 
-    print("ALL PASS")
+def print_failed():
+    print(f"\nFAILED: {FAIL_LIST}")
 
 
 if __name__ == "__main__":

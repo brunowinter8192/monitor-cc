@@ -28,6 +28,8 @@ _ATTR_TEMPLATE = (
 _TASK_PROMPT = "You work in the monitor-cc repo, in your own worktree.\n\n## Task\n\nDo the thing."
 
 
+# FUNCTIONS
+
 def _attr_sr(model='Sonnet 5'):
     return mk_sr(_ATTR_TEMPLATE.format(model=model))
 
@@ -39,8 +41,6 @@ def _msg0(model='Sonnet 5'):
         {'type': 'text', 'text': _TASK_PROMPT},
     ]}]
 
-
-# FUNCTIONS
 
 def ga01_observed_block_stripped_env_stripped_task_untouched():
     new_msgs, mods, removed, changed, _, ops = _apply_final_sr_pass(_msg0())

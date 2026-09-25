@@ -6,6 +6,8 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
+from src.proxy.rules import apply_modification_rules
+from src.proxy.payload_helpers import _top_level_content_contains
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -25,48 +27,36 @@ MARKERS = {
     'task_notification_tag': '<task-notification>',
 }
 
+
+# ORCHESTRATOR
+
+def main() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    lines = compute_lines()
+
+    census_lines, all_fn_counts = _part_a_census_lines()
+    lines.extend(census_lines)
+
+    marker_present_in_session, bg_launch_fired, tn_or_bg_exit_fired = _compute_fire_verdicts(all_fn_counts)
+    lines.extend(_part_a_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, marker_present_in_session))
+
+    lines.append('## Part B — unstripped-wording sweep (real CURRENT code, replayed over all requests)')
+    lines.append('')
+    total_marker_hits, total_survived, survivals, marker_totals = _part_b_sweep()
+    lines.extend(_part_b_report_lines(total_marker_hits, marker_totals, total_survived, survivals))
+
+    verdict_lines, verdict = _overall_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, total_survived, total_marker_hits)
+    lines.extend(verdict_lines)
+
+    REPORT_PATH.write_text('\n'.join(lines))
+    print_report_written()
+    print_verdict(verdict, bg_launch_fired, tn_or_bg_exit_fired, total_survived, total_marker_hits)
+
+
 # FUNCTIONS
 
-def _load_session_requests(stem: str) -> list:
-    out = []
-    with open(LOG_DIR / f'{stem}_original.jsonl', encoding='utf-8') as f:
-        for line in f:
-            e = json.loads(line)
-            out.append((e.get('flow_id', ''), e.get('payload', {})))
-    return out
-
-
-def _fn_map_census(stem: str) -> dict:
-    counts: dict = {}
-    for suffix in ('stripped', 'injected'):
-        path = LOG_DIR / f'{stem}_{suffix}.jsonl'
-        if not path.exists():
-            continue
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                e = json.loads(line)
-                for fn in (e.get('fn_map') or {}).values():
-                    counts[fn] = counts.get(fn, 0) + 1
-    return counts
-
-
-def _check_markers_stripped(payload: dict) -> list:
-    from proxy.rules import apply_modification_rules
-    from proxy.payload_helpers import _top_level_content_contains
-    modified, *_ = apply_modification_rules(payload, 'opus', '', 'main')
-    orig_messages = payload.get('messages', [])
-    fwd_messages = modified.get('messages', [])
-    hits = []
-    for idx, om in enumerate(orig_messages):
-        oc = om.get('content', '') if isinstance(om, dict) else ''
-        for label, marker in MARKERS.items():
-            if not _top_level_content_contains(oc, marker):
-                continue
-            fm = fwd_messages[idx] if idx < len(fwd_messages) else {}
-            fc = fm.get('content', '') if isinstance(fm, dict) else ''
-            survived = _top_level_content_contains(fc, marker)
-            hits.append((idx, label, survived))
-    return hits
+def compute_lines():
+    return ['# Surface 3 — strip wordings on CC 2.1.223 (issue #63)', '']
 
 
 def _part_a_census_lines():
@@ -85,6 +75,20 @@ def _part_a_census_lines():
             lines.append(f'| `{fn}` | {n} |')
         lines.append('')
     return lines, all_fn_counts
+
+
+def _fn_map_census(stem: str) -> dict:
+    counts: dict = {}
+    for suffix in ('stripped', 'injected'):
+        path = LOG_DIR / f'{stem}_{suffix}.jsonl'
+        if not path.exists():
+            continue
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                e = json.loads(line)
+                for fn in (e.get('fn_map') or {}).values():
+                    counts[fn] = counts.get(fn, 0) + 1
+    return counts
 
 
 def _compute_fire_verdicts(all_fn_counts):
@@ -138,6 +142,32 @@ def _part_b_sweep():
     return total_marker_hits, total_survived, survivals, marker_totals
 
 
+def _load_session_requests(stem: str) -> list:
+    out = []
+    with open(LOG_DIR / f'{stem}_original.jsonl', encoding='utf-8') as f:
+        for line in f:
+            e = json.loads(line)
+            out.append((e.get('flow_id', ''), e.get('payload', {})))
+    return out
+
+
+def _check_markers_stripped(payload: dict) -> list:
+    modified, *_ = apply_modification_rules(payload, 'opus', '', 'main')
+    orig_messages = payload.get('messages', [])
+    fwd_messages = modified.get('messages', [])
+    hits = []
+    for idx, om in enumerate(orig_messages):
+        oc = om.get('content', '') if isinstance(om, dict) else ''
+        for label, marker in MARKERS.items():
+            if not _top_level_content_contains(oc, marker):
+                continue
+            fm = fwd_messages[idx] if idx < len(fwd_messages) else {}
+            fc = fm.get('content', '') if isinstance(fm, dict) else ''
+            survived = _top_level_content_contains(fc, marker)
+            hits.append((idx, label, survived))
+    return hits
+
+
 def _part_b_report_lines(total_marker_hits, marker_totals, total_survived, survivals):
     lines = []
     lines.append(f'- Total marker occurrences checked (original content containing a known bg-marker): {total_marker_hits}')
@@ -174,27 +204,11 @@ def _overall_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, total_survived,
     return lines, verdict
 
 
-# ORCHESTRATOR
-def main() -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# Surface 3 — strip wordings on CC 2.1.223 (issue #63)', '']
-
-    census_lines, all_fn_counts = _part_a_census_lines()
-    lines.extend(census_lines)
-
-    marker_present_in_session, bg_launch_fired, tn_or_bg_exit_fired = _compute_fire_verdicts(all_fn_counts)
-    lines.extend(_part_a_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, marker_present_in_session))
-
-    lines.append('## Part B — unstripped-wording sweep (real CURRENT code, replayed over all requests)')
-    lines.append('')
-    total_marker_hits, total_survived, survivals, marker_totals = _part_b_sweep()
-    lines.extend(_part_b_report_lines(total_marker_hits, marker_totals, total_survived, survivals))
-
-    verdict_lines, verdict = _overall_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, total_survived, total_marker_hits)
-    lines.extend(verdict_lines)
-
-    REPORT_PATH.write_text('\n'.join(lines))
+def print_report_written():
     print(f'Report written: {REPORT_PATH}')
+
+
+def print_verdict(verdict, bg_launch_fired, tn_or_bg_exit_fired, total_survived, total_marker_hits):
     print(f'Verdict: {verdict}  (bg_launch_fired={bg_launch_fired}, tn_or_bg_exit_fired={tn_or_bg_exit_fired}, '
           f'survived={total_survived}/{total_marker_hits})')
 

@@ -1,20 +1,15 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import json
 import os
 import sys
 from pathlib import Path
 
-_src_dir = os.path.join(
-    os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent)),
-    'src',
-)
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
+_root_dir = os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent))
+if _root_dir not in sys.path:
+    sys.path.insert(0, _root_dir)
 
-from proxy.message_passes import _apply_role_system_strip, _TRUNCATION_NOTICE_MARKER
+from src.proxy.message_passes import _apply_role_system_strip, _TRUNCATION_NOTICE_MARKER
 
 _WORKTREE_LOG = os.path.join(
     Path(__file__).parent.parent.parent, 'src', 'logs', 'dual_log',
@@ -28,7 +23,25 @@ _DETAIL_PATH = os.path.join(
     Path(__file__).parent, 'md', 'rs_truncation_preserve_replay_detail.md',
 )
 
+
 # ORCHESTRATOR
+
+def main():
+    _log_path = compute_log_path_argument()
+    if _log_path is None:
+        _log_path = select_existing_log_path()
+    replay_workflow(_log_path)
+
+
+# FUNCTIONS
+
+def compute_log_path_argument():
+    return sys.argv[1] if len(sys.argv) > 1 else None
+
+
+def select_existing_log_path():
+    return _WORKTREE_LOG if os.path.exists(_WORKTREE_LOG) else _MAIN_CHECKOUT_LOG
+
 
 def replay_workflow(log_path: str) -> None:
     lines = _load_lines(log_path)
@@ -36,11 +49,11 @@ def replay_workflow(log_path: str) -> None:
     _write_detail(failures, truncation_preserved, noise_stripped)
     _print_summary(truncation_preserved, noise_stripped, failures)
 
-# FUNCTIONS
 
 def _load_lines(log_path: str) -> list:
     with open(log_path) as f:
         return [line for line in f if line.strip()]
+
 
 def _replay_lines(lines: list) -> tuple:
     truncation_preserved = 0
@@ -69,6 +82,7 @@ def _replay_lines(lines: list) -> tuple:
                     failures.append((line_no, idx, "noise-not-stripped", str(old_content)[:80]))
     return truncation_preserved, noise_stripped, failures
 
+
 def _write_detail(failures: list, truncation_preserved: int, noise_stripped: int) -> None:
     os.makedirs(os.path.dirname(_DETAIL_PATH), exist_ok=True)
     lines = [
@@ -84,14 +98,12 @@ def _write_detail(failures: list, truncation_preserved: int, noise_stripped: int
     with open(_DETAIL_PATH, "w") as f:
         f.writelines(lines)
 
+
 def _print_summary(truncation_preserved: int, noise_stripped: int, failures: list) -> None:
     status = "PASS" if not failures else "FAIL"
     print(f"{status}: truncation_preserved={truncation_preserved} noise_stripped={noise_stripped} failures={len(failures)}")
     print(f"Detail: {_DETAIL_PATH}")
 
 
-if __name__ == "__main__":
-    _log_path = sys.argv[1] if len(sys.argv) > 1 else None
-    if _log_path is None:
-        _log_path = _WORKTREE_LOG if os.path.exists(_WORKTREE_LOG) else _MAIN_CHECKOUT_LOG
-    replay_workflow(_log_path)
+if __name__ == '__main__':
+    main()

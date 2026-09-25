@@ -20,6 +20,7 @@ from dev.session_launcher.space_lib import (
 
 _HOTKEY_IDS = ('118', '119', '120', '121', '122')
 
+
 # ORCHESTRATOR
 
 def main() -> None:
@@ -36,13 +37,10 @@ def main() -> None:
     text = '\n'.join(sections)
     path = write_report(__file__, text)
     print(text)
-    print(f'report: {path}')
+    print_report(path)
+
 
 # FUNCTIONS
-
-def _run(cmd: List[str]) -> str:
-    r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
-    return (r.stdout + r.stderr).strip()
 
 def _section_header() -> str:
     return '\n'.join([
@@ -55,10 +53,17 @@ def _section_header() -> str:
         '',
     ])
 
+
+def _run(cmd: List[str]) -> str:
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+    return (r.stdout + r.stderr).strip()
+
+
 def _section_ancestry() -> str:
     chain = process_ancestry(os.getpid())
     lines = ['## Process ancestry (child first)', ''] + [f'- {c}' for c in chain] + ['']
     return '\n'.join(lines)
+
 
 def _section_permissions() -> str:
     lines = ['## Permission state of this process (preflight calls)', '']
@@ -66,6 +71,7 @@ def _section_permissions() -> str:
         lines.append(f'- {name}: {state}')
     lines.append('')
     return '\n'.join(lines)
+
 
 def _section_spaces() -> str:
     spaces = spaces_with_types()
@@ -77,6 +83,7 @@ def _section_spaces() -> str:
     lines.append('')
     return '\n'.join(lines)
 
+
 def _section_settings() -> str:
     lines = ['## Mission Control settings', '']
     lines.append(f'- spans-displays: {_run(["defaults", "read", "com.apple.spaces", "spans-displays"])}')
@@ -84,6 +91,7 @@ def _section_settings() -> str:
     lines.append(f'- workspaces-auto-swoosh: {_run(["defaults", "read", "com.apple.dock", "workspaces-auto-swoosh"])}')
     lines.append('')
     return '\n'.join(lines)
+
 
 def _section_hotkeys() -> str:
     raw = subprocess.run(['defaults', 'export', 'com.apple.symbolichotkeys', '-'], capture_output=True, timeout=15).stdout
@@ -96,6 +104,7 @@ def _section_hotkeys() -> str:
     lines.append('')
     return '\n'.join(lines)
 
+
 def _section_ghostty() -> str:
     running = _run(['pgrep', '-f', 'Ghostty.app/Contents/MacOS'])
     lines = ['## Ghostty', '', f'- pgrep: {running.replace(chr(10), ",") or "not running"}']
@@ -104,9 +113,15 @@ def _section_ghostty() -> str:
     lines.append('')
     return '\n'.join(lines)
 
+
 def _section_tools() -> str:
     lines = ['## Tools', '', f'- clang: {shutil.which("clang")}', f'- osascript: {shutil.which("osascript")}', '']
     return '\n'.join(lines)
+
+
+def print_report(path):
+    print(f'report: {path}')
+
 
 if __name__ == '__main__':
     main()

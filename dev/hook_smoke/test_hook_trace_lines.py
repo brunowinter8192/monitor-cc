@@ -34,6 +34,18 @@ def _collect_cases() -> list:
     ]
 
 
+def case_parse_error_all_hooks():
+    hooks = [os.path.basename(f) for f in sorted(glob.glob(os.path.join(HOOK_DIR, "*.py")))
+             if not os.path.basename(f).startswith("_") and "hook_setup" not in f]
+    for hook in hooks:
+        proc, lines, _ = _run_hook(hook, b"not json")
+        if proc.returncode != 0:
+            return f"{hook} exit {proc.returncode}"
+        if not _traces(lines, hook[:-3], "parse error"):
+            return f"{hook} no parse-error trace"
+    return None
+
+
 def _run_hook(hook: str, stdin: bytes, extra_env: dict = None, cwd: str = None, shell_prefix: str = None) -> tuple:
     tmp = tempfile.mkdtemp()
     log = os.path.join(tmp, "fire.jsonl")
@@ -53,36 +65,8 @@ def _run_hook(hook: str, stdin: bytes, extra_env: dict = None, cwd: str = None, 
     return proc, lines, tmp
 
 
-def _bash(command: str) -> bytes:
-    return json.dumps({"tool_name": "Bash", "session_id": "s", "cwd": "/tmp", "tool_input": {"command": command}}).encode()
-
-
 def _traces(lines: list, hook: str, needle: str) -> list:
     return [x for x in lines if x["decision"] == "trace" and x["hook"] == hook and needle in x["reason"]]
-
-
-def _expect(cond: bool, message: str):
-    return None if cond else message
-
-
-def _load(module: str):
-    spec = importlib.util.spec_from_file_location(module, os.path.join(HOOK_DIR, module + ".py"))
-    mod = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, HOOK_DIR)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def case_parse_error_all_hooks():
-    hooks = [os.path.basename(f) for f in sorted(glob.glob(os.path.join(HOOK_DIR, "*.py")))
-             if not os.path.basename(f).startswith("_") and "hook_setup" not in f]
-    for hook in hooks:
-        proc, lines, _ = _run_hook(hook, b"not json")
-        if proc.returncode != 0:
-            return f"{hook} exit {proc.returncode}"
-        if not _traces(lines, hook[:-3], "parse error"):
-            return f"{hook} no parse-error trace"
-    return None
 
 
 def case_log_dir_created():
@@ -91,6 +75,10 @@ def case_log_dir_created():
     proc, _, _ = _run_hook("block_noop_edit.py", json.dumps({"tool_input": {"file_path": "x", "old_string": "a", "new_string": "a"}}).encode(),
                            {"MONITOR_CC_HOOK_FIRING_LOG": log})
     return _expect(proc.returncode == 2 and os.path.exists(log), f"exit {proc.returncode} exists {os.path.exists(log)}")
+
+
+def _expect(cond: bool, message: str):
+    return None if cond else message
 
 
 def case_log_write_failure_stderr():
@@ -105,6 +93,10 @@ def case_log_write_failure_stderr():
 def case_strip_raw_fallback():
     proc, lines, _ = _run_hook("block_dangerous_kill.py", _bash("echo 'unclosed"))
     return _expect(proc.returncode == 0 and _traces(lines, "_shell_strip", "raw-text fallback: unclosed single quote"), f"exit {proc.returncode} lines {lines}")
+
+
+def _bash(command: str) -> bytes:
+    return json.dumps({"tool_name": "Bash", "session_id": "s", "cwd": "/tmp", "tool_input": {"command": command}}).encode()
 
 
 def case_unterminated_quote():
@@ -125,10 +117,6 @@ def case_po_read_unknown_size():
     return _expect(proc.returncode == 2 and _traces(lines, "block_po_read", "size unknown, blocking"), f"exit {proc.returncode} lines {lines}")
 
 
-def _repeat_payload():
-    return _bash("rag-cli index --collection c --document d.md")
-
-
 def case_rag_state_corrupt_line():
     tmp = tempfile.mkdtemp()
     state = os.path.join(tmp, "state.jsonl")
@@ -137,11 +125,28 @@ def case_rag_state_corrupt_line():
     return _expect(proc.returncode == 0 and _traces(lines, "block_rag_cli_document_repeat", "skipped 1 corrupt lines"), f"exit {proc.returncode} lines {lines}")
 
 
+def _repeat_payload():
+    return _bash("rag-cli index --collection c --document d.md")
+
+
 def case_rag_state_unreadable():
     tmp = tempfile.mkdtemp()
     proc, lines, _ = _run_hook("block_rag_cli_document_repeat.py", _repeat_payload(), {"MONITOR_CC_RAG_DOC_REPEAT_STATE": tmp})
     ok = proc.returncode == 0 and _traces(lines, "block_rag_cli_document_repeat", "state read failed") and _traces(lines, "block_rag_cli_document_repeat", "state write failed")
     return _expect(ok, f"exit {proc.returncode} lines {lines}")
+
+
+def case_worker_cli_missing():
+    return _worker_case(None, "worker-cli not found")
+
+
+def _worker_case(script_body, needle):
+    for hook in ("block_worker_kill_while_working.py", "block_worker_send_while_working.py"):
+        verb = "kill" if "kill" in hook else "send"
+        proc, lines, _ = _run_hook(hook, _bash(f"worker-cli {verb} w1 hi"), _worker_env(script_body))
+        if proc.returncode != 0 or not _traces(lines, hook[:-3], needle):
+            return f"{hook} exit {proc.returncode} lines {lines}"
+    return None
 
 
 def _worker_env(script_body):
@@ -155,30 +160,8 @@ def _worker_env(script_body):
     return {"PATH": bin_dir + ":/usr/bin:/bin", "HOME": home}
 
 
-def _worker_case(script_body, needle):
-    for hook in ("block_worker_kill_while_working.py", "block_worker_send_while_working.py"):
-        verb = "kill" if "kill" in hook else "send"
-        proc, lines, _ = _run_hook(hook, _bash(f"worker-cli {verb} w1 hi"), _worker_env(script_body))
-        if proc.returncode != 0 or not _traces(lines, hook[:-3], needle):
-            return f"{hook} exit {proc.returncode} lines {lines}"
-    return None
-
-
-def case_worker_cli_missing():
-    return _worker_case(None, "worker-cli not found")
-
-
 def case_worker_cli_rc():
     return _worker_case("#!/bin/sh\nexit 3\n", "rc=3")
-
-
-def _run_snippet(snippet: str) -> tuple:
-    tmp = tempfile.mkdtemp()
-    log = os.path.join(tmp, "f.jsonl")
-    env = dict(os.environ, MONITOR_CC_HOOK_FIRING_LOG=log)
-    proc = subprocess.run([sys.executable, "-c", snippet, HOOK_DIR], capture_output=True, text=True, env=env, timeout=30)
-    lines = [json.loads(x) for x in open(log).read().splitlines()] if os.path.exists(log) else []
-    return proc, lines
 
 
 def case_worker_cli_timeout():
@@ -197,6 +180,15 @@ def case_worker_cli_timeout():
         if proc.returncode != 0 or proc.stdout.strip() != "''" or not _traces(lines, module, "status subprocess failed for w1: TimeoutExpired"):
             return f"{module} exit {proc.returncode} stdout {proc.stdout!r} stderr {proc.stderr[-200:]!r} lines {lines}"
     return None
+
+
+def _run_snippet(snippet: str) -> tuple:
+    tmp = tempfile.mkdtemp()
+    log = os.path.join(tmp, "f.jsonl")
+    env = dict(os.environ, MONITOR_CC_HOOK_FIRING_LOG=log)
+    proc = subprocess.run([sys.executable, "-c", snippet, HOOK_DIR], capture_output=True, text=True, env=env, timeout=30)
+    lines = [json.loads(x) for x in open(log).read().splitlines()] if os.path.exists(log) else []
+    return proc, lines
 
 
 def case_status_fn_raises():
@@ -241,6 +233,14 @@ def case_sweep_prints():
     remaining = settings["hooks"]["PreToolUse"][0]["hooks"]
     ok = swept == 1 and f"Swept stale hook: PreToolUse python3 {dead}" in buf.getvalue() and len(remaining) == 1
     return _expect(ok, f"swept {swept} stderr {buf.getvalue()!r}")
+
+
+def _load(module: str):
+    spec = importlib.util.spec_from_file_location(module, os.path.join(HOOK_DIR, module + ".py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, HOOK_DIR)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def case_null_byte_read_path():

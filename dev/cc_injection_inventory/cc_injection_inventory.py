@@ -38,19 +38,16 @@ def inventory_workflow() -> None:
     args = _parse_args()
     log_files, excluded_files = _resolve_log_files(args.logs_glob)
     if not log_files:
-        raise RuntimeError(f"No log files matched: {args.logs_glob}")
+        raise_no_log_files_matched(args)
 
     registry: dict = {}
     pending_user_text: dict = {}
     dedup_seen: dict = {}
     file_stats = []
-    counters = {"raw_segments": 0, "distinct_segments": 0, "raw_messages": 0, "distinct_messages": 0}
+    counters = compute_counters()
     msg_dedup_seen: set = set()
 
-    for path in log_files:
-        stats = _process_file(path, registry, pending_user_text, dedup_seen, counters, args.max_entries,
-                               msg_dedup_seen)
-        file_stats.append(stats)
+    process_log_files(log_files, registry, pending_user_text, dedup_seen, counters, args, msg_dedup_seen, file_stats)
 
     _finalize_pending_user_text(pending_user_text, registry)
 
@@ -69,6 +66,17 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--max-entries", type=int, default=None,
                    help="Debug: cap entries processed per file")
     return p.parse_args()
+
+
+def _resolve_log_files(logs_glob: str | None) -> tuple:
+    if logs_glob:
+        return sorted(Path(p) for p in globmod.glob(logs_glob)), []
+    all_files = sorted(_default_log_dir().glob(_DEFAULT_GLOB))
+    task_name = _current_task_name()
+    included, excluded = [], []
+    for f in all_files:
+        (excluded if _is_own_live_session_log(f, task_name) else included).append(f)
+    return included, excluded
 
 
 def _default_log_dir() -> Path:
@@ -94,15 +102,19 @@ def _is_own_live_session_log(path: Path, task_name: str | None) -> bool:
     return path.name.startswith(_WORKER_LOG_PREFIX) and task_name in path.name
 
 
-def _resolve_log_files(logs_glob: str | None) -> tuple:
-    if logs_glob:
-        return sorted(Path(p) for p in globmod.glob(logs_glob)), []
-    all_files = sorted(_default_log_dir().glob(_DEFAULT_GLOB))
-    task_name = _current_task_name()
-    included, excluded = [], []
-    for f in all_files:
-        (excluded if _is_own_live_session_log(f, task_name) else included).append(f)
-    return included, excluded
+def raise_no_log_files_matched(args):
+    raise RuntimeError(f"No log files matched: {args.logs_glob}")
+
+
+def compute_counters():
+    return {"raw_segments": 0, "distinct_segments": 0, "raw_messages": 0, "distinct_messages": 0}
+
+
+def process_log_files(log_files, registry, pending_user_text, dedup_seen, counters, args, msg_dedup_seen, file_stats):
+    for path in log_files:
+        stats = _process_file(path, registry, pending_user_text, dedup_seen, counters, args.max_entries,
+                               msg_dedup_seen)
+        file_stats.append(stats)
 
 
 if __name__ == "__main__":

@@ -162,7 +162,7 @@ Converted suites run as parallel fail-fast strands through the strand runner in 
 
 ---
 
-### test_skip_reporting.py (175 LOC)
+### test_skip_reporting.py (190 LOC)
 
 **Purpose:** Proves the stderr reporting and narrowed-exception paths: skip dedup, unreadable inputs, malformed lines, transcript reasons and search skipping.
 **Reads:** temp files and directories built in-script.
@@ -242,7 +242,7 @@ Converted suites run as parallel fail-fast strands through the strand runner in 
 
 ---
 
-### strand_abort_probe.py (79 LOC)
+### strand_abort_probe.py (95 LOC)
 
 **Purpose:** Proves the strand behavior of any converted suite by injecting one failing strand into a temporary copy and checking abort, finished siblings and exit code.
 **Reads:** the converted suite files named on the command line.

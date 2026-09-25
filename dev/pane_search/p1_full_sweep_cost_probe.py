@@ -13,7 +13,19 @@ _DEFAULT_FWD_LOG = Path(
 )
 _REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'p1_full_sweep_cost_report.md'
 
+
 # ORCHESTRATOR
+
+def main():
+    _arg_path = compute_arg_path()
+    probe_workflow(_arg_path)
+
+
+# FUNCTIONS
+
+def compute_arg_path():
+    return Path(sys.argv[1]) if len(sys.argv) > 1 else _DEFAULT_FWD_LOG
+
 
 def probe_workflow(fwd_path: Path) -> None:
     if not fwd_path.exists():
@@ -47,5 +59,4 @@ def probe_workflow(fwd_path: Path) -> None:
 
 
 if __name__ == '__main__':
-    _arg_path = Path(sys.argv[1]) if len(sys.argv) > 1 else _DEFAULT_FWD_LOG
-    probe_workflow(_arg_path)
+    main()

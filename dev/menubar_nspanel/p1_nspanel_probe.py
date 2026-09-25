@@ -50,25 +50,6 @@ def run() -> None:
 
 # FUNCTIONS
 
-class _PanelController(NSObject):
-    def initWithApp_(self, app):
-        self = objc.super(_PanelController, self).init()
-        if self is None:
-            return None
-        self._app = app
-        return self
-
-    def togglePanel_(self, sender):
-        app = self._app
-        if app._panel_open:
-            app._panel.orderOut_(None)
-            app._panel_open = False
-        else:
-            _reposition_panel(app._panel, app._nsapp.nsstatusitem)
-            app._panel.orderFrontRegardless()
-            app._panel_open = True
-
-
 class NSPanelProbeApp(rumps.App):
     def __init__(self):
         super().__init__(ICON_NORMAL, quit_button='Quit', menu=[])
@@ -104,32 +85,6 @@ class NSPanelProbeApp(rumps.App):
         _update_panel_text(self._panel_tv, sessions)
 
 
-def _statuses_changed(sessions, last: dict) -> bool:
-    current = {s.name: s.status for s in sessions}
-    return current != last
-
-
-def _blink(app: NSPanelProbeApp) -> None:
-    app.title = ICON_BLINK
-    threading.Timer(BLINK_DURATION, _restore_icon, args=[app]).start()
-
-
-def _restore_icon(app: NSPanelProbeApp) -> None:
-    app.title = ICON_NORMAL
-
-
-def _format_bg_badge(remaining) -> str:
-    if remaining is None:
-        return '[B]'
-    mins, secs = divmod(remaining, 60)
-    return f'[B {mins}:{secs:02d}]'
-
-
-def _make_header(project_name: str) -> str:
-    fill = '─' * max(2, 30 - len(project_name))
-    return f'─── {project_name} {fill}'
-
-
 def _make_nspanel():
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
@@ -158,6 +113,25 @@ def _make_nspanel():
     return panel, tv
 
 
+class _PanelController(NSObject):
+    def initWithApp_(self, app):
+        self = objc.super(_PanelController, self).init()
+        if self is None:
+            return None
+        self._app = app
+        return self
+
+    def togglePanel_(self, sender):
+        app = self._app
+        if app._panel_open:
+            app._panel.orderOut_(None)
+            app._panel_open = False
+        else:
+            _reposition_panel(app._panel, app._nsapp.nsstatusitem)
+            app._panel.orderFrontRegardless()
+            app._panel_open = True
+
+
 def _reposition_panel(panel: NSPanel, nsstatusitem) -> None:
     btn_win = nsstatusitem.button().window()
     sr = btn_win.frame()
@@ -165,6 +139,20 @@ def _reposition_panel(panel: NSPanel, nsstatusitem) -> None:
     px = sr.origin.x + sr.size.width / 2.0 - pw / 2.0
     py = sr.origin.y - ph - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, pw, ph), False)
+
+
+def _statuses_changed(sessions, last: dict) -> bool:
+    current = {s.name: s.status for s in sessions}
+    return current != last
+
+
+def _blink(app: NSPanelProbeApp) -> None:
+    app.title = ICON_BLINK
+    threading.Timer(BLINK_DURATION, _restore_icon, args=[app]).start()
+
+
+def _restore_icon(app: NSPanelProbeApp) -> None:
+    app.title = ICON_NORMAL
 
 
 def _update_panel_text(tv: NSTextView, sessions) -> None:
@@ -185,6 +173,18 @@ def _update_panel_text(tv: NSTextView, sessions) -> None:
     attrs = {NSFontAttributeName: _MENLO()}
     astr = NSAttributedString.alloc().initWithString_attributes_(text, attrs)
     tv.textStorage().setAttributedString_(astr)
+
+
+def _make_header(project_name: str) -> str:
+    fill = '─' * max(2, 30 - len(project_name))
+    return f'─── {project_name} {fill}'
+
+
+def _format_bg_badge(remaining) -> str:
+    if remaining is None:
+        return '[B]'
+    mins, secs = divmod(remaining, 60)
+    return f'[B {mins}:{secs:02d}]'
 
 
 if __name__ == '__main__':

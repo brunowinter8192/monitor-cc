@@ -11,7 +11,7 @@ The probe takes no data in: it registers a live hotkey and prints a delay per ke
 
 ## Modules
 
-### probe_get_event_time.py (111 LOC)
+### probe_get_event_time.py (114 LOC)
 
 **Purpose:** Standalone Carbon event-time probe: a non-interactive symbol check and an interactive throwaway hotkey that prints queue delay per press.
 **Reads:** nothing; standalone GUI probe.
@@ -21,7 +21,7 @@ The probe takes no data in: it registers a live hotkey and prints a delay per ke
 
 ---
 
-### analyze_latency.py (141 LOC)
+### analyze_latency.py (166 LOC)
 
 **Purpose:** Parses the menubar log's latency lines into tick, hotkey and focus buckets and writes a distribution report.
 **Reads:** the menubar log (default path from `src.menubar`, override via first argument).

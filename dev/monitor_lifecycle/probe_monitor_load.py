@@ -9,13 +9,15 @@ _SESSION_PREFIX = "monitor_cc_"
 _REPORT_DIR     = Path(__file__).resolve().parent / "reports"
 _MODE_RE = re.compile(r'--mode\s+(\S+)')
 
+
 # ORCHESTRATOR
 
 def probe_monitor_load_workflow() -> None:
     rows = collect_pane_rows()
-    rows.sort(key=lambda r: r['cpu_seconds'], reverse=True)
+    run_sort(rows)
     print_table(rows)
     write_report(rows)
+
 
 # FUNCTIONS
 
@@ -36,6 +38,7 @@ def collect_pane_rows() -> list:
             'pct_cpu': stats['pct_cpu'],
         })
     return rows
+
 
 def list_monitor_panes() -> list:
     result = subprocess.run(
@@ -63,6 +66,7 @@ def list_monitor_panes() -> list:
         })
     return panes
 
+
 def ps_stats(pid: int) -> dict:
     result = subprocess.run(
         ["ps", "-o", "etime=,cputime=,%cpu=", "-p", str(pid)],
@@ -79,6 +83,7 @@ def ps_stats(pid: int) -> dict:
         'pct_cpu': pct_cpu,
     }
 
+
 def parse_clock(value: str) -> float:
     days = 0
     if '-' in value:
@@ -90,6 +95,11 @@ def parse_clock(value: str) -> float:
     hours, minutes, seconds = parts
     return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
+
+def run_sort(rows):
+    rows.sort(key=lambda r: r['cpu_seconds'], reverse=True)
+
+
 def print_table(rows: list) -> None:
     header = f"{'SESSION':<20} {'SESSION_AGE':>11} {'MODE':<13} {'PID':>8} {'PANE_AGE':>10} {'CPU_TIME':>10} {'%CPU':>6}"
     print(header)
@@ -100,6 +110,7 @@ def print_table(rows: list) -> None:
             f"{r['pane_etime']:>10} {r['cpu_time']:>10} {r['pct_cpu']:>6}"
         )
     print(f"\n{len(rows)} pane(s) across monitor_cc_* sessions.")
+
 
 def write_report(rows: list) -> Path:
     _REPORT_DIR.mkdir(parents=True, exist_ok=True)

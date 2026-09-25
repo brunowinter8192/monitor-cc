@@ -8,6 +8,7 @@ from cache_timeline_parse import parse_session_turns, find_project_sessions
 from cache_timeline_analysis import detect_anomalies
 from cache_timeline_render import format_turn_table, format_summary, format_minute_chart, format_project_summary
 
+
 # ORCHESTRATOR
 
 def main():
@@ -26,29 +27,6 @@ def main():
         sys.exit(1)
     print(output)
 
-def run_timeline_view(session_path, turns, anomalies_only=False):
-    flags, anomaly_details = detect_anomalies(turns)
-    lines = [f'# Cache Timeline — {session_path.name}\n']
-    lines.append(format_turn_table(turns, flags=flags, anomalies_only=anomalies_only))
-    lines.append('')
-    lines.append(format_summary(turns, anomaly_details=anomaly_details))
-    return '\n'.join(lines)
-
-def run_aggregate_view(session_path, turns):
-    _, anomaly_details = detect_anomalies(turns)
-    lines = [f'# Cache Timeline (per-minute) — {session_path.name}\n']
-    lines.append(format_minute_chart(turns))
-    lines.append('')
-    lines.append(format_summary(turns, anomaly_details=anomaly_details))
-    return '\n'.join(lines)
-
-def run_project_view(project_path, include_workers=False):
-    sessions = find_project_sessions(project_path, include_workers)
-    if not sessions:
-        return f'No sessions found for project: {project_path}'
-    lines = [f'# Cache Timeline — {project_path}\n']
-    lines.append(format_project_summary(sessions))
-    return '\n'.join(lines)
 
 # FUNCTIONS
 
@@ -60,6 +38,33 @@ def parse_args():
     parser.add_argument('--workers', action='store_true', help='Include worker sessions (requires --project)')
     parser.add_argument('--anomalies-only', action='store_true', dest='anomalies_only', help='Only show turns with anomalies (requires --session)')
     return parser.parse_args()
+
+
+def run_aggregate_view(session_path, turns):
+    _, anomaly_details = detect_anomalies(turns)
+    lines = [f'# Cache Timeline (per-minute) — {session_path.name}\n']
+    lines.append(format_minute_chart(turns))
+    lines.append('')
+    lines.append(format_summary(turns, anomaly_details=anomaly_details))
+    return '\n'.join(lines)
+
+
+def run_timeline_view(session_path, turns, anomalies_only=False):
+    flags, anomaly_details = detect_anomalies(turns)
+    lines = [f'# Cache Timeline — {session_path.name}\n']
+    lines.append(format_turn_table(turns, flags=flags, anomalies_only=anomalies_only))
+    lines.append('')
+    lines.append(format_summary(turns, anomaly_details=anomaly_details))
+    return '\n'.join(lines)
+
+
+def run_project_view(project_path, include_workers=False):
+    sessions = find_project_sessions(project_path, include_workers)
+    if not sessions:
+        return f'No sessions found for project: {project_path}'
+    lines = [f'# Cache Timeline — {project_path}\n']
+    lines.append(format_project_summary(sessions))
+    return '\n'.join(lines)
 
 
 if __name__ == '__main__':

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Callable, Dict, List, Tuple
 
 from dev.session_launcher.space_lib import (
-    DESKTOP_METHODS,
+    desktop_methods,
     active_space,
     cg_arrow_hotkey,
     permission_state,
@@ -21,16 +21,40 @@ _TAP_SESSION = 1
 _SETTLE_SECONDS = 1.2
 _MAX_DESKTOP = 5
 
+
 # ORCHESTRATOR
 
 def main() -> None:
     home_space = active_space()
     ids = space_ids()
-    home_idx = ids.index(home_space) + 1
+    home_idx = compute_home_idx(ids, home_space)
     near_idx, far_idx = _pick_targets(home_idx)
-    state: Dict[str, object] = {'reversed': {}, 'preferred': ['a1', 'b']}
+    state = assign_values()
     perms = permission_state()
     results = []
+    run_variants_until_return_fails(home_idx, near_idx, far_idx, ids, state, home_space, results)
+    path = write_report(__file__, _build_report(results, perms, home_idx))
+    print_report(path)
+
+
+# FUNCTIONS
+
+def compute_home_idx(ids, home_space):
+    return ids.index(home_space) + 1
+
+
+def _pick_targets(home_idx: int) -> Tuple[int, int]:
+    near = home_idx + 1 if home_idx < _MAX_DESKTOP else home_idx - 1
+    far = 1 if abs(home_idx - 1) >= abs(_MAX_DESKTOP - home_idx) else _MAX_DESKTOP
+    return near, far
+
+
+def assign_values():
+    state: Dict[str, object] = {'reversed': {}, 'preferred': ['a1', 'b']}
+    return state
+
+
+def run_variants_until_return_fails(home_idx, near_idx, far_idx, ids, state, home_space, results):
     for variant in _build_variants(home_idx, near_idx, far_idx, ids, state):
         result = _run_variant(variant, home_space, ids, state)
         results.append(result)
@@ -38,30 +62,33 @@ def main() -> None:
         if not result['returned']:
             print(f'ABORT: could not return to desktop {home_idx}, active is desktop {space_ids().index(active_space()) + 1}')
             break
-    path = write_report(__file__, _build_report(results, perms, home_idx))
-    print(f'report: {path}')
 
-# FUNCTIONS
 
-def _pick_targets(home_idx: int) -> Tuple[int, int]:
-    near = home_idx + 1 if home_idx < _MAX_DESKTOP else home_idx - 1
-    far = 1 if abs(home_idx - 1) >= abs(_MAX_DESKTOP - home_idx) else _MAX_DESKTOP
-    return near, far
+def _build_variants(home_idx: int, near_idx: int, far_idx: int, ids: List[int], state: Dict[str, object]) -> List[dict]:
+    variants = []
+    for label, method in (('a1 CGEventPost session flags', 'a1'), ('a2 CGEventPost HID flags', 'a2'),
+                          ('a3 CGEventPost session explicit ctrl', 'a3'), ('b System Events key code', 'b')):
+        variants.append(_hotkey_variant(label, method, near_idx))
+        variants.append(_hotkey_variant(label, method, far_idx))
+    variants.append(_arrow_variant('d1 CGEventPost Ctrl+Arrow', home_idx, near_idx,
+                                   lambda right: cg_arrow_hotkey(right, _TAP_SESSION)))
+    variants.append(_arrow_variant('d2 System Events Ctrl+Arrow', home_idx, near_idx, sysevents_arrow_hotkey))
+    for flavor in ('joshuarli', 'jurplel'):
+        variants.append(_swipe_variant(flavor, home_idx, near_idx, state))
+        variants.append(_swipe_variant(flavor, home_idx, far_idx, state))
+    return variants
 
-def _direction_right(home_idx: int, target_idx: int, flavor: str, state: Dict[str, object]) -> bool:
-    right = target_idx > home_idx
-    if state['reversed'].get(flavor):
-        return not right
-    return right
 
 def _hotkey_variant(name: str, method: str, target_idx: int) -> dict:
     return {'name': f'{name} -> desktop {target_idx}', 'kind': 'target', 'target_idx': target_idx,
-            'action': lambda: DESKTOP_METHODS[method](target_idx), 'method': method}
+            'action': lambda: desktop_methods()[method](target_idx), 'method': method}
+
 
 def _arrow_variant(name: str, home_idx: int, target_idx: int, fn: Callable[[bool], None]) -> dict:
     right = target_idx > home_idx
     return {'name': f'{name} -> desktop {target_idx}', 'kind': 'target', 'target_idx': target_idx,
             'action': lambda: fn(right), 'method': None}
+
 
 def _swipe_variant(flavor: str, home_idx: int, target_idx: int, state: Dict[str, object]) -> dict:
     steps = abs(target_idx - home_idx)
@@ -77,19 +104,13 @@ def _swipe_variant(flavor: str, home_idx: int, target_idx: int, state: Dict[str,
     return {'name': f'c_{flavor} {steps}-step -> desktop {target_idx}', 'kind': kind, 'target_idx': target_idx,
             'action': action, 'method': None, 'flavor': flavor, 'steps': steps}
 
-def _build_variants(home_idx: int, near_idx: int, far_idx: int, ids: List[int], state: Dict[str, object]) -> List[dict]:
-    variants = []
-    for label, method in (('a1 CGEventPost session flags', 'a1'), ('a2 CGEventPost HID flags', 'a2'),
-                          ('a3 CGEventPost session explicit ctrl', 'a3'), ('b System Events key code', 'b')):
-        variants.append(_hotkey_variant(label, method, near_idx))
-        variants.append(_hotkey_variant(label, method, far_idx))
-    variants.append(_arrow_variant('d1 CGEventPost Ctrl+Arrow', home_idx, near_idx,
-                                   lambda right: cg_arrow_hotkey(right, _TAP_SESSION)))
-    variants.append(_arrow_variant('d2 System Events Ctrl+Arrow', home_idx, near_idx, sysevents_arrow_hotkey))
-    for flavor in ('joshuarli', 'jurplel'):
-        variants.append(_swipe_variant(flavor, home_idx, near_idx, state))
-        variants.append(_swipe_variant(flavor, home_idx, far_idx, state))
-    return variants
+
+def _direction_right(home_idx: int, target_idx: int, flavor: str, state: Dict[str, object]) -> bool:
+    right = target_idx > home_idx
+    if state['reversed'].get(flavor):
+        return not right
+    return right
+
 
 def _run_variant(variant: dict, home_space: int, ids: List[int], state: Dict[str, object]) -> dict:
     target_space = ids[variant['target_idx'] - 1]
@@ -114,9 +135,11 @@ def _run_variant(variant: dict, home_space: int, ids: List[int], state: Dict[str
             'ms': ms, 'observed_idx': observed_idx, 'note': note, 'returned': returned,
             'total_s': time.monotonic() - t0}
 
+
 def _format_console(result: dict) -> str:
     ms = f'{result["ms"]:.0f}ms' if result['ms'] is not None else 'no switch'
     return f'{result["name"]}: ok={result["ok"]} {ms} observed_desktop={result["observed_idx"]} returned={result["returned"]} {result["note"]}'
+
 
 def _build_report(results: List[dict], perms: Dict[str, bool], home_idx: int) -> str:
     lines = [
@@ -135,6 +158,11 @@ def _build_report(results: List[dict], perms: Dict[str, bool], home_idx: int) ->
         lines.append(f'| {r["name"]} | {"yes" if r["ok"] else "no"} | {ms} | {r["observed_idx"]} | {r["returned"]} | {r["note"]} |')
     lines.append('')
     return '\n'.join(lines)
+
+
+def print_report(path):
+    print(f'report: {path}')
+
 
 if __name__ == '__main__':
     main()

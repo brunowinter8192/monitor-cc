@@ -12,10 +12,17 @@ sys.path.insert(0, str(_ROOT))
 _FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'api_errors_legacy_ts.jsonl'
 _REAL_LINES = 5
 
+
 # ORCHESTRATOR
 
-
 def main():
+    run_with_temporarydirectory()
+    print('PASS')
+
+
+# FUNCTIONS
+
+def run_with_temporarydirectory():
     with tempfile.TemporaryDirectory() as tmp_root:
         os.environ['MONITOR_CC_ROOT'] = tmp_root
         os.environ['PROXY_LOG_ID'] = 'ts_probe_0'
@@ -23,10 +30,19 @@ def main():
         _check_writer_ts(Path(tmp_root))
         _check_janitor_real_lines(Path(tmp_root))
         _check_janitor_mixed(Path(tmp_root))
-    print('PASS')
 
 
-# FUNCTIONS
+def _check_writer_ts(root: Path) -> None:
+    from src.proxy.addon_dual_log import _log_4xx_error
+    errors_file = root / 'src' / 'logs' / 'dual_log' / 'x_errors.jsonl'
+    _log_4xx_error(_Flow(), errors_file)
+    written = (root / 'src' / 'logs' / 'api_errors.jsonl').read_text().splitlines()
+    assert len(written) == 1, written
+    ts = json.loads(written[0])['ts']
+    parsed = datetime.fromisoformat(ts)
+    assert parsed.utcoffset() == timedelta(0), ts
+    print(f'writer ts parses: {ts}')
+
 
 class _Headers(dict):
     def get(self, k, default=None):
@@ -50,20 +66,16 @@ class _Flow:
     id = 'flow-err'
 
 
-def _check_writer_ts(root: Path) -> None:
-    from src.proxy.addon_dual_log import _log_4xx_error
-    errors_file = root / 'src' / 'logs' / 'dual_log' / 'x_errors.jsonl'
-    _log_4xx_error(_Flow(), errors_file)
-    written = (root / 'src' / 'logs' / 'api_errors.jsonl').read_text().splitlines()
-    assert len(written) == 1, written
-    ts = json.loads(written[0])['ts']
-    parsed = datetime.fromisoformat(ts)
-    assert parsed.utcoffset() == timedelta(0), ts
-    print(f'writer ts parses: {ts}')
-
-
-def _recorder(sink: list):
-    return lambda name, msg: sink.append(msg)
+def _check_janitor_real_lines(root: Path) -> None:
+    from src.panes import log_janitor
+    lines = _real_lines()
+    far_future = datetime.now(timezone.utc) + timedelta(days=3650)
+    far_past = datetime.now(timezone.utc) - timedelta(days=3650)
+    kept, unparsable, legacy = log_janitor._partition_lines(lines, far_future)
+    assert (kept, unparsable, legacy) == ([], 0, _REAL_LINES), (len(kept), unparsable, legacy)
+    kept, unparsable, legacy = log_janitor._partition_lines(lines, far_past)
+    assert (len(kept), unparsable, legacy) == (_REAL_LINES, 0, _REAL_LINES)
+    print(f'real legacy lines: {_REAL_LINES} parsed, all prunable by age, 0 unparsable')
 
 
 def _real_lines() -> list:
@@ -75,18 +87,6 @@ def _real_lines() -> list:
                 break
     assert lines and all(json.loads(l)['ts'].endswith('+00:00Z') for l in lines)
     return lines
-
-
-def _check_janitor_real_lines(root: Path) -> None:
-    from src.panes import log_janitor
-    lines = _real_lines()
-    far_future = datetime.now(timezone.utc) + timedelta(days=3650)
-    far_past = datetime.now(timezone.utc) - timedelta(days=3650)
-    kept, unparsable, legacy = log_janitor._partition_lines(lines, far_future)
-    assert (kept, unparsable, legacy) == ([], 0, _REAL_LINES), (len(kept), unparsable, legacy)
-    kept, unparsable, legacy = log_janitor._partition_lines(lines, far_past)
-    assert (len(kept), unparsable, legacy) == (_REAL_LINES, 0, _REAL_LINES)
-    print(f'real legacy lines: {_REAL_LINES} parsed, all prunable by age, 0 unparsable')
 
 
 def _check_janitor_mixed(root: Path) -> None:
@@ -111,6 +111,10 @@ def _check_janitor_mixed(root: Path) -> None:
     assert any('handled 2 lines with legacy ts suffix' in n for n in notes), notes
     assert any('kept 1 lines whose ts could not be parsed' in n for n in notes), notes
     print(f'mixed prune kept {kept}; notes {notes}')
+
+
+def _recorder(sink: list):
+    return lambda name, msg: sink.append(msg)
 
 
 if __name__ == '__main__':

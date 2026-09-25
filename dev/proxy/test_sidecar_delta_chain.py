@@ -9,8 +9,8 @@ sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
-from proxy.addon_dual_log import _is_sidecar_payload, _write_request_dual_logs
-from proxy.addon_state import DeltaState, DualLogPaths, SessionIdentity
+from src.proxy.addon_dual_log import _is_sidecar_payload, _write_request_dual_logs
+from src.proxy.addon_state import DeltaState, DualLogPaths, SessionIdentity
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dev.refactoring.strand_runner import strand_workflow
 

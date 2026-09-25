@@ -18,39 +18,36 @@ _ENDS_WITH_TAG_RE = re.compile(r'<total_tokens>(\d+) tokens left</total_tokens>\
 REPORT_DIR = Path(__file__).parent / 'md'
 REPORT_PATH = REPORT_DIR / 'trailing_message_shapes_report.md'
 
-# FUNCTIONS
-
-def _all_stripped_texts(path: Path) -> list:
-    texts = []
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            entry = json.loads(line)
-            msgs_delta = entry.get('messages_delta') or {}
-            for blks in msgs_delta.values():
-                if not isinstance(blks, dict):
-                    continue
-                for blk in blks.values():
-                    if not isinstance(blk, list):
-                        continue
-                    for t in blk:
-                        if isinstance(t, str):
-                            texts.append(t)
-    return texts
-
-
-def _normalize(text: str) -> str:
-    return _ENDS_WITH_TAG_RE.sub('<total_tokens>N tokens left</total_tokens>', text)
-
 
 # ORCHESTRATOR
+
 def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# Trailing-message shape probe (total_tokens tag)', '']
+    lines = compute_lines()
     overall = Counter()
 
+    print_stems(overall, lines)
+
+    print_overall_distinct_shapes(overall)
+    lines.append('## Overall (union across sessions)')
+    lines.append('')
+    run_append(lines, overall)
+    lines.append('')
+    lines.append('| total count | shape (repr, truncated to 200 chars) |')
+    lines.append('|---|---|')
+    process_most_common(overall, lines)
+
+    REPORT_PATH.write_text('\n'.join(lines))
+    print_report_written()
+
+
+# FUNCTIONS
+
+def compute_lines():
+    return ['# Trailing-message shape probe (total_tokens tag)', '']
+
+
+def print_stems(overall, lines):
     for stem in STEMS:
         path = LOG_DIR / f'{stem}_stripped.jsonl'
         texts = _all_stripped_texts(path)
@@ -78,20 +75,49 @@ def main() -> None:
             lines.append(f'| {count} | `{display}` |')
         lines.append('')
 
+
+def _all_stripped_texts(path: Path) -> list:
+    texts = []
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            msgs_delta = entry.get('messages_delta') or {}
+            for blks in msgs_delta.values():
+                if not isinstance(blks, dict):
+                    continue
+                for blk in blks.values():
+                    if not isinstance(blk, list):
+                        continue
+                    for t in blk:
+                        if isinstance(t, str):
+                            texts.append(t)
+    return texts
+
+
+def _normalize(text: str) -> str:
+    return _ENDS_WITH_TAG_RE.sub('<total_tokens>N tokens left</total_tokens>', text)
+
+
+def print_overall_distinct_shapes(overall):
     print(f'\nOVERALL distinct shapes across all 3 sessions: {len(overall)}')
-    lines.append('## Overall (union across sessions)')
-    lines.append('')
+
+
+def run_append(lines, overall):
     lines.append(f'- distinct shapes across all 3 sessions: {len(overall)}')
-    lines.append('')
-    lines.append('| total count | shape (repr, truncated to 200 chars) |')
-    lines.append('|---|---|')
+
+
+def process_most_common(overall, lines):
     for shape, count in overall.most_common():
         display = repr(shape)
         if len(display) > 200:
             display = display[:200] + '...'
         lines.append(f'| {count} | `{display}` |')
 
-    REPORT_PATH.write_text('\n'.join(lines))
+
+def print_report_written():
     print(f'\nReport written: {REPORT_PATH}')
 
 

@@ -11,7 +11,7 @@ Each script reads a session JSONL (argument, or the newest file of the newest pr
 
 ## Modules
 
-### 01_map_message_types.py (188 LOC)
+### 01_map_message_types.py (203 LOC)
 
 **Purpose:** Per top-level message type: count, keys, subtypes, meta-flag distribution and one truncated example.
 **Reads:** a session JSONL path (argument or auto-discovered).
@@ -21,7 +21,7 @@ Each script reads a session JSONL (argument, or the newest file of the newest pr
 
 ---
 
-### 02_map_content_blocks.py (273 LOC)
+### 02_map_content_blocks.py (288 LOC)
 
 **Purpose:** Deep-dive into message content blocks per message-type and content-type combination: count, keys, nesting, tool names, example.
 **Reads:** a session JSONL path (argument or auto-discovered).
@@ -31,7 +31,7 @@ Each script reads a session JSONL (argument, or the newest file of the newest pr
 
 ---
 
-### 03_scan_instructions.py (262 LOC)
+### 03_scan_instructions.py (277 LOC)
 
 **Purpose:** Scans for rules and instruction related content: meta messages, rule-file references, system-reminder tags, file-history snapshots.
 **Reads:** a session JSONL path (argument or auto-discovered).

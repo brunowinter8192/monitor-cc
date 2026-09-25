@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-
 import json
 import sys
 from datetime import datetime, timezone
@@ -15,19 +14,26 @@ LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 OUTPUT_DIR = Path(__file__).parent / 'jsonl'
 OUTPUT_FILENAME_FORMAT = 'bash_file_mods_%Y%m%dT%H%M%SZ.jsonl'
 
+
 # ORCHESTRATOR
 
 def extract_workflow() -> None:
     log_paths = _all_original_logs()
     records = []
-    for log_path in log_paths:
-        records.extend(_extract_session_records(log_path))
+    process_log_paths(log_paths, records)
     _write_records(records, _run_output_path())
+
 
 # FUNCTIONS
 
 def _all_original_logs() -> list:
     return sorted(LOG_DIR.glob('*_original.jsonl'))
+
+
+def process_log_paths(log_paths, records):
+    for log_path in log_paths:
+        records.extend(_extract_session_records(log_path))
+
 
 def _extract_session_records(log_path: Path) -> list:
     session_stem = log_path.name.removesuffix('_original.jsonl')
@@ -50,11 +56,13 @@ def _extract_session_records(log_path: Path) -> list:
                 records.append(_build_record(session_stem, tool_use_id, entry.get('timestamp'), command, matched_forms))
     return records
 
+
 def _parse_line(line: str):
     try:
         return json.loads(line)
     except json.JSONDecodeError:
         return None
+
 
 def _bash_tool_use_blocks(entry: dict) -> list:
     blocks = []
@@ -66,6 +74,7 @@ def _bash_tool_use_blocks(entry: dict) -> list:
             if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('name') == 'Bash':
                 blocks.append(block)
     return blocks
+
 
 def _matching_forms(command: str) -> list:
     labels = []
@@ -80,6 +89,7 @@ def _matching_forms(command: str) -> list:
         labels.remove('tee (truncating)')
     return labels
 
+
 def _build_record(session_stem: str, tool_use_id: str, timestamp, command: str, matched_forms: list) -> dict:
     return {
         'session': session_stem,
@@ -89,14 +99,17 @@ def _build_record(session_stem: str, tool_use_id: str, timestamp, command: str, 
         'command': command,
     }
 
-def _run_output_path() -> Path:
-    return OUTPUT_DIR / datetime.now(timezone.utc).strftime(OUTPUT_FILENAME_FORMAT)
 
 def _write_records(records: list, output_path: Path) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     with open(output_path, 'x', encoding='utf-8') as f:
         for record in records:
             f.write(json.dumps(record) + '\n')
+
+
+def _run_output_path() -> Path:
+    return OUTPUT_DIR / datetime.now(timezone.utc).strftime(OUTPUT_FILENAME_FORMAT)
+
 
 if __name__ == '__main__':
     extract_workflow()

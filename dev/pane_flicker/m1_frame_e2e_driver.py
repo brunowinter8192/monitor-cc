@@ -16,16 +16,56 @@ _WORKERS = [
     {'name': 'w2', 'status': 'working', 'session': 's2'},
 ]
 
+
 # ORCHESTRATOR
 
 def drive_workflow() -> None:
-    monitor = importlib.import_module(f'{_ROOT_PKG}.core.monitor')
+    monitor = compute_monitor()
     monitor.active_project_filter = PROJECT_FILTER
     if PANE in ('worker_tokens', 'worker_proxy'):
-        importlib.import_module(f'{_ROOT_PKG}.workers.worker_selection')._write_selection(PROJECT_FILTER, 'w1')
-    _seed_and_run[PANE]()
+        run_write_selection()
+    run_seed_and_run()
+
 
 # FUNCTIONS
+
+def compute_monitor():
+    return importlib.import_module(f'{_ROOT_PKG}.core.monitor')
+
+
+def run_write_selection():
+    importlib.import_module(f'{_ROOT_PKG}.workers.worker_selection')._write_selection(PROJECT_FILTER, 'w1')
+
+
+def run_seed_and_run():
+    seed_and_run()[PANE]()
+
+
+def seed_and_run():
+    return {
+        'tokens': run_tokens,
+        'worker_tokens': run_worker_tokens,
+        'proxy': run_proxy,
+        'worker_proxy': run_worker_proxy,
+    }
+
+
+def run_tokens() -> None:
+    mod = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
+    mod._cache_turns = make_turns(30)
+    state = {'first': True}
+    def refresh(now, input_changed, last_refresh, last_janitor):
+        if state['first']:
+            state['first'] = False
+            return True, now, last_janitor
+        return input_changed, now, last_janitor
+    mod._refresh_tokens_data = refresh
+    mod.run_tokens_loop()
+
+
+def make_turns(count: int) -> list:
+    return [make_turn(i, 2 + i % 3) for i in range(count)]
+
 
 def make_turn(idx: int, n_calls: int) -> dict:
     calls = []
@@ -40,8 +80,47 @@ def make_turn(idx: int, n_calls: int) -> dict:
         })
     return {'prompt': f'prompt number {idx} with some words', 'timestamp': f'2026-01-01T10:{idx % 60:02d}:00Z', 'api_calls': calls}
 
-def make_turns(count: int) -> list:
-    return [make_turn(i, 2 + i % 3) for i in range(count)]
+
+def run_worker_tokens() -> None:
+    mod = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tokens_pane')
+    mod._worker_tokens_workers = list(_WORKERS)
+    state = {'first': True}
+    def refresh(now, input_changed, last_refresh, monitor):
+        if state['first'] or mod._worker_tokens_force_reload:
+            state['first'] = False
+            mod._worker_tokens_force_reload = False
+            name = selected_worker()
+            mod._worker_tokens_current_name = name
+            mod._worker_tokens_turns = make_turns(30) if name == 'w1' else []
+            return True, now
+        return input_changed, now
+    mod._refresh_worker_tokens_data = refresh
+    mod.run_worker_tokens_loop()
+
+
+def selected_worker() -> str:
+    selection = importlib.import_module(f'{_ROOT_PKG}.workers.worker_selection')
+    try:
+        with open(selection.get_selection_file_path(PROJECT_FILTER), 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except OSError:
+        return 'w1'
+
+
+def run_proxy() -> None:
+    mod = importlib.import_module(f'{_ROOT_PKG}.proxy_display.pane')
+    mod.proxy_entries.extend(make_proxy_entry(i) for i in range(12))
+    monitor = importlib.import_module(f'{_ROOT_PKG}.core.monitor')
+    monitor._get_session_start_ts = lambda: '2000-01-01T00:00:00Z'
+    state = {'first': True}
+    def refresh(now, input_changed, last_refresh, monitor):
+        if state['first']:
+            state['first'] = False
+            return True, now
+        return input_changed, now
+    mod._refresh_proxy_data = refresh
+    mod.run_proxy_loop()
+
 
 def make_proxy_entry(idx: int) -> dict:
     marker = f'unique_marker_{idx}'
@@ -64,55 +143,6 @@ def make_proxy_entry(idx: int) -> dict:
         'timestamp': f'2026-04-21T10:{idx:02d}:00Z',
     }
 
-def selected_worker() -> str:
-    selection = importlib.import_module(f'{_ROOT_PKG}.workers.worker_selection')
-    try:
-        with open(selection.get_selection_file_path(PROJECT_FILTER), 'r', encoding='utf-8') as f:
-            return f.read().strip()
-    except OSError:
-        return 'w1'
-
-def run_tokens() -> None:
-    mod = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
-    mod._cache_turns = make_turns(30)
-    state = {'first': True}
-    def refresh(now, input_changed, last_refresh, last_janitor):
-        if state['first']:
-            state['first'] = False
-            return True, now, last_janitor
-        return input_changed, now, last_janitor
-    mod._refresh_tokens_data = refresh
-    mod.run_tokens_loop()
-
-def run_worker_tokens() -> None:
-    mod = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tokens_pane')
-    mod._worker_tokens_workers = list(_WORKERS)
-    state = {'first': True}
-    def refresh(now, input_changed, last_refresh, monitor):
-        if state['first'] or mod._worker_tokens_force_reload:
-            state['first'] = False
-            mod._worker_tokens_force_reload = False
-            name = selected_worker()
-            mod._worker_tokens_current_name = name
-            mod._worker_tokens_turns = make_turns(30) if name == 'w1' else []
-            return True, now
-        return input_changed, now
-    mod._refresh_worker_tokens_data = refresh
-    mod.run_worker_tokens_loop()
-
-def run_proxy() -> None:
-    mod = importlib.import_module(f'{_ROOT_PKG}.proxy_display.pane')
-    mod.proxy_entries.extend(make_proxy_entry(i) for i in range(12))
-    monitor = importlib.import_module(f'{_ROOT_PKG}.core.monitor')
-    monitor._get_session_start_ts = lambda: '2000-01-01T00:00:00Z'
-    state = {'first': True}
-    def refresh(now, input_changed, last_refresh, monitor):
-        if state['first']:
-            state['first'] = False
-            return True, now
-        return input_changed, now
-    mod._refresh_proxy_data = refresh
-    mod.run_proxy_loop()
 
 def run_worker_proxy() -> None:
     mod = importlib.import_module(f'{_ROOT_PKG}.proxy_display.worker_proxy_pane')
@@ -132,12 +162,6 @@ def run_worker_proxy() -> None:
     mod._refresh_worker_proxy_data = refresh
     mod.run_worker_proxy_loop()
 
-_seed_and_run = {
-    'tokens': run_tokens,
-    'worker_tokens': run_worker_tokens,
-    'proxy': run_proxy,
-    'worker_proxy': run_worker_proxy,
-}
 
 if __name__ == '__main__':
     drive_workflow()

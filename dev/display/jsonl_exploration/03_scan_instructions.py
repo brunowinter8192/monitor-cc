@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+# INFRASTRUCTURE
 import json
 import re
 import sys
@@ -24,17 +24,31 @@ SEARCH_PATTERNS = [
     ('memory_type', re.compile(r'memory_type')),
 ]
 
-
 _SKIPPED_LINES = 0
 
 
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
+# ORCHESTRATOR
+
+def main():
+    if len(sys.argv) > 1:
+        filepath = compute_filepath()
+    else:
+        filepath = find_latest_jsonl(DEFAULT_PROJECT)
+
+    report = scan_jsonl(filepath)
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_path = compute_output_path(timestamp)
+    output_path.write_text(report, encoding='utf-8')
+    print_report_written_to(output_path)
+    _report_skipped_lines()
 
 
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+# FUNCTIONS
+
+def compute_filepath():
+    return Path(sys.argv[1])
 
 
 def find_latest_jsonl(project_name: str = None) -> Path:
@@ -53,52 +67,23 @@ def find_latest_jsonl(project_name: str = None) -> Path:
     return jsonl_files[0]
 
 
-def truncate(text: str, max_len: int = 300) -> str:
-    if not text:
-        return ''
-    s = str(text).replace('\n', '\\n')
-    if len(s) > max_len:
-        return s[:max_len] + '...'
-    return s
+def scan_jsonl(filepath: Path) -> str:
+    pattern_hits, is_meta_messages, file_history_snapshots, total_lines = _collect_instruction_stats(filepath)
 
+    lines = []
+    lines.append(f'# JSONL Instructions & Rules Scan')
+    lines.append(f'')
+    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
+    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append(f'**Total lines:** {total_lines}')
+    lines.append(f'')
 
-def extract_content_text(msg: dict) -> str:
-    content = msg.get('message', {}).get('content', '')
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, dict):
-                if 'text' in block:
-                    parts.append(block['text'])
-                if 'input' in block and isinstance(block['input'], dict):
-                    parts.append(json.dumps(block['input']))
-                if 'content' in block:
-                    sub = block['content']
-                    if isinstance(sub, str):
-                        parts.append(sub)
-                    elif isinstance(sub, list):
-                        for s in sub:
-                            if isinstance(s, dict) and 'text' in s:
-                                parts.append(s['text'])
-        return '\n'.join(parts)
-    return ''
+    lines.extend(_pattern_summary_lines(pattern_hits))
+    lines.extend(_is_meta_section_lines(is_meta_messages))
+    lines.extend(_file_history_section_lines(file_history_snapshots))
+    lines.extend(_pattern_detail_lines(pattern_hits))
 
-
-def _record_pattern_hits(line: str, line_num: int, msg_type: str, pattern_hits: dict) -> None:
-    for name, pattern in SEARCH_PATTERNS:
-        matches = pattern.findall(line)
-        if matches:
-            for match in matches[:3]:
-                idx = line.find(str(match))
-                context = line[max(0, idx-40):idx+len(str(match))+60]
-                pattern_hits[name].append({
-                    'line': line_num,
-                    'type': msg_type,
-                    'match': str(match)[:100],
-                    'context': truncate(context, 200),
-                })
+    return '\n'.join(lines)
 
 
 def _collect_instruction_stats(filepath: Path) -> tuple:
@@ -145,6 +130,59 @@ def _collect_instruction_stats(filepath: Path) -> tuple:
             _record_pattern_hits(line, line_num, msg_type, pattern_hits)
 
     return pattern_hits, is_meta_messages, file_history_snapshots, total_lines
+
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def extract_content_text(msg: dict) -> str:
+    content = msg.get('message', {}).get('content', '')
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                if 'text' in block:
+                    parts.append(block['text'])
+                if 'input' in block and isinstance(block['input'], dict):
+                    parts.append(json.dumps(block['input']))
+                if 'content' in block:
+                    sub = block['content']
+                    if isinstance(sub, str):
+                        parts.append(sub)
+                    elif isinstance(sub, list):
+                        for s in sub:
+                            if isinstance(s, dict) and 'text' in s:
+                                parts.append(s['text'])
+        return '\n'.join(parts)
+    return ''
+
+
+def truncate(text: str, max_len: int = 300) -> str:
+    if not text:
+        return ''
+    s = str(text).replace('\n', '\\n')
+    if len(s) > max_len:
+        return s[:max_len] + '...'
+    return s
+
+
+def _record_pattern_hits(line: str, line_num: int, msg_type: str, pattern_hits: dict) -> None:
+    for name, pattern in SEARCH_PATTERNS:
+        matches = pattern.findall(line)
+        if matches:
+            for match in matches[:3]:
+                idx = line.find(str(match))
+                context = line[max(0, idx-40):idx+len(str(match))+60]
+                pattern_hits[name].append({
+                    'line': line_num,
+                    'type': msg_type,
+                    'match': str(match)[:100],
+                    'context': truncate(context, 200),
+                })
 
 
 def _pattern_summary_lines(pattern_hits: dict) -> list:
@@ -223,39 +261,16 @@ def _pattern_detail_lines(pattern_hits: dict) -> list:
     return lines
 
 
-def scan_jsonl(filepath: Path) -> str:
-    pattern_hits, is_meta_messages, file_history_snapshots, total_lines = _collect_instruction_stats(filepath)
-
-    lines = []
-    lines.append(f'# JSONL Instructions & Rules Scan')
-    lines.append(f'')
-    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
-    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    lines.append(f'**Total lines:** {total_lines}')
-    lines.append(f'')
-
-    lines.extend(_pattern_summary_lines(pattern_hits))
-    lines.extend(_is_meta_section_lines(is_meta_messages))
-    lines.extend(_file_history_section_lines(file_history_snapshots))
-    lines.extend(_pattern_detail_lines(pattern_hits))
-
-    return '\n'.join(lines)
+def compute_output_path(timestamp):
+    return REPORTS_DIR / f'instructions_{timestamp}.md'
 
 
-def main():
-    if len(sys.argv) > 1:
-        filepath = Path(sys.argv[1])
-    else:
-        filepath = find_latest_jsonl(DEFAULT_PROJECT)
-
-    report = scan_jsonl(filepath)
-
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_path = REPORTS_DIR / f'instructions_{timestamp}.md'
-    output_path.write_text(report, encoding='utf-8')
+def print_report_written_to(output_path):
     print(f'Report written to: {output_path}')
-    _report_skipped_lines()
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 if __name__ == '__main__':

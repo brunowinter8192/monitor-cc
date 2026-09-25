@@ -18,7 +18,7 @@ invariants. Output is stdout plus a report under `md/`.
 
 ## Modules
 
-### p1_scan_launch_ack_wordings.py (292 LOC)
+### p1_scan_launch_ack_wordings.py (308 LOC)
 
 **Purpose:** Inventories distinct CC background-launch-ack wordings in recorded dual-logs, dedups
 cumulative duplication, and evaluates the 3 recognition mechanisms against each wording.
@@ -29,7 +29,7 @@ cumulative duplication, and evaluates the 3 recognition mechanisms against each 
 
 ---
 
-### p2_bg_escape_probe.py (306 LOC)
+### p2_bg_escape_probe.py (313 LOC)
 
 **Purpose:** Verifies `bg_escape.py` — dedup-by-task-id, both ack wordings, main-context never
 fires, tmux session-name derivation, a real tmux round trip, and failure isolation.
@@ -42,7 +42,7 @@ session for the round-trip test.
 
 ---
 
-### p3_strip_interrupt_marker_probe.py (207 LOC)
+### p3_strip_interrupt_marker_probe.py (215 LOC)
 
 **Purpose:** Verifies `strip_interrupt_marker.py` and its wiring through the message-pass,
 rules, vocab, and delta-attribution modules against the real payload shape.

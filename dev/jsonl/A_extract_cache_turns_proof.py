@@ -6,11 +6,13 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
+from src.jsonl.jsonl_cache_turns import extract_cache_turns
 
 _HERE = Path(__file__).parent
 _REPORTS = _HERE / 'A_extract_cache_turns_proof_reports'
 _SESSIONS_DIR = Path.home() / '.claude' / 'projects' / '-Users-brunowinter2000-Documents-ai-Monitor-CC'
 _MAX_SESSIONS = 10
+
 
 # ORCHESTRATOR
 
@@ -25,6 +27,7 @@ def main():
     else:
         sys.exit(_run_verify(sessions, args.baseline))
 
+
 # FUNCTIONS
 
 def _parse_args():
@@ -34,27 +37,13 @@ def _parse_args():
     p.add_argument('--baseline', default=None)
     return p.parse_args()
 
+
 def _find_sessions():
     if not _SESSIONS_DIR.exists():
         return []
     files = sorted(_SESSIONS_DIR.glob('*.jsonl'), key=lambda f: f.stat().st_mtime, reverse=True)
     return files[:_MAX_SESSIONS]
 
-def _load_messages(jsonl_path):
-    messages = []
-    with open(jsonl_path, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            messages.append(json.loads(line))
-    return messages
-
-def _run_one(session_path):
-    from src.jsonl.jsonl_cache_turns import extract_cache_turns
-    messages = _load_messages(session_path)
-    turns = extract_cache_turns(messages)
-    return json.dumps(turns, sort_keys=True, default=str)
 
 def _run_capture(sessions, output_path):
     _REPORTS.mkdir(exist_ok=True)
@@ -68,6 +57,24 @@ def _run_capture(sessions, output_path):
     with open(out_path, 'w') as f:
         json.dump(results, f, indent=2)
     print(f'Baseline written: {out_path}')
+
+
+def _run_one(session_path):
+    messages = _load_messages(session_path)
+    turns = extract_cache_turns(messages)
+    return json.dumps(turns, sort_keys=True, default=str)
+
+
+def _load_messages(jsonl_path):
+    messages = []
+    with open(jsonl_path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            messages.append(json.loads(line))
+    return messages
+
 
 def _run_verify(sessions, baseline_path):
     if baseline_path is None:
@@ -94,6 +101,7 @@ def _run_verify(sessions, baseline_path):
             failed += 1
     print(f'\n{passed} passed, {failed} failed (baseline: {baseline_path})')
     return 0 if failed == 0 else 1
+
 
 if __name__ == '__main__':
     main()

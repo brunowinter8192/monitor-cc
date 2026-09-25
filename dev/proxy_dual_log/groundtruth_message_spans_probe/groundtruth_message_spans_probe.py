@@ -13,12 +13,44 @@ from groundtruth_spans_report import (
     emit_phantom_summary, emit_recording_gaps, emit_conclusion,
 )
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 REPORT_DIR = _AREA_ROOT / "groundtruth_message_spans_probe_reports"
 
+
+# ORCHESTRATOR
+
+def groundtruth_message_spans_probe_workflow():
+    REPORT_DIR.mkdir(exist_ok=True)
+
+    lines = []
+
+    emit = make_emitter(lines)
+
+    _emit_intro(emit)
+    cases_raw = _load_cases(emit)
+    results = compute_results(cases_raw)
+
+    emit_summary_table(emit, results)
+    process_results(results, emit)
+    emit_fidelity_summary(emit, results)
+    emit_phantom_summary(emit, results)
+    emit_recording_gaps(emit, results)
+    emit_conclusion(emit)
+
+    ts_file = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    report_path = compute_report_path(ts_file)
+    run_with_open(report_path, lines)
+
+    print_report(report_path)
+
+
 # FUNCTIONS
+
+def make_emitter(lines):
+    def emit(*parts):
+        lines.append("".join(str(p) for p in parts) + "\n")
+    return emit
+
 
 def _emit_intro(emit) -> None:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -58,33 +90,25 @@ def _load_cases(emit) -> list:
     return cases_raw
 
 
-# ORCHESTRATOR
+def compute_results(cases_raw):
+    return [run_case(c) for c in cases_raw]
 
-def groundtruth_message_spans_probe_workflow():
-    REPORT_DIR.mkdir(exist_ok=True)
 
-    lines = []
-
-    def emit(*parts):
-        lines.append("".join(str(p) for p in parts) + "\n")
-
-    _emit_intro(emit)
-    cases_raw = _load_cases(emit)
-    results = [run_case(c) for c in cases_raw]
-
-    emit_summary_table(emit, results)
+def process_results(results, emit):
     for r in results:
         emit_case_detail(emit, r)
-    emit_fidelity_summary(emit, results)
-    emit_phantom_summary(emit, results)
-    emit_recording_gaps(emit, results)
-    emit_conclusion(emit)
 
-    ts_file = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    report_path = REPORT_DIR / f"groundtruth_spans_{ts_file}.md"
+
+def compute_report_path(ts_file):
+    return REPORT_DIR / f"groundtruth_spans_{ts_file}.md"
+
+
+def run_with_open(report_path, lines):
     with open(report_path, "w") as fout:
         fout.writelines(lines)
 
+
+def print_report(report_path):
     print(f"Report: {report_path}")
 
 

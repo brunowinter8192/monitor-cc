@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import argparse
 import sys
 from datetime import datetime
@@ -12,28 +10,14 @@ from tag_presence_audit_report import _build_report
 
 _script_dir = Path(__file__).resolve().parent
 _repo_candidate = _script_dir.parent.parent
-if (_repo_candidate / 'src' / 'logs').is_dir():
-    _LOGS_DIR = _repo_candidate / 'src' / 'logs'
-else:
-    _main_repo = _repo_candidate.parent.parent.parent
-    _LOGS_DIR = _main_repo / 'src' / 'logs'
+_LOGS_DIR = _repo_candidate / 'src' / 'logs' if (_repo_candidate / 'src' / 'logs').is_dir() else _repo_candidate.parent.parent.parent / 'src' / 'logs'
 
 
 # ORCHESTRATOR
 
-def tag_presence_audit_workflow(jsonl_path, output_path):
-    (blocks, tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags, n_non_opus,
-     tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured) = (
-        _stream_and_audit(jsonl_path)
-    )
-    lines = _build_report(
-        jsonl_path, blocks, tag_counts, sr_bypassed, sr_captured,
-        n_opus, n_reqs_with_tags, n_non_opus,
-        tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured,
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text('\n'.join(lines))
-    print(output_path)
+def main():
+    jsonl_path, output_path = _parse_args()
+    tag_presence_audit_workflow(jsonl_path, output_path)
 
 
 # FUNCTIONS
@@ -73,6 +57,20 @@ def _parse_args():
     return jsonl_path, output_path
 
 
+def tag_presence_audit_workflow(jsonl_path, output_path):
+    (blocks, tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags, n_non_opus,
+     tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured) = (
+        _stream_and_audit(jsonl_path)
+    )
+    lines = _build_report(
+        jsonl_path, blocks, tag_counts, sr_bypassed, sr_captured,
+        n_opus, n_reqs_with_tags, n_non_opus,
+        tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured,
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text('\n'.join(lines))
+    print(output_path)
+
+
 if __name__ == '__main__':
-    jsonl_path, output_path = _parse_args()
-    tag_presence_audit_workflow(jsonl_path, output_path)
+    main()

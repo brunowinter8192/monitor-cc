@@ -15,7 +15,20 @@ mod_utils = importlib.import_module(f'{_ROOT_PKG}.utils')
 
 DEFAULT_LOG = WORKTREE_ROOT / 'src' / 'logs' / 'dual_log' / 'api_requests_opus_monitor_cc_1787931850_forwarded.jsonl'
 
+
 # ORCHESTRATOR
+
+def main():
+    arg_path = compute_arg_path()
+    render_brain_badge_workflow(arg_path)
+
+
+# FUNCTIONS
+
+def compute_arg_path():
+    return Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_LOG
+
+
 def render_brain_badge_workflow(log_path: Path) -> None:
     if not log_path.exists():
         print(f"Log not found: {log_path}")
@@ -24,11 +37,11 @@ def render_brain_badge_workflow(log_path: Path) -> None:
     rows = render_all_headers(entries)
     write_report(log_path, rows)
 
-# FUNCTIONS
 
 def parse_all_entries(log_path: Path) -> list:
     entries, _pos = mod_fwd_parser._parse_forwarded_log(log_path, 0, {}, keep_last=None)
     return entries
+
 
 def render_all_headers(entries: list) -> list:
     rows = []
@@ -50,12 +63,14 @@ def render_all_headers(entries: list) -> list:
         })
     return rows
 
+
 def _has_cumulative_thinking(entry: dict) -> bool:
     msgs = entry.get('messages') or []
     return any(
         any(b.get('type') == 'thinking' for b in m.get('blocks', []))
         for m in msgs if isinstance(m, dict)
     )
+
 
 def write_report(log_path: Path, rows: list) -> None:
     opus_rows = [r for r in rows if r['family'] != 'haiku']
@@ -104,5 +119,4 @@ def write_report(log_path: Path, rows: list) -> None:
 
 
 if __name__ == '__main__':
-    arg_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_LOG
-    render_brain_badge_workflow(arg_path)
+    main()

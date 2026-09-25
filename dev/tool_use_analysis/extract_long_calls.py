@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import argparse
 import sys
@@ -13,6 +12,35 @@ DEFAULT_MIN_CHARS = 500
 
 
 # ORCHESTRATOR
+
+def main():
+    args = parse_args()
+    extract_long_calls_workflow(
+        args.proxy_jsonl, args.top, args.min_chars,
+        args.output, args.tool, args.ratio,
+    )
+
+
+# FUNCTIONS
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Extract long tool_use inputs from Proxy JSONL files.'
+    )
+    parser.add_argument('proxy_jsonl', nargs='+',
+                        help='Path(s) to Proxy JSONL file(s) under src/logs/')
+    parser.add_argument('--tool', default=None, metavar='NAME',
+                        help='Filter by tool name (e.g. Bash, Read, Grep)')
+    parser.add_argument('--ratio', action='store_true',
+                        help='Activate ratio analysis (input/output chars)')
+    parser.add_argument('--top', type=int, default=DEFAULT_TOP_N, metavar='N',
+                        help=f'Top-N entries in detail section (default: {DEFAULT_TOP_N})')
+    parser.add_argument('--min-chars', type=int, default=DEFAULT_MIN_CHARS, metavar='N',
+                        help=f'Min input chars filter; ignored in --ratio mode (default: {DEFAULT_MIN_CHARS})')
+    parser.add_argument('--output', default=None, metavar='FILE',
+                        help='Output markdown file path (default: stdout)')
+    return parser.parse_args()
+
 
 def extract_long_calls_workflow(proxy_paths, top_n, min_chars, output_path, tool_filter, ratio_mode):
     events = load_proxy(proxy_paths)
@@ -40,8 +68,6 @@ def extract_long_calls_workflow(proxy_paths, top_n, min_chars, output_path, tool
     write_output(report, output_path)
 
 
-# FUNCTIONS
-
 def write_output(content, path):
     if path:
         with open(path, 'w', encoding='utf-8') as f:
@@ -51,28 +77,5 @@ def write_output(content, path):
         print(content)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Extract long tool_use inputs from Proxy JSONL files.'
-    )
-    parser.add_argument('proxy_jsonl', nargs='+',
-                        help='Path(s) to Proxy JSONL file(s) under src/logs/')
-    parser.add_argument('--tool', default=None, metavar='NAME',
-                        help='Filter by tool name (e.g. Bash, Read, Grep)')
-    parser.add_argument('--ratio', action='store_true',
-                        help='Activate ratio analysis (input/output chars)')
-    parser.add_argument('--top', type=int, default=DEFAULT_TOP_N, metavar='N',
-                        help=f'Top-N entries in detail section (default: {DEFAULT_TOP_N})')
-    parser.add_argument('--min-chars', type=int, default=DEFAULT_MIN_CHARS, metavar='N',
-                        help=f'Min input chars filter; ignored in --ratio mode (default: {DEFAULT_MIN_CHARS})')
-    parser.add_argument('--output', default=None, metavar='FILE',
-                        help='Output markdown file path (default: stdout)')
-    return parser.parse_args()
-
-
 if __name__ == '__main__':
-    args = parse_args()
-    extract_long_calls_workflow(
-        args.proxy_jsonl, args.top, args.min_chars,
-        args.output, args.tool, args.ratio,
-    )
+    main()

@@ -4,9 +4,9 @@ import re
 import json
 from collections import Counter
 
-from proxy.strip_sn_notice import _SN_NOTICE_MARKER, _SN_NOTICE_PARAGRAPH
-from proxy.strip_bg_completed import _BG_CMD_MARKER, _BG_EXIT_RE
-from proxy.payload_helpers import (
+from src.proxy.strip_sn_notice import _SN_NOTICE_MARKER, _SN_NOTICE_PARAGRAPH
+from src.proxy.strip_bg_completed import _BG_CMD_MARKER, _BG_EXIT_RE
+from src.proxy.payload_helpers import (
     _find_task_notification_blocks,
     _extract_task_notification_task_id,
     _extract_task_notification_output_file,

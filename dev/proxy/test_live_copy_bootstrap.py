@@ -17,21 +17,33 @@ _PROBE = (
     "print(json.dumps({'proxy': src.proxy.tools.__file__, 'root_module': src.monitor_root.__file__}))\n"
 )
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == '--case':
-        globals()['case_' + sys.argv[2]]()
+        run_selected_case()
         print('PASS')
         return
-    names = sorted(n[len('case_'):] for n in globals() if n.startswith('case_'))
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
-        results = list(pool.map(spawn_case, names))
+    names = compute_names()
+    results = collect_results(names)
     report(results)
 
 
 # FUNCTIONS
+
+def run_selected_case():
+    globals()['case_' + sys.argv[2]]()
+
+
+def compute_names():
+    return sorted(n[len('case_'):] for n in globals() if n.startswith('case_'))
+
+
+def collect_results(names):
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        results = list(pool.map(spawn_case, names))
+    return results
 
 
 def spawn_case(name: str) -> tuple:

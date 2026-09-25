@@ -15,29 +15,37 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == '--case':
-        run_case(sys.argv[2])
+        run_run_case()
         return
     names = collect_cases()
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
-        results = list(pool.map(spawn_case, names))
+    results = collect_results(names)
     report(results)
 
 
 # FUNCTIONS
+
+def run_run_case():
+    run_case(sys.argv[2])
+
+
+def run_case(name: str) -> None:
+    globals()['case_' + name]()
+    print('PASS')
 
 
 def collect_cases() -> list:
     return sorted(n[len('case_'):] for n in globals() if n.startswith('case_'))
 
 
-def run_case(name: str) -> None:
-    globals()['case_' + name]()
-    print('PASS')
+def collect_results(names):
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        results = list(pool.map(spawn_case, names))
+    return results
 
 
 def spawn_case(name: str) -> tuple:

@@ -3,17 +3,24 @@
 import sys
 import os
 
+
 # ORCHESTRATOR
 
-
 def byte_touch_workflow():
-    state_file = sys.argv[1]
-    bytecount_file = sys.argv[2]
+    state_file = compute_state_file()
+    bytecount_file = compute_bytecount_file()
     _init_files(state_file, bytecount_file)
     _read_loop(state_file, bytecount_file)
 
 
 # FUNCTIONS
+
+def compute_state_file():
+    return sys.argv[1]
+
+
+def compute_bytecount_file():
+    return sys.argv[2]
 
 
 def _init_files(state_file, bytecount_file):

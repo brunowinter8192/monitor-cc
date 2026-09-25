@@ -14,22 +14,21 @@ PYTHON3 = "/opt/homebrew/bin/python3"
 
 _active_pipes: dict = {}
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def probe_b_workflow():
     args = _parse_args()
     Path(args.outfile).parent.mkdir(parents=True, exist_ok=True)
     atexit.register(_cleanup_all)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    install_sigterm_exit_handler()
+    install_sigint_exit_handler()
     _setup_pipes(args.sessions)
     _run_probe(args.sessions, args.duration, args.outfile)
-    print(f"[probe_b] done → {args.outfile}")
+    print_probe_b_done(args)
 
 
 # FUNCTIONS
-
 
 def _parse_args():
     p = argparse.ArgumentParser(description="Probe B: pipe-pane byte sensor")
@@ -39,17 +38,22 @@ def _parse_args():
     return p.parse_args()
 
 
-def _safe_name(session):
-    return session.replace(":", "_").replace("/", "_")
+def _cleanup_all():
+    for session, (act_file, cnt_file, pane_target) in list(_active_pipes.items()):
+        subprocess.run(["tmux", "pipe-pane", "-t", pane_target], capture_output=True)
+        for fpath in (act_file, cnt_file):
+            if os.path.exists(fpath):
+                os.unlink(fpath)
+    _active_pipes.clear()
+    print("[probe_b] cleanup done")
 
 
-def _get_active_pane(session):
-    r = subprocess.run(
-        ["tmux", "display-message", "-t", f"{session}:0", "-p", "#{pane_id}"],
-        capture_output=True,
-        text=True,
-    )
-    return r.stdout.strip() or "0"
+def install_sigterm_exit_handler():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+
+def install_sigint_exit_handler():
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 
 def _setup_pipes(sessions):
@@ -69,27 +73,17 @@ def _setup_pipes(sessions):
         print(f"[probe_b] pipe-pane active: {pane_target} (pane={pane_id})")
 
 
-def _cleanup_all():
-    for session, (act_file, cnt_file, pane_target) in list(_active_pipes.items()):
-        subprocess.run(["tmux", "pipe-pane", "-t", pane_target], capture_output=True)
-        for fpath in (act_file, cnt_file):
-            if os.path.exists(fpath):
-                os.unlink(fpath)
-    _active_pipes.clear()
-    print("[probe_b] cleanup done")
+def _safe_name(session):
+    return session.replace(":", "_").replace("/", "_")
 
 
-def _read_mtime(path):
-    if not os.path.exists(path):
-        return 0.0
-    return os.stat(path).st_mtime
-
-
-def _read_bytecount(path):
-    if not os.path.exists(path):
-        return 0
-    raw = open(path).read().strip()
-    return int(raw) if raw.isdigit() else 0
+def _get_active_pane(session):
+    r = subprocess.run(
+        ["tmux", "display-message", "-t", f"{session}:0", "-p", "#{pane_id}"],
+        capture_output=True,
+        text=True,
+    )
+    return r.stdout.strip() or "0"
 
 
 def _run_probe(sessions, duration, outfile):
@@ -115,6 +109,23 @@ def _run_probe(sessions, duration, outfile):
             remaining = 1.0 - elapsed
             if remaining > 0:
                 time.sleep(remaining)
+
+
+def _read_bytecount(path):
+    if not os.path.exists(path):
+        return 0
+    raw = open(path).read().strip()
+    return int(raw) if raw.isdigit() else 0
+
+
+def _read_mtime(path):
+    if not os.path.exists(path):
+        return 0.0
+    return os.stat(path).st_mtime
+
+
+def print_probe_b_done(args):
+    print(f"[probe_b] done → {args.outfile}")
 
 
 if __name__ == "__main__":

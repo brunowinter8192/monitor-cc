@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import tempfile
 import hashlib
 import json
 import os
@@ -8,17 +9,17 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 os.environ.setdefault('MONITOR_CC_ROOT', str(_ROOT))
+from src.panes.cache_turns import build_cache_turns
+from src.panes.warnings_render import _format_warnings_pane
+from src.format import format_cache_tracker
+from src.format.turn_cache import new_turn_cache
 
 _FIXTURE_JSONL = Path(__file__).resolve().parent / 'fixtures' / 'session_prefix_300.jsonl'
 _PREFIX_LINES = 300
 _CHUNK_SIZE = 40
 
+
 # ORCHESTRATOR
-
-
-def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
-    return new_turn_cache()
 
 def main():
     build_cache_turns, format_warnings_pane, format_cache_tracker = _import_panes()
@@ -26,16 +27,34 @@ def main():
     _hash_cache_turns(digest, build_cache_turns)
     _hash_warnings_pane(digest, format_warnings_pane)
     _hash_format_cache_tracker(digest, format_cache_tracker)
-    print(f'HASH: {digest.hexdigest()}')
+    print_hash(digest)
 
 
 # FUNCTIONS
 
 def _import_panes():
-    from src.panes.cache_turns import build_cache_turns
-    from src.panes.warnings_render import _format_warnings_pane
-    from src.format import format_cache_tracker
     return build_cache_turns, _format_warnings_pane, format_cache_tracker
+
+
+def _hash_cache_turns(digest, build_cache_turns) -> None:
+    source = _session_jsonl()
+    lines = _frozen_prefix_lines(source)
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False, encoding='utf-8') as f:
+        tmp_path = Path(f.name)
+    try:
+        last_position = 0
+        turns: list = []
+        written = 0
+        while written < len(lines):
+            chunk = lines[written:written + _CHUNK_SIZE]
+            with open(tmp_path, 'a', encoding='utf-8') as f:
+                f.writelines(chunk)
+            written += len(chunk)
+            turns, last_position = build_cache_turns(tmp_path, last_position, turns)
+            digest.update(f'cache_turns|{written}|'.encode())
+            digest.update(_normalize_turns_for_hash(turns).encode())
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def _session_jsonl() -> Path:
@@ -59,26 +78,21 @@ def _normalize_turns_for_hash(turns: list):
     return json.dumps(turns, default=str, sort_keys=True)
 
 
-def _hash_cache_turns(digest, build_cache_turns) -> None:
-    import tempfile
-    source = _session_jsonl()
-    lines = _frozen_prefix_lines(source)
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False, encoding='utf-8') as f:
-        tmp_path = Path(f.name)
-    try:
-        last_position = 0
-        turns: list = []
-        written = 0
-        while written < len(lines):
-            chunk = lines[written:written + _CHUNK_SIZE]
-            with open(tmp_path, 'a', encoding='utf-8') as f:
-                f.writelines(chunk)
-            written += len(chunk)
-            turns, last_position = build_cache_turns(tmp_path, last_position, turns)
-            digest.update(f'cache_turns|{written}|'.encode())
-            digest.update(_normalize_turns_for_hash(turns).encode())
-    finally:
-        tmp_path.unlink(missing_ok=True)
+def _hash_warnings_pane(digest, format_warnings_pane) -> None:
+    tool_errors = _make_tool_errors()
+    error_expand_states = {0: False, 1: True, 2: False, 3: True}
+    search_match_set = {2, 3}
+    for pane_width in (40, 100):
+        output, line_map = format_warnings_pane(
+            tool_errors, error_expand_states, None, 0, 30, pane_width,
+            header='search: _\n[r]efresh',
+            copy_feedback={}, copy_rows_out=set(), header_lines=2,
+            search_match_set=search_match_set, search_current_key=3,
+            search_query='unique_marker_q',
+        )
+        digest.update(f'warnings|{pane_width}|'.encode())
+        digest.update(output.encode())
+        digest.update(json.dumps(line_map, sort_keys=True, default=str).encode())
 
 
 def _make_tool_errors() -> list:
@@ -95,21 +109,22 @@ def _make_tool_errors() -> list:
     ]
 
 
-def _hash_warnings_pane(digest, format_warnings_pane) -> None:
-    tool_errors = _make_tool_errors()
-    error_expand_states = {0: False, 1: True, 2: False, 3: True}
-    search_match_set = {2, 3}
+def _hash_format_cache_tracker(digest, format_cache_tracker) -> None:
+    turns, response_rid_map = _make_rate_limit_turns()
+    expand_states = {(0, 0): True, (0, 1): True}
+    copy_feedback = {(0, 0): 9999999999.0}
+    nav_out = {}
     for pane_width in (40, 100):
-        output, line_map = format_warnings_pane(
-            tool_errors, error_expand_states, None, 0, 30, pane_width,
-            header='search: _\n[r]efresh',
-            copy_feedback={}, copy_rows_out=set(), header_lines=2,
-            search_match_set=search_match_set, search_current_key=3,
-            search_query='unique_marker_q',
+        result = format_cache_tracker(
+            turns, expand_states=expand_states, pane_height=30, pane_width=pane_width,
+            scroll_offset=0, response_rid_map=response_rid_map, copy_feedback=copy_feedback,
+            search_match_set={(0, 0), ('turn', 0)}, search_current_key=(0, 0),
+            search_query='rate limit', nav_out=nav_out, turn_cache=_token_turn_cache()
         )
-        digest.update(f'warnings|{pane_width}|'.encode())
-        digest.update(output.encode())
-        digest.update(json.dumps(line_map, sort_keys=True, default=str).encode())
+        digest.update(f'cache_tracker|{pane_width}|'.encode())
+        digest.update(json.dumps(result, default=str, sort_keys=True).encode())
+        nav_out_str_keys = {str(k): v for k, v in nav_out.items()}
+        digest.update(json.dumps(nav_out_str_keys, default=str, sort_keys=True).encode())
 
 
 def _make_rate_limit_turns() -> tuple:
@@ -153,22 +168,12 @@ def _make_rate_limit_turns() -> tuple:
     return [turn], response_rid_map
 
 
-def _hash_format_cache_tracker(digest, format_cache_tracker) -> None:
-    turns, response_rid_map = _make_rate_limit_turns()
-    expand_states = {(0, 0): True, (0, 1): True}
-    copy_feedback = {(0, 0): 9999999999.0}
-    nav_out = {}
-    for pane_width in (40, 100):
-        result = format_cache_tracker(
-            turns, expand_states=expand_states, pane_height=30, pane_width=pane_width,
-            scroll_offset=0, response_rid_map=response_rid_map, copy_feedback=copy_feedback,
-            search_match_set={(0, 0), ('turn', 0)}, search_current_key=(0, 0),
-            search_query='rate limit', nav_out=nav_out, turn_cache=_token_turn_cache()
-        )
-        digest.update(f'cache_tracker|{pane_width}|'.encode())
-        digest.update(json.dumps(result, default=str, sort_keys=True).encode())
-        nav_out_str_keys = {str(k): v for k, v in nav_out.items()}
-        digest.update(json.dumps(nav_out_str_keys, default=str, sort_keys=True).encode())
+def _token_turn_cache():
+    return new_turn_cache()
+
+
+def print_hash(digest):
+    print(f'HASH: {digest.hexdigest()}')
 
 
 if __name__ == '__main__':

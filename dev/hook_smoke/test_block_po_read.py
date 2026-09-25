@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import tempfile
+from pathlib import Path
 from case_strands import exit_code_runners, fail_open_runner, run_case_strands
 from hook_runner import run_hook
 
@@ -18,16 +19,10 @@ atexit.register(shutil.rmtree, _FIXTURE_DIR, True)
 _PO_FIXTURE_SUBTREE = os.path.join(_FIXTURE_DIR, ".claude", "projects", "test-proj", "tool-results")
 os.makedirs(_PO_FIXTURE_SUBTREE, exist_ok=True)
 
-
-def _write_fixture(name: str, size: int) -> str:
-    path = os.path.join(_PO_FIXTURE_SUBTREE, name)
-    with open(path, "wb") as f:
-        f.write(b"x" * size)
-    return path
-
-
-_AT_BOUNDARY_PATH = _write_fixture("at_boundary.txt", _PINNED_MAX_BYTES)
-_OVER_BOUNDARY_PATH = _write_fixture("over_boundary.txt", _PINNED_MAX_BYTES + 1)
+_AT_BOUNDARY_PATH = os.path.join(_PO_FIXTURE_SUBTREE, "at_boundary.txt")
+_OVER_BOUNDARY_PATH = os.path.join(_PO_FIXTURE_SUBTREE, "over_boundary.txt")
+Path(_AT_BOUNDARY_PATH).write_bytes(b"x" * _PINNED_MAX_BYTES)
+Path(_OVER_BOUNDARY_PATH).write_bytes(b"x" * (_PINNED_MAX_BYTES + 1))
 
 CASES = [
     ("head on PO export BLOCK",
@@ -89,6 +84,7 @@ def _run_hook(command: str) -> int:
         "tool_input": {"command": command},
     })
     return _run_hook_raw(payload.encode())
+
 
 def _run_hook_raw(stdin_bytes: bytes) -> int:
     result = run_hook(HOOK, stdin_bytes)

@@ -1,7 +1,12 @@
 # INFRASTRUCTURE
 import os
+import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from dev.refactoring.repo_roots import resolve_main_project
 from error_cluster_extraction import load_entries, cluster_entries
 from error_cluster_crosscheck import run_cross_check
 from error_cluster_report import format_report, write_report
@@ -10,23 +15,7 @@ SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 REPORT_DATE  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 MAIN_PROJECT = None
 
-
-def _resolve_main_project() -> str:
-    p = SCRIPT_DIR
-    while p != os.path.dirname(p):
-        git = os.path.join(p, ".git")
-        if os.path.isfile(git):
-            content = open(git).read().strip()
-            if content.startswith("gitdir:"):
-                gitdir = content[len("gitdir:"):].strip()
-                return os.path.dirname(os.path.dirname(os.path.dirname(gitdir)))
-        elif os.path.isdir(git):
-            return p
-        p = os.path.dirname(p)
-    raise RuntimeError("Cannot find main project root")
-
-
-MAIN_PROJECT = _resolve_main_project()
+MAIN_PROJECT = resolve_main_project(SCRIPT_DIR)
 LOGS_DIR     = os.path.join(MAIN_PROJECT, "src", "logs")
 REPORTS_DIR  = os.path.join(SCRIPT_DIR, "reports")
 

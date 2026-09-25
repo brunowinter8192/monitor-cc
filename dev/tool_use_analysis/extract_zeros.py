@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import argparse
 import json
@@ -19,6 +18,31 @@ MAX_PRECEDING_CHARS = 400
 
 # ORCHESTRATOR
 
+def main():
+    args = parse_args()
+    extract_zeros_workflow(args.session_jsonl, args.output)
+
+
+# FUNCTIONS
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Extract zero-result Grep/Glob/Read calls from Claude Code session JSONL files.'
+    )
+    parser.add_argument(
+        'session_jsonl',
+        nargs='+',
+        help='Path(s) to session JSONL file(s) under ~/.claude/projects/'
+    )
+    parser.add_argument(
+        '--output',
+        default=None,
+        metavar='FILE',
+        help='Output markdown file path (default: stdout)'
+    )
+    return parser.parse_args()
+
+
 def extract_zeros_workflow(session_paths, output_path):
     all_zeros = []
     session_summaries = []
@@ -37,8 +61,6 @@ def extract_zeros_workflow(session_paths, output_path):
     report = build_report(session_paths, session_summaries, all_zeros)
     write_output(report, output_path)
 
-
-# FUNCTIONS
 
 def load_events(path):
     events = []
@@ -114,15 +136,8 @@ def find_zero_results(events, tool_uses, uuid_map, session_path):
     return zeros
 
 
-def is_zero_result(tool_name, result_text):
-    if tool_name not in ZERO_PATTERNS:
-        return False
-    if tool_name == 'Read' and re.match(r'^\d+\t', result_text):
-        return False
-    for pat in ZERO_PATTERNS[tool_name]:
-        if pat.lower() in result_text.lower():
-            return True
-    return False
+def extract_session_id(path):
+    return os.path.splitext(os.path.basename(path))[0]
 
 
 def extract_result_text(result_block):
@@ -138,6 +153,17 @@ def extract_result_text(result_block):
                 parts.append(item)
         return ' '.join(parts)
     return ''
+
+
+def is_zero_result(tool_name, result_text):
+    if tool_name not in ZERO_PATTERNS:
+        return False
+    if tool_name == 'Read' and re.match(r'^\d+\t', result_text):
+        return False
+    for pat in ZERO_PATTERNS[tool_name]:
+        if pat.lower() in result_text.lower():
+            return True
+    return False
 
 
 def get_preceding_text(event, uuid_map, events):
@@ -161,10 +187,6 @@ def get_preceding_text(event, uuid_map, events):
     return None
 
 
-def extract_session_id(path):
-    return os.path.splitext(os.path.basename(path))[0]
-
-
 def format_timestamp_local(ts_str):
     if not ts_str:
         return '?'
@@ -183,47 +205,11 @@ def count_by_tool(zeros):
     return counts
 
 
-def format_input_params(tool_name, input_dict):
-    lines = []
-    if tool_name == 'Grep':
-        if 'pattern' in input_dict:
-            lines.append(f'**Pattern:** `{input_dict["pattern"]}`')
-        if 'path' in input_dict:
-            lines.append(f'**Path:** `{input_dict["path"]}`')
-        if 'glob' in input_dict:
-            lines.append(f'**Glob filter:** `{input_dict["glob"]}`')
-        if 'output_mode' in input_dict:
-            lines.append(f'**Output mode:** {input_dict["output_mode"]}')
-        if 'type' in input_dict:
-            lines.append(f'**File type:** {input_dict["type"]}')
-    elif tool_name == 'Glob':
-        if 'pattern' in input_dict:
-            lines.append(f'**Pattern:** `{input_dict["pattern"]}`')
-        if 'path' in input_dict:
-            lines.append(f'**Path:** `{input_dict["path"]}`')
-    elif tool_name == 'Read':
-        if 'file_path' in input_dict:
-            lines.append(f'**File:** `{input_dict["file_path"]}`')
-        if 'offset' in input_dict:
-            lines.append(f'**Offset:** {input_dict["offset"]}')
-        if 'limit' in input_dict:
-            lines.append(f'**Limit:** {input_dict["limit"]}')
-    if not lines:
-        lines.append(f'**Input:** `{json.dumps(input_dict)}`')
+def build_report(session_paths, session_summaries, all_zeros):
+    multi = len(session_paths) > 1
+    lines = render_header_and_summary(session_paths, session_summaries, multi)
+    lines += render_zero_entries(all_zeros, multi)
     return '\n'.join(lines)
-
-
-def render_session_table(session_summaries):
-    lines = ['### Per-Session Summary', '', '| Session | Grep | Glob | Read | Total |',
-              '|---------|------|------|------|-------|']
-    for s in session_summaries:
-        sid = s['session_id'][:12]
-        grep_c = s['counts'].get('Grep', 0)
-        glob_c = s['counts'].get('Glob', 0)
-        read_c = s['counts'].get('Read', 0)
-        lines.append(f'| `{sid}` | {grep_c} | {glob_c} | {read_c} | {s["total"]} |')
-    lines.append('')
-    return lines
 
 
 def render_header_and_summary(session_paths, session_summaries, multi):
@@ -268,6 +254,19 @@ def render_header_and_summary(session_paths, session_summaries, multi):
     return lines
 
 
+def render_session_table(session_summaries):
+    lines = ['### Per-Session Summary', '', '| Session | Grep | Glob | Read | Total |',
+              '|---------|------|------|------|-------|']
+    for s in session_summaries:
+        sid = s['session_id'][:12]
+        grep_c = s['counts'].get('Grep', 0)
+        glob_c = s['counts'].get('Glob', 0)
+        read_c = s['counts'].get('Read', 0)
+        lines.append(f'| `{sid}` | {grep_c} | {glob_c} | {read_c} | {s["total"]} |')
+    lines.append('')
+    return lines
+
+
 def render_zero_entries(all_zeros, multi):
     lines = []
     for n, z in enumerate(all_zeros, 1):
@@ -304,10 +303,33 @@ def render_zero_entries(all_zeros, multi):
     return lines
 
 
-def build_report(session_paths, session_summaries, all_zeros):
-    multi = len(session_paths) > 1
-    lines = render_header_and_summary(session_paths, session_summaries, multi)
-    lines += render_zero_entries(all_zeros, multi)
+def format_input_params(tool_name, input_dict):
+    lines = []
+    if tool_name == 'Grep':
+        if 'pattern' in input_dict:
+            lines.append(f'**Pattern:** `{input_dict["pattern"]}`')
+        if 'path' in input_dict:
+            lines.append(f'**Path:** `{input_dict["path"]}`')
+        if 'glob' in input_dict:
+            lines.append(f'**Glob filter:** `{input_dict["glob"]}`')
+        if 'output_mode' in input_dict:
+            lines.append(f'**Output mode:** {input_dict["output_mode"]}')
+        if 'type' in input_dict:
+            lines.append(f'**File type:** {input_dict["type"]}')
+    elif tool_name == 'Glob':
+        if 'pattern' in input_dict:
+            lines.append(f'**Pattern:** `{input_dict["pattern"]}`')
+        if 'path' in input_dict:
+            lines.append(f'**Path:** `{input_dict["path"]}`')
+    elif tool_name == 'Read':
+        if 'file_path' in input_dict:
+            lines.append(f'**File:** `{input_dict["file_path"]}`')
+        if 'offset' in input_dict:
+            lines.append(f'**Offset:** {input_dict["offset"]}')
+        if 'limit' in input_dict:
+            lines.append(f'**Limit:** {input_dict["limit"]}')
+    if not lines:
+        lines.append(f'**Input:** `{json.dumps(input_dict)}`')
     return '\n'.join(lines)
 
 
@@ -320,24 +342,5 @@ def write_output(content, path):
         print(content)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Extract zero-result Grep/Glob/Read calls from Claude Code session JSONL files.'
-    )
-    parser.add_argument(
-        'session_jsonl',
-        nargs='+',
-        help='Path(s) to session JSONL file(s) under ~/.claude/projects/'
-    )
-    parser.add_argument(
-        '--output',
-        default=None,
-        metavar='FILE',
-        help='Output markdown file path (default: stdout)'
-    )
-    return parser.parse_args()
-
-
 if __name__ == '__main__':
-    args = parse_args()
-    extract_zeros_workflow(args.session_jsonl, args.output)
+    main()

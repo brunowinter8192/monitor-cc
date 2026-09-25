@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import json
 import os
@@ -10,13 +9,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__), '..', '..'))
 
-import importlib as _il
-_sr_mod = _il.import_module('src.proxy.strip_sr')
-_ENV_CONTEXT_RE_NEW = _sr_mod._ENV_CONTEXT_RE
-_PRESERVE_PREAMBLE = _sr_mod._PRESERVE_PREAMBLE
-_STANDALONE_SR_RE = _sr_mod._STANDALONE_SR_RE
-_INNER_SR_RE = _sr_mod._INNER_SR_RE
-del _il, _sr_mod
+from src.proxy.strip_sr import _ENV_CONTEXT_RE as _ENV_CONTEXT_RE_NEW, _PRESERVE_PREAMBLE, _STANDALONE_SR_RE, _INNER_SR_RE
 
 _ENV_CONTEXT_RE_OLD = re.compile(
     r"As you answer the user's questions, you can use the following context:\n"
@@ -31,8 +24,22 @@ _ENV_CONTEXT_RE_OLD = re.compile(
 LOGS_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 OUT_FILE = Path(os.path.join(os.path.dirname(__file__), 'md', 'replay_env_context_strip.md'))
 
+_BUCKET_NAMES = ('stripped', 'left_pure', 'left_bundled', 'claudemd_preserved')
+_FORMS = ('currentDate', 'gitStatus', 'other')
+
 
 # ORCHESTRATOR
+
+def main():
+    stats = scan_all()
+    report = render_report(stats)
+    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    OUT_FILE.write_text(report)
+    print(report)
+    print_written_to()
+
+
+# FUNCTIONS
 
 def scan_all():
     files = sorted(LOGS_DIR.glob('*_original.jsonl'))
@@ -62,14 +69,30 @@ def scan_all():
     return _build_stats(len(files), total_entries, buckets_old, buckets_new)
 
 
-# FUNCTIONS
-
-_BUCKET_NAMES = ('stripped', 'left_pure', 'left_bundled', 'claudemd_preserved')
-_FORMS = ('currentDate', 'gitStatus', 'other')
-
-
 def _new_bucket_dict():
     return {bucket: {form: set() for form in _FORMS} for bucket in _BUCKET_NAMES}
+
+
+def _find_top_level_sr_inner_texts(messages):
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get('content')
+        if isinstance(content, str):
+            yield from _sr_inner_texts_in_text(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get('type') == 'text':
+                    yield from _sr_inner_texts_in_text(block.get('text', ''))
+
+
+def _sr_inner_texts_in_text(text):
+    if '<system-reminder>' not in text:
+        return
+    for m in _STANDALONE_SR_RE.finditer(text):
+        inner_m = _INNER_SR_RE.search(m.group(0))
+        if inner_m:
+            yield inner_m.group(1).strip()
 
 
 def _form_of(inner):
@@ -110,26 +133,9 @@ def _build_stats(num_files, total_entries, buckets_old, buckets_new):
     }
 
 
-def _find_top_level_sr_inner_texts(messages):
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        content = msg.get('content')
-        if isinstance(content, str):
-            yield from _sr_inner_texts_in_text(content)
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get('type') == 'text':
-                    yield from _sr_inner_texts_in_text(block.get('text', ''))
-
-
-def _sr_inner_texts_in_text(text):
-    if '<system-reminder>' not in text:
-        return
-    for m in _STANDALONE_SR_RE.finditer(text):
-        inner_m = _INNER_SR_RE.search(m.group(0))
-        if inner_m:
-            yield inner_m.group(1).strip()
+def render_report(stats):
+    lines = _render_tables_lines(stats) + _render_summary_lines(stats)
+    return '\n'.join(lines)
 
 
 def _render_tables_lines(stats):
@@ -192,15 +198,9 @@ def _render_summary_lines(stats):
     ]
 
 
-def render_report(stats):
-    lines = _render_tables_lines(stats) + _render_summary_lines(stats)
-    return '\n'.join(lines)
+def print_written_to():
+    print(f'Written to {OUT_FILE}')
 
 
 if __name__ == '__main__':
-    stats = scan_all()
-    report = render_report(stats)
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUT_FILE.write_text(report)
-    print(report)
-    print(f'Written to {OUT_FILE}')
+    main()

@@ -14,10 +14,19 @@ RESET = "\033[0m"
 
 LARGE_JUMP_THRESHOLD = 0.20
 
-
 _SKIPPED_LINES = 0
 
+
 # ORCHESTRATOR
+
+def main():
+    parser = argparse.ArgumentParser(description="Proxy log session summary")
+    parser.add_argument("session_id", nargs="?", help="Session ID (auto-discovers most recent if omitted)")
+    args = parser.parse_args()
+    session_summary_workflow(args.session_id)
+
+
+# FUNCTIONS
 
 def session_summary_workflow(session_id: str | None) -> None:
     logs_dir = _find_logs_dir()
@@ -31,17 +40,6 @@ def session_summary_workflow(session_id: str | None) -> None:
     _print_anomalies(entries)
     _print_timeline(entries)
     _report_skipped_lines()
-
-
-# FUNCTIONS
-
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
-
-
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 def _find_logs_dir() -> Path:
@@ -85,28 +83,9 @@ def _load_entries(log_file: Path) -> list:
     return entries
 
 
-def _to_local(ts: str) -> str:
-    try:
-        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        return dt.astimezone().strftime("%H:%M:%S")
-    except ValueError:
-        return ts
-
-
-def _fmt_chars(n: int) -> str:
-    if n < 1000:
-        return f"{n}c"
-    if n < 1_000_000:
-        return f"{n / 1000:.0f}k"
-    return f"{n / 1_000_000:.1f}M"
-
-
-def _short_model(model: str) -> str:
-    return model.removeprefix("claude-")
-
-
-def _is_non_opus(model: str) -> bool:
-    return "opus" not in model.lower()
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
 
 
 def _print_overview(log_file: Path, entries: list) -> None:
@@ -126,6 +105,18 @@ def _print_overview(log_file: Path, entries: list) -> None:
     print(f"  Requests   : {len(entries)}")
     print(f"  Timespan   : {first_ts} → {last_ts}")
     print(f"  Models     : {model_str}")
+
+
+def _to_local(ts: str) -> str:
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%H:%M:%S")
+    except ValueError:
+        return ts
+
+
+def _short_model(model: str) -> str:
+    return model.removeprefix("claude-")
 
 
 def _print_anomalies(entries: list) -> None:
@@ -175,6 +166,10 @@ def _print_anomalies(entries: list) -> None:
     _print_anomaly_section("Large Input Jumps (>20%)", large_jumps, _fmt_jump)
 
 
+def _is_non_opus(model: str) -> bool:
+    return "opus" not in model.lower()
+
+
 def _print_anomaly_section(title: str, items: list, fmt_fn) -> None:
     if not items:
         print(f"  {DIM}{title}: none{RESET}")
@@ -187,6 +182,14 @@ def _print_anomaly_section(title: str, items: list, fmt_fn) -> None:
 def _fmt_haiku(item: tuple) -> str:
     req_num, ts, model, chars, msg_count = item
     return f"{RED}#{req_num:>3}  {ts}  {_short_model(model):<20}  {msg_count:>3} msgs  {_fmt_chars(chars):>6}{RESET}"
+
+
+def _fmt_chars(n: int) -> str:
+    if n < 1000:
+        return f"{n}c"
+    if n < 1_000_000:
+        return f"{n / 1000:.0f}k"
+    return f"{n / 1_000_000:.1f}M"
 
 
 def _fmt_rebuild(item: tuple) -> str:
@@ -240,8 +243,9 @@ def _print_timeline(entries: list) -> None:
     print()
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Proxy log session summary")
-    parser.add_argument("session_id", nargs="?", help="Session ID (auto-discovers most recent if omitted)")
-    args = parser.parse_args()
-    session_summary_workflow(args.session_id)
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
+
+if __name__ == '__main__':
+    main()

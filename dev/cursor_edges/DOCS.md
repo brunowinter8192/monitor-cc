@@ -11,7 +11,7 @@ CLI flags go in. `probe.py` builds a real NSApplication and NSPanel mirroring pr
 
 ## Modules
 
-### probe.py (130 LOC)
+### probe.py (143 LOC)
 
 **Purpose:** Entry script: parses CLI flags, builds the app and panel, logs the startup banner, runs the foreground event loop.
 **Reads:** nothing; standalone GUI window.

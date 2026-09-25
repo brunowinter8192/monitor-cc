@@ -9,10 +9,11 @@ sys.path.insert(0, str(REPO_ROOT))
 
 REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook17_removal.md"
 
+
 # ORCHESTRATOR
 
 def verify_hook17_removal_workflow() -> None:
-    lines = ["# Hook 17 (block_worker_spawn_opus.py) removal verification", ""]
+    lines = compute_lines()
 
     hook_setup = importlib.import_module('src.hooks.hook_setup')
 
@@ -26,8 +27,15 @@ def verify_hook17_removal_workflow() -> None:
                 "on a synthetic dict, real regeneration mechanism traced and confirmed active.")
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_report_text(lines)
     print("\n".join(lines))
+
+
+# FUNCTIONS
+
+def compute_lines():
+    return ["# Hook 17 (block_worker_spawn_opus.py) removal verification", ""]
+
 
 def _check_file_deleted(lines) -> None:
     hook_path = REPO_ROOT / "src" / "hooks" / "block_worker_spawn_opus.py"
@@ -35,11 +43,13 @@ def _check_file_deleted(lines) -> None:
     lines.append(f"1. File deleted: {file_gone} ({hook_path})")
     assert file_gone
 
+
 def _check_no_longer_registered(hook_setup, lines) -> None:
     scripts = [s for s, _matcher in hook_setup._HOOK_SCRIPTS]
     no_longer_listed = "block_worker_spawn_opus.py" not in scripts
     lines.append(f"2. No longer in hook_setup.py's _HOOK_SCRIPTS: {no_longer_listed} ({len(scripts)} scripts total)")
     assert no_longer_listed
+
 
 def _check_sweep_stale_hooks(hook_setup, lines) -> None:
     lines.append("")
@@ -70,6 +80,7 @@ def _check_sweep_stale_hooks(hook_setup, lines) -> None:
         assert alive_path in remaining_commands[0]
         assert dead_path not in " ".join(remaining_commands)
 
+
 def _append_registration_trace(lines) -> None:
     lines.append("")
     lines.append("4. Registration mechanism (read, not invoked — hook_setup.py refuses to run from a")
@@ -79,6 +90,10 @@ def _append_registration_trace(lines) -> None:
     lines.append("   machine (checked both at the worktree and main-repo level). Once this change")
     lines.append("   reaches a real merge, that post-merge hook fires hook_setup.py automatically —")
     lines.append("   no manual step, no hand-edit of the real settings.json needed.")
+
+
+def write_report_text(lines):
+    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

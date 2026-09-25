@@ -24,11 +24,11 @@ mod_search_bar = importlib.import_module(f'{_ROOT_PKG}.search_bar')
 PANE_WIDTH = 100
 
 
+# FUNCTIONS
+
 class _FakeMonitor:
     active_project_filter = 'proj'
 
-
-# FUNCTIONS
 
 def _make_wp_entry(idx: int, marker: str = None, model: str = 'claude-sonnet') -> dict:
     marker_text = marker or f'unique_marker_{idx}'

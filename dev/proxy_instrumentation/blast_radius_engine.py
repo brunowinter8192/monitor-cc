@@ -7,13 +7,13 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 
-from proxy.message_passes import (
+from src.proxy.message_passes import (
     _apply_role_system_strip,
     _apply_first_pass,
     _apply_cumulative_sr_strips,
     _apply_final_sr_pass,
 )
-from proxy.message_passes_simple import (
+from src.proxy.message_passes_simple import (
     _apply_sn_notice_strip,
     _apply_po_preview_strip,
     _apply_bg_exit_strip,
@@ -22,10 +22,10 @@ from proxy.message_passes_simple import (
     _apply_git_lock_strip,
     _apply_bd_noise_strip,
 )
-from proxy.message_passes_wakeup import _dedup_wakeup_blocks
-from proxy.rule_ops import _block_inner_text
-from proxy.payload_helpers import _top_level_content_contains
-from proxy.content_strip import _message_has_rejection
+from src.proxy.message_passes_wakeup import _dedup_wakeup_blocks
+from src.proxy.rule_ops import _block_inner_text
+from src.proxy.payload_helpers import _top_level_content_contains
+from src.proxy.content_strip import _message_has_rejection
 
 _PASSES = [
     _apply_role_system_strip,

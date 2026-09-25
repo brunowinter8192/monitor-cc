@@ -11,7 +11,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ## Modules
 
-### discover_byte_identity.py (144 LOC)
+### discover_byte_identity.py (152 LOC)
 
 **Purpose:** Identity harness for the project-directory scan of `discover.py`: patches every I/O boundary and hashes four scenarios.
 **Reads:** nothing external; inline fixtures.
@@ -21,7 +21,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### model_controller_byte_identity.py (162 LOC)
+### model_controller_byte_identity.py (169 LOC)
 
 **Purpose:** Identity harness for the model controller: hashes a sandboxed persistence cycle and a headless UI subview dump.
 **Reads:** the real proxy rules file under the user's shared-rules directory (read-only seed), so a changed file changes the hash.
@@ -31,7 +31,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### panel_manager_byte_identity.py (172 LOC)
+### panel_manager_byte_identity.py (176 LOC)
 
 **Purpose:** Identity harness for the panel manager: hashes a synthetic multi-project rebuild and an in-place update, dumping every grid row and lookup map.
 **Reads:** nothing external; synthetic session data.
@@ -51,7 +51,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g1_log.py (51 LOC)
+### p5_g1_log.py (57 LOC)
 
 **Purpose:** Strand for the menubar log module: append and retention unchanged, write and cleanup failures reach stderr.
 **Reads:** a temp directory it creates.
@@ -71,7 +71,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g3_app.py (137 LOC)
+### p5_g3_app.py (145 LOC)
 
 **Purpose:** Strand for app wiring, restart route, panel cycle errors and Carbon hotkey failures, driven by fake objects.
 **Reads:** nothing external.
@@ -81,7 +81,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g4_detection.py (91 LOC)
+### p5_g4_detection.py (100 LOC)
 
 **Purpose:** Strand for desktop detection: key handling, route logging on change, removed last-known-good state, digest-compared normal results.
 **Reads:** nothing external; fake CoreGraphics dicts.
@@ -91,7 +91,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g5_discover.py (133 LOC)
+### p5_g5_discover.py (143 LOC)
 
 **Purpose:** Strand for session discovery, the discovery worker and a panel guard: skipped projects logged once, worker loop error handling.
 **Reads:** temp JSONL files.
@@ -101,7 +101,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g6_caches.py (287 LOC)
+### p5_g6_caches.py (304 LOC)
 
 **Purpose:** Strand for the process cache, ghostty, background timer and orphan modules: subprocess failures logged, unknown activity is None.
 **Reads:** temp directories; fake subprocess results.
@@ -111,7 +111,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g7_model.py (69 LOC)
+### p5_g7_model.py (74 LOC)
 
 **Purpose:** Strand for the model controller: every cycle handler dispatches and refreshes as before, failures land in the menubar log.
 **Reads:** nothing external; fake selection and buttons.
@@ -131,7 +131,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_run_all.py (37 LOC)
+### p5_run_all.py (45 LOC)
 
 **Purpose:** Runs all phase 5 strands in parallel subprocesses; each stops at its first failing check, siblings finish, the parent reports aborted strands.
 **Reads:** nothing.

@@ -8,6 +8,7 @@ _FUNCTIONS_MARKER = '# FUNCTIONS'
 _ORCHESTRATOR_MARKER = '# ORCHESTRATOR'
 _SKIP_FILES = ('src/proxy/addon_dual_log.py', 'src/menubar/model_controller.py', 'src/panes/log_janitor.py')
 
+
 # ORCHESTRATOR
 
 def stepdown_workflow() -> None:
@@ -16,18 +17,22 @@ def stepdown_workflow() -> None:
     results = _reorder_all(files, write)
     _print_summary(files, results)
 
+
 # FUNCTIONS
 
 def _write_requested() -> bool:
     return '--write' in sys.argv
 
-def _reorder_all(files: list, write: bool) -> list:
-    return [_reorder_file(path, write) for path in files]
 
 def _list_files() -> list:
     paths = [p for p in sorted((_ROOT / 'src').rglob('*.py')) if 'logs' not in p.parts]
     paths += [_ROOT / 'workflow.py', _ROOT / 'setup_py2app.py']
     return [p for p in paths if str(p.relative_to(_ROOT)) not in _SKIP_FILES]
+
+
+def _reorder_all(files: list, write: bool) -> list:
+    return [_reorder_file(path, write) for path in files]
+
 
 def _reorder_file(path: Path, write: bool) -> str:
     source = path.read_text()
@@ -49,15 +54,18 @@ def _reorder_file(path: Path, write: bool) -> str:
         path.write_text(_render(lines, marker, region, ordered))
     return 'reordered'
 
+
 def _find_marker(lines: list, marker: str):
     for index, line in enumerate(lines):
         if line.strip() == marker:
             return index
     return None
 
+
 def _start(node) -> int:
     decorators = getattr(node, 'decorator_list', [])
     return min([node.lineno] + [d.lineno for d in decorators]) - 1
+
 
 def _region_verdict(region: list) -> str:
     defs = (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)
@@ -69,6 +77,7 @@ def _region_verdict(region: list) -> str:
         return 'interleaved'
     return 'ok'
 
+
 def _has_back_reference(region: list) -> bool:
     funcs = {n.name: n for n in region if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     for node in funcs.values():
@@ -77,6 +86,7 @@ def _has_back_reference(region: list) -> bool:
                 if funcs[ref.id].lineno < node.lineno:
                     return True
     return False
+
 
 def _stepdown_order(tree, region: list, lines: list) -> list:
     defs = [n for n in region if isinstance(n, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef))]
@@ -94,11 +104,6 @@ def _stepdown_order(tree, region: list, lines: list) -> list:
         _visit(name, funcs, seen, order)
     return classes + order + trailing
 
-def _unreferenced(funcs: dict) -> list:
-    referenced = set()
-    for node in funcs.values():
-        referenced.update(n for n in _callees_in_order([node], funcs) if n != node.name)
-    return [name for name in funcs if name not in referenced]
 
 def _roots(tree, funcs: dict, lines: list) -> list:
     orchestrators = _orchestrator_nodes(tree, lines)
@@ -109,12 +114,14 @@ def _roots(tree, funcs: dict, lines: list) -> list:
         referenced.update(n for n in _callees_in_order([node], funcs) if n != node.name)
     return [name for name in funcs if name not in referenced]
 
+
 def _orchestrator_nodes(tree, lines: list) -> list:
     marker = _find_marker(lines, _ORCHESTRATOR_MARKER)
     functions = _find_marker(lines, _FUNCTIONS_MARKER)
     if marker is None:
         return []
     return [n for n in tree.body if isinstance(n, ast.FunctionDef) and marker < _start(n) < functions]
+
 
 def _callees_in_order(nodes: list, funcs: dict) -> list:
     found = []
@@ -126,6 +133,7 @@ def _callees_in_order(nodes: list, funcs: dict) -> list:
                 found.append(n.id)
     return found
 
+
 def _visit(name: str, funcs: dict, seen: set, order: list) -> None:
     if name in seen:
         return
@@ -133,6 +141,14 @@ def _visit(name: str, funcs: dict, seen: set, order: list) -> None:
     order.append(funcs[name])
     for callee in _callees_in_order([funcs[name]], funcs):
         _visit(callee, funcs, seen, order)
+
+
+def _unreferenced(funcs: dict) -> list:
+    referenced = set()
+    for node in funcs.values():
+        referenced.update(n for n in _callees_in_order([node], funcs) if n != node.name)
+    return [name for name in funcs if name not in referenced]
+
 
 def _render(lines: list, marker: int, region: list, ordered: list) -> str:
     first = _start(region[0])
@@ -147,13 +163,16 @@ def _render(lines: list, marker: int, region: list, ordered: list) -> str:
         body.extend(text)
     return '\n'.join(head + body) + '\n'
 
+
 def _gap_size(lines: list, region: list) -> int:
     if len(region) < 2:
         return 1
     return max(1, _start(region[1]) - region[0].end_lineno)
 
+
 def _node_text(lines: list, node) -> list:
     return lines[_start(node):node.end_lineno]
+
 
 def _print_summary(files: list, results: list) -> None:
     counts = {}
@@ -163,6 +182,7 @@ def _print_summary(files: list, results: list) -> None:
     for path, status in zip(files, results):
         if status in ('interleaved',):
             print(f'SKIP {status} {path.relative_to(_ROOT)}')
+
 
 if __name__ == '__main__':
     stepdown_workflow()

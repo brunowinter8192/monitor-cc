@@ -17,7 +17,7 @@ timestamped Markdown report.
 
 ## Modules
 
-### groundtruth_message_spans_probe.py (92 LOC)
+### groundtruth_message_spans_probe.py (116 LOC)
 
 **Purpose:** CLI entry point validating the ground-truth span-construction algorithm that replaces
 blind diffing for messages.
@@ -40,7 +40,7 @@ src/ mirror helpers, and fidelity checks.
 
 ---
 
-### groundtruth_spans_cases.py (181 LOC)
+### groundtruth_spans_cases.py (175 LOC)
 
 **Purpose:** `apply_modification_rules` re-run wrapper and the 4 real-log case builders.
 **Reads:** recorded `_original.jsonl`/`_forwarded.jsonl` dual-log payloads (two hardcoded stems).

@@ -40,21 +40,21 @@ _STRAND_PREFIX = '_strand_'
 _TITLE = 'hook_smoke run_all'
 _REPORT_PATH = _AREA_DIR / 'md' / 'run_all.md'
 
+
 # ORCHESTRATOR
 
 def run_all_workflow() -> None:
     strand_globals = _register_strands(globals())
     sys.exit(strand_workflow(strand_globals, __file__, sorted(_strand_names()), _REPORT_PATH, _TITLE))
 
-# FUNCTIONS
 
-def _strand_names() -> list:
-    return [_STRAND_PREFIX + module for module in _MODULES]
+# FUNCTIONS
 
 def _register_strands(script_globals: dict) -> dict:
     for module in _MODULES:
         script_globals[_STRAND_PREFIX + module] = partial(_run_module, module)
     return script_globals
+
 
 def _run_module(module: str) -> None:
     module_path = str(_AREA_DIR / (module + '.py'))
@@ -64,6 +64,10 @@ def _run_module(module: str) -> None:
     except SystemExit as exit_signal:
         if exit_signal.code not in (0, None):
             raise
+
+
+def _strand_names() -> list:
+    return [_STRAND_PREFIX + module for module in _MODULES]
 
 
 if __name__ == '__main__':

@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import argparse
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
-_src_dir = os.path.join(
-    os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent)),
-    'src',
-)
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
+_root_dir = os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent))
+if _root_dir not in sys.path:
+    sys.path.insert(0, _root_dir)
 
-from proxy.strip_vocab import legend_markdown
+from src.proxy.strip_vocab import legend_markdown
 
 from strip_audit_classify import _load_entries
 from strip_audit_report import _build_header, _build_rule_catalog, _build_delta_log, _build_summary
@@ -23,16 +18,10 @@ from strip_audit_report import _build_header, _build_rule_catalog, _build_delta_
 
 # ORCHESTRATOR
 
-def strip_audit_workflow(jsonl_path, output_path):
-    entries, n_haiku, n_skipped = _load_entries(jsonl_path)
-    lines = []
-    lines += _build_header(jsonl_path, len(entries), n_haiku, n_skipped)
-    lines.append(legend_markdown())
-    lines += _build_rule_catalog()
-    lines += _build_delta_log(entries)
-    lines += _build_summary(entries)
-    output_path.write_text('\n'.join(lines))
-    print(output_path)
+def main():
+    jsonl_path, output_path = _parse_args()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    strip_audit_workflow(jsonl_path, output_path)
 
 
 # FUNCTIONS
@@ -68,7 +57,17 @@ def _parse_args():
     return jsonl_path, output_path
 
 
+def strip_audit_workflow(jsonl_path, output_path):
+    entries, n_haiku, n_skipped = _load_entries(jsonl_path)
+    lines = []
+    lines += _build_header(jsonl_path, len(entries), n_haiku, n_skipped)
+    lines.append(legend_markdown())
+    lines += _build_rule_catalog()
+    lines += _build_delta_log(entries)
+    lines += _build_summary(entries)
+    output_path.write_text('\n'.join(lines))
+    print(output_path)
+
+
 if __name__ == '__main__':
-    jsonl_path, output_path = _parse_args()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    strip_audit_workflow(jsonl_path, output_path)
+    main()

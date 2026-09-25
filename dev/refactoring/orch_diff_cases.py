@@ -1,4 +1,6 @@
 # INFRASTRUCTURE
+import time as time_module
+import contextlib, io
 import importlib
 import json
 import os
@@ -25,6 +27,7 @@ _TRIGGERS = {
     'src.proxy.strip_pasted_content:_strip_pasted_content_wrapper': '<pasted_content id="1">x</pasted_content id="1">',
 }
 
+
 # ORCHESTRATOR
 
 def orch_diff_workflow() -> None:
@@ -33,14 +36,12 @@ def orch_diff_workflow() -> None:
     results = _run_all_cases()
     _write_results(results, out_path)
 
-# FUNCTIONS
 
-def _write_results(results: dict, out_path: Path) -> None:
-    out_path.write_text(json.dumps(results, indent=1, sort_keys=True, default=repr))
-    print(f'cases={len(results)}')
+# FUNCTIONS
 
 def _parse_args() -> tuple:
     return Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+
 
 def _prepare_environment(root: Path) -> None:
     global _ROOT
@@ -48,6 +49,7 @@ def _prepare_environment(root: Path) -> None:
     os.chdir(root)
     sys.path.insert(0, str(root))
     os.environ.update({'PROXY_LOG_ID': 'orch_diff', 'PROXY_PROJECT_PATH': '', 'MONITOR_CC_ROOT': tempfile.mkdtemp()})
+
 
 def _run_all_cases() -> dict:
     results = {}
@@ -57,11 +59,24 @@ def _run_all_cases() -> dict:
         results.update(_guard(case))
     return results
 
-def _guard(case) -> dict:
-    try:
-        return case()
-    except Exception as exc:
-        return {case.__name__: f'CASE ERROR {exc!r}'}
+
+def _strip_cases() -> dict:
+    results = {}
+    for key, trigger in _TRIGGERS.items():
+        module_name, fn_name = key.split(':')
+        module = importlib.import_module(module_name)
+        fn = getattr(module, fn_name)
+        text = trigger if trigger is not None else _module_trigger(module_name, module)
+        for index, shape in enumerate(_shapes(text)):
+            results[f'{key}#{index}'] = _apply(fn, shape)
+    return results
+
+
+def _module_trigger(module_name: str, module) -> str:
+    if module_name.endswith('strip_git_lock'):
+        return 'x ' + module._GIT_LOCK_ADVICE + '\ny'
+    return 'a\n' + module._SN_NOTICE_PARAGRAPH + '\nb'
+
 
 def _shapes(trigger: str) -> list:
     text_block = {'type': 'text', 'text': trigger}
@@ -78,29 +93,6 @@ def _shapes(trigger: str) -> list:
         [{'type': 'text', 'text': trigger + '\n' + trigger}],
     ]
 
-def _identity_flags(inp, out) -> list:
-    if isinstance(inp, list) and isinstance(out, list) and len(inp) == len(out):
-        return [a is b for a, b in zip(inp, out)]
-    return []
-
-def _snapshot(value, inp) -> dict:
-    return {'value': value, 'same_top': value is inp, 'same_items': _identity_flags(inp, value)}
-
-def _strip_cases() -> dict:
-    results = {}
-    for key, trigger in _TRIGGERS.items():
-        module_name, fn_name = key.split(':')
-        module = importlib.import_module(module_name)
-        fn = getattr(module, fn_name)
-        text = trigger if trigger is not None else _module_trigger(module_name, module)
-        for index, shape in enumerate(_shapes(text)):
-            results[f'{key}#{index}'] = _apply(fn, shape)
-    return results
-
-def _module_trigger(module_name: str, module) -> str:
-    if module_name.endswith('strip_git_lock'):
-        return 'x ' + module._GIT_LOCK_ADVICE + '\ny'
-    return 'a\n' + module._SN_NOTICE_PARAGRAPH + '\nb'
 
 def _apply(fn, shape):
     inp = json.loads(json.dumps(shape))
@@ -108,6 +100,17 @@ def _apply(fn, shape):
     if isinstance(out, tuple) and len(out) == 2 and isinstance(out[1], list):
         return {'main': _snapshot(out[0], inp), 'removed': out[1], 'input_after': inp}
     return {'main': _snapshot(out, inp), 'input_after': inp}
+
+
+def _snapshot(value, inp) -> dict:
+    return {'value': value, 'same_top': value is inp, 'same_items': _identity_flags(inp, value)}
+
+
+def _identity_flags(inp, out) -> list:
+    if isinstance(inp, list) and isinstance(out, list) and len(inp) == len(out):
+        return [a is b for a, b in zip(inp, out)]
+    return []
+
 
 def _bg_escape_cases() -> dict:
     module = importlib.import_module('src.proxy.bg_escape')
@@ -129,6 +132,7 @@ def _bg_escape_cases() -> dict:
         module._trigger_bg_escape(removed, ctx, project)
         results[f'bg_escape:{name}'] = {'events': list(events), 'escaped': sorted(module._escaped_task_ids)}
     return results
+
 
 def _tool_injection_cases() -> dict:
     module = importlib.import_module('src.proxy.tool_injection')
@@ -153,6 +157,7 @@ def _tool_injection_cases() -> dict:
                     out = module.inject_mcp_tools(inp, '/p')
                     results[f'inject:{excluded}:{plugins}:{bool(store_state)}:{pname}'] = {'out': out, 'same': out is inp, 'input_after': inp}
     return results
+
 
 def _discover_cases() -> dict:
     module = importlib.import_module('src.menubar.discover')
@@ -190,6 +195,7 @@ def _discover_cases() -> dict:
         results[f'discover:{with_mains}'] = {'out': [list(o) for o in out], 'calls': calls[:], 'timing_keys': sorted(module.get_last_session_timings())}
     return results
 
+
 def _ghostty_cases() -> dict:
     module = importlib.import_module('src.menubar.ghostty')
     calls = []
@@ -224,6 +230,7 @@ def _ghostty_cases() -> dict:
         results[f'ghostty:{name}'] = {'map': dict(module._ghostty_tty_to_id), 'last': module._ghostty_tty_last_refresh, 'calls': calls[:]}
     return results
 
+
 def _desktop_cases() -> dict:
     module = importlib.import_module('src.menubar.desktop_detection')
     calls = []
@@ -238,6 +245,7 @@ def _desktop_cases() -> dict:
         out = module.detect_main_desktop_numbers(uuid_map, {}, now)
         results[f'desktop:{label}'] = {'out': out, 'calls': calls[:], 'diag': module._cgw_title_diag_logged, 'ts': module._det_cache_ts}
     return results
+
 
 def _sweep_cases() -> dict:
     module = importlib.import_module('src.menubar.monitor_sweep_scheduler')
@@ -258,6 +266,7 @@ def _sweep_cases() -> dict:
         module.maybe_run_sweep_workflow(now)
         results[f'sweep:{label}'] = {'calls': calls[:], 'last': module._last_sweep_ts, 'busy': module._sweep_in_progress}
     return results
+
 
 def _skill_cases() -> dict:
     module = importlib.import_module('src.menubar.skill_discovery')
@@ -281,10 +290,6 @@ def _skill_cases() -> dict:
         results[f'skills:{label}'] = json.loads(json.dumps([list(x) for x in out]).replace(str(tmp), '<TMP>'))
     return results
 
-def _run_script(script: Path, home: Path, stdin: str = '') -> dict:
-    proc = subprocess.run([sys.executable, str(script)], input=stdin, capture_output=True, text=True,
-                          env={**os.environ, 'HOME': str(home)}, cwd=str(home), timeout=60)
-    return {'rc': proc.returncode, 'out': proc.stdout.replace(str(home), '<HOME>'), 'err': proc.stderr.replace(str(home), '<HOME>')}
 
 def _hook_writer_cases() -> dict:
     results = {}
@@ -306,6 +311,13 @@ def _hook_writer_cases() -> dict:
             outcome['state'] = state
             results[f'hook_writer:{label}'] = outcome
     return results
+
+
+def _run_script(script: Path, home: Path, stdin: str = '') -> dict:
+    proc = subprocess.run([sys.executable, str(script)], input=stdin, capture_output=True, text=True,
+                          env={**os.environ, 'HOME': str(home)}, cwd=str(home), timeout=60)
+    return {'rc': proc.returncode, 'out': proc.stdout.replace(str(home), '<HOME>'), 'err': proc.stderr.replace(str(home), '<HOME>')}
+
 
 def _hook_setup_cases() -> dict:
     results = {}
@@ -337,52 +349,6 @@ def _hook_setup_cases() -> dict:
                     results[f'hook_setup:{script_rel}:{label}:{repeat}'] = outcome
     return results
 
-class _Stop(BaseException):
-    pass
-
-def _recorder(calls: list, name: str, script=None, default=None):
-    queue = list(script) if script is not None else None
-    def fn(*args, **kwargs):
-        calls.append((name, _clean(repr(args)), _clean(repr(sorted(kwargs.items())))))
-        if queue is None:
-            return default
-        value = queue.pop(0) if queue else default
-        if isinstance(value, Exception):
-            raise value
-        return value
-    return fn
-
-def _clean(text: str) -> str:
-    text = re.sub(r' at 0x[0-9a-f]+', '', text)
-    return re.sub(r"from '[^']*'", "from '<M>'", text)
-
-def _install_common(module, calls: list, stop_after: int, wait_name: str = 'wait_for_input') -> None:
-    waits = {'n': 0}
-    def wait(*args, **kwargs):
-        calls.append((wait_name, repr(args), repr(kwargs)))
-        waits['n'] += 1
-        if waits['n'] >= stop_after:
-            raise _Stop()
-    setattr(module, wait_name, wait)
-    for name in ('setup_keyboard_input', 'enable_mouse', 'disable_mouse', 'restore_terminal', 'hide_cursor', 'show_cursor', 'register_ram_dump', 'log_pane_error', 'write_frame'):
-        if hasattr(module, name):
-            setattr(module, name, _recorder(calls, name))
-    clock = {'t': 1000.0}
-    def fake_time():
-        clock['t'] += 1.7
-        return clock['t']
-    import time as time_module
-    time_module.time = fake_time
-
-def _run_loop(loop_fn, calls: list) -> None:
-    import contextlib, io
-    buffer = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(buffer):
-            loop_fn()
-    except _Stop:
-        calls.append(('STOP',))
-    calls.append(('stdout', buffer.getvalue()))
 
 def _pane_loop_cases() -> dict:
     results = {}
@@ -396,6 +362,7 @@ def _pane_loop_cases() -> dict:
             ('worker_tokens', 'src.workers.worker_tokens_pane', 'run_worker_tokens_loop', 'worker_tokens', '_worker_tokens_copy_feedback_until')):
         results.update(_data_pane_case(label, module_name, fn_name, prefix, feedback))
     return results
+
 
 def _gpu_loop_case() -> dict:
     module = importlib.import_module('src.gpu_pane.pane')
@@ -412,6 +379,57 @@ def _gpu_loop_case() -> dict:
     module._build_gpu_output = _recorder(calls, 'build', ['out1', 'out2', 'out3'])
     _run_loop(module.run_gpu_loop, calls)
     return {'loop:gpu': calls}
+
+
+def _install_common(module, calls: list, stop_after: int, wait_name: str = 'wait_for_input') -> None:
+    waits = {'n': 0}
+    def wait(*args, **kwargs):
+        calls.append((wait_name, repr(args), repr(kwargs)))
+        waits['n'] += 1
+        if waits['n'] >= stop_after:
+            raise _Stop()
+    setattr(module, wait_name, wait)
+    for name in ('setup_keyboard_input', 'enable_mouse', 'disable_mouse', 'restore_terminal', 'hide_cursor', 'show_cursor', 'register_ram_dump', 'log_pane_error', 'write_frame'):
+        if hasattr(module, name):
+            setattr(module, name, _recorder(calls, name))
+    clock = {'t': 1000.0}
+    def fake_time():
+        clock['t'] += 1.7
+        return clock['t']
+    time_module.time = fake_time
+
+
+class _Stop(BaseException):
+    pass
+
+
+def _recorder(calls: list, name: str, script=None, default=None):
+    queue = list(script) if script is not None else None
+    def fn(*args, **kwargs):
+        calls.append((name, _clean(repr(args)), _clean(repr(sorted(kwargs.items())))))
+        if queue is None:
+            return default
+        value = queue.pop(0) if queue else default
+        if isinstance(value, Exception):
+            raise value
+        return value
+    return fn
+
+
+def _clean(text: str) -> str:
+    text = re.sub(r' at 0x[0-9a-f]+', '', text)
+    return re.sub(r"from '[^']*'", "from '<M>'", text)
+
+
+def _run_loop(loop_fn, calls: list) -> None:
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buffer):
+            loop_fn()
+    except _Stop:
+        calls.append(('STOP',))
+    calls.append(('stdout', buffer.getvalue()))
+
 
 def _news_loop_cases() -> dict:
     results = {}
@@ -444,6 +462,7 @@ def _news_loop_cases() -> dict:
     results['loop:news_log'] = calls
     return results
 
+
 def _data_pane_case(label: str, module_name: str, fn_name: str, prefix: str, feedback: str) -> dict:
     module = importlib.import_module(module_name)
     calls = []
@@ -473,6 +492,7 @@ def _data_pane_case(label: str, module_name: str, fn_name: str, prefix: str, fee
         if hasattr(module, name):
             state[name] = getattr(module, name)
     return {f'loop:{label}': {'calls': calls, 'state': state}}
+
 
 def _gpu_status_cases() -> dict:
     module = importlib.import_module('src.gpu_pane.status')
@@ -507,6 +527,7 @@ def _gpu_status_cases() -> dict:
     out = module.all_statuses()
     return {'gpu_status': {'out': out, 'warns': [[str(x).replace(str(tmp), '<TMP>') for x in w] for w in sorted(warns, key=repr)], 'anomalies': list(module._last_anomalies)}}
 
+
 def _misc_flow_cases() -> dict:
     results = {}
     monitor = importlib.import_module('src.core.monitor')
@@ -540,7 +561,6 @@ def _misc_flow_cases() -> dict:
         launcher._create_windows = lambda n, c: calls.append(('windows', n, c))
         launcher.configure_tmux_session = lambda n, sp, pa: calls.append(('configure', n, sp, pa))
         launcher.subprocess.run = lambda cmd, **kw: calls.append(('run', cmd))
-        import contextlib, io
         buf = io.StringIO()
         try:
             with contextlib.redirect_stdout(buf):
@@ -558,7 +578,6 @@ def _misc_flow_cases() -> dict:
         outs = {}
         for command in ('sessions', 'search', 'reqs', 'msgs', 'expand'):
             cli._parse_args = lambda argv, c=command: type('A', (), {'command': c})()
-            import contextlib, io
             buf = io.StringIO()
             with contextlib.redirect_stderr(buf):
                 outs[command] = [cli.main([]), buf.getvalue().replace(str(tmp), '<TMP>')]
@@ -566,6 +585,7 @@ def _misc_flow_cases() -> dict:
     wf = importlib.import_module('src.ccwrap.wrapper')
     results['ccwrap_run'] = _ccwrap_cases()
     return results
+
 
 def _ccwrap_cases() -> dict:
     subprocess.run = _REAL_RUN
@@ -585,6 +605,19 @@ def _ccwrap_cases() -> dict:
         proc = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, cwd=str(_ROOT), stdin=subprocess.DEVNULL)
         out[f'run:{label}'] = [proc.returncode, proc.stdout, proc.stderr[-300:], sorted(p.suffix for p in tmp.iterdir())]
     return out
+
+
+def _guard(case) -> dict:
+    try:
+        return case()
+    except Exception as exc:
+        return {case.__name__: f'CASE ERROR {exc!r}'}
+
+
+def _write_results(results: dict, out_path: Path) -> None:
+    out_path.write_text(json.dumps(results, indent=1, sort_keys=True, default=repr))
+    print(f'cases={len(results)}')
+
 
 if __name__ == '__main__':
     orch_diff_workflow()

@@ -5,6 +5,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from src.jsonl import read_json_records, extract_cache_turns
 
 _MAIN_LOGS = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs')
 _PROJECTS = Path.home() / '.claude' / 'projects'
@@ -12,32 +13,22 @@ _REPORT = Path(__file__).resolve().parent / 'md' / 'observe_timestamp_order.md'
 
 _SKIPPED_LINES = 0
 
+
 # ORCHESTRATOR
 
 def main():
     rows = []
-    rows += [_check_forwarded(p) for p in sorted(_MAIN_LOGS.rglob('*_forwarded.jsonl'))]
-    rows += [_check_transcript(p) for p in sorted(_PROJECTS.rglob('*.jsonl')) if 'subagents' not in p.parts]
+    rows = append_forwarded_rows(rows)
+    rows = append_transcript_rows(rows)
     _write_report(rows)
     _report_skipped_lines()
 
 
 # FUNCTIONS
 
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
-
-
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
-
-
-def _first_disorder(stamps: list):
-    for i in range(1, len(stamps)):
-        if stamps[i] < stamps[i - 1]:
-            return i
-    return None
+def append_forwarded_rows(rows):
+    rows += [_check_forwarded(p) for p in sorted(_MAIN_LOGS.rglob('*_forwarded.jsonl'))]
+    return rows
 
 
 def _check_forwarded(path: Path) -> tuple:
@@ -53,8 +44,24 @@ def _check_forwarded(path: Path) -> tuple:
     return ('forwarded', str(path), len(stamps), _first_disorder(stamps))
 
 
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _first_disorder(stamps: list):
+    for i in range(1, len(stamps)):
+        if stamps[i] < stamps[i - 1]:
+            return i
+    return None
+
+
+def append_transcript_rows(rows):
+    rows += [_check_transcript(p) for p in sorted(_PROJECTS.rglob('*.jsonl')) if 'subagents' not in p.parts]
+    return rows
+
+
 def _check_transcript(path: Path) -> tuple:
-    from src.jsonl import read_json_records, extract_cache_turns
     try:
         messages, _ = read_json_records(path, 0)
         turns = extract_cache_turns(messages)
@@ -73,6 +80,10 @@ def _write_report(rows: list) -> None:
     lines += [f'- {r}' for r in rows if r[3] is not None]
     _REPORT.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     print('\n'.join(lines))
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 if __name__ == '__main__':

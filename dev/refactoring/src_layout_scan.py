@@ -16,6 +16,7 @@ _ENTRY_STATEMENTS = {
 }
 _FRAMEWORK_ORCHESTRATOR_FREE = ('src/proxy/addon.py', 'src/menubar/hotkey_controller.py')
 
+
 # ORCHESTRATOR
 
 def src_layout_scan_workflow() -> None:
@@ -23,15 +24,8 @@ def src_layout_scan_workflow() -> None:
     _print_findings(findings)
     sys.exit(_exit_code(findings))
 
+
 # FUNCTIONS
-
-def _exit_code(findings: dict) -> int:
-    return 1 if _hard_violations(findings) else 0
-
-def _list_files() -> list:
-    paths = [p for p in sorted((_ROOT / 'src').rglob('*.py')) if 'logs' not in p.parts]
-    paths += sorted((_ROOT / 'dev' / 'refactoring').glob('*.py'))
-    return paths + [_ROOT / 'workflow.py', _ROOT / 'setup_py2app.py']
 
 def _scan_all(files: list) -> dict:
     findings = {}
@@ -43,6 +37,7 @@ def _scan_all(files: list) -> dict:
         for rule, detail in _scan_file(rel, source):
             findings.setdefault(rule, []).append(f'{rel}:{detail}')
     return findings
+
 
 def _scan_file(rel: str, source: str) -> list:
     lines = source.split('\n')
@@ -58,16 +53,20 @@ def _scan_file(rel: str, source: str) -> list:
     found += _emoji_findings(lines)
     return found
 
+
 def _comment_findings(lines: list) -> list:
     return [('comment', str(i + 1)) for i, line in enumerate(lines)
             if line.strip().startswith('#') and line.strip() not in _MARKERS]
+
 
 def _docstring_findings(tree) -> list:
     nodes = [tree] + [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef))]
     return [('docstring', str(getattr(n, 'lineno', 0))) for n in nodes if ast.get_docstring(n)]
 
+
 def _import_findings(tree) -> list:
     return [('relative_import', str(n.lineno)) for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level]
+
 
 def _marker_findings(rel: str, tree, lines: list, positions: dict) -> list:
     if not positions:
@@ -81,6 +80,7 @@ def _marker_findings(rel: str, tree, lines: list, positions: dict) -> list:
     found += _misplaced_findings(tree, positions) if rel not in _ENTRY_STATEMENTS else []
     return found
 
+
 def _misplaced_findings(tree, positions: dict) -> list:
     cut = min([v for k, v in positions.items() if k != '# INFRASTRUCTURE'] or [10 ** 9])
     found = []
@@ -93,9 +93,11 @@ def _misplaced_findings(tree, positions: dict) -> list:
             found.append(('function_in_infrastructure', str(n.lineno)))
     return found
 
+
 def _is_main_guard_tail(node, tree) -> bool:
     return node is tree.body[-1] and isinstance(node, ast.Assign) and any(
         isinstance(t, ast.Name) and t.id == 'addons' for t in node.targets)
+
 
 def _orchestrator_findings(rel: str, tree, lines: list, positions: dict) -> list:
     if '# ORCHESTRATOR' not in positions:
@@ -108,6 +110,19 @@ def _orchestrator_findings(rel: str, tree, lines: list, positions: dict) -> list
         return [('orchestrator_shape', str([type(n).__name__ for n in inside]))]
     return [('orchestrator_logic', f'{functions[0].name}:{functions[0].lineno}')
             for _ in [0] if not all(_allowed_statement(s) for s in functions[0].body)]
+
+
+def _allowed_statement(stmt) -> bool:
+    if isinstance(stmt, ast.Assign):
+        return _simple(stmt.value)
+    if isinstance(stmt, ast.AnnAssign):
+        return stmt.value is None or _simple(stmt.value)
+    if isinstance(stmt, (ast.Expr, ast.Return)):
+        return stmt.value is None or _simple(stmt.value)
+    if isinstance(stmt, ast.If):
+        return _condition(stmt.test) and all(_allowed_statement(s) for s in stmt.body + stmt.orelse)
+    return isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom))
+
 
 def _simple(expr) -> bool:
     if isinstance(expr, (ast.Name, ast.Constant, ast.Attribute)):
@@ -124,6 +139,7 @@ def _simple(expr) -> bool:
         return _simple(expr.func) and all(_simple(a) for a in expr.args) and all(_simple(k.value) for k in expr.keywords)
     return isinstance(expr, ast.Starred) and _simple(expr.value)
 
+
 def _condition(expr) -> bool:
     if isinstance(expr, ast.BoolOp):
         return all(_condition(v) for v in expr.values)
@@ -133,16 +149,6 @@ def _condition(expr) -> bool:
         return _simple(expr.left) and all(_simple(c) for c in expr.comparators)
     return _simple(expr)
 
-def _allowed_statement(stmt) -> bool:
-    if isinstance(stmt, ast.Assign):
-        return _simple(stmt.value)
-    if isinstance(stmt, ast.AnnAssign):
-        return stmt.value is None or _simple(stmt.value)
-    if isinstance(stmt, (ast.Expr, ast.Return)):
-        return stmt.value is None or _simple(stmt.value)
-    if isinstance(stmt, ast.If):
-        return _condition(stmt.test) and all(_allowed_statement(s) for s in stmt.body + stmt.orelse)
-    return isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom))
 
 def _statement_findings(rel: str, tree, positions: dict) -> list:
     if rel in _ENTRY_STATEMENTS:
@@ -155,14 +161,20 @@ def _statement_findings(rel: str, tree, positions: dict) -> list:
             found.append(('toplevel_statement', str(n.lineno)))
     return found
 
+
 def _is_path_bootstrap(node) -> bool:
     return isinstance(node, ast.Expr) and 'sys.path.insert' in ast.unparse(node)
+
 
 def _emoji_findings(lines: list) -> list:
     return [('emoji', str(i + 1)) for i, line in enumerate(lines) if _EMOJI_RE.search(line)]
 
-def _hard_violations(findings: dict) -> list:
-    return [k for k in findings if k not in ('emoji',)]
+
+def _list_files() -> list:
+    paths = [p for p in sorted((_ROOT / 'src').rglob('*.py')) if 'logs' not in p.parts]
+    paths += sorted((_ROOT / 'dev' / 'refactoring').glob('*.py'))
+    return paths + [_ROOT / 'workflow.py', _ROOT / 'setup_py2app.py']
+
 
 def _print_findings(findings: dict) -> None:
     for rule in sorted(findings):
@@ -171,6 +183,15 @@ def _print_findings(findings: dict) -> None:
             print(f'  {item}')
     if not findings:
         print('no findings')
+
+
+def _exit_code(findings: dict) -> int:
+    return 1 if _hard_violations(findings) else 0
+
+
+def _hard_violations(findings: dict) -> list:
+    return [k for k in findings if k not in ('emoji',)]
+
 
 if __name__ == '__main__':
     src_layout_scan_workflow()

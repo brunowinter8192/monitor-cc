@@ -75,17 +75,6 @@ def test_hook_setup_main_branch_gate_workflow() -> None:
 
 # FUNCTIONS
 
-def make_git_stub(name_to_verdict: dict):
-    def stub(script: str):
-        return name_to_verdict.get(script, True)
-    return stub
-
-def make_tree_stub(name_to_present: dict):
-    def stub(script: str) -> bool:
-        return name_to_present.get(script, True)
-    return stub
-
-
 def _all_runners() -> dict:
     runners = case_runners(CASES, _check_case)
     runners.update(function_runners([_check_multi_matcher_case, _check_reason_text_case]))
@@ -98,6 +87,18 @@ def _check_case(case: tuple) -> None:
     skipped_scripts = sorted({s for s, _m, _r in skipped})
     ok = (installed == expect_installed) and (skipped_scripts == sorted(expect_skipped_scripts))
     report_case(label, ok, "" if ok else f"\n       installed={installed} skipped_scripts={skipped_scripts}")
+
+
+def make_git_stub(name_to_verdict: dict):
+    def stub(script: str):
+        return name_to_verdict.get(script, True)
+    return stub
+
+
+def make_tree_stub(name_to_present: dict):
+    def stub(script: str) -> bool:
+        return name_to_present.get(script, True)
+    return stub
 
 
 def _check_multi_matcher_case() -> None:

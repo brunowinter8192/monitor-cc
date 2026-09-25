@@ -4,6 +4,7 @@ from unittest import mock
 
 from p5_common import load, root, tmpdir, check, point_log, log_text
 
+
 # ORCHESTRATOR
 
 def main() -> None:
@@ -15,10 +16,8 @@ def main() -> None:
     panel_cycle_errors(mlog)
     hotkey_status_and_handlers(mlog)
 
-# FUNCTIONS
 
-class _Obj:
-    pass
+# FUNCTIONS
 
 def status_item_wiring(mlog) -> None:
     app = load('app')
@@ -52,12 +51,18 @@ def status_item_wiring(mlog) -> None:
         propagated = True
     check('g3.ensure_wired.wiring_attribute_error_propagates', propagated)
 
+
+class _Obj:
+    pass
+
+
 def tick_and_hotkey_source(mlog) -> None:
     tree = ast.parse((root() / 'src' / 'menubar' / 'app.py').read_text())
     tick = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_tick'][0]
     check('g3.tick.no_try_around_snapshot', not any(isinstance(n, ast.Try) for n in ast.walk(tick)))
     bare = [n for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler) and all(isinstance(b, ast.Pass) for b in n.body)]
     check('g3.app.no_silent_except_pass', not bare)
+
 
 def restart_route(mlog) -> None:
     app = load('app')
@@ -69,6 +74,7 @@ def restart_route(mlog) -> None:
     text = log_text(mlog)
     check('g3.restart.route_logged_and_dispatched', calls == ['source', 'py2app'] and 'route=source' in text and 'route=py2app' in text)
 
+
 def panel_cycle_errors(mlog) -> None:
     pl = load('panel_lifecycle')
     with mock.patch.object(pl, '_panel_of', side_effect=RuntimeError('boom')):
@@ -78,25 +84,6 @@ def panel_cycle_errors(mlog) -> None:
     text = log_text(mlog)
     check('g3.panel_lifecycle.errors_in_menubar_log', 'cycling main->rag error' in text and 'Cmd+K deferred-block error' in text)
 
-class _FakeCarbon:
-    def __init__(self, install=0, register=0, get_param=0, raise_get=False):
-        self.install, self.register, self.get_param, self.raise_get = install, register, get_param, raise_get
-        self.callbacks = []
-    def GetApplicationEventTarget(self):
-        return 1
-    def GetCurrentEventTime(self):
-        return 0.0
-    def GetEventTime(self, event):
-        return 0.0
-    def InstallEventHandler(self, target, cb, n, spec, data, ref):
-        self.callbacks.append(cb)
-        return self.install
-    def RegisterEventHotKey(self, *args):
-        return self.register
-    def GetEventParameter(self, *args):
-        if self.raise_get:
-            raise RuntimeError('carbon failure')
-        return self.get_param
 
 def hotkey_status_and_handlers(mlog) -> None:
     hc = load('hotkey_controller')
@@ -131,6 +118,27 @@ def hotkey_status_and_handlers(mlog) -> None:
     ha._ARROW_HANDLER_CB = None
     ha._ARROW_CALLBACKS.clear()
     check('g3.hotkey.arrow_register_status_logged', 'RegisterEventHotKey failed status=-2 cmd+right' in log_text(mlog))
+
+
+class _FakeCarbon:
+    def __init__(self, install=0, register=0, get_param=0, raise_get=False):
+        self.install, self.register, self.get_param, self.raise_get = install, register, get_param, raise_get
+        self.callbacks = []
+    def GetApplicationEventTarget(self):
+        return 1
+    def GetCurrentEventTime(self):
+        return 0.0
+    def GetEventTime(self, event):
+        return 0.0
+    def InstallEventHandler(self, target, cb, n, spec, data, ref):
+        self.callbacks.append(cb)
+        return self.install
+    def RegisterEventHotKey(self, *args):
+        return self.register
+    def GetEventParameter(self, *args):
+        if self.raise_get:
+            raise RuntimeError('carbon failure')
+        return self.get_param
 
 
 if __name__ == '__main__':

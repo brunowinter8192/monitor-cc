@@ -11,13 +11,31 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
-from menubar import proc_cache
+from src.menubar import proc_cache
 
 _REPORT_DIR = Path(__file__).parent / 'md'
 _N_SESSIONS_FOR_COST_BENCH = 20
 
 
 # ORCHESTRATOR
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--encoded-dir', required=True)
+    ap.add_argument('--session-id', required=True)
+    ap.add_argument('--task-id', required=True)
+    ap.add_argument('--poll-secs', type=float, default=3.0)
+    ap.add_argument('--max-polls', type=int, default=100)
+    ap.add_argument('--snapshot', action='store_true',
+                     help='print one measurement and exit (safe for same-session use in a caller-driven loop)')
+    args = ap.parse_args()
+    if args.snapshot:
+        snapshot_workflow(args.encoded_dir, args.session_id, args.task_id)
+    else:
+        probe_bg_task_detection_workflow(args.encoded_dir, args.session_id, args.task_id, args.poll_secs, args.max_polls)
+
+
+# FUNCTIONS
 
 def snapshot_workflow(encoded_dir: str, session_id: str, task_id: str) -> None:
     tasks_dir = proc_cache._TASKS_BASE / encoded_dir / session_id / 'tasks'
@@ -27,16 +45,6 @@ def snapshot_workflow(encoded_dir: str, session_id: str, task_id: str) -> None:
     new = _new_predicate(encoded_dir, session_id)
     print(json.dumps({'size_bytes': size, 'old': old, 'new': new}))
 
-
-def probe_bg_task_detection_workflow(encoded_dir: str, session_id: str, task_id: str, poll_secs: float, max_polls: int) -> None:
-    real_run_rows = _poll_real_task(encoded_dir, session_id, task_id, poll_secs, max_polls)
-    no_bg_row = _probe_no_bg_session(encoded_dir, session_id)
-    synthetic_rows = _probe_synthetic_writer()
-    cost = _bench_per_tick_cost()
-    _write_report(real_run_rows, no_bg_row, synthetic_rows, cost)
-
-
-# FUNCTIONS
 
 def _old_predicate(tasks_dir: Path) -> bool:
     if not tasks_dir.exists():
@@ -51,6 +59,14 @@ def _new_predicate(encoded_dir: str, session_id: str) -> bool:
     proc_cache._bg_task_last_refresh = 0.0
     proc_cache._refresh_bg_task_cache(time.time())
     return proc_cache._has_active_bg(encoded_dir, session_id)
+
+
+def probe_bg_task_detection_workflow(encoded_dir: str, session_id: str, task_id: str, poll_secs: float, max_polls: int) -> None:
+    real_run_rows = _poll_real_task(encoded_dir, session_id, task_id, poll_secs, max_polls)
+    no_bg_row = _probe_no_bg_session(encoded_dir, session_id)
+    synthetic_rows = _probe_synthetic_writer()
+    cost = _bench_per_tick_cost()
+    _write_report(real_run_rows, no_bg_row, synthetic_rows, cost)
 
 
 def _poll_real_task(encoded_dir: str, session_id: str, task_id: str, poll_secs: float, max_polls: int) -> list:
@@ -183,16 +199,4 @@ def _write_report(real_run_rows: list, no_bg_row: dict, synthetic_rows: list, co
 
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--encoded-dir', required=True)
-    ap.add_argument('--session-id', required=True)
-    ap.add_argument('--task-id', required=True)
-    ap.add_argument('--poll-secs', type=float, default=3.0)
-    ap.add_argument('--max-polls', type=int, default=100)
-    ap.add_argument('--snapshot', action='store_true',
-                     help='print one measurement and exit (safe for same-session use in a caller-driven loop)')
-    args = ap.parse_args()
-    if args.snapshot:
-        snapshot_workflow(args.encoded_dir, args.session_id, args.task_id)
-    else:
-        probe_bg_task_detection_workflow(args.encoded_dir, args.session_id, args.task_id, args.poll_secs, args.max_polls)
+    main()

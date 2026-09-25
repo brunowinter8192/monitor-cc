@@ -5,21 +5,18 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 from A_render_refactor_proof_cases import _build_cases
+from src.proxy_display.format import format_proxy_block
+from src.proxy_display.turn_cache import TurnCache
 
 _REPORTS = _AREA_ROOT / 'A_render_refactor_proof_reports'
 
-# ORCHESTRATOR
 
-def _turn_cache():
-    from src.proxy_display.turn_cache import TurnCache
-    return TurnCache()
+# ORCHESTRATOR
 
 def main():
     args = _parse_args()
@@ -42,7 +39,6 @@ def _parse_args():
 
 
 def _run_capture(cases, output):
-    from src.proxy_display.format import format_proxy_block
     _REPORTS.mkdir(exist_ok=True)
     results = {}
     for case in cases:
@@ -51,34 +47,6 @@ def _run_capture(cases, output):
         print(f'  captured: {case["name"]}')
     Path(output).write_text(json.dumps(results, indent=2))
     print(f'Baseline written: {output}')
-
-
-def _run_verify(cases, baseline_path):
-    from src.proxy_display.format import format_proxy_block
-    if not baseline_path:
-        baselines = sorted(_REPORTS.glob('baseline_*.json'))
-        if not baselines:
-            print('ERROR: no baseline — run --mode capture first')
-            return 1
-        baseline_path = str(baselines[-1])
-        print(f'Using baseline: {baseline_path}')
-    baseline = json.loads(Path(baseline_path).read_text())
-    failures = []
-    for case in cases:
-        name = case['name']
-        ansi, total_lines = _render_case(case, format_proxy_block)
-        exp = baseline.get(name)
-        if exp is None:
-            failures.append(f'{name}: missing from baseline')
-            continue
-        if ansi != exp['ansi'] or total_lines != exp['total_lines']:
-            failures.append(f'{name}: MISMATCH  lines:{exp["total_lines"]}→{total_lines}  ansi_eq:{ansi==exp["ansi"]}')
-    for f in failures:
-        print(f'FAIL: {f}')
-    if not failures:
-        print(f'OK: {len(cases)} cases byte-identical')
-        return 0
-    return 1
 
 
 def _render_case(case, format_proxy_block):
@@ -109,6 +77,37 @@ def _render_fixpoint(entries, kw, format_proxy_block):
         for key in new_keys:
             expand_states[key] = True
     return result
+
+
+def _turn_cache():
+    return TurnCache()
+
+
+def _run_verify(cases, baseline_path):
+    if not baseline_path:
+        baselines = sorted(_REPORTS.glob('baseline_*.json'))
+        if not baselines:
+            print('ERROR: no baseline — run --mode capture first')
+            return 1
+        baseline_path = str(baselines[-1])
+        print(f'Using baseline: {baseline_path}')
+    baseline = json.loads(Path(baseline_path).read_text())
+    failures = []
+    for case in cases:
+        name = case['name']
+        ansi, total_lines = _render_case(case, format_proxy_block)
+        exp = baseline.get(name)
+        if exp is None:
+            failures.append(f'{name}: missing from baseline')
+            continue
+        if ansi != exp['ansi'] or total_lines != exp['total_lines']:
+            failures.append(f'{name}: MISMATCH  lines:{exp["total_lines"]}→{total_lines}  ansi_eq:{ansi==exp["ansi"]}')
+    for f in failures:
+        print(f'FAIL: {f}')
+    if not failures:
+        print(f'OK: {len(cases)} cases byte-identical')
+        return 0
+    return 1
 
 
 if __name__ == '__main__':

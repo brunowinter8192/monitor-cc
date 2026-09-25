@@ -6,8 +6,11 @@ from test_strip_fix_fixtures import (
     _INTERRUPT_MARKER, _INTERRUPT_MARKER_TOOL_USE,
 )
 
-# FUNCTIONS
+_INTERRUPT_MARKER_NL = _INTERRUPT_MARKER + '\n'
+_INTERRUPT_MARKER_TOOL_USE_NL = _INTERRUPT_MARKER_TOOL_USE + '\n'
 
+
+# FUNCTIONS
 
 def w15_launch_ack_id_and_path_full():
     ack = ('Command running in background with ID: bg_01ABC. '
@@ -106,7 +109,6 @@ def w22_tn_no_id_no_output_reduces_to_bare_wakeup():
     check('W22_bare_wakeup_only', new_msgs[0]['content'] == _WAKEUP_TEXT, repr(new_msgs[0]['content']))
 
 
-
 def w23_launch_ack_wording2_real_body_exact():
     ack = (
         'Command was manually backgrounded by user with ID: bsxpatpam. Output is being written '
@@ -142,7 +144,6 @@ def w24_launch_ack_wording2_trailing_content_not_swallowed_into_path():
     check('W24_id_line_present', 'ID: bsxpatpam' in new_content, repr(new_content))
 
 
-
 def w34_launch_ack_wording3_real_corpus_body_exact():
     ack = (
         'Command did not complete within its 120s timeout and was moved to the background (ID: '
@@ -164,9 +165,6 @@ def w34_launch_ack_wording3_real_corpus_body_exact():
     check('W34_real_corpus_wording3_exact', new_content == expected, repr(new_content))
     check('W34_removed_is_original_ack_incl_cwd_sentence', removed == [ack])
 
-
-_INTERRUPT_MARKER_NL = _INTERRUPT_MARKER + '\n'
-_INTERRUPT_MARKER_TOOL_USE_NL = _INTERRUPT_MARKER_TOOL_USE + '\n'
 
 def w25_interrupt_marker_real_shape_neighbors_intact():
     tool_result_block = {'type': 'tool_result', 'tool_use_id': 'toolu_01', 'content': 'prior output'}

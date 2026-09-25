@@ -25,29 +25,51 @@ STOPWORDS = frozenset({
 PLACEHOLDER = '_'
 
 
-class RagCall(NamedTuple):
-    tool_use_id: str
-    verb:        str
-    query:       str
-    collection:  str
-    top_k:       Optional[int]
-    timestamp:   str
-    source:      str
-
-
-class ResultInfo(NamedTuple):
-    chars:     int
-    chunks:    int
-    truncated: bool
-
-
-class Topic(NamedTuple):
-    topic_id:  str
-    source:    str
-    calls:     List[RagCall]
-
-
 # ORCHESTRATOR
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Cluster rag-cli search calls from Opus proxy logs for helpfulness eval.'
+    )
+    parser.add_argument(
+        'proxy_jsonl', nargs='*',
+        help='Proxy JSONL path(s). Default: src/logs/api_requests_opus_monitor_cc_*.jsonl'
+    )
+    parser.add_argument(
+        '--output', default='',
+        help='Output markdown file (default: auto-dated in dev/tool_use_analysis/)'
+    )
+    parser.add_argument(
+        '--jaccard', type=float, default=0.20, metavar='T',
+        help='Jaccard threshold for topic clustering (default: 0.20)'
+    )
+    args = parser.parse_args()
+
+    if args.proxy_jsonl:
+        paths = args.proxy_jsonl
+    else:
+        root  = Path(__file__).parent.parent.parent
+        paths = compute_paths(root)
+        if not paths:
+            print('No proxy logs found under src/logs/', file=sys.stderr)
+            sys.exit(1)
+
+    out = compute_out(args)
+
+    run(paths, out, args.jaccard)
+
+
+# FUNCTIONS
+
+def compute_paths(root):
+    return sorted(glob.glob(str(root / 'src/logs/api_requests_opus_monitor_cc_*.jsonl')))
+
+
+def compute_out(args):
+    return (args.output or str(
+            Path(__file__).parent / f'{datetime.now().strftime("%Y%m%d")}_rag_query_audit.md'
+        ))
+
 
 def run(jsonl_paths, output_path, jaccard_threshold):
     per_source_events: Dict[str, list] = {}
@@ -67,7 +89,12 @@ def run(jsonl_paths, output_path, jaccard_threshold):
     _write_output(report, output_path)
 
 
-# FUNCTIONS
+def _source_label(path):
+    base = os.path.basename(path)
+    if base.startswith('api_requests_'):
+        base = base[len('api_requests_'):]
+    return base[:-len('.jsonl')] if base.endswith('.jsonl') else base
+
 
 def _load_proxy(path):
     events = []
@@ -88,11 +115,14 @@ def _load_proxy(path):
     return events
 
 
-def _source_label(path):
-    base = os.path.basename(path)
-    if base.startswith('api_requests_'):
-        base = base[len('api_requests_'):]
-    return base[:-len('.jsonl')] if base.endswith('.jsonl') else base
+class RagCall(NamedTuple):
+    tool_use_id: str
+    verb:        str
+    query:       str
+    collection:  str
+    top_k:       Optional[int]
+    timestamp:   str
+    source:      str
 
 
 def _collect_rag_calls(events) -> Dict[str, RagCall]:
@@ -118,6 +148,12 @@ def _collect_rag_calls(events) -> Dict[str, RagCall]:
                     uid = f"{bid}:{m.start()}"
                     out[uid] = RagCall(uid, verb, query, coll, top_k, ts, src)
     return out
+
+
+class ResultInfo(NamedTuple):
+    chars:     int
+    chunks:    int
+    truncated: bool
 
 
 def _collect_results(events, rag_ids) -> Dict[str, ResultInfo]:
@@ -154,12 +190,10 @@ def _collect_results(events, rag_ids) -> Dict[str, ResultInfo]:
     return out
 
 
-def _jaccard(q1: str, q2: str) -> float:
-    t1 = set(q1.lower().split()) - STOPWORDS
-    t2 = set(q2.lower().split()) - STOPWORDS
-    if not t1 or not t2:
-        return 0.0
-    return len(t1 & t2) / len(t1 | t2)
+class Topic(NamedTuple):
+    topic_id:  str
+    source:    str
+    calls:     List[RagCall]
 
 
 def _cluster_topics(rag_calls: Dict[str, RagCall], threshold: float) -> List[Topic]:
@@ -192,6 +226,26 @@ def _cluster_topics(rag_calls: Dict[str, RagCall], threshold: float) -> List[Top
             counter += 1
 
     return topics
+
+
+def _jaccard(q1: str, q2: str) -> float:
+    t1 = set(q1.lower().split()) - STOPWORDS
+    t2 = set(q2.lower().split()) - STOPWORDS
+    if not t1 or not t2:
+        return 0.0
+    return len(t1 & t2) / len(t1 | t2)
+
+
+def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, threshold) -> str:
+    ts = datetime.now().strftime('%Y-%m-%dT%H:%M')
+    lines = [f'# RAG Query Audit — {ts}', '']
+
+    lines += _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold)
+    lines += _render_summary(rag_calls, results, topics)
+    lines += _render_topic_overview(topics, threshold)
+    lines += _render_topic_detail(topics, results)
+
+    return '\n'.join(lines) + '\n'
 
 
 def _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold):
@@ -286,18 +340,6 @@ def _render_topic_detail(topics, results):
     return lines
 
 
-def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, threshold) -> str:
-    ts = datetime.now().strftime('%Y-%m-%dT%H:%M')
-    lines = [f'# RAG Query Audit — {ts}', '']
-
-    lines += _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold)
-    lines += _render_summary(rag_calls, results, topics)
-    lines += _render_topic_overview(topics, threshold)
-    lines += _render_topic_detail(topics, results)
-
-    return '\n'.join(lines) + '\n'
-
-
 def _write_output(report, path):
     if path:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -308,36 +350,5 @@ def _write_output(report, path):
         sys.stdout.write(report)
 
 
-
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Cluster rag-cli search calls from Opus proxy logs for helpfulness eval.'
-    )
-    parser.add_argument(
-        'proxy_jsonl', nargs='*',
-        help='Proxy JSONL path(s). Default: src/logs/api_requests_opus_monitor_cc_*.jsonl'
-    )
-    parser.add_argument(
-        '--output', default='',
-        help='Output markdown file (default: auto-dated in dev/tool_use_analysis/)'
-    )
-    parser.add_argument(
-        '--jaccard', type=float, default=0.20, metavar='T',
-        help='Jaccard threshold for topic clustering (default: 0.20)'
-    )
-    args = parser.parse_args()
-
-    if args.proxy_jsonl:
-        paths = args.proxy_jsonl
-    else:
-        root  = Path(__file__).parent.parent.parent
-        paths = sorted(glob.glob(str(root / 'src/logs/api_requests_opus_monitor_cc_*.jsonl')))
-        if not paths:
-            print('No proxy logs found under src/logs/', file=sys.stderr)
-            sys.exit(1)
-
-    out = args.output or str(
-        Path(__file__).parent / f'{datetime.now().strftime("%Y%m%d")}_rag_query_audit.md'
-    )
-
-    run(paths, out, args.jaccard)
+    main()

@@ -12,6 +12,7 @@ from cache_rebuild_context_render import (
 
 DEFAULT_CONTEXT = 5
 
+
 # ORCHESTRATOR
 
 def main():
@@ -25,20 +26,20 @@ def main():
         sys.exit(1)
     print(output)
 
-def run_session(session_path, context_window, summary_only):
-    messages = parse_all_messages(session_path)
-    rebuilds = detect_rebuilds(messages)
-    lines = [f'# Cache Rebuild Context — {session_path.name}\n']
-    if not rebuilds:
-        lines.append('_No cache rebuilds detected._')
-        return '\n'.join(lines)
-    if not summary_only:
-        for i, rebuild in enumerate(rebuilds, 1):
-            lines.append(format_rebuild_block(rebuild, messages, i, context_window))
-            lines.append('')
-    lines.append(format_pattern_summary(rebuilds))
-    lines.append(format_delta_summary(rebuilds))
-    return '\n'.join(lines)
+
+# FUNCTIONS
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Analyze cache rebuilds in Claude Code sessions')
+    parser.add_argument('--session', help='Path to session JSONL file')
+    parser.add_argument('--context', type=int, default=DEFAULT_CONTEXT,
+                        help=f'Messages before/after rebuild (default: {DEFAULT_CONTEXT})')
+    parser.add_argument('--summary-only', action='store_true', dest='summary_only',
+                        help='Show only pattern summary, no context blocks')
+    parser.add_argument('--all', action='store_true',
+                        help='Scan all session JSONLs across all projects')
+    return parser.parse_args()
+
 
 def run_all(context_window):
     sessions = find_all_sessions()
@@ -57,18 +58,21 @@ def run_all(context_window):
     lines.append(format_delta_summary(all_rebuilds))
     return '\n'.join(lines)
 
-# FUNCTIONS
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Analyze cache rebuilds in Claude Code sessions')
-    parser.add_argument('--session', help='Path to session JSONL file')
-    parser.add_argument('--context', type=int, default=DEFAULT_CONTEXT,
-                        help=f'Messages before/after rebuild (default: {DEFAULT_CONTEXT})')
-    parser.add_argument('--summary-only', action='store_true', dest='summary_only',
-                        help='Show only pattern summary, no context blocks')
-    parser.add_argument('--all', action='store_true',
-                        help='Scan all session JSONLs across all projects')
-    return parser.parse_args()
+def run_session(session_path, context_window, summary_only):
+    messages = parse_all_messages(session_path)
+    rebuilds = detect_rebuilds(messages)
+    lines = [f'# Cache Rebuild Context — {session_path.name}\n']
+    if not rebuilds:
+        lines.append('_No cache rebuilds detected._')
+        return '\n'.join(lines)
+    if not summary_only:
+        for i, rebuild in enumerate(rebuilds, 1):
+            lines.append(format_rebuild_block(rebuild, messages, i, context_window))
+            lines.append('')
+    lines.append(format_pattern_summary(rebuilds))
+    lines.append(format_delta_summary(rebuilds))
+    return '\n'.join(lines)
 
 
 if __name__ == '__main__':

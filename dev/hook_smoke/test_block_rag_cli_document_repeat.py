@@ -28,16 +28,6 @@ def _strand_functions() -> list:
     ]
 
 
-def _run_hook(command: str, session_id: str, state_path: str) -> int:
-    payload = json.dumps({
-        "session_id": session_id,
-        "tool_name": "Bash",
-        "tool_input": {"command": command},
-    })
-    result = run_hook(HOOK, payload.encode(), extra_env={"MONITOR_CC_RAG_DOC_REPEAT_STATE": state_path})
-    return result.returncode
-
-
 def _test_single_document_call_allowed() -> None:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -55,6 +45,16 @@ def _test_single_document_call_allowed() -> None:
     finally:
         if os.path.exists(state):
             os.unlink(state)
+
+
+def _run_hook(command: str, session_id: str, state_path: str) -> int:
+    payload = json.dumps({
+        "session_id": session_id,
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+    })
+    result = run_hook(HOOK, payload.encode(), extra_env={"MONITOR_CC_RAG_DOC_REPEAT_STATE": state_path})
+    return result.returncode
 
 
 def _test_second_call_blocks() -> None:

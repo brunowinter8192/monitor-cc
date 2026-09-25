@@ -11,15 +11,13 @@ from scenario_lib import Sim, _FAR_FUTURE, _PAST
 _FULL = 10_000
 _HOVER_ROWS = (2, 5, 9, 14, 20, 27, 33, 41, 49)
 
+
 # ORCHESTRATOR
 
 def main():
     args = _parse_args()
     sim = Sim(args.root)
-    try:
-        steps = SCENARIOS[args.scenario](sim)
-    finally:
-        sim.cleanup()
+    steps = collect_steps(args, sim)
     Path(args.out).write_text(json.dumps(steps), encoding='utf-8')
 
 
@@ -33,17 +31,28 @@ def _parse_args():
     return parser.parse_args()
 
 
-def _counts(n: int, lag_resp: int = 0, lag_strip: int = 0, lag_inj: int = 0) -> dict:
-    return {'forwarded': n, 'response': max(0, n - lag_resp), 'stripped': max(0, n - lag_strip), 'injected': max(0, n - lag_inj), 'original': 2}
+def collect_steps(args, sim):
+    try:
+        steps = scenarios()[args.scenario](sim)
+    finally:
+        sim.cleanup()
+    return steps
 
 
-def _step(steps: list, label: str, kind: str, result: tuple) -> None:
-    steps.append([label, kind, result[0], result[1]])
-
-
-def _hovers(sim, steps: list, width: int = 80, prefix: str = 'hover') -> None:
-    for row in _HOVER_ROWS:
-        _step(steps, f'{prefix}@{row}', 'hover', sim.render(hover=row, width=width))
+def scenarios():
+    return {
+        'hover': sc_hover,
+        'grow_and_new_turn': sc_grow_and_new_turn,
+        'late_response': sc_late_response,
+        'late_overlay': sc_late_overlay,
+        'expand_collapse': sc_expand_collapse,
+        'search': sc_search,
+        'width': sc_width,
+        'copy_feedback': sc_copy_feedback,
+        'reparse': sc_reparse,
+        'unsorted_turns': sc_unsorted_turns,
+        'tripwire': sc_tripwire,
+    }
 
 
 def sc_hover(sim) -> list:
@@ -60,6 +69,19 @@ def sc_hover(sim) -> list:
         _step(steps, f'scroll{scroll}', 'hover', sim.render(hover=12))
         _hovers(sim, steps, prefix=f'hover_s{scroll}')
     return steps
+
+
+def _counts(n: int, lag_resp: int = 0, lag_strip: int = 0, lag_inj: int = 0) -> dict:
+    return {'forwarded': n, 'response': max(0, n - lag_resp), 'stripped': max(0, n - lag_strip), 'injected': max(0, n - lag_inj), 'original': 2}
+
+
+def _step(steps: list, label: str, kind: str, result: tuple) -> None:
+    steps.append([label, kind, result[0], result[1]])
+
+
+def _hovers(sim, steps: list, width: int = 80, prefix: str = 'hover') -> None:
+    for row in _HOVER_ROWS:
+        _step(steps, f'{prefix}@{row}', 'hover', sim.render(hover=row, width=width))
 
 
 def sc_grow_and_new_turn(sim) -> list:
@@ -217,21 +239,6 @@ def sc_tripwire(sim) -> list:
         del sim.expand[bad]
         steps.append([f'bad_key{bad!r}', 'tripwire', outcome, 0])
     return steps
-
-
-SCENARIOS = {
-    'hover': sc_hover,
-    'grow_and_new_turn': sc_grow_and_new_turn,
-    'late_response': sc_late_response,
-    'late_overlay': sc_late_overlay,
-    'expand_collapse': sc_expand_collapse,
-    'search': sc_search,
-    'width': sc_width,
-    'copy_feedback': sc_copy_feedback,
-    'reparse': sc_reparse,
-    'unsorted_turns': sc_unsorted_turns,
-    'tripwire': sc_tripwire,
-}
 
 
 if __name__ == '__main__':

@@ -22,30 +22,25 @@ DEADLINE_SECONDS = 30
 FRAME_MARKERS = (b'\033[?2026h', b'\033[2J')
 _SGR_OR_CHAR_RE = re.compile(r'\x1b\[([0-9;]*)m|(.)', re.S)
 
+
 # ORCHESTRATOR
 
 def test_workflow() -> int:
+    results = collect_results()
+    verdicts = evaluate(results)
+    write_report(verdicts, results)
+    return compute_exit_code(verdicts)
+
+
+# FUNCTIONS
+
+def collect_results():
     with tempfile.TemporaryDirectory(prefix='flicker_m1_') as tmp:
         work_dir = Path(tmp)
         old_root = extract_old_tree(work_dir)
         results = run_all_strands({'old': old_root, 'new': WORKTREE_ROOT}, work_dir)
-    verdicts = evaluate(results)
-    write_report(verdicts, results)
-    return 0 if all(ok for _, ok, _ in verdicts) else 1
+    return results
 
-# FUNCTIONS
-
-def run_all_strands(roots: dict, work_dir: Path) -> dict:
-    strands = [(pane, tree) for pane in PANES for tree in TREES]
-    with ThreadPoolExecutor(max_workers=len(strands)) as pool:
-        futures = {s: pool.submit(run_strand_guarded, s[0], s[1], roots[s[1]], work_dir) for s in strands}
-        return {s: f.result() for s, f in futures.items()}
-
-def run_strand_guarded(pane: str, tree: str, root: Path, work_dir: Path) -> dict:
-    try:
-        return run_strand(pane, tree, root, work_dir)
-    except Exception:
-        return {'aborted': traceback.format_exc()[-800:]}
 
 def extract_old_tree(work_dir: Path) -> Path:
     old_root = work_dir / 'old_tree'
@@ -54,41 +49,20 @@ def extract_old_tree(work_dir: Path) -> Path:
     subprocess.run(['tar', '-x', '-C', str(old_root)], input=archive, check=True)
     return old_root
 
-def hover(row: int) -> str:
-    return f"\033[<35;12;{row}M"
 
-def click(row: int) -> str:
-    return f"\033[<0;12;{row}M\033[<0;12;{row}m"
+def run_all_strands(roots: dict, work_dir: Path) -> dict:
+    strands = [(pane, tree) for pane in PANES for tree in TREES]
+    with ThreadPoolExecutor(max_workers=len(strands)) as pool:
+        futures = {s: pool.submit(run_strand_guarded, s[0], s[1], roots[s[1]], work_dir) for s in strands}
+        return {s: f.result() for s, f in futures.items()}
 
-def scroll(button: int, row: int) -> str:
-    return f"\033[<{button};12;{row}M"
 
-def build_steps(pane: str) -> list:
-    steps = [('boot', [])]
-    for row in (4, 5, 6, 7, 8, 9):
-        steps.append((f'hover_row_{row}', [('lit', hover(row))]))
-    steps.append(('click_expand_row_5', [('lit', click(5))]))
-    steps.append(('hover_row_8_after_expand', [('lit', hover(8))]))
-    steps.append(('click_collapse_row_5', [('lit', click(5))]))
-    steps.append(('scroll_up', [('lit', scroll(64, 8)), ('lit', scroll(64, 8))]))
-    steps.append(('scroll_down_past_end', [('lit', scroll(65, 8))] * 6))
-    steps.append(('search_type', [('lit', '/'), ('lit', 'abcdefgh')]))
-    steps.append(('search_backspace', [('key', 'BSpace')] * 6))
-    steps.append(('search_commit', [('key', 'Enter')]))
-    if pane in ('worker_tokens', 'worker_proxy'):
-        steps.append(('switch_worker_2_shorter_frame', [('lit', '2')]))
-        steps.append(('switch_worker_1_longer_frame', [('lit', '1')]))
-    steps.append(('hover_after_all', [('lit', hover(6))]))
-    return steps
+def run_strand_guarded(pane: str, tree: str, root: Path, work_dir: Path) -> dict:
+    try:
+        return run_strand(pane, tree, root, work_dir)
+    except Exception:
+        return {'aborted': traceback.format_exc()[-800:]}
 
-def tmux(sock: str, *args) -> subprocess.CompletedProcess:
-    return subprocess.run(['tmux', '-L', sock, *args], capture_output=True, text=True)
-
-def send(sock: str, kind: str, payload: str) -> None:
-    if kind == 'lit':
-        tmux(sock, 'send-keys', '-t', 'flk', '-l', payload)
-    else:
-        tmux(sock, 'send-keys', '-t', 'flk', payload)
 
 def run_strand(pane: str, tree: str, root: Path, work_dir: Path) -> dict:
     sock = f'flk_m1_{pane}_{tree}'
@@ -96,6 +70,7 @@ def run_strand(pane: str, tree: str, root: Path, work_dir: Path) -> dict:
         return drive_strand(sock, pane, root, work_dir / f'{pane}_{tree}.raw', f'/tmp/flk_m1_proj_{pane}_{tree}')
     finally:
         tmux(sock, 'kill-server')
+
 
 def drive_strand(sock: str, pane: str, root: Path, raw_path: Path, project: str) -> dict:
     tmux(sock, 'kill-server')
@@ -131,6 +106,15 @@ def drive_strand(sock: str, pane: str, root: Path, raw_path: Path, project: str)
                   'respawn': respawn_flag, 'rerun': rerun_flag, 'exit': exit_flag},
     }
 
+
+def tmux(sock: str, *args) -> subprocess.CompletedProcess:
+    return subprocess.run(['tmux', '-L', sock, *args], capture_output=True, text=True)
+
+
+def cursor_flag(sock: str) -> str:
+    return tmux(sock, 'display-message', '-p', '-t', 'flk', '#{cursor_flag}').stdout.strip()
+
+
 def start_pane(sock: str, cmd: str, raw_path: Path) -> None:
     offset = raw_path.stat().st_size if raw_path.exists() else 0
     tmux(sock, 'send-keys', '-t', 'flk', cmd, 'Enter')
@@ -140,6 +124,11 @@ def start_pane(sock: str, cmd: str, raw_path: Path) -> None:
             raise TimeoutError(f'{sock}: no frame within {DEADLINE_SECONDS}s after start')
         time.sleep(POLL_SECONDS)
     wait_quiet(sock, raw_path)
+
+
+def read_raw_bytes(raw_path: Path) -> bytes:
+    return raw_path.read_bytes() if raw_path.exists() else b''
+
 
 def wait_quiet(sock: str, raw_path: Path) -> None:
     deadline = time.monotonic() + DEADLINE_SECONDS
@@ -156,6 +145,57 @@ def wait_quiet(sock: str, raw_path: Path) -> None:
             raise TimeoutError(f'{sock}: output never settled within {DEADLINE_SECONDS}s')
         time.sleep(POLL_SECONDS)
 
+
+def build_steps(pane: str) -> list:
+    steps = [('boot', [])]
+    for row in (4, 5, 6, 7, 8, 9):
+        steps.append((f'hover_row_{row}', [('lit', hover(row))]))
+    steps.append(('click_expand_row_5', [('lit', click(5))]))
+    steps.append(('hover_row_8_after_expand', [('lit', hover(8))]))
+    steps.append(('click_collapse_row_5', [('lit', click(5))]))
+    steps.append(('scroll_up', [('lit', scroll(64, 8)), ('lit', scroll(64, 8))]))
+    steps.append(('scroll_down_past_end', [('lit', scroll(65, 8))] * 6))
+    steps.append(('search_type', [('lit', '/'), ('lit', 'abcdefgh')]))
+    steps.append(('search_backspace', [('key', 'BSpace')] * 6))
+    steps.append(('search_commit', [('key', 'Enter')]))
+    if pane in ('worker_tokens', 'worker_proxy'):
+        steps.append(('switch_worker_2_shorter_frame', [('lit', '2')]))
+        steps.append(('switch_worker_1_longer_frame', [('lit', '1')]))
+    steps.append(('hover_after_all', [('lit', hover(6))]))
+    return steps
+
+
+def hover(row: int) -> str:
+    return f"\033[<35;12;{row}M"
+
+
+def click(row: int) -> str:
+    return f"\033[<0;12;{row}M\033[<0;12;{row}m"
+
+
+def scroll(button: int, row: int) -> str:
+    return f"\033[<{button};12;{row}M"
+
+
+def send(sock: str, kind: str, payload: str) -> None:
+    if kind == 'lit':
+        tmux(sock, 'send-keys', '-t', 'flk', '-l', payload)
+    else:
+        tmux(sock, 'send-keys', '-t', 'flk', payload)
+
+
+def read_raw(raw_path: Path) -> str:
+    return raw_path.read_bytes().decode('utf-8', errors='replace') if raw_path.exists() else ''
+
+
+def burst_hover_flags(sock: str) -> list:
+    flags = []
+    for i in range(40):
+        send(sock, 'lit', hover(4 + i % 8))
+        flags.append(cursor_flag(sock))
+    return flags
+
+
 def wait_flag(sock: str, expected: str) -> str:
     deadline = time.monotonic() + DEADLINE_SECONDS
     flag = cursor_flag(sock)
@@ -164,21 +204,6 @@ def wait_flag(sock: str, expected: str) -> str:
         flag = cursor_flag(sock)
     return flag
 
-def cursor_flag(sock: str) -> str:
-    return tmux(sock, 'display-message', '-p', '-t', 'flk', '#{cursor_flag}').stdout.strip()
-
-def read_raw_bytes(raw_path: Path) -> bytes:
-    return raw_path.read_bytes() if raw_path.exists() else b''
-
-def read_raw(raw_path: Path) -> str:
-    return raw_path.read_bytes().decode('utf-8', errors='replace') if raw_path.exists() else ''
-
-def burst_hover_flags(sock: str) -> list:
-    flags = []
-    for i in range(40):
-        send(sock, 'lit', hover(4 + i % 8))
-        flags.append(cursor_flag(sock))
-    return flags
 
 def evaluate(results: dict) -> list:
     verdicts = []
@@ -200,6 +225,73 @@ def evaluate(results: dict) -> list:
             verdicts.append((f'{pane}: screen identical at step {name}', normalize(old_screen) == normalize(new_screen), diff_hint(normalize(old_screen), normalize(new_screen))))
     return verdicts
 
+
+def cursor_verdicts(pane: str, old: dict, new: dict) -> list:
+    of, nf = old['flags'], new['flags']
+    frames = new['raw'].split('\033[?2026h')[1:]
+    return [
+        (f'{pane}: harness sanity, shell cursor visible before the pane starts', nf['shell'] == '1' and of['shell'] == '1', ''),
+        (f'{pane}: harness sanity, old tree never hides the cursor', set(of['steps']) == {'1'} and of['boot'] == '1', f"{of['steps']}"),
+        (f'{pane}: hide sequence reaches the pane before the first frame', 0 <= new['raw'].find('\033[?25l') < new['raw'].find('\033[?2026h'), ''),
+        (f'{pane}: every frame carries the hide sequence ({len(frames)} frames)', all(fr.startswith('\033[?25l') for fr in frames), ''),
+        (f'{pane}: cursor hidden after boot', nf['boot'] == '0', ''),
+        (f'{pane}: cursor hidden after every step', set(nf['steps']) == {'0'}, f"{nf['steps']}"),
+        (f'{pane}: cursor hidden across a 40-event hover burst', set(nf['burst']) == {'0'}, f"{nf['burst']}"),
+        (f'{pane}: respawn-pane resets to visible cursor', nf['respawn'] == '1', ''),
+        (f'{pane}: cursor hidden again after the pane restarts', nf['rerun'] == '0', ''),
+        (f'{pane}: cursor visible again after the pane exits (Ctrl+C)', nf['exit'] == '1' and '\033[?25h' in new['raw_full'], ''),
+    ]
+
+
+def proper_nesting(raw: str) -> bool:
+    depth = 0
+    for token in split_tokens(raw):
+        if token == 'B':
+            depth += 1
+            if depth > 1:
+                return False
+        elif token == 'E':
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
+def split_tokens(raw: str) -> list:
+    tokens = []
+    i = 0
+    while i < len(raw):
+        if raw.startswith('\033[?2026h', i):
+            tokens.append('B')
+            i += 8
+        elif raw.startswith('\033[?2026l', i):
+            tokens.append('E')
+            i += 8
+        else:
+            i += 1
+    return tokens
+
+
+def outside_sync_clean(raw: str) -> bool:
+    first = raw.find('\033[?2026h')
+    if first < 0:
+        return False
+    rest = raw[first:]
+    outside = []
+    pos = 0
+    while True:
+        b = rest.find('\033[?2026h', pos)
+        if b < 0:
+            outside.append(rest[pos:])
+            break
+        outside.append(rest[pos:b])
+        e = rest.find('\033[?2026l', b)
+        if e < 0:
+            return False
+        pos = e + 8
+    return all(chunk.replace('\r', '').replace('\n', '') == '' for chunk in outside)
+
+
 def normalize(screen: str) -> str:
     rows = []
     state = {}
@@ -215,6 +307,7 @@ def normalize(screen: str) -> str:
             cells.pop()
         rows.append(' '.join(f'{c!r}{st}' for c, st in cells))
     return '\n'.join(rows)
+
 
 def apply_sgr(state: dict, params: str) -> None:
     codes = [int(p) if p else 0 for p in params.split(';')] if params else [0]
@@ -246,67 +339,6 @@ def apply_sgr(state: dict, params: str) -> None:
             state[f'attr{code}'] = True
         i += 1
 
-def cursor_verdicts(pane: str, old: dict, new: dict) -> list:
-    of, nf = old['flags'], new['flags']
-    frames = new['raw'].split('\033[?2026h')[1:]
-    return [
-        (f'{pane}: harness sanity, shell cursor visible before the pane starts', nf['shell'] == '1' and of['shell'] == '1', ''),
-        (f'{pane}: harness sanity, old tree never hides the cursor', set(of['steps']) == {'1'} and of['boot'] == '1', f"{of['steps']}"),
-        (f'{pane}: hide sequence reaches the pane before the first frame', 0 <= new['raw'].find('\033[?25l') < new['raw'].find('\033[?2026h'), ''),
-        (f'{pane}: every frame carries the hide sequence ({len(frames)} frames)', all(fr.startswith('\033[?25l') for fr in frames), ''),
-        (f'{pane}: cursor hidden after boot', nf['boot'] == '0', ''),
-        (f'{pane}: cursor hidden after every step', set(nf['steps']) == {'0'}, f"{nf['steps']}"),
-        (f'{pane}: cursor hidden across a 40-event hover burst', set(nf['burst']) == {'0'}, f"{nf['burst']}"),
-        (f'{pane}: respawn-pane resets to visible cursor', nf['respawn'] == '1', ''),
-        (f'{pane}: cursor hidden again after the pane restarts', nf['rerun'] == '0', ''),
-        (f'{pane}: cursor visible again after the pane exits (Ctrl+C)', nf['exit'] == '1' and '\033[?25h' in new['raw_full'], ''),
-    ]
-
-def proper_nesting(raw: str) -> bool:
-    depth = 0
-    for token in split_tokens(raw):
-        if token == 'B':
-            depth += 1
-            if depth > 1:
-                return False
-        elif token == 'E':
-            depth -= 1
-            if depth < 0:
-                return False
-    return depth == 0
-
-def split_tokens(raw: str) -> list:
-    tokens = []
-    i = 0
-    while i < len(raw):
-        if raw.startswith('\033[?2026h', i):
-            tokens.append('B')
-            i += 8
-        elif raw.startswith('\033[?2026l', i):
-            tokens.append('E')
-            i += 8
-        else:
-            i += 1
-    return tokens
-
-def outside_sync_clean(raw: str) -> bool:
-    first = raw.find('\033[?2026h')
-    if first < 0:
-        return False
-    rest = raw[first:]
-    outside = []
-    pos = 0
-    while True:
-        b = rest.find('\033[?2026h', pos)
-        if b < 0:
-            outside.append(rest[pos:])
-            break
-        outside.append(rest[pos:b])
-        e = rest.find('\033[?2026l', b)
-        if e < 0:
-            return False
-        pos = e + 8
-    return all(chunk.replace('\r', '').replace('\n', '') == '' for chunk in outside)
 
 def diff_hint(old_norm: str, new_norm: str) -> str:
     if old_norm == new_norm:
@@ -320,6 +352,7 @@ def diff_hint(old_norm: str, new_norm: str) -> str:
                     return f'row {i + 1} token {j}/{len(old_cells)}vs{len(new_cells)}: old={ca[:60]!r} new={cb[:60]!r}'
             return f'row {i + 1} length old={len(old_cells)} new={len(new_cells)} tailold={" ".join(old_cells[-9:])!r} tailnew={" ".join(new_cells[-9:])!r}'
     return f'line count old={len(old_lines)} new={len(new_lines)}'
+
 
 def write_report(verdicts: list, results: dict) -> None:
     REPORT_DIR.mkdir(exist_ok=True)
@@ -337,6 +370,11 @@ def write_report(verdicts: list, results: dict) -> None:
         if not ok:
             print(f'FAIL {label} {hint}')
     print(f'{passed}/{len(verdicts)} checks passed')
+
+
+def compute_exit_code(verdicts):
+    return 0 if all(ok for _, ok, _ in verdicts) else 1
+
 
 if __name__ == '__main__':
     sys.exit(test_workflow())

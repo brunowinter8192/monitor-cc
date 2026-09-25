@@ -34,7 +34,7 @@ top/bottom placement) in a temporary session.
 
 ---
 
-### scan_jsonl_rules.py (114 LOC)
+### scan_jsonl_rules.py (121 LOC)
 
 **Purpose:** Scans a Claude Code session JSONL for "Contents of" lines to check whether loaded
 rules data is present, and in what message shape.
@@ -45,7 +45,7 @@ rules data is present, and in what message shape.
 
 ---
 
-### screenshot_panes.py (119 LOC)
+### screenshot_panes.py (128 LOC)
 
 **Purpose:** Captures all tmux panes of a running Monitor_CC session and combines them into one
 PNG for visual review.
@@ -56,7 +56,7 @@ PNG for visual review.
 
 ---
 
-### A_format_cache_tracker_proof.py (114 LOC)
+### A_format_cache_tracker_proof.py (123 LOC)
 
 **Purpose:** Verification, not a test: differential proof the cache tracker's serialized return is byte-identical to a captured baseline. Reads live JSONLs.
 **Reads:** real session JSONLs under `~/.claude/projects/`.
@@ -67,7 +67,7 @@ PNG for visual review.
 
 ---
 
-### test_hover_map.py (274 LOC)
+### test_hover_map.py (272 LOC)
 
 **Purpose:** Synthetic and frozen-fixture assertion suite for expand-model line-map correctness and the stripped-span dual-color overlay pairing.
 **Reads:** `fixtures/api_requests_fixture_forwarded.jsonl` and its sibling `_stripped.jsonl`, a frozen dual-log pair; the pairing test asserts the fixture yields exactly 5 entries so it cannot pass vacuously.

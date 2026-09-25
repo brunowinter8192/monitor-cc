@@ -29,6 +29,7 @@ _SYNTHETIC_FILE_PAYLOADS = [
     {'tool_name': 'mcp__x__y', 'tool_input': {}},
 ]
 
+
 # ORCHESTRATOR
 
 def hook_matrix_workflow() -> None:
@@ -39,18 +40,12 @@ def hook_matrix_workflow() -> None:
     _write_report(lines, out_path)
     _print_counts(hooks, payloads, lines)
 
+
 # FUNCTIONS
-
-def _run_matrix(hooks: list, payloads: list) -> list:
-    jobs = [(hook, index, payload) for hook in hooks for index, payload in enumerate(payloads)]
-    with ThreadPoolExecutor(max_workers=24) as pool:
-        return list(pool.map(_run_job, jobs))
-
-def _print_counts(hooks: list, payloads: list, lines: list) -> None:
-    print(f'hooks={len(hooks)} payloads={len(payloads)} runs={len(lines)}')
 
 def _parse_args() -> tuple:
     return Path(sys.argv[1]).resolve(), Path(sys.argv[2]), Path(sys.argv[3])
+
 
 def _build_payloads(snapshot_log: Path) -> list:
     commands = sorted({json.loads(line)['command'] for line in snapshot_log.read_text().splitlines() if line.strip()})
@@ -58,8 +53,16 @@ def _build_payloads(snapshot_log: Path) -> list:
     payloads = [{'tool_name': 'Bash', 'tool_input': {'command': c}, 'session_id': 'matrix', 'cwd': '/tmp'} for c in commands]
     return payloads + [{**p, 'session_id': 'matrix', 'cwd': '/tmp'} for p in _SYNTHETIC_FILE_PAYLOADS]
 
+
 def _list_hooks(root: Path) -> list:
     return sorted(p for p in (root / 'src' / 'hooks').glob('*.py') if p.name not in _EXCLUDED_HOOKS and not p.name.startswith('_'))
+
+
+def _run_matrix(hooks: list, payloads: list) -> list:
+    jobs = [(hook, index, payload) for hook in hooks for index, payload in enumerate(payloads)]
+    with ThreadPoolExecutor(max_workers=24) as pool:
+        return list(pool.map(_run_job, jobs))
+
 
 def _run_job(job: tuple) -> str:
     hook, index, payload = job
@@ -72,13 +75,16 @@ def _run_job(job: tuple) -> str:
     record = {'rc': proc.returncode, 'out': proc.stdout, 'err': proc.stderr, 'log': fired}
     return f'{hook.name}\t{index}\t{json.dumps(record, sort_keys=True)}'
 
-def _interpreter() -> str:
-    return os.environ.get('MATRIX_PYTHON', sys.executable)
 
 def _write_decoy_src(cwd: Path) -> None:
     (cwd / 'src' / 'hooks').mkdir(parents=True)
     (cwd / 'src' / '__init__.py').write_text('')
     (cwd / 'src' / 'hooks' / '_fire_log.py').write_text('raise RuntimeError("decoy src imported from cwd")\n')
+
+
+def _interpreter() -> str:
+    return os.environ.get('MATRIX_PYTHON', sys.executable)
+
 
 def _normalized_log(log_path: Path) -> list:
     if not log_path.exists():
@@ -89,8 +95,14 @@ def _normalized_log(log_path: Path) -> list:
         record['reason'] = record.get('reason', '').replace('/private', '')
     return records
 
+
 def _write_report(lines: list, out_path: Path) -> None:
     out_path.write_text('\n'.join(sorted(lines)) + '\n')
+
+
+def _print_counts(hooks: list, payloads: list, lines: list) -> None:
+    print(f'hooks={len(hooks)} payloads={len(payloads)} runs={len(lines)}')
+
 
 if __name__ == '__main__':
     hook_matrix_workflow()

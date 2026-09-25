@@ -16,6 +16,7 @@ from dev.session_launcher.test_env import isolate_home
 _SCAN_DIRS = ('src', 'dev')
 _FORBIDDEN = re.compile('|'.join(['auto' + '_focus', 'Auto' + '-Jump', 'toggle' + 'AutoJump', 'auto' + '_jump']))
 
+
 # ORCHESTRATOR
 
 def main() -> None:
@@ -29,23 +30,24 @@ def main() -> None:
         ('FocusController keeps status tracking, has no tick', _check_focus_controller),
         ('PanelSettings has two fields, controller has no toggle action', _check_app_surface),
     ]
-    results = [_run_check(name, fn) for name, fn in checks]
+    results = compute_results(checks)
     path = write_report(__file__, _build_report(results))
     print(_build_report(results))
-    print(f'report: {path}')
-    if any(not ok for _, ok, _ in results):
+    print_report(path)
+    if any_case_failed(results):
         sys.exit(1)
+
 
 # FUNCTIONS
 
-def _run_check(name: str, fn):
-    try:
-        detail = fn()
-        return name, True, detail
-    except AssertionError as exc:
-        return name, False, f'ASSERT {exc}'
-    except Exception as exc:
-        return name, False, f'ERROR {exc!r}'
+def _check_isolation() -> str:
+    home = Path(sys.modules['os'].environ['HOME'])
+    paths = importlib.import_module('src.menubar.paths')
+    log_mod = importlib.import_module('src.menubar.menubar_log')
+    assert str(log_mod.MENUBAR_LOG).startswith(str(home)), f'log path {log_mod.MENUBAR_LOG}'
+    assert str(paths.SETTINGS_FILE).startswith(str(home)), f'settings path {paths.SETTINGS_FILE}'
+    return f'MENUBAR_LOG=<home>/{log_mod.MENUBAR_LOG.relative_to(home)}'
+
 
 def _check_no_identifiers_left() -> str:
     hits = []
@@ -59,16 +61,6 @@ def _check_no_identifiers_left() -> str:
     assert not hits, f'hits: {hits}'
     return 'scanned src/ and dev/, 0 hits'
 
-def _check_isolation() -> str:
-    home = Path(sys.modules['os'].environ['HOME'])
-    paths = importlib.import_module('src.menubar.paths')
-    log_mod = importlib.import_module('src.menubar.menubar_log')
-    assert str(log_mod.MENUBAR_LOG).startswith(str(home)), f'log path {log_mod.MENUBAR_LOG}'
-    assert str(paths.SETTINGS_FILE).startswith(str(home)), f'settings path {paths.SETTINGS_FILE}'
-    return f'MENUBAR_LOG=<home>/{log_mod.MENUBAR_LOG.relative_to(home)}'
-
-def _settings_module():
-    return importlib.import_module('src.menubar.app_settings')
 
 def _check_old_settings_load() -> str:
     mod = _settings_module()
@@ -80,6 +72,11 @@ def _check_old_settings_load() -> str:
     assert got == (500, 480), f'got {got}'
     return f'loaded {got}'
 
+
+def _settings_module():
+    return importlib.import_module('src.menubar.app_settings')
+
+
 def _check_settings_defaults() -> str:
     mod = _settings_module()
     with tempfile.TemporaryDirectory() as tmp:
@@ -87,6 +84,7 @@ def _check_settings_defaults() -> str:
             got = mod._load_settings()
     assert got == (mod.PANEL_WIDTH, mod.PANEL_HEIGHT), f'got {got}'
     return f'defaults {got}'
+
 
 def _check_save_drops_key() -> str:
     mod = _settings_module()
@@ -98,6 +96,7 @@ def _check_save_drops_key() -> str:
         data = json.loads(p.read_text())
     assert data == {'panel_width': 510, 'panel_min_height': 470}, f'data {data}'
     return f'file after save: {data}'
+
 
 def _check_focus_controller() -> str:
     mod = importlib.import_module('src.menubar.focus_controller')
@@ -111,12 +110,28 @@ def _check_focus_controller() -> str:
     assert fc.statuses_changed([a]) is False
     return 'statuses_changed True then False after update_statuses'
 
+
 def _check_app_surface() -> str:
     mod = importlib.import_module('src.menubar.app')
     fields = sorted(vars(mod.PanelSettings(400, 300)))
     assert fields == ['panel_min_height', 'panel_width'], f'fields {fields}'
     assert not hasattr(mod._PanelController, 'toggle' + 'AutoJump_'), 'toggle action still present'
     return f'PanelSettings fields {fields}'
+
+
+def compute_results(checks):
+    return [_run_check(name, fn) for name, fn in checks]
+
+
+def _run_check(name: str, fn):
+    try:
+        detail = fn()
+        return name, True, detail
+    except AssertionError as exc:
+        return name, False, f'ASSERT {exc}'
+    except Exception as exc:
+        return name, False, f'ERROR {exc!r}'
+
 
 def _build_report(results) -> str:
     lines = ['# t1_autojump_removal report', '',
@@ -126,6 +141,15 @@ def _build_report(results) -> str:
     lines.append('')
     lines.append(f'RESULT: {"PASS" if all(ok for _, ok, _ in results) else "FAIL"}')
     return '\n'.join(lines)
+
+
+def print_report(path):
+    print(f'report: {path}')
+
+
+def any_case_failed(results):
+    return any(not ok for _, ok, _ in results)
+
 
 if __name__ == '__main__':
     main()

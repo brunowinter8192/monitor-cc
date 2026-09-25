@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+sys.path.insert(0, str(WORKTREE_ROOT))
 
-from menubar.menubar_log import MENUBAR_LOG
+from src.menubar.menubar_log import MENUBAR_LOG
 
 REPORT_DIR       = Path(__file__).parent / 'md'
 N_SLOWEST        = 10
@@ -19,20 +19,26 @@ _PHASE_RE        = re.compile(r'(\w+)=(\d+)ms')
 _HOTKEY_RE       = re.compile(r'^hotkey=(\S+) queue_delay_ms=([\d.]+)$')
 _FOCUS_RE        = re.compile(r'^focus lookup_ms=([\d.]+) osascript_ms=([\d.]+) (.*)$')
 
+
 # ORCHESTRATOR
 
 def main() -> None:
-    log_path = Path(sys.argv[1]) if len(sys.argv) > 1 else MENUBAR_LOG
+    log_path = compute_log_path()
     ticks, bg_refreshes, hotkeys, focuses = _parse_latency_lines(log_path)
     report = _build_report(log_path, ticks, bg_refreshes, hotkeys, focuses)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    out_path = REPORT_DIR / f'latency_report_{stamp}.md'
+    out_path = compute_out_path(stamp)
     out_path.write_text(report, encoding='utf-8')
-    print(f'ticks={len(ticks)} bg_refreshes={len(bg_refreshes)} hotkeys={len(hotkeys)} focuses={len(focuses)}')
-    print(f'report written to {out_path}')
+    print_ticks(ticks, bg_refreshes, hotkeys, focuses)
+    print_report_written_to(out_path)
+
 
 # FUNCTIONS
+
+def compute_log_path():
+    return Path(sys.argv[1]) if len(sys.argv) > 1 else MENUBAR_LOG
+
 
 def _parse_latency_lines(log_path: Path) -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
     ticks, bg_refreshes, hotkeys, focuses = [], [], [], []
@@ -61,17 +67,23 @@ def _parse_latency_lines(log_path: Path) -> Tuple[List[dict], List[dict], List[d
                                  'osascript_ms': float(fm.group(2)), 'label': fm.group(3)})
     return ticks, bg_refreshes, hotkeys, focuses
 
-def _pct(values: List[float], p: float) -> float:
-    s = sorted(values)
-    idx = min(len(s) - 1, max(0, int(round(p / 100 * (len(s) - 1)))))
-    return s[idx]
 
-def _dist_line(values: List[float]) -> str:
-    if not values:
-        return 'n=0'
-    return (f'n={len(values)} mean={statistics.mean(values):.1f} '
-            f'median={statistics.median(values):.1f} p90={_pct(values, 90):.1f} '
-            f'p95={_pct(values, 95):.1f} max={max(values):.1f}')
+def _build_report(log_path: Path, ticks: List[dict], bg_refreshes: List[dict],
+                   hotkeys: List[dict], focuses: List[dict]) -> str:
+    header = (
+        f'# Hotkey/Menubar Latency Report\n\n'
+        f'Source: `{log_path}`\n'
+        f'Generated: {datetime.now(timezone.utc).isoformat(timespec="seconds")}\n\n'
+    )
+    tick_section = _tick_like_section(
+        ticks, 'Main-Thread Tick Latency (over-threshold ticks only)',
+        'no main-thread tick exceeded TICK_LATENCY_THRESHOLD_MS in this log window.')
+    bg_section = _tick_like_section(
+        bg_refreshes, 'Background Discovery-Worker Cycle Latency (over-threshold cycles only)',
+        'no discovery-worker cycle exceeded BG_REFRESH_LATENCY_THRESHOLD_MS in this log window.')
+    return (header + tick_section + '\n' + bg_section + '\n'
+            + _hotkey_section(hotkeys) + '\n' + _focus_section(focuses))
+
 
 def _tick_like_section(entries: List[dict], title: str, empty_note: str) -> str:
     if not entries:
@@ -96,6 +108,21 @@ def _tick_like_section(entries: List[dict], title: str, empty_note: str) -> str:
         + '\n'.join(slowest_lines) + '\n'
     )
 
+
+def _dist_line(values: List[float]) -> str:
+    if not values:
+        return 'n=0'
+    return (f'n={len(values)} mean={statistics.mean(values):.1f} '
+            f'median={statistics.median(values):.1f} p90={_pct(values, 90):.1f} '
+            f'p95={_pct(values, 95):.1f} max={max(values):.1f}')
+
+
+def _pct(values: List[float], p: float) -> float:
+    s = sorted(values)
+    idx = min(len(s) - 1, max(0, int(round(p / 100 * (len(s) - 1)))))
+    return s[idx]
+
+
 def _hotkey_section(hotkeys: List[dict]) -> str:
     if not hotkeys:
         return '## Hotkey Queue-Delay\n\nNo [latency] hotkey lines found.\n'
@@ -110,6 +137,7 @@ def _hotkey_section(hotkeys: List[dict]) -> str:
         '### Per Hotkey\n\n' + '\n'.join(lines) + '\n'
     )
 
+
 def _focus_section(focuses: List[dict]) -> str:
     if not focuses:
         return '## Focus-Path Timing\n\nNo [latency] focus lines found.\n'
@@ -121,21 +149,18 @@ def _focus_section(focuses: List[dict]) -> str:
         f'- `osascript_ms` (osascript run): {_dist_line(osa)}\n'
     )
 
-def _build_report(log_path: Path, ticks: List[dict], bg_refreshes: List[dict],
-                   hotkeys: List[dict], focuses: List[dict]) -> str:
-    header = (
-        f'# Hotkey/Menubar Latency Report\n\n'
-        f'Source: `{log_path}`\n'
-        f'Generated: {datetime.now(timezone.utc).isoformat(timespec="seconds")}\n\n'
-    )
-    tick_section = _tick_like_section(
-        ticks, 'Main-Thread Tick Latency (over-threshold ticks only)',
-        'no main-thread tick exceeded TICK_LATENCY_THRESHOLD_MS in this log window.')
-    bg_section = _tick_like_section(
-        bg_refreshes, 'Background Discovery-Worker Cycle Latency (over-threshold cycles only)',
-        'no discovery-worker cycle exceeded BG_REFRESH_LATENCY_THRESHOLD_MS in this log window.')
-    return (header + tick_section + '\n' + bg_section + '\n'
-            + _hotkey_section(hotkeys) + '\n' + _focus_section(focuses))
+
+def compute_out_path(stamp):
+    return REPORT_DIR / f'latency_report_{stamp}.md'
+
+
+def print_ticks(ticks, bg_refreshes, hotkeys, focuses):
+    print(f'ticks={len(ticks)} bg_refreshes={len(bg_refreshes)} hotkeys={len(hotkeys)} focuses={len(focuses)}')
+
+
+def print_report_written_to(out_path):
+    print(f'report written to {out_path}')
+
 
 if __name__ == '__main__':
     main()

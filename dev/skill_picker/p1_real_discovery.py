@@ -16,20 +16,26 @@ _CWDS = (
     '/Users/brunowinter2000/Documents/ai/monitor-cc',
 )
 
+
 # ORCHESTRATOR
 
 def main() -> None:
     home = isolate_home()
     sd = importlib.import_module('src.menubar.skill_discovery')
     log_mod = importlib.import_module('src.menubar.menubar_log')
-    sections = [_section(sd, cwd) for cwd in _CWDS]
-    log_text = log_mod.MENUBAR_LOG.read_text() if log_mod.MENUBAR_LOG.exists() else '(no log lines)'
+    sections = compute_sections(sd)
+    log_text = compute_log_text(log_mod)
     text = _build_report(sections, log_text)
     _REPORT.parent.mkdir(parents=True, exist_ok=True)
     _REPORT.write_text(text, encoding='utf-8')
     print(text)
 
+
 # FUNCTIONS
+
+def compute_sections(sd):
+    return [_section(sd, cwd) for cwd in _CWDS]
+
 
 def _section(sd, cwd: str) -> str:
     skills = sd.discover_skills_workflow(cwd, _REAL_CLAUDE_DIR)
@@ -39,11 +45,17 @@ def _section(sd, cwd: str) -> str:
     lines.append('')
     return '\n'.join(lines)
 
+
+def compute_log_text(log_mod):
+    return log_mod.MENUBAR_LOG.read_text() if log_mod.MENUBAR_LOG.exists() else '(no log lines)'
+
+
 def _build_report(sections, log_text: str) -> str:
     head = ['# p1_real_discovery report', '', f'- time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}',
             f'- read-only against {_REAL_CLAUDE_DIR}; HOME is isolated so log lines go to a temp file, nothing is typed anywhere', '']
     tail = ['## Log lines the picker wrote during these discoveries (temp log)', '', '```', log_text.rstrip(), '```', '']
     return '\n'.join(head + sections + tail)
+
 
 if __name__ == '__main__':
     main()

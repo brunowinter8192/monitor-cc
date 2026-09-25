@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import gzip
 import sys
 from pathlib import Path
 
@@ -6,7 +7,7 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-from proxy.response_model_probe import make_answering_model_probe, _MODEL_PROBE_BYTE_BUDGET
+from src.proxy.response_model_probe import make_answering_model_probe, _MODEL_PROBE_BYTE_BUDGET
 from dev.refactoring.strand_runner import strand_workflow
 
 _SSE_MESSAGE_START = (
@@ -91,7 +92,6 @@ def _test_budget_exceeded_stops_inspection() -> None:
 
 
 def _test_gzip_body_defeats_parsing() -> None:
-    import gzip
     compressed = gzip.compress(_SSE_MESSAGE_START + _SSE_PING)
     probe, state = make_answering_model_probe()
     returned = probe(compressed)

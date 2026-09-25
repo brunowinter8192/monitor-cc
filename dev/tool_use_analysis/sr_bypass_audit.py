@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import argparse
 import json
 import re
@@ -27,14 +25,52 @@ _STANDALONE_SR_RE = re.compile(r'(?m)^<system-reminder>(.*?)</system-reminder>',
 
 _script_dir = Path(__file__).resolve().parent
 _repo_candidate = _script_dir.parent.parent
-if (_repo_candidate / 'src' / 'logs').is_dir():
-    _LOGS_DIR = _repo_candidate / 'src' / 'logs'
-else:
-    _main_repo = _repo_candidate.parent.parent.parent
-    _LOGS_DIR = _main_repo / 'src' / 'logs'
+_LOGS_DIR = _repo_candidate / 'src' / 'logs' if (_repo_candidate / 'src' / 'logs').is_dir() else _repo_candidate.parent.parent.parent / 'src' / 'logs'
 
 
 # ORCHESTRATOR
+
+def main():
+    jsonl_paths, output_path = _parse_args()
+    sr_bypass_audit_workflow(jsonl_paths, output_path)
+
+
+# FUNCTIONS
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description='SR bypass audit for proxy logs')
+    parser.add_argument('jsonl', nargs='*', help='JSONL paths (auto-picks newest 3 if omitted)')
+    parser.add_argument('--output', help='Output MD path (auto-generated if omitted)')
+    args = parser.parse_args()
+
+    if args.jsonl:
+        jsonl_paths = [Path(p) for p in args.jsonl]
+        for p in jsonl_paths:
+            if not p.exists():
+                print(f'ERROR: {p} not found', file=sys.stderr)
+                sys.exit(1)
+    else:
+        if not _LOGS_DIR.is_dir():
+            print(f'ERROR: logs dir not found: {_LOGS_DIR}', file=sys.stderr)
+            sys.exit(1)
+        candidates = sorted(
+            _LOGS_DIR.glob('api_requests_opus_monitor_cc_*.jsonl'),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )[:3]
+        if not candidates:
+            print(f'ERROR: no api_requests_opus_monitor_cc_*.jsonl in {_LOGS_DIR}', file=sys.stderr)
+            sys.exit(1)
+        jsonl_paths = candidates
+
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        ts = datetime.now().strftime('%Y%m%d%H%M')
+        output_path = Path(__file__).parent / f'{ts}_sr_bypass_audit.md'
+
+    return jsonl_paths, output_path
+
 
 def sr_bypass_audit_workflow(jsonl_paths, output_path):
     all_log_data = []
@@ -47,8 +83,6 @@ def sr_bypass_audit_workflow(jsonl_paths, output_path):
     output_path.write_text('\n'.join(lines))
     print(output_path)
 
-
-# FUNCTIONS
 
 def _load_entries(path):
     entries = []
@@ -184,41 +218,5 @@ def _build_template_table(tpl_stats):
     return lines
 
 
-def _parse_args():
-    parser = argparse.ArgumentParser(description='SR bypass audit for proxy logs')
-    parser.add_argument('jsonl', nargs='*', help='JSONL paths (auto-picks newest 3 if omitted)')
-    parser.add_argument('--output', help='Output MD path (auto-generated if omitted)')
-    args = parser.parse_args()
-
-    if args.jsonl:
-        jsonl_paths = [Path(p) for p in args.jsonl]
-        for p in jsonl_paths:
-            if not p.exists():
-                print(f'ERROR: {p} not found', file=sys.stderr)
-                sys.exit(1)
-    else:
-        if not _LOGS_DIR.is_dir():
-            print(f'ERROR: logs dir not found: {_LOGS_DIR}', file=sys.stderr)
-            sys.exit(1)
-        candidates = sorted(
-            _LOGS_DIR.glob('api_requests_opus_monitor_cc_*.jsonl'),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )[:3]
-        if not candidates:
-            print(f'ERROR: no api_requests_opus_monitor_cc_*.jsonl in {_LOGS_DIR}', file=sys.stderr)
-            sys.exit(1)
-        jsonl_paths = candidates
-
-    if args.output:
-        output_path = Path(args.output)
-    else:
-        ts = datetime.now().strftime('%Y%m%d%H%M')
-        output_path = Path(__file__).parent / f'{ts}_sr_bypass_audit.md'
-
-    return jsonl_paths, output_path
-
-
 if __name__ == '__main__':
-    jsonl_paths, output_path = _parse_args()
-    sr_bypass_audit_workflow(jsonl_paths, output_path)
+    main()

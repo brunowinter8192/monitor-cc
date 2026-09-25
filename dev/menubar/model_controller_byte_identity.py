@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from Foundation import NSObject
 
 _REAL_PROXY_RULES = Path.home() / '.claude' / 'shared-rules' / 'proxy_rules.json'
 
@@ -20,18 +21,14 @@ _SYNTHETIC_RULES = '''{
 }
 '''
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     mc = _import_model_controller()
     ms = _import_model_selection()
-    print(f'PERSISTENCE_HASH: {_hash_persistence(ms)}')
-    try:
-        print(f'UI_HASH: {_hash_ui(mc)}')
-    except Exception as exc:
-        print(f'UI_HASH: SKIPPED (headless AppKit view creation failed: {exc})')
-        _smoke_import_and_open(mc)
+    print_persistence_hash(ms)
+    guarded_print(mc)
 
 
 # FUNCTIONS
@@ -42,6 +39,10 @@ def _import_model_controller():
 
 def _import_model_selection():
     return importlib.import_module('.'.join(['src', 'menubar', 'model_selection']))
+
+
+def print_persistence_hash(ms):
+    print(f'PERSISTENCE_HASH: {_hash_persistence(ms)}')
 
 
 def _hash_persistence(ms) -> str:
@@ -86,35 +87,15 @@ def _hash_persistence(ms) -> str:
     return digest.hexdigest()
 
 
-def _safe_call(obj, method_name: str):
-    if not hasattr(obj, method_name):
-        return None
+def guarded_print(mc):
     try:
-        return getattr(obj, method_name)()
-    except Exception:
-        return None
-
-
-def _dump_subviews(sv) -> bytes:
-    entries = []
-    for v in sv.arrangedSubviews():
-        frame = v.frame()
-        attr = _safe_call(v, 'attributedTitle')
-        action = _safe_call(v, 'action')
-        entries.append({
-            'class': type(v).__name__,
-            'frame': [round(frame.origin.x, 3), round(frame.origin.y, 3),
-                      round(frame.size.width, 3), round(frame.size.height, 3)],
-            'title': _safe_call(v, 'title'),
-            'attributedTitle': str(attr.string()) if attr is not None else None,
-            'tag': _safe_call(v, 'tag'),
-            'action': str(action) if action else None,
-        })
-    return json.dumps(entries, sort_keys=True).encode()
+        print(f'UI_HASH: {_hash_ui(mc)}')
+    except Exception as exc:
+        print(f'UI_HASH: SKIPPED (headless AppKit view creation failed: {exc})')
+        _smoke_import_and_open(mc)
 
 
 def _hash_ui(mc) -> str:
-    from Foundation import NSObject
 
     class _FakePanelController(NSObject):
         pass
@@ -142,8 +123,34 @@ def _hash_ui(mc) -> str:
     return digest.hexdigest()
 
 
+def _dump_subviews(sv) -> bytes:
+    entries = []
+    for v in sv.arrangedSubviews():
+        frame = v.frame()
+        attr = _safe_call(v, 'attributedTitle')
+        action = _safe_call(v, 'action')
+        entries.append({
+            'class': type(v).__name__,
+            'frame': [round(frame.origin.x, 3), round(frame.origin.y, 3),
+                      round(frame.size.width, 3), round(frame.size.height, 3)],
+            'title': _safe_call(v, 'title'),
+            'attributedTitle': str(attr.string()) if attr is not None else None,
+            'tag': _safe_call(v, 'tag'),
+            'action': str(action) if action else None,
+        })
+    return json.dumps(entries, sort_keys=True).encode()
+
+
+def _safe_call(obj, method_name: str):
+    if not hasattr(obj, method_name):
+        return None
+    try:
+        return getattr(obj, method_name)()
+    except Exception:
+        return None
+
+
 def _smoke_import_and_open(mc) -> None:
-    from Foundation import NSObject
 
     class _FakePanelController(NSObject):
         pass

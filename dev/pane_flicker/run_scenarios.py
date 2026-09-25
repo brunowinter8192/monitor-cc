@@ -13,23 +13,33 @@ _REPORT = _HERE / 'md' / 'run_scenarios.md'
 _SCENARIOS = ('hover', 'grow_and_new_turn', 'late_response', 'late_overlay', 'expand_collapse', 'search', 'width', 'copy_feedback', 'reparse', 'unsorted_turns')
 _MAX_GROUPS_ON_GROW = 2
 
+
 # ORCHESTRATOR
 
 def main():
     out_dir = Path(tempfile.mkdtemp(prefix='pf_scen_'))
-    jobs = [(name, side, root) for name in _SCENARIOS for side, root in (('old', _OLD_ROOT), ('new', _ROOT))]
+    jobs = compute_jobs()
     jobs.append(('tripwire', 'new', _ROOT))
-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-        procs = list(pool.map(lambda j: _run_job(j, out_dir), jobs))
-    failures = [p for p in procs if p[3] != 0]
-    results = [_evaluate(name, out_dir) for name in (*_SCENARIOS, 'tripwire')]
+    procs = collect_procs(jobs, out_dir)
+    failures = compute_failures(procs)
+    results = compute_results(out_dir)
     _write_report(results, failures)
-    ok = not failures and all(r['ok'] for r in results)
-    print('RESULT:', 'PASS' if ok else 'FAIL')
-    sys.exit(0 if ok else 1)
+    ok = compute_ok(failures, results)
+    print_result(ok)
+    exit_with_status(ok)
 
 
 # FUNCTIONS
+
+def compute_jobs():
+    return [(name, side, root) for name in _SCENARIOS for side, root in (('old', _OLD_ROOT), ('new', _ROOT))]
+
+
+def collect_procs(jobs, out_dir):
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        procs = list(pool.map(lambda j: _run_job(j, out_dir), jobs))
+    return procs
+
 
 def _run_job(job: tuple, out_dir: Path) -> tuple:
     name, side, root = job
@@ -41,8 +51,12 @@ def _run_job(job: tuple, out_dir: Path) -> tuple:
     return (name, side, out, proc.returncode)
 
 
-def _load(path: Path) -> list:
-    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
+def compute_failures(procs):
+    return [p for p in procs if p[3] != 0]
+
+
+def compute_results(out_dir):
+    return [_evaluate(name, out_dir) for name in (*_SCENARIOS, 'tripwire')]
 
 
 def _evaluate(name: str, out_dir: Path) -> dict:
@@ -62,6 +76,10 @@ def _evaluate(name: str, out_dir: Path) -> dict:
     return {'name': name, 'steps': len(new), 'ok': ok, 'mismatches': mismatches, 'notes': notes}
 
 
+def _load(path: Path) -> list:
+    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
+
+
 def _write_report(results: list, failures: list) -> None:
     lines = ['# run_scenarios', '', 'Old tree: git archive of the pre-M3 commit at /tmp/pf_old. New tree: this worktree.', '', 'scenario | steps | verdict', '---|---|---']
     for r in results:
@@ -74,6 +92,18 @@ def _write_report(results: list, failures: list) -> None:
         lines.append('')
     lines.append(f'subprocess failures: {[(f[0], f[1]) for f in failures]}')
     _REPORT.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def compute_ok(failures, results):
+    return not failures and all(r['ok'] for r in results)
+
+
+def print_result(ok):
+    print('RESULT:', 'PASS' if ok else 'FAIL')
+
+
+def exit_with_status(ok):
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == '__main__':

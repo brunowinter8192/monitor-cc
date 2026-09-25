@@ -11,6 +11,7 @@ _SKIP_PARTS = ('logs', 'hooks', '__pycache__')
 _SKIP_MODULES = {'src.proxy_addon', 'src.menubar.menubar_main', 'src.menubar.hook_writer', 'src.menubar.hook_setup'}
 _ORDER_SEEDS = (1, 2, 3, 4, 5)
 
+
 # ORCHESTRATOR
 
 def import_smoke_workflow() -> None:
@@ -21,14 +22,12 @@ def import_smoke_workflow() -> None:
     _write_report(results, out_path)
     _print_summary(results)
 
-# FUNCTIONS
 
-def _run_jobs(root: Path, jobs: list) -> list:
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        return list(pool.map(lambda job: _run_job(root, job), jobs))
+# FUNCTIONS
 
 def _parse_args() -> tuple:
     return Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+
 
 def _list_modules(root: Path) -> list:
     modules = []
@@ -42,6 +41,7 @@ def _list_modules(root: Path) -> list:
             modules.append(name)
     return modules
 
+
 def _build_jobs(modules: list) -> list:
     jobs = [('solo:' + m, [m]) for m in modules]
     for seed in _ORDER_SEEDS:
@@ -49,6 +49,12 @@ def _build_jobs(modules: list) -> list:
         random.Random(seed).shuffle(order)
         jobs.append((f'order{seed}', order))
     return jobs
+
+
+def _run_jobs(root: Path, jobs: list) -> list:
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        return list(pool.map(lambda job: _run_job(root, job), jobs))
+
 
 def _run_job(root: Path, job: tuple) -> tuple:
     label, order = job
@@ -59,13 +65,16 @@ def _run_job(root: Path, job: tuple) -> tuple:
     last = proc.stderr.strip().splitlines()[-1:] if proc.returncode else []
     return label, proc.returncode, last
 
+
 def _write_report(results: list, out_path: Path) -> None:
     lines = [f'{label} exit={code} {" ".join(last)}' for label, code, last in sorted(results)]
     out_path.write_text('\n'.join(lines) + '\n')
 
+
 def _print_summary(results: list) -> None:
     failed = [r for r in results if r[1] != 0]
     print(f'jobs={len(results)} failed={len(failed)}')
+
 
 if __name__ == '__main__':
     import_smoke_workflow()

@@ -17,7 +17,7 @@ under `md/`.
 
 ## Modules
 
-### render_brain_badge.py (108 LOC)
+### render_brain_badge.py (122 LOC)
 
 **Purpose:** Renders a real forwarded dual-log through the real parse/render path and reports,
 per request, whether the brain badge appears; cross-checks against a cumulative computation.
@@ -30,7 +30,7 @@ gitignored runtime data, absent from a fresh worktree).
 
 ---
 
-### render_thinking_expander.py (231 LOC)
+### render_thinking_expander.py (249 LOC)
 
 **Purpose:** Verifies thinking-block drill-down + wrapping through the real render path:
 collapsed/expanded correctness, and non-thinking-block output byte-identical to pre-change.

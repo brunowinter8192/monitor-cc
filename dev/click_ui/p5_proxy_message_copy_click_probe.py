@@ -30,7 +30,15 @@ from proxy_copy_block_probe import (
     test_width_guard_suppresses_block_row_symbol,
 )
 
+
 # ORCHESTRATOR
+
+def main():
+    ok = run_probe_workflow()
+    exit_with_status(ok)
+
+
+# FUNCTIONS
 
 def run_probe_workflow():
     print("=" * 70)
@@ -81,6 +89,9 @@ def _write_report(passed, total):
     print(f"\nReport written to: {out_path}")
 
 
-if __name__ == "__main__":
-    ok = run_probe_workflow()
+def exit_with_status(ok):
     sys.exit(0 if ok else 1)
+
+
+if __name__ == '__main__':
+    main()

@@ -10,7 +10,7 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 
-from proxy.strip_bg_launch_ack import (
+from src.proxy.strip_bg_launch_ack import (
     _BG_LAUNCH_ACK_MARKER,
     _BG_LAUNCH_ACK_PREFIX,
     _ACK_ID_RE,
@@ -43,62 +43,32 @@ LIVE_OBSERVED_TEXT = (
 
 _ID_NORM_RE = re.compile(r'with ID:\s*[^.\s]+')
 _PATH_NORM_RE = re.compile(r'Output is being written to:\s*\S+')
+INITIAL_TOTAL_REQUESTS = 0
 
 
 # ORCHESTRATOR
+
 def main():
     findings = {}
     raw_dup_counter = defaultdict(int)
-    total_requests = 0
-    for fname in CORPUS_FILES:
-        path = LOG_DIR / fname
-        print(f'scanning {fname} ...')
-        total_requests += _scan_file(path, findings, raw_dup_counter)
+    total_requests = INITIAL_TOTAL_REQUESTS
+    total_requests = collect_total_requests(total_requests, findings, raw_dup_counter)
     report = _build_report(findings, total_requests, raw_dup_counter)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = REPORT_DIR / 'launch_ack_wordings_20260729.md'
+    out_path = compute_out_path()
     out_path.write_text(report, encoding='utf-8')
-    print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned')
+    print_wrote(out_path, findings, total_requests)
 
 
 # FUNCTIONS
 
-def _iter_candidate_blocks(content):
-    if isinstance(content, str):
-        yield ('top_level_str', content)
-        return
-    if isinstance(content, list):
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            btype = block.get('type')
-            if btype == 'text':
-                yield ('text_block', block.get('text', ''))
-            elif btype == 'tool_result':
-                inner = block.get('content', '')
-                if isinstance(inner, str):
-                    yield ('tool_result_str', inner)
-                elif isinstance(inner, list):
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get('type') == 'text':
-                            yield ('tool_result_list_text', sub.get('text', ''))
 
-
-def _looks_like_launch_ack_candidate(text):
-    if not isinstance(text, str):
-        return False
-    stripped = text.lstrip()
-    return (
-        stripped.startswith('Command')
-        and 'with ID:' in text
-        and 'Output is being written to:' in text
-    )
-
-
-def _normalize_wording(text):
-    t = _ID_NORM_RE.sub('with ID: <ID>', text)
-    t = _PATH_NORM_RE.sub('Output is being written to: <PATH>', t)
-    return t
+def collect_total_requests(total_requests, findings, raw_dup_counter):
+    for fname in CORPUS_FILES:
+        path = LOG_DIR / fname
+        print(f'scanning {fname} ...')
+        total_requests += _scan_file(path, findings, raw_dup_counter)
+    return total_requests
 
 
 def _scan_file(path, findings, raw_dup_counter):
@@ -138,22 +108,41 @@ def _scan_file(path, findings, raw_dup_counter):
     return requests
 
 
-def _mechanism_verdict(text):
-    marker_fires = _BG_LAUNCH_ACK_MARKER in text
-    prefix_fires = text.lstrip().startswith(_BG_LAUNCH_ACK_PREFIX)
-    id_match = _ACK_ID_RE.search(text)
-    path_match = _ACK_PATH_RE.search(text)
-    return {
-        'marker_fires': marker_fires,
-        'prefix_fires': prefix_fires,
-        'id_extract': id_match.group(1).strip() if id_match else None,
-        'path_extract': path_match.group(1).strip() if path_match else None,
-    }
+def _iter_candidate_blocks(content):
+    if isinstance(content, str):
+        yield ('top_level_str', content)
+        return
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get('type')
+            if btype == 'text':
+                yield ('text_block', block.get('text', ''))
+            elif btype == 'tool_result':
+                inner = block.get('content', '')
+                if isinstance(inner, str):
+                    yield ('tool_result_str', inner)
+                elif isinstance(inner, list):
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get('type') == 'text':
+                            yield ('tool_result_list_text', sub.get('text', ''))
 
 
-def _mark_volatile(text):
-    t = _ID_NORM_RE.sub('with ID: **<ID>**', text)
-    t = _PATH_NORM_RE.sub('Output is being written to: **<PATH>**', t)
+def _looks_like_launch_ack_candidate(text):
+    if not isinstance(text, str):
+        return False
+    stripped = text.lstrip()
+    return (
+        stripped.startswith('Command')
+        and 'with ID:' in text
+        and 'Output is being written to:' in text
+    )
+
+
+def _normalize_wording(text):
+    t = _ID_NORM_RE.sub('with ID: <ID>', text)
+    t = _PATH_NORM_RE.sub('Output is being written to: <PATH>', t)
     return t
 
 
@@ -274,6 +263,25 @@ def _report_distinct_wordings(findings):
     return lines
 
 
+def _mechanism_verdict(text):
+    marker_fires = _BG_LAUNCH_ACK_MARKER in text
+    prefix_fires = text.lstrip().startswith(_BG_LAUNCH_ACK_PREFIX)
+    id_match = _ACK_ID_RE.search(text)
+    path_match = _ACK_PATH_RE.search(text)
+    return {
+        'marker_fires': marker_fires,
+        'prefix_fires': prefix_fires,
+        'id_extract': id_match.group(1).strip() if id_match else None,
+        'path_extract': path_match.group(1).strip() if path_match else None,
+    }
+
+
+def _mark_volatile(text):
+    t = _ID_NORM_RE.sub('with ID: **<ID>**', text)
+    t = _PATH_NORM_RE.sub('Output is being written to: **<PATH>**', t)
+    return t
+
+
 def _report_additional_wordings_note():
     lines = []
     lines.append('## Additional wordings sought but not found')
@@ -286,6 +294,14 @@ def _report_additional_wordings_note():
     )
     lines.append('')
     return lines
+
+
+def compute_out_path():
+    return REPORT_DIR / 'launch_ack_wordings_20260729.md'
+
+
+def print_wrote(out_path, findings, total_requests):
+    print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned')
 
 
 if __name__ == '__main__':

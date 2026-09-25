@@ -17,7 +17,7 @@ Markdown report.
 
 ## Modules
 
-### green_overlay_probe.py (214 LOC)
+### green_overlay_probe.py (232 LOC)
 
 **Purpose:** CLI entry point reproducing a green-overlay false-injection bug and validating a
 char-level diff fix against real and synthetic cases.
@@ -40,7 +40,7 @@ checking, and span formatting helpers.
 
 ---
 
-### green_overlay_probe_cases.py (136 LOC)
+### green_overlay_probe_cases.py (130 LOC)
 
 **Purpose:** Live `_injected.jsonl` gating-soundness scan, plus the primary bug case and regression
 cases used by the report.

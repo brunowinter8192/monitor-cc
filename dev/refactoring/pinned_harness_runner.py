@@ -27,6 +27,7 @@ _RUNNER_CODE = (
     "exec(compile(src, path, 'exec'), {'__file__': path, '__name__': '__main__'})\n"
 )
 
+
 # ORCHESTRATOR
 
 def pinned_harness_workflow() -> None:
@@ -36,14 +37,17 @@ def pinned_harness_workflow() -> None:
     _write_results(results, out_dir)
     _print_summary(results)
 
+
 # FUNCTIONS
+
+def _parse_args() -> tuple:
+    return Path(sys.argv[1]), Path(sys.argv[2])
+
 
 def _run_harnesses(snapshot_dir: Path) -> list:
     with ThreadPoolExecutor(max_workers=len(_HARNESSES)) as pool:
         return list(pool.map(lambda h: _run_harness(h, snapshot_dir), _HARNESSES))
 
-def _parse_args() -> tuple:
-    return Path(sys.argv[1]), Path(sys.argv[2])
 
 def _run_harness(harness: str, snapshot_dir: Path) -> tuple:
     proc = subprocess.run(
@@ -52,15 +56,18 @@ def _run_harness(harness: str, snapshot_dir: Path) -> tuple:
     )
     return harness, proc.returncode, proc.stdout, proc.stderr
 
+
 def _write_results(results: list, out_dir: Path) -> None:
     for harness, code, out, err in results:
         name = harness.replace('/', '__')
         (out_dir / f'{name}.out').write_text(f'exit={code}\n{out}\n--stderr--\n{err}')
 
+
 def _print_summary(results: list) -> None:
     for harness, code, out, err in results:
         hashes = [l for l in out.splitlines() if 'HASH' in l or 'PASS' in l or 'FAIL' in l][-1:]
         print(f'{harness}: exit={code} {hashes}')
+
 
 if __name__ == '__main__':
     pinned_harness_workflow()

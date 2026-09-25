@@ -12,7 +12,7 @@ Each suite splits into an entry script, a fixtures module and one or more case m
 
 ## Modules
 
-### p1_full_sweep_cost_probe.py (51 LOC)
+### p1_full_sweep_cost_probe.py (62 LOC)
 
 **Purpose:** Orchestrates the reconstruction cost probe end to end and writes the report.
 **Reads:** a forwarded dual-log JSONL (argument, or the newest one on the dev machine; gitignored runtime data).

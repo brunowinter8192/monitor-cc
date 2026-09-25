@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import argparse
 import json
@@ -40,6 +39,25 @@ KNOWN_SHORTCUTS = [
 
 # ORCHESTRATOR
 
+def main():
+    args = _parse_args()
+    run(args.proxy_jsonl, args.min_count, args.top)
+
+
+# FUNCTIONS
+
+def _parse_args():
+    p = argparse.ArgumentParser(
+        description='Repetition-based Bash waste analysis from a proxy-log JSONL snapshot.'
+    )
+    p.add_argument('proxy_jsonl', help='Path to proxy-log JSONL file')
+    p.add_argument('--min-count', type=int, default=2, metavar='N',
+                   help='Minimum occurrence count for a group (default: 2)')
+    p.add_argument('--top', type=int, default=20, metavar='K',
+                   help='Show top K groups in the table (default: 20)')
+    return p.parse_args()
+
+
 def run(path, min_count, top_k):
     snapshot = _find_snapshot(path)
     if snapshot is None:
@@ -52,8 +70,6 @@ def run(path, min_count, top_k):
     report = _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total)
     print(report)
 
-
-# FUNCTIONS
 
 def _find_snapshot(path):
     best, best_count = None, -1
@@ -96,20 +112,6 @@ def _extract_bash_cmds(snapshot):
     return cmds
 
 
-def _sig(cmd):
-    s = cmd.replace('\n', ' ')
-    s = re.sub(r'\s+', ' ', s).strip()
-    for pat, repl in _SIG_SUBS:
-        s = pat.sub(repl, s)
-    return s[:SIG_MAX_CHARS]
-
-
-def _family_key(sig):
-    tokens = sig.split()
-    first = tokens[0] if tokens else '?'
-    return first[:40] + ('…' if len(first) > 40 else '')
-
-
 def _rank_groups(cmds, min_count):
     raw = defaultdict(lambda: {'count': 0, 'total_chars': 0, 'sample': None})
     for cmd in cmds:
@@ -135,9 +137,12 @@ def _rank_groups(cmds, min_count):
     return sorted(result, key=lambda x: -x['score'])
 
 
-def _ctx_worker_cli_arg(cmd, match_start):
-    prefix = cmd[max(0, match_start - 80):match_start].rstrip()
-    return bool(re.search(r'(worker-cli\s+\w+(\s+\S+)*|git-check|dev-sync)\s*$', prefix))
+def _sig(cmd):
+    s = cmd.replace('\n', ' ')
+    s = re.sub(r'\s+', ' ', s).strip()
+    for pat, repl in _SIG_SUBS:
+        s = pat.sub(repl, s)
+    return s[:SIG_MAX_CHARS]
 
 
 def _count_shortcuts(cmds):
@@ -160,6 +165,11 @@ def _count_shortcuts(cmds):
     return results
 
 
+def _ctx_worker_cli_arg(cmd, match_start):
+    prefix = cmd[max(0, match_start - 80):match_start].rstrip()
+    return bool(re.search(r'(worker-cli\s+\w+(\s+\S+)*|git-check|dev-sync)\s*$', prefix))
+
+
 def _total_shortcut_savings(cmds):
     total = 0
     for cmd in cmds:
@@ -176,6 +186,15 @@ def _total_shortcut_savings(cmds):
                 total += sav
                 taken.append((start, end))
     return total
+
+
+def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total):
+    L = _render_header(path, cmds, groups, min_count, shortcut_total)
+    group_lines, shown = _render_groups(groups, min_count, top_k)
+    L += group_lines
+    L += _render_shortcuts(shortcut_hits, shortcut_total)
+    L += _render_full_samples(shown)
+    return '\n'.join(L)
 
 
 def _render_header(path, cmds, groups, min_count, shortcut_total):
@@ -231,6 +250,12 @@ def _render_groups(groups, min_count, top_k):
     return L, shown
 
 
+def _family_key(sig):
+    tokens = sig.split()
+    first = tokens[0] if tokens else '?'
+    return first[:40] + ('…' if len(first) > 40 else '')
+
+
 def _render_shortcuts(shortcut_hits, shortcut_total):
     L = ['## Replaceable Path Fragments', '',
          '| Rule | Occurrences | Chars saved / occurrence | Total saved |',
@@ -261,27 +286,5 @@ def _render_full_samples(shown):
     return L
 
 
-def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total):
-    L = _render_header(path, cmds, groups, min_count, shortcut_total)
-    group_lines, shown = _render_groups(groups, min_count, top_k)
-    L += group_lines
-    L += _render_shortcuts(shortcut_hits, shortcut_total)
-    L += _render_full_samples(shown)
-    return '\n'.join(L)
-
-
-def _parse_args():
-    p = argparse.ArgumentParser(
-        description='Repetition-based Bash waste analysis from a proxy-log JSONL snapshot.'
-    )
-    p.add_argument('proxy_jsonl', help='Path to proxy-log JSONL file')
-    p.add_argument('--min-count', type=int, default=2, metavar='N',
-                   help='Minimum occurrence count for a group (default: 2)')
-    p.add_argument('--top', type=int, default=20, metavar='K',
-                   help='Show top K groups in the table (default: 20)')
-    return p.parse_args()
-
-
 if __name__ == '__main__':
-    args = _parse_args()
-    run(args.proxy_jsonl, args.min_count, args.top)
+    main()

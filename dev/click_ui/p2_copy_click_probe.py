@@ -9,6 +9,7 @@ from types import SimpleNamespace
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 os.environ.setdefault('MONITOR_CC_ROOT', str(WORKTREE_ROOT))
+from src.format.turn_cache import new_turn_cache
 
 _ROOT_PKG = 'src'
 mod_tokens = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
@@ -23,22 +24,32 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
-def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
-    return new_turn_cache()
+# ORCHESTRATOR
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
+def main():
+    ok = run_probe_workflow()
+    exit_with_status(ok)
 
 
 # FUNCTIONS
 
-def _patch_clipboard(mod):
-    captured = []
-    mod.copy_to_clipboard = lambda text: captured.append(text)
-    return captured
+def run_probe_workflow():
+    print("=" * 70)
+    print("copy-by-click parity probe -- tokens, warnings, workers")
+    print("=" * 70)
+    test_append_copy_symbol_width_guard()
+    test_tokens_pane_copy_click()
+    test_warnings_pane_copy_click()
+    test_worker_tokens_copy_click()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+
+    _write_report(passed, total)
+    return passed == total
 
 
 def test_append_copy_symbol_width_guard():
@@ -46,6 +57,12 @@ def test_append_copy_symbol_width_guard():
     check("append_copy_symbol: appends ⎘ when the pane is wide enough", '⎘' in wide and wide != "short line")
     narrow = mod_utils.append_copy_symbol("x" * 60, '⎘', 50)
     check("append_copy_symbol: leaves line unchanged when too narrow (no invisible hit zone)", narrow == "x" * 60)
+
+
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
 
 
 def test_tokens_pane_copy_click():
@@ -85,6 +102,16 @@ def test_tokens_pane_copy_click():
     )
     check("tokens: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
           not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
+
+
+def _patch_clipboard(mod):
+    captured = []
+    mod.copy_to_clipboard = lambda text: captured.append(text)
+    return captured
+
+
+def _token_turn_cache():
+    return new_turn_cache()
 
 
 def test_warnings_pane_copy_click():
@@ -179,27 +206,6 @@ def test_worker_tokens_copy_click():
           not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
 
 
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("copy-by-click parity probe -- tokens, warnings, workers")
-    print("=" * 70)
-    test_append_copy_symbol_width_guard()
-    test_tokens_pane_copy_click()
-    test_warnings_pane_copy_click()
-    test_worker_tokens_copy_click()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-
-    _write_report(passed, total)
-    return passed == total
-
-
 def _write_report(passed, total):
     md_dir = WORKTREE_ROOT / "dev" / "click_ui" / "md"
     md_dir.mkdir(parents=True, exist_ok=True)
@@ -219,6 +225,9 @@ def _write_report(passed, total):
     print(f"\nReport written to: {out_path}")
 
 
-if __name__ == "__main__":
-    ok = run_probe_workflow()
+def exit_with_status(ok):
     sys.exit(0 if ok else 1)
+
+
+if __name__ == '__main__':
+    main()

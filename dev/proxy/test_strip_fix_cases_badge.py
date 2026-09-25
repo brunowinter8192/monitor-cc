@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import re as _re
 import importlib
 import json
 import tempfile
@@ -11,11 +12,10 @@ _build_deltas = _sid_mod._build_stripped_injected_deltas
 _ro_mod = importlib.import_module('src.proxy.rule_ops')
 _ops_from_content_change = _ro_mod._ops_from_content_change
 
-# FUNCTIONS
-
-
 _TT_MSG = '<total_tokens>14979724 tokens left</total_tokens>'
 
+
+# FUNCTIONS
 
 def _deltas_for_single_msg(role: str, old_content, new_content, full_replace: bool = True) -> tuple:
     orig = {'model': 'claude-opus-4', 'system': [], 'tools': [],
@@ -176,7 +176,6 @@ def tt08_other_sections_unaffected():
 
 
 def tt09_rendered_header_badge_words():
-    import re as _re
     from src.proxy_display.render_turn import _build_req_header_line
     _ansi = _re.compile(r'\x1b\[[0-9;]*m')
 

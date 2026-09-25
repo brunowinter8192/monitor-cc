@@ -11,31 +11,53 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TREE = os.environ.get('MCFIX_TREE') or str(REPO_ROOT)
 CASES = ('render_expanded_without_messages', 'lazy_load_unmatched_raises', 'toggle_failure_keeps_state', 'reparse_clears_expand_states')
 
+
 # ORCHESTRATOR
 
 def main() -> int:
     if len(sys.argv) > 2 and sys.argv[1] == '--case':
-        return run_case(sys.argv[2])
-    with ThreadPoolExecutor(max_workers=len(CASES)) as pool:
-        results = list(pool.map(run_strand, CASES))
-    for case, code, tail in results:
-        print(f"{'PASS' if code == 0 else 'FAIL'} {case}" + ('' if code == 0 else f' :: {tail}'))
-    return 0 if all(code == 0 for _, code, _ in results) else 1
+        return compute_result()
+    results = collect_results()
+    print_results(results)
+    return compute_exit_code(results)
+
 
 # FUNCTIONS
 
-def run_strand(case: str) -> tuple:
-    proc = subprocess.run([sys.executable, __file__, '--case', case], capture_output=True, text=True, env={**os.environ, 'MCFIX_TREE': TREE})
-    tail = (proc.stderr.strip().splitlines() or [''])[-1]
-    return case, proc.returncode, tail
+def compute_result():
+    return run_case(sys.argv[2])
+
 
 def run_case(case: str) -> int:
     sys.path.insert(0, TREE)
     globals()['case_' + case]()
     return 0
 
+
+def collect_results():
+    with ThreadPoolExecutor(max_workers=len(CASES)) as pool:
+        results = list(pool.map(run_strand, CASES))
+    return results
+
+
+def run_strand(case: str) -> tuple:
+    proc = subprocess.run([sys.executable, __file__, '--case', case], capture_output=True, text=True, env={**os.environ, 'MCFIX_TREE': TREE})
+    tail = (proc.stderr.strip().splitlines() or [''])[-1]
+    return case, proc.returncode, tail
+
+
+def print_results(results):
+    for case, code, tail in results:
+        print(f"{'PASS' if code == 0 else 'FAIL'} {case}" + ('' if code == 0 else f' :: {tail}'))
+
+
+def compute_exit_code(results):
+    return 0 if all(code == 0 for _, code, _ in results) else 1
+
+
 def fwd_line(flow_id: str, is_first: bool = True) -> dict:
     return {'type': 'forwarded_delta', 'flow_id': flow_id, 'model': 'claude-opus-4', 'is_first': is_first, 'counts': {'system': 0, 'tools': 0, 'messages': 1}, 'messages_delta': {'0': {'role': 'user', 'content': 'hi'}}, 'timestamp': '2026-01-01T00:00:00Z'}
+
 
 def bare_entry(flow_id: str = 'f1') -> dict:
     from src.proxy_display.forwarded_parser import _extract_forwarded_fields
@@ -43,6 +65,7 @@ def bare_entry(flow_id: str = 'f1') -> dict:
     entry['flow_id'] = flow_id
     entry['diff_from_prev'] = None
     return entry
+
 
 def case_render_expanded_without_messages() -> None:
     from src.proxy_display.format import format_proxy_block
@@ -53,6 +76,7 @@ def case_render_expanded_without_messages() -> None:
     _attach_overlay_references([entry], {}, {}, _infer_model_family)
     body, total = format_proxy_block([entry], {('req', 0): True}, {}, None, 50, 100, 0, turn_cache=TurnCache('t'))
     assert total > 0
+
 
 def case_lazy_load_unmatched_raises() -> None:
     from src.proxy_display.forwarded_parser import _lazy_load_messages_forwarded
@@ -66,6 +90,7 @@ def case_lazy_load_unmatched_raises() -> None:
             assert 'messages' not in entry
             return
         raise AssertionError('no LookupError')
+
 
 def case_toggle_failure_keeps_state() -> None:
     from src.proxy_display.proxy_pane_shared import _toggle_expand_and_lazy_load
@@ -81,6 +106,7 @@ def case_toggle_failure_keeps_state() -> None:
             return
         raise AssertionError('no LookupError')
 
+
 def case_reparse_clears_expand_states() -> None:
     from src.proxy_display import pane, worker_proxy_pane
     pane.proxy_expand_states[('req', 3)] = True
@@ -90,6 +116,7 @@ def case_reparse_clears_expand_states() -> None:
     worker_proxy_pane.worker_proxy_expand_states[('req', 3)] = True
     worker_proxy_pane._reset_worker_proxy_reparse_state(1.0)
     assert worker_proxy_pane.worker_proxy_expand_states == {}
+
 
 if __name__ == '__main__':
     sys.exit(main())

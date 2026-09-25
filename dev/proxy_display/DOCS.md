@@ -11,7 +11,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ## Modules
 
-### test_pd10_lazy_messages.py (95 LOC)
+### test_pd10_lazy_messages.py (122 LOC)
 
 **Purpose:** Four strands proving the lazy-message fix: no error for an expanded entry without messages, unmatched flow raises, failed toggle keeps state, reparse clears expand state.
 **Reads:** synthetic entries and temp files; an env var selects the source tree so the file can run against an older tree.
@@ -21,7 +21,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ---
 
-### test_session_marker_states.py (102 LOC)
+### test_session_marker_states.py (128 LOC)
 
 **Purpose:** Four strands for session-marker states: absent marker is None, worker error scan scope and logging, proxy pane without session start, warnings refresh without marker.
 **Reads:** temp directories via the monitor root env var.
@@ -31,7 +31,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ---
 
-### test_forwarded_tripwires.py (86 LOC)
+### test_forwarded_tripwires.py (112 LOC)
 
 **Purpose:** Four strands for forwarded-log tripwires: missing marker noted once, short or empty marker raises, marker log id used, delta request without earlier state raises.
 **Reads:** temp directories only.
@@ -41,7 +41,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ---
 
-### render_byte_identity.py (116 LOC)
+### render_byte_identity.py (131 LOC)
 
 **Purpose:** Verification aid, not a test: hashes the render cluster output over one real dual-log quartet for before/after comparison.
 **Reads:** forwarded, stripped, injected and original logs of the newest quartet in the main checkout, or a pinned copy via an env var.
@@ -61,7 +61,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ---
 
-### test_req_prefix_turn_headers.py (358 LOC)
+### test_req_prefix_turn_headers.py (352 LOC)
 
 **Purpose:** Regression test for the REQ row prefix, turn header rows, right-aligned times, HTTP status marker, continue-safe parsing and REQ-number parity with the token pane.
 **Reads:** nothing external; a temp forwarded JSONL and in-process turns.
@@ -71,7 +71,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ---
 
-### verify_req_numbering.py (160 LOC)
+### verify_req_numbering.py (161 LOC)
 
 **Purpose:** Side-by-side check of one turn: proxy pane rows versus token pane rows for a real session, with a pairwise equality verdict.
 **Reads:** live dual-log files of the main checkout and the matching transcript under the user's Claude projects directory; hardcoded paths.

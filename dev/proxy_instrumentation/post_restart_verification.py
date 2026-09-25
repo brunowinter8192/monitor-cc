@@ -11,9 +11,9 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-from proxy.strip_bg_launch_ack import _is_bg_auto_timeout_ack, _BG_AUTO_TIMEOUT_MSG, _BG_AUTO_TIMEOUT_MSG_MAIN
-from proxy.message_passes_simple import _apply_bg_launch_ack_strip, _apply_poread_expand_strip
-from proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX
+from src.proxy.strip_bg_launch_ack import _is_bg_auto_timeout_ack, _BG_AUTO_TIMEOUT_MSG, _BG_AUTO_TIMEOUT_MSG_MAIN
+from src.proxy.message_passes_simple import _apply_bg_launch_ack_strip, _apply_poread_expand_strip
+from src.proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX
 
 _ROOT_PKG = 'src'
 _forwarded_parser_mod = importlib.import_module(f'{_ROOT_PKG}.proxy_display.forwarded_parser')
@@ -38,6 +38,7 @@ CLAIM3_ACTION = ('run `poread <path>` via Bash, alone in its own call (nothing c
 _BL_FN_NAME = _apply_bg_launch_ack_strip.__name__
 _PR_FN_NAME = _apply_poread_expand_strip.__name__
 
+
 # ORCHESTRATOR
 
 def run_post_restart_verification_workflow() -> int:
@@ -55,11 +56,13 @@ def run_post_restart_verification_workflow() -> int:
     _write_report(log_dir, stem, claims)
     return _exit_code(claims)
 
+
 # FUNCTIONS
 
 def _resolve_log_dir() -> Path:
     override = os.environ.get('POST_RESTART_VERIFY_LOG_DIR')
     return Path(override) if override else DEFAULT_LOG_DIR
+
 
 def _newest_session_stem(log_dir: Path) -> str:
     files = sorted(log_dir.glob('*_original.jsonl'), key=lambda p: p.stat().st_mtime)
@@ -68,31 +71,11 @@ def _newest_session_stem(log_dir: Path) -> str:
     newest = files[-1]
     return newest.name[:-len('_original.jsonl')]
 
+
 def _log_paths(log_dir: Path, stem: str) -> dict:
     return {suf: log_dir / f'{stem}_{suf}.jsonl' for suf in
             ('original', 'forwarded', 'stripped', 'injected', 'response', 'errors')}
 
-def _iter_jsonl(path: Path):
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                yield json.loads(line)
-
-def _load_last_jsonl_line(path: Path) -> dict:
-    with open(path, encoding='utf-8') as f:
-        last = deque((l for l in f if l.strip()), maxlen=1)
-    return json.loads(last[0]) if last else {}
-
-def _result(name: str, status: str, detail: list, action=None) -> dict:
-    return {'name': name, 'status': status, 'detail': detail, 'action': action}
-
-def _missing(name: str, reason: str, action: str) -> dict:
-    return _result(name, 'MISSING DATA', [reason], action)
-
-def _is_compressed(content_encoding: str) -> bool:
-    ce = (content_encoding or '').lower()
-    return bool(ce) and ce != 'identity'
 
 def _check_claim1(paths: dict) -> dict:
     resp_path = paths['response']
@@ -141,65 +124,27 @@ def _check_claim1(paths: dict) -> dict:
             )
     return _result(CLAIM1_NAME, 'PASS' if ok else 'CONTRADICTED', detail)
 
-def _iter_user_texts(messages: list):
-    for idx, msg in enumerate(messages):
-        if msg.get('role') != 'user':
-            continue
-        content = msg.get('content', '')
-        if isinstance(content, str):
-            yield idx, content
-            continue
-        if not isinstance(content, list):
-            continue
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            if block.get('type') == 'text':
-                yield idx, block.get('text', '')
-            elif block.get('type') == 'tool_result':
-                inner = block.get('content', '')
-                if isinstance(inner, str):
-                    yield idx, inner
-                elif isinstance(inner, list):
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get('type') == 'text':
-                            yield idx, sub.get('text', '')
 
-def _newest_original_messages(orig_path: Path) -> list:
-    entry = _load_last_jsonl_line(orig_path)
-    return entry.get('payload', {}).get('messages', [])
+def _missing(name: str, reason: str, action: str) -> dict:
+    return _result(name, 'MISSING DATA', [reason], action)
 
-def _bg_launch_ack_strip_fired(stripped_path: Path, is_genuine_removed) -> bool:
-    if not stripped_path.exists():
-        return False
-    for entry in _iter_jsonl(stripped_path):
-        fn_map = entry.get('fn_map', {})
-        msgs_delta = entry.get('messages_delta', {})
-        for loc, fn in fn_map.items():
-            if fn != _BL_FN_NAME:
-                continue
-            parts = loc.split('.')
-            if len(parts) != 3:
-                continue
-            _, midx, bidx = parts
-            chunks = msgs_delta.get(midx, {}).get(bidx, [])
-            if any(is_genuine_removed(c) for c in chunks):
-                return True
-    return False
 
-def _forwarded_has_block_starting_with(fwd_path: Path, *prefixes) -> bool:
-    if not fwd_path.exists():
-        return False
-    entries, _pos = _parse_forwarded_log(fwd_path, 0, {}, keep_last=None)
-    if not entries:
-        return False
-    messages = entries[-1].get('messages', [])
-    for msg in messages:
-        for blk in msg.get('blocks', []):
-            text = blk.get('full_text', blk.get('preview', ''))
-            if any(text.startswith(p) for p in prefixes):
-                return True
-    return False
+def _result(name: str, status: str, detail: list, action=None) -> dict:
+    return {'name': name, 'status': status, 'detail': detail, 'action': action}
+
+
+def _iter_jsonl(path: Path):
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def _is_compressed(content_encoding: str) -> bool:
+    ce = (content_encoding or '').lower()
+    return bool(ce) and ce != 'identity'
+
 
 def _check_claim2(paths: dict) -> dict:
     orig_path = paths['original']
@@ -229,14 +174,76 @@ def _check_claim2(paths: dict) -> dict:
     ]
     return _result(CLAIM2_NAME, 'PASS' if ok else 'CONTRADICTED', detail)
 
-def _poread_expand_fired(injected_path: Path) -> bool:
-    if not injected_path.exists():
+
+def _newest_original_messages(orig_path: Path) -> list:
+    entry = _load_last_jsonl_line(orig_path)
+    return entry.get('payload', {}).get('messages', [])
+
+
+def _load_last_jsonl_line(path: Path) -> dict:
+    with open(path, encoding='utf-8') as f:
+        last = deque((l for l in f if l.strip()), maxlen=1)
+    return json.loads(last[0]) if last else {}
+
+
+def _iter_user_texts(messages: list):
+    for idx, msg in enumerate(messages):
+        if msg.get('role') != 'user':
+            continue
+        content = msg.get('content', '')
+        if isinstance(content, str):
+            yield idx, content
+            continue
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'text':
+                yield idx, block.get('text', '')
+            elif block.get('type') == 'tool_result':
+                inner = block.get('content', '')
+                if isinstance(inner, str):
+                    yield idx, inner
+                elif isinstance(inner, list):
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get('type') == 'text':
+                            yield idx, sub.get('text', '')
+
+
+def _bg_launch_ack_strip_fired(stripped_path: Path, is_genuine_removed) -> bool:
+    if not stripped_path.exists():
         return False
-    for entry in _iter_jsonl(injected_path):
+    for entry in _iter_jsonl(stripped_path):
         fn_map = entry.get('fn_map', {})
-        if any(fn == _PR_FN_NAME for fn in fn_map.values()):
-            return True
+        msgs_delta = entry.get('messages_delta', {})
+        for loc, fn in fn_map.items():
+            if fn != _BL_FN_NAME:
+                continue
+            parts = loc.split('.')
+            if len(parts) != 3:
+                continue
+            _, midx, bidx = parts
+            chunks = msgs_delta.get(midx, {}).get(bidx, [])
+            if any(is_genuine_removed(c) for c in chunks):
+                return True
     return False
+
+
+def _forwarded_has_block_starting_with(fwd_path: Path, *prefixes) -> bool:
+    if not fwd_path.exists():
+        return False
+    entries, _pos = _parse_forwarded_log(fwd_path, 0, {}, keep_last=None)
+    if not entries:
+        return False
+    messages = entries[-1].get('messages', [])
+    for msg in messages:
+        for blk in msg.get('blocks', []):
+            text = blk.get('full_text', blk.get('preview', ''))
+            if any(text.startswith(p) for p in prefixes):
+                return True
+    return False
+
 
 def _check_claim3(paths: dict) -> dict:
     orig_path = paths['original']
@@ -270,12 +277,16 @@ def _check_claim3(paths: dict) -> dict:
     ]
     return _result(CLAIM3_NAME, 'PASS' if ok else 'CONTRADICTED', detail)
 
-def _exit_code(claims: list) -> int:
-    if any(c['status'] == 'CONTRADICTED' for c in claims):
-        return 1
-    if any(c['status'] == 'MISSING DATA' for c in claims):
-        return 2
-    return 0
+
+def _poread_expand_fired(injected_path: Path) -> bool:
+    if not injected_path.exists():
+        return False
+    for entry in _iter_jsonl(injected_path):
+        fn_map = entry.get('fn_map', {})
+        if any(fn == _PR_FN_NAME for fn in fn_map.values()):
+            return True
+    return False
+
 
 def _print_report(log_dir: Path, stem: str, claims: list) -> None:
     print('=' * 70)
@@ -297,6 +308,7 @@ def _print_report(log_dir: Path, stem: str, claims: list) -> None:
     print('=' * 70)
     print(f'{passed} passed, {contradicted} contradicted, {missing} missing data')
     print('=' * 70)
+
 
 def _write_report(log_dir: Path, stem: str, claims: list) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -320,6 +332,15 @@ def _write_report(log_dir: Path, stem: str, claims: list) -> None:
         lines.append('')
     out_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     print(f'Report written to: {out_path}')
+
+
+def _exit_code(claims: list) -> int:
+    if any(c['status'] == 'CONTRADICTED' for c in claims):
+        return 1
+    if any(c['status'] == 'MISSING DATA' for c in claims):
+        return 2
+    return 0
+
 
 if __name__ == '__main__':
     sys.exit(run_post_restart_verification_workflow())

@@ -4,11 +4,11 @@ import json
 import sys
 from pathlib import Path
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
+from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages
+from src.proxy.diff_engine import _span_counts
 
 PREVIEW_CHARS = 120
 
@@ -38,6 +38,35 @@ Or with named flags:
 
 # ORCHESTRATOR
 
+def main():
+    parser = argparse.ArgumentParser(
+        description="Span-level strip/inject diff of proxy Original vs Forwarded logs.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_MODULE_DOC,
+    )
+    parser.add_argument("original", nargs="?", help="Path to _original.jsonl")
+    parser.add_argument("forwarded", nargs="?", help="Path to _forwarded.jsonl")
+    parser.add_argument("--original", dest="original_flag", help="Path to _original.jsonl (named)")
+    parser.add_argument("--forwarded", dest="forwarded_flag", help="Path to _forwarded.jsonl (named)")
+    args = parser.parse_args()
+    orig = compute_orig(args)
+    fwd  = compute_fwd(args)
+    if not orig or not fwd:
+        parser.print_help()
+        sys.exit(1)
+    diff_strip_inject_workflow(Path(orig), Path(fwd))
+
+
+# FUNCTIONS
+
+def compute_orig(args):
+    return args.original_flag or args.original
+
+
+def compute_fwd(args):
+    return args.forwarded_flag or args.forwarded
+
+
 def diff_strip_inject_workflow(original_path: Path, forwarded_path: Path) -> None:
     orig_entries = _load_jsonl(original_path)
     fwd_entries = _load_jsonl(forwarded_path)
@@ -45,8 +74,6 @@ def diff_strip_inject_workflow(original_path: Path, forwarded_path: Path) -> Non
     matched = _match_requests(orig_entries, fwd_entries, fwd_states)
     _print_report(matched, forwarded_path.name)
 
-
-# FUNCTIONS
 
 def _load_jsonl(path: Path) -> list:
     entries = []
@@ -58,13 +85,6 @@ def _load_jsonl(path: Path) -> list:
             except json.JSONDecodeError:
                 pass
     return entries
-
-
-def _infer_family(model: str) -> str:
-    m = model.lower()
-    if "haiku" in m: return "haiku"
-    if "sonnet" in m: return "sonnet"
-    return "opus"
 
 
 def _reconstruct_chains(fwd_entries: list) -> list:
@@ -101,6 +121,13 @@ def _reconstruct_chains(fwd_entries: list) -> list:
     return result
 
 
+def _infer_family(model: str) -> str:
+    m = model.lower()
+    if "haiku" in m: return "haiku"
+    if "sonnet" in m: return "sonnet"
+    return "opus"
+
+
 def _match_requests(orig_entries: list, fwd_entries: list, fwd_states: list) -> list:
     orig_by_reqid = {}
     orig_queues = {}
@@ -129,85 +156,7 @@ def _match_requests(orig_entries: list, fwd_entries: list, fwd_states: list) -> 
     return result
 
 
-def _preview(text: str, n: int = PREVIEW_CHARS) -> str:
-    s = text.replace("\n", "\\n")
-    return repr(s[:n]) + (f"…({len(s)}c)" if len(s) > n else "")
-
-
-def _print_system_diff(o_sys: list, f_sys: list, diff_system) -> tuple:
-    from src.proxy.diff_engine import _span_counts
-    sys_diffs = diff_system(o_sys, f_sys)
-    sys_s = sys_i = 0
-    for d in sys_diffs:
-        s, inj = _span_counts(d["spans"]); sys_s += s; sys_i += inj
-    changed_sys = [d for d in sys_diffs if any(t != "equal" for t, _ in d["spans"])]
-    if changed_sys:
-        n_id = len(sys_diffs) - len(changed_sys)
-        print(f"  SYSTEM ({len(o_sys)}→{len(f_sys)} blocks, {n_id} identical)")
-        for d in changed_sys:
-            s, inj = _span_counts(d["spans"])
-            tag = "REPLACED" if s and inj else ("STRIPPED" if s else "INJECTED")
-            print(f"    sys[{d['idx']}]: {tag}   -{len(d['o_text'])} / +{len(d['f_text'])} chars")
-            for t, text in d["spans"]:
-                if t in ("stripped", "injected"):
-                    print(f"               {t}: {_preview(text)}")
-    return sys_s, sys_i
-
-
-def _print_tools_diff(o_tools: list, f_tools: list, diff_tools) -> tuple:
-    from src.proxy.diff_engine import _span_counts
-    td = diff_tools(o_tools, f_tools)
-    desc_stripped = [(n, len(od)) for n, od, fd, _ in td["desc_changes"] if not fd]
-    desc_other    = [(n, od, fd, sp) for n, od, fd, sp in td["desc_changes"] if fd]
-    t_s = len(td["stripped"]) + len(desc_stripped) + sum(_span_counts(sp)[0] for *_, sp in desc_other)
-    t_i = len(td["injected"]) + sum(_span_counts(sp)[1] for *_, sp in desc_other)
-    if td["stripped"] or td["injected"] or td["desc_changes"]:
-        print(f"  TOOLS  -{len(td['stripped'])} stripped / +{len(td['injected'])} injected / ~{len(td['desc_changes'])} desc-changed")
-        if td["stripped"]:
-            print(f"    STRIPPED: {',  '.join(td['stripped'])}")
-        if td["injected"]:
-            print(f"    INJECTED: {',  '.join(td['injected'])}")
-        if desc_stripped:
-            parts = "  ".join(f"{n}(-{l}c)" for n, l in desc_stripped)
-            print(f"    DESC STRIPPED: {parts}")
-        for n, od, fd, sp in desc_other:
-            s, inj = _span_counts(sp)
-            print(f"    desc ~{n}: -{len(od)} / +{len(fd)} chars  ({s} stripped / {inj} injected spans)")
-    return t_s, t_i
-
-
-def _print_messages_diff(o_msgs: list, f_msgs: list, diff_messages) -> tuple:
-    from src.proxy.diff_engine import _span_counts
-    msg_diffs = diff_messages(o_msgs, f_msgs)
-    msgs_s = msgs_i = 0
-    changed_msgs = []
-    for md in msg_diffs:
-        all_sp = [sp for bd in md["block_diffs"] for sp in bd["spans"]]
-        s, inj = _span_counts(all_sp); msgs_s += s; msgs_i += inj
-        if s or inj:
-            changed_msgs.append(md)
-    if changed_msgs:
-        n_id = len(msg_diffs) - len(changed_msgs)
-        print(f"  MESSAGES ({len(o_msgs)}→{len(f_msgs)}, {n_id} identical)")
-        for md in changed_msgs:
-            all_sp = [sp for bd in md["block_diffs"] for sp in bd["spans"]]
-            s, inj = _span_counts(all_sp)
-            print(f"    msg[{md['idx']}] ({len(md['block_diffs'])} blocks)  -{s} stripped / +{inj} injected")
-            for bd in md["block_diffs"]:
-                bs, bi = _span_counts(bd["spans"])
-                if bs == 0 and bi == 0:
-                    print(f"      block[{bd['bidx']}]: IDENTICAL   {len(bd['o_text'])} chars")
-                else:
-                    tag = "REPLACED" if bs and bi else ("STRIPPED" if bs else "INJECTED")
-                    print(f"      block[{bd['bidx']}]: {tag}   -{len(bd['o_text'])} / +{len(bd['f_text'])} chars")
-                    for t, text in bd["spans"]:
-                        if t in ("stripped", "injected"):
-                            print(f"               {t}: {_preview(text)}")
-    return msgs_s, msgs_i
-
-
 def _print_report(matched: list, filename: str) -> None:
-    from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages
     print(f"\ndiff_strip_inject — {filename}")
     print(f"  {len(matched)} matched request pairs\n")
 
@@ -236,20 +185,79 @@ def _print_report(matched: list, filename: str) -> None:
         print()
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Span-level strip/inject diff of proxy Original vs Forwarded logs.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=_MODULE_DOC,
-    )
-    parser.add_argument("original", nargs="?", help="Path to _original.jsonl")
-    parser.add_argument("forwarded", nargs="?", help="Path to _forwarded.jsonl")
-    parser.add_argument("--original", dest="original_flag", help="Path to _original.jsonl (named)")
-    parser.add_argument("--forwarded", dest="forwarded_flag", help="Path to _forwarded.jsonl (named)")
-    args = parser.parse_args()
-    orig = args.original_flag or args.original
-    fwd  = args.forwarded_flag or args.forwarded
-    if not orig or not fwd:
-        parser.print_help()
-        sys.exit(1)
-    diff_strip_inject_workflow(Path(orig), Path(fwd))
+def _print_system_diff(o_sys: list, f_sys: list, diff_system) -> tuple:
+    sys_diffs = diff_system(o_sys, f_sys)
+    sys_s = sys_i = 0
+    for d in sys_diffs:
+        s, inj = _span_counts(d["spans"]); sys_s += s; sys_i += inj
+    changed_sys = [d for d in sys_diffs if any(t != "equal" for t, _ in d["spans"])]
+    if changed_sys:
+        n_id = len(sys_diffs) - len(changed_sys)
+        print(f"  SYSTEM ({len(o_sys)}→{len(f_sys)} blocks, {n_id} identical)")
+        for d in changed_sys:
+            s, inj = _span_counts(d["spans"])
+            tag = "REPLACED" if s and inj else ("STRIPPED" if s else "INJECTED")
+            print(f"    sys[{d['idx']}]: {tag}   -{len(d['o_text'])} / +{len(d['f_text'])} chars")
+            for t, text in d["spans"]:
+                if t in ("stripped", "injected"):
+                    print(f"               {t}: {_preview(text)}")
+    return sys_s, sys_i
+
+
+def _preview(text: str, n: int = PREVIEW_CHARS) -> str:
+    s = text.replace("\n", "\\n")
+    return repr(s[:n]) + (f"…({len(s)}c)" if len(s) > n else "")
+
+
+def _print_tools_diff(o_tools: list, f_tools: list, diff_tools) -> tuple:
+    td = diff_tools(o_tools, f_tools)
+    desc_stripped = [(n, len(od)) for n, od, fd, _ in td["desc_changes"] if not fd]
+    desc_other    = [(n, od, fd, sp) for n, od, fd, sp in td["desc_changes"] if fd]
+    t_s = len(td["stripped"]) + len(desc_stripped) + sum(_span_counts(sp)[0] for *_, sp in desc_other)
+    t_i = len(td["injected"]) + sum(_span_counts(sp)[1] for *_, sp in desc_other)
+    if td["stripped"] or td["injected"] or td["desc_changes"]:
+        print(f"  TOOLS  -{len(td['stripped'])} stripped / +{len(td['injected'])} injected / ~{len(td['desc_changes'])} desc-changed")
+        if td["stripped"]:
+            print(f"    STRIPPED: {',  '.join(td['stripped'])}")
+        if td["injected"]:
+            print(f"    INJECTED: {',  '.join(td['injected'])}")
+        if desc_stripped:
+            parts = "  ".join(f"{n}(-{l}c)" for n, l in desc_stripped)
+            print(f"    DESC STRIPPED: {parts}")
+        for n, od, fd, sp in desc_other:
+            s, inj = _span_counts(sp)
+            print(f"    desc ~{n}: -{len(od)} / +{len(fd)} chars  ({s} stripped / {inj} injected spans)")
+    return t_s, t_i
+
+
+def _print_messages_diff(o_msgs: list, f_msgs: list, diff_messages) -> tuple:
+    msg_diffs = diff_messages(o_msgs, f_msgs)
+    msgs_s = msgs_i = 0
+    changed_msgs = []
+    for md in msg_diffs:
+        all_sp = [sp for bd in md["block_diffs"] for sp in bd["spans"]]
+        s, inj = _span_counts(all_sp); msgs_s += s; msgs_i += inj
+        if s or inj:
+            changed_msgs.append(md)
+    if changed_msgs:
+        n_id = len(msg_diffs) - len(changed_msgs)
+        print(f"  MESSAGES ({len(o_msgs)}→{len(f_msgs)}, {n_id} identical)")
+        for md in changed_msgs:
+            all_sp = [sp for bd in md["block_diffs"] for sp in bd["spans"]]
+            s, inj = _span_counts(all_sp)
+            print(f"    msg[{md['idx']}] ({len(md['block_diffs'])} blocks)  -{s} stripped / +{inj} injected")
+            for bd in md["block_diffs"]:
+                bs, bi = _span_counts(bd["spans"])
+                if bs == 0 and bi == 0:
+                    print(f"      block[{bd['bidx']}]: IDENTICAL   {len(bd['o_text'])} chars")
+                else:
+                    tag = "REPLACED" if bs and bi else ("STRIPPED" if bs else "INJECTED")
+                    print(f"      block[{bd['bidx']}]: {tag}   -{len(bd['o_text'])} / +{len(bd['f_text'])} chars")
+                    for t, text in bd["spans"]:
+                        if t in ("stripped", "injected"):
+                            print(f"               {t}: {_preview(text)}")
+    return msgs_s, msgs_i
+
+
+if __name__ == '__main__':
+    main()

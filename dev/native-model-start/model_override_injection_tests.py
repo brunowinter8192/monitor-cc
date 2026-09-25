@@ -7,8 +7,8 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 
-from proxy import inject_helpers
-from proxy.inject_helpers import _inject_model_override
+from src.proxy import inject_helpers
+from src.proxy.inject_helpers import _inject_model_override
 
 from model_params_test_infra import check, _with_config
 
@@ -43,11 +43,11 @@ _MODEL_PARAMS_CONFIG = {
 }
 
 
+# FUNCTIONS
+
 def _base_payload(model):
     return {"model": model, "max_tokens": 8000, "messages": [{"role": "user", "content": "hi"}]}
 
-
-# FUNCTIONS
 
 def test_legacy_only_is_ignored():
     print("\n[Test 1] Legacy-only config (no model_params) -> ignored, payload untouched")

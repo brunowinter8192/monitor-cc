@@ -7,6 +7,7 @@ from p5_common import load, root, tmpdir, check, point_log, log_text, digest
 
 _NOW = 1_000_000.0
 
+
 # ORCHESTRATOR
 
 def main() -> None:
@@ -21,17 +22,8 @@ def main() -> None:
         worker_loop(mlog)
         panel_guard_removed()
 
+
 # FUNCTIONS
-
-class _Dir:
-    def __init__(self, name):
-        self.name = name
-
-class _Jsonl:
-    def __init__(self, stem, mtime):
-        self.stem, self._m = stem, mtime
-    def stat(self):
-        return mock.Mock(st_mtime=self._m)
 
 def cwd_from_jsonl(disc, d, mlog) -> None:
     f = d / 's.jsonl'
@@ -44,6 +36,7 @@ def cwd_from_jsonl(disc, d, mlog) -> None:
     if hasattr(disc, '_log_routes'):
         missing = d / 'missing.jsonl'
         check('g5.cwd_from_jsonl.oserror_logged', disc._cwd_from_jsonl(missing) is None and 'cwd read failed' in log_text(mlog))
+
 
 def worker_and_main_sessions(disc, mlog) -> None:
     disc._cwd_from_jsonl = lambda p: '/Users/x/Proj/.claude/worktrees/alpha'
@@ -69,6 +62,14 @@ def worker_and_main_sessions(disc, mlog) -> None:
           [r.status for r in results] == ['working', 'idle', 'idle', 'idle', 'idle', 'working', 'working', 'idle']
           and results[0].name == 'alpha' and results[4].name == 'Proj' and results[4].cwd == '/Users/x/Proj/')
 
+
+class _Jsonl:
+    def __init__(self, stem, mtime):
+        self.stem, self._m = stem, mtime
+    def stat(self):
+        return mock.Mock(st_mtime=self._m)
+
+
 def route_logs(disc, mlog) -> None:
     text = log_text(mlog)
     need = ['alive_route=tmux status_route=hook', 'status_route=hook_tmux_demote', 'alive_route=mtime status_route=no_fresh_hook',
@@ -77,6 +78,7 @@ def route_logs(disc, mlog) -> None:
     before = log_text(mlog)
     disc._main_session_info('enc-m', 'sm', False, {'sm': {'status': 'idle', 'updated_ts': _NOW - 1}}, _NOW - 500, _NOW)
     check('g5.routes.unchanged_route_silent', log_text(mlog) == before)
+
 
 def project_loop(disc, mlog) -> None:
     for n in ('_refresh_cc_proc_cache', '_refresh_ghostty_tty_to_id', '_refresh_tmux_state', '_refresh_bg_task_cache', '_read_hook_state', '_write_cwd_uuid_map'):
@@ -99,8 +101,11 @@ def project_loop(disc, mlog) -> None:
     disc.list_alive_sessions()
     check('g5.project_loop.recovery_rearms_log', log_text(mlog).count('project skipped dir=bad') == 2)
 
-class _Stop(BaseException):
-    pass
+
+class _Dir:
+    def __init__(self, name):
+        self.name = name
+
 
 def worker_loop(mlog) -> None:
     dw = load('discovery_worker')
@@ -122,6 +127,11 @@ def worker_loop(mlog) -> None:
     with mock.patch.object(dw, 'list_alive_sessions', side_effect=RuntimeError('cycle broke')):
         run_one_cycle()
     check('g5.worker_loop.recovery_rearms_log', log_text(mlog).count('worker cycle error err=RuntimeError') == 2)
+
+
+class _Stop(BaseException):
+    pass
+
 
 def panel_guard_removed() -> None:
     tree = ast.parse((root() / 'src' / 'menubar' / 'panel.py').read_text())

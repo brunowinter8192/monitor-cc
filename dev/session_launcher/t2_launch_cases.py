@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import threading
 import importlib
 import json
 import os
@@ -134,7 +135,6 @@ def _case_click_handling() -> str:
     return f'no desktop -> ignored; busy -> ignored; occupied desktop 2 -> launched; free desktop 4 -> launch{launched[0]}, panel closed; bad index ignored'
 
 def _case_request_on_open() -> str:
-    import threading
     lc = _imp('launch_controller')
     calls = []
     logs = []

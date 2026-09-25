@@ -7,6 +7,11 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from src.proxy.rules import apply_modification_rules
+from src.proxy.cache import _strip_all_cache_control, _set_cache_breakpoints
+from src.proxy.logging import _build_forwarded_delta, _build_errors_entries
+from src.proxy.strip_inject_delta import _build_stripped_injected_deltas
+from src.proxy.message_summary import _summarize_message
 
 _MAIN_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 _PREFIX_LINES = 60
@@ -15,30 +20,21 @@ _WORKER_CONTEXTS = ('main', 'worker:x')
 
 _SKIPPED_LINES = 0
 
+
 # ORCHESTRATOR
 
 def main():
     orig_path = _newest_original_log()
     payloads = _load_payloads(orig_path)
     digest = hashlib.sha256()
-    for worker_context in _WORKER_CONTEXTS:
-        _hash_pipeline_run(payloads, worker_context, digest)
-    print(f'source: {orig_path.name}')
-    print(f'payloads: {len(payloads)}')
+    process_worker_contexts(payloads, digest)
+    print_source(orig_path)
+    print_payloads(payloads)
     _report_skipped_lines()
-    print(f'HASH: {digest.hexdigest()}')
+    print_hash(digest)
 
 
 # FUNCTIONS
-
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
-
-
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
-
 
 def _newest_original_log() -> Path:
     override = os.environ.get('PROXY_PIPELINE_BYTE_IDENTITY_LOG')
@@ -70,29 +66,17 @@ def _load_payloads(orig_path: Path) -> list:
     return payloads
 
 
-def _normalize_for_hash(obj):
-    if isinstance(obj, dict):
-        return {k: ('<TS>' if k in _TIMESTAMP_KEYS else _normalize_for_hash(v)) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_normalize_for_hash(v) for v in obj]
-    return obj
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
 
 
-def _infer_model_family(model: str) -> str:
-    m = (model or '').lower()
-    if 'haiku' in m:
-        return 'haiku'
-    if 'sonnet' in m:
-        return 'sonnet'
-    return 'opus'
+def process_worker_contexts(payloads, digest):
+    for worker_context in _WORKER_CONTEXTS:
+        _hash_pipeline_run(payloads, worker_context, digest)
 
 
 def _hash_pipeline_run(payloads: list, worker_context: str, digest) -> None:
-    from src.proxy.rules import apply_modification_rules
-    from src.proxy.cache import _strip_all_cache_control, _set_cache_breakpoints
-    from src.proxy.logging import _build_forwarded_delta, _build_errors_entries
-    from src.proxy.strip_inject_delta import _build_stripped_injected_deltas
-    from src.proxy.message_summary import _summarize_message
 
     prev_mod_messages = None
     prev_delta_hashes = None
@@ -131,6 +115,39 @@ def _hash_pipeline_run(payloads: list, worker_context: str, digest) -> None:
         digest.update(json.dumps(_normalize_for_hash(stripped_entry), default=str).encode())
         digest.update(json.dumps(_normalize_for_hash(injected_entry), default=str).encode())
         digest.update(json.dumps(_normalize_for_hash(err_entries), default=str).encode())
+
+
+def _infer_model_family(model: str) -> str:
+    m = (model or '').lower()
+    if 'haiku' in m:
+        return 'haiku'
+    if 'sonnet' in m:
+        return 'sonnet'
+    return 'opus'
+
+
+def _normalize_for_hash(obj):
+    if isinstance(obj, dict):
+        return {k: ('<TS>' if k in _TIMESTAMP_KEYS else _normalize_for_hash(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_normalize_for_hash(v) for v in obj]
+    return obj
+
+
+def print_source(orig_path):
+    print(f'source: {orig_path.name}')
+
+
+def print_payloads(payloads):
+    print(f'payloads: {len(payloads)}')
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
+
+def print_hash(digest):
+    print(f'HASH: {digest.hexdigest()}')
 
 
 if __name__ == '__main__':

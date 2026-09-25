@@ -11,7 +11,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ## Modules
 
-### pipeline_byte_identity.py (137 LOC)
+### pipeline_byte_identity.py (154 LOC)
 
 **Purpose:** Verification aid: hashes the full modification pipeline over a bounded prefix of a real original log for both worker contexts.
 **Reads:** the newest original log, or a pinned path via an env var.
@@ -21,7 +21,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### addon_hook_byte_identity.py (173 LOC)
+### addon_hook_byte_identity.py (190 LOC)
 
 **Purpose:** Verification aid: hashes the addon's hook behavior by driving a real addon with a fake flow.
 **Reads:** the newest original log, or a pinned path via an env var; sets its own env and a temp monitor root.
@@ -51,7 +51,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### replay_strip_v2.py (236 LOC)
+### replay_strip_v2.py (252 LOC)
 
 **Purpose:** Two-part validator of the template-based system-reminder strip against an old proxy's recorded removal field.
 **Reads:** a hardcoded log directory under a pre-rename path, absent now; a glob on it yields zero entries.
@@ -61,7 +61,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### scan_sr_catalog.py (319 LOC)
+### scan_sr_catalog.py (343 LOC)
 
 **Purpose:** Scans proxy request logs into a catalog of stripped and missed system-reminder and task-notification content, classified by heuristic.
 **Reads:** the same absent pre-rename log directory.
@@ -141,7 +141,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix_cases_launch_ack_interrupt.py (248 LOC)
+### test_strip_fix_cases_launch_ack_interrupt.py (246 LOC)
 
 **Purpose:** Background-launch-ack id and path line recovery across the three recognized wordings, and the interrupt-marker strip's two wordings.
 **Reads:** nothing external.
@@ -151,7 +151,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix_cases_wrapped_tn.py (82 LOC)
+### test_strip_fix_cases_wrapped_tn.py (81 LOC)
 
 **Purpose:** The system-reminder-wrapped task-notification full-chain regression plus two byte-identical control cases.
 **Reads:** nothing external.
@@ -171,7 +171,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix_cases_badge.py (210 LOC)
+### test_strip_fix_cases_badge.py (209 LOC)
 
 **Purpose:** The token-count badge-suppression read-side fix: writer spans unchanged, badge quiet only for the exact bare-tag class.
 **Reads:** nothing external.
@@ -211,7 +211,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### poread_inject_tests.py (323 LOC)
+### poread_inject_tests.py (320 LOC)
 
 **Purpose:** End-to-end regression guard for the poread marker-expansion pass, mint through apply, across expansion, determinism, false-positive and race cases.
 **Reads:** nothing external; writes its own temp files and marker fixtures.
@@ -231,7 +231,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_live_copy_bootstrap.py (126 LOC)
+### test_live_copy_bootstrap.py (138 LOC)
 
 **Purpose:** Builds a mirror repo with the launcher's live-copy layout and proves the addon entry resolves the live package and root, raising when missing.
 **Reads:** the repo `src/` (copied into the mirror); a stub mitmproxy module it writes.
@@ -241,7 +241,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_proxy_env_and_family.py (162 LOC)
+### test_proxy_env_and_family.py (174 LOC)
 
 **Purpose:** Cases for the required log-id env var, worker id parsing, dual-log file names, model-family inference and the unmapped-marker raise.
 **Reads:** nothing persistent; temp monitor root, in-process fakes.
@@ -251,7 +251,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_api_errors_ts.py (117 LOC)
+### test_api_errors_ts.py (121 LOC)
 
 **Purpose:** Proves the proxy's api_errors ts parses and the janitor prunes legacy and new format lines by age with runtime notes.
 **Reads:** `fixtures/api_errors_legacy_ts.jsonl` (5 real legacy-ts lines, request_payload nulled).
@@ -261,7 +261,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_proxy_error_log.py (252 LOC)
+### test_proxy_error_log.py (264 LOC)
 
 **Purpose:** Cases proving each formerly stderr-only proxy handler now writes to the proxy error log, plus log-on-change, size cap and silent logger failure.
 **Reads:** nothing persistent; temp monitor root, in-process fakes.
@@ -271,7 +271,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_proxy_config_trace.py (230 LOC)
+### test_proxy_config_trace.py (242 LOC)
 
 **Purpose:** Cases proving config-class swallows return defaults and are noted once per changed error in the proxy error log, re-arming after a healthy read.
 **Reads:** nothing persistent; temp HOME and monitor root, in-process fakes.
@@ -291,7 +291,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### verify_proxy_start_equivalence.py (68 LOC)
+### verify_proxy_start_equivalence.py (85 LOC)
 
 **Purpose:** Verification that the launcher behaves identically to the base ref across argument, model-config, port, marker and janitor cases; one parallel strand per case.
 **Reads:** the sandbox module.
@@ -301,7 +301,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_proxy_start_fallbacks.py (92 LOC)
+### test_proxy_start_fallbacks.py (104 LOC)
 
 **Purpose:** Cases proving the logged model-config fall-throughs (jq missing, unreadable, malformed) and the abort after a failed mitmdump start; one parallel strand per case.
 **Reads:** the sandbox module.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+# INFRASTRUCTURE
 import json
 import sys
 from collections import Counter, defaultdict
@@ -10,17 +10,31 @@ PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 DEFAULT_PROJECT = None
 REPORTS_DIR = Path(__file__).parent / '02_reports'
 
-
 _SKIPPED_LINES = 0
 
 
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
+# ORCHESTRATOR
+
+def main():
+    if len(sys.argv) > 1:
+        filepath = compute_filepath()
+    else:
+        filepath = find_latest_jsonl(DEFAULT_PROJECT)
+
+    report = scan_jsonl(filepath)
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_path = compute_output_path(timestamp)
+    output_path.write_text(report, encoding='utf-8')
+    print_report_written_to(output_path)
+    _report_skipped_lines()
 
 
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+# FUNCTIONS
+
+def compute_filepath():
+    return Path(sys.argv[1])
 
 
 def find_latest_jsonl(project_name: str = None) -> Path:
@@ -39,69 +53,22 @@ def find_latest_jsonl(project_name: str = None) -> Path:
     return jsonl_files[0]
 
 
-def truncate(text: str, max_len: int = 300) -> str:
-    if not text:
-        return ''
-    s = str(text).replace('\n', '\\n')
-    if len(s) > max_len:
-        return s[:max_len] + '...'
-    return s
+def scan_jsonl(filepath: Path) -> str:
+    (combo_counts, combo_keys, combo_examples, combo_tool_names, combo_nested,
+     string_content_examples, string_content_counts) = _collect_block_stats(filepath)
 
-
-def describe_nested(obj, depth=0, max_depth=3) -> list:
     lines = []
-    indent = '  ' * depth
-    if depth >= max_depth:
-        lines.append(f'{indent}...')
-        return lines
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if isinstance(v, dict):
-                lines.append(f'{indent}{k}: dict')
-                lines.extend(describe_nested(v, depth + 1, max_depth))
-            elif isinstance(v, list):
-                if v and isinstance(v[0], dict):
-                    lines.append(f'{indent}{k}: list[dict] ({len(v)} items)')
-                    lines.extend(describe_nested(v[0], depth + 1, max_depth))
-                else:
-                    lines.append(f'{indent}{k}: list ({len(v)} items)')
-            elif isinstance(v, str):
-                lines.append(f'{indent}{k}: str (len={len(v)})')
-            else:
-                lines.append(f'{indent}{k}: {type(v).__name__} = {truncate(str(v), 50)}')
-    return lines
+    lines.append(f'# JSONL Content Block Types')
+    lines.append(f'')
+    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
+    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append(f'')
 
+    lines.extend(_summary_table_lines(combo_counts, combo_keys))
+    lines.extend(_string_content_section_lines(string_content_counts, string_content_examples))
+    lines.extend(_detail_section_lines(combo_counts, combo_keys, combo_tool_names, combo_nested, combo_examples))
 
-def _process_content_blocks(content, msg_type, combo_counts, combo_keys, combo_examples,
-                             combo_tool_names, combo_nested) -> None:
-    for block in content:
-        if not isinstance(block, dict):
-            continue
-        block_type = block.get('type', 'MISSING')
-        combo = f'{msg_type}/{block_type}'
-        combo_counts[combo] += 1
-        combo_keys[combo].update(block.keys())
-
-        if 'name' in block and block_type == 'tool_use':
-            combo_tool_names[combo].add(block['name'])
-
-        if combo not in combo_examples:
-            combo_examples[combo] = block
-
-        if combo not in combo_nested:
-            combo_nested[combo] = describe_nested(block, max_depth=3)
-
-        if block_type == 'tool_result':
-            result_content = block.get('content', '')
-            if isinstance(result_content, list):
-                for sub in result_content:
-                    if isinstance(sub, dict):
-                        sub_type = sub.get('type', '?')
-                        sub_combo = f'{combo}/sub:{sub_type}'
-                        combo_counts[sub_combo] += 1
-                        combo_keys[sub_combo].update(sub.keys())
-                        if sub_combo not in combo_examples:
-                            combo_examples[sub_combo] = sub
+    return '\n'.join(lines)
 
 
 def _collect_block_stats(filepath: Path) -> tuple:
@@ -148,6 +115,76 @@ def _collect_block_stats(filepath: Path) -> tuple:
             string_content_examples, string_content_counts)
 
 
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _process_content_blocks(content, msg_type, combo_counts, combo_keys, combo_examples,
+                             combo_tool_names, combo_nested) -> None:
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get('type', 'MISSING')
+        combo = f'{msg_type}/{block_type}'
+        combo_counts[combo] += 1
+        combo_keys[combo].update(block.keys())
+
+        if 'name' in block and block_type == 'tool_use':
+            combo_tool_names[combo].add(block['name'])
+
+        if combo not in combo_examples:
+            combo_examples[combo] = block
+
+        if combo not in combo_nested:
+            combo_nested[combo] = describe_nested(block, max_depth=3)
+
+        if block_type == 'tool_result':
+            result_content = block.get('content', '')
+            if isinstance(result_content, list):
+                for sub in result_content:
+                    if isinstance(sub, dict):
+                        sub_type = sub.get('type', '?')
+                        sub_combo = f'{combo}/sub:{sub_type}'
+                        combo_counts[sub_combo] += 1
+                        combo_keys[sub_combo].update(sub.keys())
+                        if sub_combo not in combo_examples:
+                            combo_examples[sub_combo] = sub
+
+
+def describe_nested(obj, depth=0, max_depth=3) -> list:
+    lines = []
+    indent = '  ' * depth
+    if depth >= max_depth:
+        lines.append(f'{indent}...')
+        return lines
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, dict):
+                lines.append(f'{indent}{k}: dict')
+                lines.extend(describe_nested(v, depth + 1, max_depth))
+            elif isinstance(v, list):
+                if v and isinstance(v[0], dict):
+                    lines.append(f'{indent}{k}: list[dict] ({len(v)} items)')
+                    lines.extend(describe_nested(v[0], depth + 1, max_depth))
+                else:
+                    lines.append(f'{indent}{k}: list ({len(v)} items)')
+            elif isinstance(v, str):
+                lines.append(f'{indent}{k}: str (len={len(v)})')
+            else:
+                lines.append(f'{indent}{k}: {type(v).__name__} = {truncate(str(v), 50)}')
+    return lines
+
+
+def truncate(text: str, max_len: int = 300) -> str:
+    if not text:
+        return ''
+    s = str(text).replace('\n', '\\n')
+    if len(s) > max_len:
+        return s[:max_len] + '...'
+    return s
+
+
 def _summary_table_lines(combo_counts, combo_keys) -> list:
     lines = []
     lines.append(f'## Summary')
@@ -176,18 +213,6 @@ def _string_content_section_lines(string_content_counts, string_content_examples
             lines.append(f'```')
             lines.append(f'')
     return lines
-
-
-def _clean_detail_example(example: dict) -> dict:
-    ex_clean = {}
-    for k, v in example.items():
-        if isinstance(v, str) and len(v) > 300:
-            ex_clean[k] = truncate(v)
-        elif isinstance(v, (dict, list)):
-            ex_clean[k] = truncate(json.dumps(v, ensure_ascii=False), 300)
-        else:
-            ex_clean[k] = v
-    return ex_clean
 
 
 def _detail_section_lines(combo_counts, combo_keys, combo_tool_names, combo_nested, combo_examples) -> list:
@@ -235,38 +260,28 @@ def _detail_section_lines(combo_counts, combo_keys, combo_tool_names, combo_nest
     return lines
 
 
-def scan_jsonl(filepath: Path) -> str:
-    (combo_counts, combo_keys, combo_examples, combo_tool_names, combo_nested,
-     string_content_examples, string_content_counts) = _collect_block_stats(filepath)
-
-    lines = []
-    lines.append(f'# JSONL Content Block Types')
-    lines.append(f'')
-    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
-    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    lines.append(f'')
-
-    lines.extend(_summary_table_lines(combo_counts, combo_keys))
-    lines.extend(_string_content_section_lines(string_content_counts, string_content_examples))
-    lines.extend(_detail_section_lines(combo_counts, combo_keys, combo_tool_names, combo_nested, combo_examples))
-
-    return '\n'.join(lines)
+def _clean_detail_example(example: dict) -> dict:
+    ex_clean = {}
+    for k, v in example.items():
+        if isinstance(v, str) and len(v) > 300:
+            ex_clean[k] = truncate(v)
+        elif isinstance(v, (dict, list)):
+            ex_clean[k] = truncate(json.dumps(v, ensure_ascii=False), 300)
+        else:
+            ex_clean[k] = v
+    return ex_clean
 
 
-def main():
-    if len(sys.argv) > 1:
-        filepath = Path(sys.argv[1])
-    else:
-        filepath = find_latest_jsonl(DEFAULT_PROJECT)
+def compute_output_path(timestamp):
+    return REPORTS_DIR / f'content_blocks_{timestamp}.md'
 
-    report = scan_jsonl(filepath)
 
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_path = REPORTS_DIR / f'content_blocks_{timestamp}.md'
-    output_path.write_text(report, encoding='utf-8')
+def print_report_written_to(output_path):
     print(f'Report written to: {output_path}')
-    _report_skipped_lines()
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 if __name__ == '__main__':

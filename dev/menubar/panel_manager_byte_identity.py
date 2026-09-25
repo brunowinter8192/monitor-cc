@@ -11,20 +11,17 @@ from AppKit import NSForegroundColorAttributeName
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from Foundation import NSObject
 
 _BgInfo = namedtuple('_BgInfo', ['min_remaining', 'sleep_pids'])
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     pm_mod = _import_panel_manager()
     discover_mod = _import_discover()
-    try:
-        print(f'HASH: {_run(pm_mod, discover_mod)}')
-    except Exception as exc:
-        print(f'HASH: SKIPPED (headless AppKit introspection failed: {exc})')
-        _smoke_import(pm_mod, discover_mod)
+    guarded_print(pm_mod, discover_mod)
 
 
 # FUNCTIONS
@@ -35,6 +32,45 @@ def _import_panel_manager():
 
 def _import_discover():
     return importlib.import_module('.'.join(['src', 'menubar', 'discover']))
+
+
+def guarded_print(pm_mod, discover_mod):
+    try:
+        print(f'HASH: {_run(pm_mod, discover_mod)}')
+    except Exception as exc:
+        print(f'HASH: SKIPPED (headless AppKit introspection failed: {exc})')
+        _smoke_import(pm_mod, discover_mod)
+
+
+def _run(pm_mod, discover_mod) -> str:
+    digest = hashlib.sha256()
+    app = _FakeApp()
+    pm = pm_mod.PanelManager(app)
+    sessions = _make_sessions(discover_mod.SessionInfo)
+    bg = _bg_by_project()
+
+    pm.rebuild(sessions, bg)
+    digest.update(b'rebuild')
+    digest.update(json.dumps(_dump_stack(pm._widgets.stack), sort_keys=True).encode())
+    digest.update(json.dumps(_dump_lookups(pm), sort_keys=True).encode())
+
+    flipped = list(sessions)
+    flipped[0] = flipped[0]._replace(status='idle')
+    pm.update_inplace(flipped, bg)
+    digest.update(b'update_inplace')
+    digest.update(json.dumps(_dump_stack(pm._widgets.stack), sort_keys=True).encode())
+    digest.update(json.dumps(_dump_lookups(pm), sort_keys=True).encode())
+    return digest.hexdigest()
+
+
+class _FakeApp:
+    def __init__(self):
+        self.settings = SimpleNamespace(panel_width=422, panel_min_height=460)
+
+        class _FakePanelController(NSObject):
+            pass
+
+        self._panel_controller = _FakePanelController.alloc().init()
 
 
 def _make_sessions(SessionInfo):
@@ -61,15 +97,39 @@ def _bg_by_project():
     return {'gamma': _BgInfo(min_remaining=90, sleep_pids=(4321,))}
 
 
-class _FakeApp:
-    def __init__(self):
-        self.settings = SimpleNamespace(panel_width=422, panel_min_height=460)
-        from Foundation import NSObject
+def _dump_stack(stack) -> list:
+    entries = []
+    for view in stack.arrangedSubviews():
+        if hasattr(view, 'numberOfRows'):
+            for r in range(view.numberOfRows()):
+                row = view.rowAtIndex_(r)
+                cells = []
+                for c in range(view.numberOfColumns()):
+                    try:
+                        cell = view.cellAtColumnIndex_rowIndex_(c, r)
+                        cells.append(_dump_cell(cell.contentView()))
+                    except Exception as exc:
+                        cells.append({'error': str(exc)})
+                entries.append({'row': r, 'height': round(row.height(), 3), 'cells': cells})
+        else:
+            frame = view.frame()
+            entries.append({'view_class': type(view).__name__,
+                            'w': round(frame.size.width, 3), 'h': round(frame.size.height, 3)})
+    return entries
 
-        class _FakePanelController(NSObject):
-            pass
 
-        self._panel_controller = _FakePanelController.alloc().init()
+def _dump_cell(view) -> dict:
+    if view is None:
+        return {'class': None}
+    attr = _safe(view, 'attributedTitle')
+    action = _safe(view, 'action')
+    return {
+        'class': type(view).__name__,
+        'title': str(attr.string()) if attr is not None else _safe(view, 'title'),
+        'tag': _safe(view, 'tag'),
+        'action': str(action) if action else None,
+        'color': _color_desc(attr),
+    }
 
 
 def _safe(obj, name):
@@ -92,41 +152,6 @@ def _color_desc(attr) -> str:
         return 'ERR'
 
 
-def _dump_cell(view) -> dict:
-    if view is None:
-        return {'class': None}
-    attr = _safe(view, 'attributedTitle')
-    action = _safe(view, 'action')
-    return {
-        'class': type(view).__name__,
-        'title': str(attr.string()) if attr is not None else _safe(view, 'title'),
-        'tag': _safe(view, 'tag'),
-        'action': str(action) if action else None,
-        'color': _color_desc(attr),
-    }
-
-
-def _dump_stack(stack) -> list:
-    entries = []
-    for view in stack.arrangedSubviews():
-        if hasattr(view, 'numberOfRows'):
-            for r in range(view.numberOfRows()):
-                row = view.rowAtIndex_(r)
-                cells = []
-                for c in range(view.numberOfColumns()):
-                    try:
-                        cell = view.cellAtColumnIndex_rowIndex_(c, r)
-                        cells.append(_dump_cell(cell.contentView()))
-                    except Exception as exc:
-                        cells.append({'error': str(exc)})
-                entries.append({'row': r, 'height': round(row.height(), 3), 'cells': cells})
-        else:
-            frame = view.frame()
-            entries.append({'view_class': type(view).__name__,
-                            'w': round(frame.size.width, 3), 'h': round(frame.size.height, 3)})
-    return entries
-
-
 def _dump_lookups(pm) -> dict:
     lookups = pm._lookups
     return {
@@ -137,27 +162,6 @@ def _dump_lookups(pm) -> dict:
         'abort_btns_by_project': sorted(lookups.abort_btns_by_project.keys()),
         'abort_project_for_tag': dict(sorted(lookups.abort_project_for_tag.items())),
     }
-
-
-def _run(pm_mod, discover_mod) -> str:
-    digest = hashlib.sha256()
-    app = _FakeApp()
-    pm = pm_mod.PanelManager(app)
-    sessions = _make_sessions(discover_mod.SessionInfo)
-    bg = _bg_by_project()
-
-    pm.rebuild(sessions, bg)
-    digest.update(b'rebuild')
-    digest.update(json.dumps(_dump_stack(pm._widgets.stack), sort_keys=True).encode())
-    digest.update(json.dumps(_dump_lookups(pm), sort_keys=True).encode())
-
-    flipped = list(sessions)
-    flipped[0] = flipped[0]._replace(status='idle')
-    pm.update_inplace(flipped, bg)
-    digest.update(b'update_inplace')
-    digest.update(json.dumps(_dump_stack(pm._widgets.stack), sort_keys=True).encode())
-    digest.update(json.dumps(_dump_lookups(pm), sort_keys=True).encode())
-    return digest.hexdigest()
 
 
 def _smoke_import(pm_mod, discover_mod) -> None:

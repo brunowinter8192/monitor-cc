@@ -8,18 +8,33 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from src.gpu_pane.pane import _render_pane, _toggle_state, _button_regions
 
 _FIXED_TS = 1800000000.0
 _PANE_WIDTHS = (100, 40)
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     render_pane, toggle_state, button_regions = _import_gpu()
     orig_time = _time_mod.time
-    _time_mod.time = lambda: _FIXED_TS
+    _time_mod.time = make_fixed_clock()
+    guarded_sha256(toggle_state, render_pane, button_regions, orig_time)
+
+
+# FUNCTIONS
+
+def _import_gpu():
+    return _render_pane, _toggle_state, _button_regions
+
+
+def make_fixed_clock():
+    return lambda: _FIXED_TS
+
+
+def guarded_sha256(toggle_state, render_pane, button_regions, orig_time):
     try:
         digest = hashlib.sha256()
         presets, arbitrary, anomalies, today_errors, error_counts, collections = _make_fixtures()
@@ -33,13 +48,6 @@ def main():
     finally:
         _time_mod.time = orig_time
         toggle_state.clear()
-
-
-# FUNCTIONS
-
-def _import_gpu():
-    from src.gpu_pane.pane import _render_pane, _toggle_state, _button_regions
-    return _render_pane, _toggle_state, _button_regions
 
 
 def _make_fixtures() -> tuple:
@@ -74,14 +82,6 @@ def _make_fixtures() -> tuple:
     return presets, arbitrary, anomalies, today_errors, error_counts, collections
 
 
-def _strip_ansi_for_match(line: str) -> str:
-    return _ANSI_RE.sub('', line)
-
-
-def _regions_for_hash(regions: dict) -> list:
-    return sorted([list(k) + list(v) for k, v in regions.items()])
-
-
 def _hash_one_width(digest, render_pane, button_regions, pane_width: int, presets: list,
                      arbitrary: list, anomalies: list, today_errors: list, error_counts: dict,
                      collections: list) -> None:
@@ -101,6 +101,14 @@ def _hash_one_width(digest, render_pane, button_regions, pane_width: int, preset
     digest.update(f'width={pane_width}|search={query}|'.encode())
     digest.update(searched.encode())
     digest.update(json.dumps(_regions_for_hash(dict(button_regions)), sort_keys=True).encode())
+
+
+def _regions_for_hash(regions: dict) -> list:
+    return sorted([list(k) + list(v) for k, v in regions.items()])
+
+
+def _strip_ansi_for_match(line: str) -> str:
+    return _ANSI_RE.sub('', line)
 
 
 if __name__ == '__main__':

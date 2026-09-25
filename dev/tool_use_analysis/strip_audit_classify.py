@@ -5,15 +5,12 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-_src_dir = os.path.join(
-    os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent)),
-    'src',
-)
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
+_root_dir = os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent))
+if _root_dir not in sys.path:
+    sys.path.insert(0, _root_dir)
 
-from proxy.strip_vocab import RULES, classify_req as vocab_classify_req
-from proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
+from src.proxy.strip_vocab import RULES, classify_req as vocab_classify_req
+from src.proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
 
 _TEMPLATE_TO_RULE = {
     'task-tools-nag':      'stripped_task_tools_nag',

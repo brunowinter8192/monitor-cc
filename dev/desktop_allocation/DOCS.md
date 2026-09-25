@@ -64,7 +64,7 @@ summary.
 
 ---
 
-### 02_context_comparison_probe.py (30 LOC)
+### 02_context_comparison_probe.py (41 LOC)
 
 **Purpose:** Orchestrates the TCC-boundary comparison across CC-Bash/launchd/bundle-exec
 contexts; entry point only.
@@ -113,7 +113,7 @@ aggregation for the comparison report.
 
 ---
 
-### 03_field_availability_probe.py (52 LOC)
+### 03_field_availability_probe.py (68 LOC)
 
 **Purpose:** Orchestrates the full CGWindow field dump across execution contexts; entry point
 only.
@@ -224,7 +224,7 @@ steps that make up the probe's run.
 
 ---
 
-### 05_window_detection_probe.py (41 LOC)
+### 05_window_detection_probe.py (73 LOC)
 
 **Purpose:** Orchestrates the tmux/OSC-2/CotEditor window-detection trials; entry point only.
 **Reads:** —. **Writes:** —.

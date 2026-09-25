@@ -16,6 +16,8 @@ CHAR_BUCKETS = [
 PREFIX_EXAMPLE_CHARS = 200
 
 
+# FUNCTIONS
+
 @dataclass(slots=True, frozen=True)
 class ToolUse:
     id: str
@@ -78,8 +80,6 @@ class PrefixBucket:
     def mean_chars(self) -> int:
         return self.total_chars // self.count
 
-
-# FUNCTIONS
 
 def load_proxy(paths: list) -> list:
     events = []

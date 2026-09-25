@@ -13,14 +13,24 @@ _kEventParamDirect   = 0x2D2D2D2D
 _typeEventHotKeyID   = 0x686B6964
 _eventNotHandledErr  = -9874
 
-class _EventHotKeyID(ctypes.Structure):
-    _fields_ = [('signature', ctypes.c_uint32), ('id', ctypes.c_uint32)]
-
-class _EventTypeSpec(ctypes.Structure):
-    _fields_ = [('eventClass', ctypes.c_uint32), ('eventKind', ctypes.c_uint32)]
+_EventHotKeyID = type('_EventHotKeyID', (ctypes.Structure,), {'_fields_': [('signature', ctypes.c_uint32), ('id', ctypes.c_uint32)]})
+_EventTypeSpec = type('_EventTypeSpec', (ctypes.Structure,), {'_fields_': [('eventClass', ctypes.c_uint32), ('eventKind', ctypes.c_uint32)]})
 
 _HOTKEY_EVENT_SPEC = _EventTypeSpec(0x6B657962, 6)
 _EventHandlerProcPtr = ctypes.CFUNCTYPE(_OSStatus, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+
+
+# ORCHESTRATOR
+
+def main() -> None:
+    carbon = _load_carbon()
+    _check_symbols_resolve(carbon)
+    os.environ.setdefault('LSUIElement', '1')
+    app = _ProbeApp()
+    _cb, _hk_ref = _register_probe_hotkey(carbon)
+    app._probe_cb, app._probe_hk_ref = _cb, _hk_ref
+    app.run()
+
 
 # FUNCTIONS
 
@@ -49,6 +59,7 @@ def _load_carbon():
     carbon.GetCurrentEventTime.argtypes = []
     return carbon
 
+
 def _check_symbols_resolve(carbon) -> None:
     t1 = carbon.GetCurrentEventTime()
     t2 = carbon.GetCurrentEventTime()
@@ -56,6 +67,12 @@ def _check_symbols_resolve(carbon) -> None:
     assert t2 >= t1, f'GetCurrentEventTime not monotonic: t1={t1} t2={t2}'
     print(f'[check 1] GetCurrentEventTime resolves: t1={t1:.6f}s t2={t2:.6f}s '
           f'delta={(t2 - t1) * 1000:.4f}ms (seconds since boot) — OK')
+
+
+class _ProbeApp(rumps.App):
+    def __init__(self):
+        super().__init__('GetEventTime probe', quit_button=None, menu=[])
+
 
 def _register_probe_hotkey(carbon) -> None:
     target = carbon.GetApplicationEventTarget()
@@ -92,20 +109,6 @@ def _register_probe_hotkey(carbon) -> None:
         print('[check 2] Cmd+Shift+9 registered — press it anywhere to see a live delta. Ctrl+C to exit.')
     return cb, hk_ref
 
-# ORCHESTRATOR
-
-class _ProbeApp(rumps.App):
-    def __init__(self):
-        super().__init__('GetEventTime probe', quit_button=None, menu=[])
-
-def main() -> None:
-    carbon = _load_carbon()
-    _check_symbols_resolve(carbon)
-    os.environ.setdefault('LSUIElement', '1')
-    app = _ProbeApp()
-    _cb, _hk_ref = _register_probe_hotkey(carbon)
-    app._probe_cb, app._probe_hk_ref = _cb, _hk_ref
-    app.run()
 
 if __name__ == '__main__':
     main()

@@ -31,7 +31,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### run_all.py (70 LOC)
+### run_all.py (74 LOC)
 
 **Purpose:** Runs every test module of this directory as one parallel fail-fast strand and writes a fixed-name report.
 **Reads:** the `test_*.py` modules (executed via `runpy`).
@@ -41,7 +41,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### probe_bg_task_live.py (198 LOC)
+### probe_bg_task_live.py (202 LOC)
 
 **Purpose:** Live probe comparing an old zero-byte predicate against the current active-background check on a real or synthetic task; benchmarks the process-cache tick cost.
 **Reads:** a real background task output file, or its own synthetic writer.
@@ -51,7 +51,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### probe_replay_cli_chained.py (116 LOC)
+### probe_replay_cli_chained.py (151 LOC)
 
 **Purpose:** Replays every historical block fire of the hooks the chained-CLI hook replaced, reporting still-blocks versus now-passes per old hook.
 **Reads:** the main checkout hook-fire log.
@@ -61,7 +61,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_bg_task_detection.py (106 LOC)
+### test_bg_task_detection.py (107 LOC)
 
 **Purpose:** Smoke for the active-background check: match, no-match, prefix boundary, fail-open and TTL gate; hermetic, no real process table.
 **Reads:** nothing external; the tasks base is redirected to a scratch dir.
@@ -141,7 +141,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_po_read.py (99 LOC)
+### test_block_po_read.py (95 LOC)
 
 **Purpose:** Smoke for the persisted-output read hook: blocked readers, allow cases and real-file size-boundary cases.
 **Reads:** its own temp-dir fixtures.
@@ -231,7 +231,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_header_capture.py (173 LOC)
+### test_header_capture.py (190 LOC)
 
 **Purpose:** Smoke for proxy header-capture logic: beta-header extraction and response-header filtering.
 **Reads:** its own mock header objects; no live mitmproxy.
@@ -241,7 +241,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_hook_setup_main_branch_gate.py (124 LOC)
+### test_hook_setup_main_branch_gate.py (125 LOC)
 
 **Purpose:** Smoke for the two-condition install gate of hook setup: committed on main and present in tree, either failing skips.
 **Reads:** nothing; stub git and tree queries.
@@ -261,7 +261,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_log_janitor.py (60 LOC)
+### test_log_janitor.py (58 LOC)
 
 **Purpose:** Smoke for the JSONL log janitor: old record dropped, recent, empty and naive-timestamp records kept.
 **Reads:** its own temp-file fixtures.
@@ -301,7 +301,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### verify_bg_task_detection_live.py (76 LOC)
+### verify_bg_task_detection_live.py (90 LOC)
 
 **Purpose:** Verification of the active-background check against a real writer subprocess and the real `lsof`: detected while open, cleared after close.
 **Reads:** the real process table via `lsof`; a scratch tasks dir.

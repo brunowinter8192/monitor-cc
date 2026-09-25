@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import argparse
 import json
@@ -12,6 +11,29 @@ DEFAULT_MAX_RESULT_CHARS = 1500
 
 
 # ORCHESTRATOR
+
+def main():
+    args = _parse_args()
+    run(args.proxy_jsonl, args.max_input_chars, args.max_result_chars,
+        args.with_text, args.output)
+
+
+# FUNCTIONS
+
+def _parse_args():
+    p = argparse.ArgumentParser(
+        description='Chronological tool_use/tool_result transcript from proxy-log JSONL snapshot(s).'
+    )
+    p.add_argument('proxy_jsonl', nargs='+', help='One or more proxy-log JSONL paths')
+    p.add_argument('--max-input-chars', type=int, default=DEFAULT_MAX_INPUT_CHARS,
+                   help=f'Truncate tool_use input JSON (default {DEFAULT_MAX_INPUT_CHARS})')
+    p.add_argument('--max-result-chars', type=int, default=DEFAULT_MAX_RESULT_CHARS,
+                   help=f'Truncate tool_result content (default {DEFAULT_MAX_RESULT_CHARS})')
+    p.add_argument('--with-text', action='store_true', default=False,
+                   help='Also include assistant/user text blocks (default: tool blocks only)')
+    p.add_argument('--output', default=None, help='Output markdown path (default: stdout)')
+    return p.parse_args()
+
 
 def run(paths, max_input, max_result, with_text, out_path):
     sources = []
@@ -40,8 +62,6 @@ def run(paths, max_input, max_result, with_text, out_path):
         print(report)
 
 
-# FUNCTIONS
-
 def _find_snapshot(path):
     best, best_count, n_events = None, -1, 0
     with open(path, encoding='utf-8') as f:
@@ -69,20 +89,6 @@ def _count_tool_use(msgs):
         if isinstance(content, list):
             n += sum(1 for b in content if isinstance(b, dict) and b.get('type') == 'tool_use')
     return n
-
-
-def _result_to_text(content):
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for blk in content:
-            if isinstance(blk, dict):
-                parts.append(blk.get('text', '') or json.dumps(blk, ensure_ascii=False))
-            else:
-                parts.append(str(blk))
-        return '\n'.join(parts)
-    return str(content)
 
 
 def _render_transcript(msgs, max_input, max_result, with_text):
@@ -128,6 +134,20 @@ def _render_transcript(msgs, max_input, max_result, with_text):
     return lines
 
 
+def _result_to_text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for blk in content:
+            if isinstance(blk, dict):
+                parts.append(blk.get('text', '') or json.dumps(blk, ensure_ascii=False))
+            else:
+                parts.append(str(blk))
+        return '\n'.join(parts)
+    return str(content)
+
+
 def _build_header(sources, total_tool_use):
     ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
     L = [f'# Tool-Use Transcript — {ts}', '', '## Source JSONLs', '']
@@ -140,22 +160,5 @@ def _build_header(sources, total_tool_use):
     return '\n'.join(L)
 
 
-def _parse_args():
-    p = argparse.ArgumentParser(
-        description='Chronological tool_use/tool_result transcript from proxy-log JSONL snapshot(s).'
-    )
-    p.add_argument('proxy_jsonl', nargs='+', help='One or more proxy-log JSONL paths')
-    p.add_argument('--max-input-chars', type=int, default=DEFAULT_MAX_INPUT_CHARS,
-                   help=f'Truncate tool_use input JSON (default {DEFAULT_MAX_INPUT_CHARS})')
-    p.add_argument('--max-result-chars', type=int, default=DEFAULT_MAX_RESULT_CHARS,
-                   help=f'Truncate tool_result content (default {DEFAULT_MAX_RESULT_CHARS})')
-    p.add_argument('--with-text', action='store_true', default=False,
-                   help='Also include assistant/user text blocks (default: tool blocks only)')
-    p.add_argument('--output', default=None, help='Output markdown path (default: stdout)')
-    return p.parse_args()
-
-
 if __name__ == '__main__':
-    args = _parse_args()
-    run(args.proxy_jsonl, args.max_input_chars, args.max_result_chars,
-        args.with_text, args.output)
+    main()

@@ -6,6 +6,7 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
+from src.proxy.message_passes import _apply_role_system_strip
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
@@ -15,21 +16,47 @@ REPORT_PATH = REPORT_DIR / 'mid_turn_user_msg_preserve_probe_report.md'
 
 POSTS_STEM = 'api_requests_opus_posts_1786051932'
 WEBSEARCH_STEM = 'api_requests_opus_websearch_1786052022'
+INITIAL_ALL_PASS = True
+
+
+# ORCHESTRATOR
+
+def main() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    results = [
+        _check_preserve_case(),
+        _check_noise_still_stripped(
+            'deferred_tools_still_stripped', 'fa0ba243-86b1-47ef-aa32-fa9a9a384c38', 1,
+            'The following deferred tools are now available via ToolSearch',
+        ),
+        _check_noise_still_stripped(
+            'task_tools_nag_still_stripped', '9f02e2cd-209d-45a8-b98b-d06fcaf117c9', 33,
+            "The task tools haven't been used recently",
+        ),
+        _check_noise_still_stripped(
+            'date_changed_still_stripped', '1216af75-a704-4bfe-9448-921ac6ef8075', 49,
+            'The date has changed.',
+        ),
+    ]
+    lines = compute_lines()
+    append_session_stems_line(lines)
+    lines.append('')
+    lines.append('| case | pass | detail |')
+    lines.append('|---|---|---|')
+    all_pass = INITIAL_ALL_PASS
+    all_pass = collect_all_pass(results, all_pass, lines)
+    lines.append('')
+    append_overall_verdict(lines, all_pass)
+    REPORT_PATH.write_text('\n'.join(lines))
+    print_report_written()
+    print_results(results)
+    print_all_pass(all_pass)
+    exit_with_status(all_pass)
+
 
 # FUNCTIONS
 
-def _load_messages_for_flow(stem: str, flow_id: str) -> list:
-    path = LOG_DIR / f'{stem}_original.jsonl'
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            e = json.loads(line)
-            if e.get('flow_id', '') == flow_id:
-                return e['payload']['messages']
-    raise AssertionError(f'flow_id {flow_id} not found in {path}')
-
-
 def _check_preserve_case() -> dict:
-    from proxy.message_passes import _apply_role_system_strip
     flow_id = '4b4d396b-a26e-4b44-ac32-144763cc786b'
     msg_idx = 274
     messages = _load_messages_for_flow(POSTS_STEM, flow_id)
@@ -52,8 +79,17 @@ def _check_preserve_case() -> dict:
     }
 
 
+def _load_messages_for_flow(stem: str, flow_id: str) -> list:
+    path = LOG_DIR / f'{stem}_original.jsonl'
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            e = json.loads(line)
+            if e.get('flow_id', '') == flow_id:
+                return e['payload']['messages']
+    raise AssertionError(f'flow_id {flow_id} not found in {path}')
+
+
 def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected_prefix: str) -> dict:
-    from proxy.message_passes import _apply_role_system_strip
     messages = _load_messages_for_flow(WEBSEARCH_STEM, flow_id)
     original_content = messages[msg_idx]['content']
     new_messages, mods, _removed, changed_idxs, _injected, _ops = _apply_role_system_strip(messages)
@@ -71,40 +107,39 @@ def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected
     }
 
 
-# ORCHESTRATOR
-def main() -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    results = [
-        _check_preserve_case(),
-        _check_noise_still_stripped(
-            'deferred_tools_still_stripped', 'fa0ba243-86b1-47ef-aa32-fa9a9a384c38', 1,
-            'The following deferred tools are now available via ToolSearch',
-        ),
-        _check_noise_still_stripped(
-            'task_tools_nag_still_stripped', '9f02e2cd-209d-45a8-b98b-d06fcaf117c9', 33,
-            "The task tools haven't been used recently",
-        ),
-        _check_noise_still_stripped(
-            'date_changed_still_stripped', '1216af75-a704-4bfe-9448-921ac6ef8075', 49,
-            'The date has changed.',
-        ),
-    ]
-    lines = ['# Mid-turn user message preserve-guard probe (issue #61, CC 2.1.223)', '']
+def compute_lines():
+    return ['# Mid-turn user message preserve-guard probe (issue #61, CC 2.1.223)', '']
+
+
+def append_session_stems_line(lines):
     lines.append(f'Preserve case session: `{POSTS_STEM}`. Regression-noise session: `{WEBSEARCH_STEM}`.')
-    lines.append('')
-    lines.append('| case | pass | detail |')
-    lines.append('|---|---|---|')
-    all_pass = True
+
+
+def collect_all_pass(results, all_pass, lines):
     for r in results:
         all_pass = all_pass and r['ok']
         lines.append(f"| {r['label']} | {'PASS' if r['ok'] else 'FAIL'} | {r['detail']} |")
-    lines.append('')
+    return all_pass
+
+
+def append_overall_verdict(lines, all_pass):
     lines.append(f"## Overall: {'ALL PASS' if all_pass else 'FAILURES PRESENT'}")
-    REPORT_PATH.write_text('\n'.join(lines))
+
+
+def print_report_written():
     print(f'Report written: {REPORT_PATH}')
+
+
+def print_results(results):
     for r in results:
         print(('PASS' if r['ok'] else 'FAIL'), r['label'], '-', r['detail'])
+
+
+def print_all_pass(all_pass):
     print('ALL PASS' if all_pass else 'FAILURES PRESENT')
+
+
+def exit_with_status(all_pass):
     sys.exit(0 if all_pass else 1)
 
 

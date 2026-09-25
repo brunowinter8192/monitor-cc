@@ -7,20 +7,19 @@ import sys
 import time
 from pathlib import Path
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def probe_a_workflow():
     args = _parse_args()
     Path(args.outfile).parent.mkdir(parents=True, exist_ok=True)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    install_sigterm_exit_handler()
+    install_sigint_exit_handler()
     _run_probe(args.sessions, args.duration, args.outfile)
-    print(f"[probe_a] done → {args.outfile}")
+    print_probe_a_done(args)
 
 
 # FUNCTIONS
-
 
 def _parse_args():
     p = argparse.ArgumentParser(description="Probe A: window_activity polling")
@@ -30,14 +29,12 @@ def _parse_args():
     return p.parse_args()
 
 
-def _get_window_activity(session):
-    r = subprocess.run(
-        ["tmux", "display-message", "-t", f"{session}:0", "-p", "#{window_activity}"],
-        capture_output=True,
-        text=True,
-    )
-    val = r.stdout.strip()
-    return int(val) if val.isdigit() else 0
+def install_sigterm_exit_handler():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+
+def install_sigint_exit_handler():
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 
 def _run_probe(sessions, duration, outfile):
@@ -61,6 +58,20 @@ def _run_probe(sessions, duration, outfile):
             remaining = 1.0 - elapsed
             if remaining > 0:
                 time.sleep(remaining)
+
+
+def _get_window_activity(session):
+    r = subprocess.run(
+        ["tmux", "display-message", "-t", f"{session}:0", "-p", "#{window_activity}"],
+        capture_output=True,
+        text=True,
+    )
+    val = r.stdout.strip()
+    return int(val) if val.isdigit() else 0
+
+
+def print_probe_a_done(args):
+    print(f"[probe_a] done → {args.outfile}")
 
 
 if __name__ == "__main__":

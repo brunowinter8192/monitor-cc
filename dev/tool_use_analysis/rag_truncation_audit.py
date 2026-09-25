@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import glob
 import argparse
 import sys
 from datetime import datetime
@@ -12,6 +13,46 @@ from rag_truncation_audit_report import _build_report
 
 
 # ORCHESTRATOR
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Classify [N characters truncated] occurrences in Opus proxy logs.'
+    )
+    parser.add_argument(
+        'proxy_jsonl', nargs='*',
+        help='Proxy JSONL path(s). Default: all src/logs/api_requests_opus_monitor_cc_*.jsonl'
+    )
+    parser.add_argument('--output', default='', help='Output markdown file (default: auto-dated)')
+    args = parser.parse_args()
+
+    if args.proxy_jsonl:
+        paths = args.proxy_jsonl
+    else:
+        root  = Path(__file__).parent.parent.parent
+        paths = compute_paths(glob, root)
+        if not paths:
+            print('No proxy logs found under src/logs/', file=sys.stderr)
+            sys.exit(1)
+
+    if args.output:
+        out = args.output
+    else:
+        date = datetime.now().strftime('%Y%m%d')
+        out  = compute_out(date)
+
+    run(paths, out)
+
+
+# FUNCTIONS
+
+
+def compute_paths(glob, root):
+    return sorted(glob.glob(str(root / 'src/logs/api_requests_opus_monitor_cc_*.jsonl')))
+
+
+def compute_out(date):
+    return str(Path(__file__).parent / f'{date}_rag_truncation_audit.md')
+
 
 def run(jsonl_paths, output_path):
     per_source_events = {}
@@ -31,8 +72,6 @@ def run(jsonl_paths, output_path):
     _write_output(report, output_path)
 
 
-# FUNCTIONS
-
 def _write_output(report, path):
     if path:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -44,30 +83,4 @@ def _write_output(report, path):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Classify [N characters truncated] occurrences in Opus proxy logs.'
-    )
-    parser.add_argument(
-        'proxy_jsonl', nargs='*',
-        help='Proxy JSONL path(s). Default: all src/logs/api_requests_opus_monitor_cc_*.jsonl'
-    )
-    parser.add_argument('--output', default='', help='Output markdown file (default: auto-dated)')
-    args = parser.parse_args()
-
-    if args.proxy_jsonl:
-        paths = args.proxy_jsonl
-    else:
-        import glob
-        root  = Path(__file__).parent.parent.parent
-        paths = sorted(glob.glob(str(root / 'src/logs/api_requests_opus_monitor_cc_*.jsonl')))
-        if not paths:
-            print('No proxy logs found under src/logs/', file=sys.stderr)
-            sys.exit(1)
-
-    if args.output:
-        out = args.output
-    else:
-        date = datetime.now().strftime('%Y%m%d')
-        out  = str(Path(__file__).parent / f'{date}_rag_truncation_audit.md')
-
-    run(paths, out)
+    main()

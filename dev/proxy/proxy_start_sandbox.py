@@ -1,4 +1,6 @@
 # INFRASTRUCTURE
+import difflib
+import json
 import hashlib
 import os
 import re
@@ -224,8 +226,6 @@ def drop_launcher_log_lines(result: dict) -> dict:
 
 
 def diff_report(old: dict, new: dict) -> str:
-    import difflib
-    import json
     a = json.dumps(old, indent=1, sort_keys=True).splitlines()
     b = json.dumps(new, indent=1, sort_keys=True).splitlines()
     return '\n'.join(difflib.unified_diff(a, b, 'old', 'new', lineterm=''))

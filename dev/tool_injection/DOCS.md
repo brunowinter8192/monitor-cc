@@ -11,7 +11,7 @@ Loads each configured MCP plugin server in an isolated subprocess with its own v
 
 ## Modules
 
-### 01_extract_schemas.py (122 LOC)
+### 01_extract_schemas.py (141 LOC)
 
 **Purpose:** Extracts tool schemas from the configured FastMCP plugin servers into the proxy schema store in Anthropic API format.
 **Reads:** each plugin's server file in a sibling checkout outside this project, loaded in its own venv.

@@ -27,20 +27,26 @@ CASES = {
 
 
 # ORCHESTRATOR
+
 def equivalence_workflow_case(name: str) -> None:
     case_dir = make_case_dir()
-    project = case_dir / 'proj'
+    project = compute_project(case_dir)
     project.mkdir()
-    spec = resolve_spec(CASES[name], project)
-    try:
-        old = run_variant('old', spec, case_dir, project)
-        new = run_variant('new', spec, case_dir, project)
-    finally:
-        shutil.rmtree(case_dir, ignore_errors=True)
+    spec = compute_spec(name, project)
+    old, new = collect_old(spec, case_dir, project)
     assert_equal(name, old, drop_launcher_log_lines(new))
 
 
 # FUNCTIONS
+
+def compute_project(case_dir):
+    return case_dir / 'proj'
+
+
+def compute_spec(name, project):
+    return resolve_spec(CASES[name], project)
+
+
 def resolve_spec(spec: dict, project: Path) -> dict:
     resolved = dict(spec)
     if 'args' in resolved:
@@ -48,6 +54,15 @@ def resolve_spec(spec: dict, project: Path) -> dict:
     else:
         resolved['args'] = []
     return resolved
+
+
+def collect_old(spec, case_dir, project):
+    try:
+        old = run_variant('old', spec, case_dir, project)
+        new = run_variant('new', spec, case_dir, project)
+    finally:
+        shutil.rmtree(case_dir, ignore_errors=True)
+    return old, new
 
 
 def assert_equal(name: str, old: dict, new: dict) -> None:
@@ -60,9 +75,11 @@ def make_strand(name: str):
     return lambda: equivalence_workflow_case(name)
 
 
-for _name in CASES:
-    globals()[f'case_{_name}'] = make_strand(_name)
+def register_case_strands(namespace: dict) -> list:
+    for name in CASES:
+        namespace[f'case_{name}'] = make_strand(name)
+    return [f'case_{n}' for n in CASES]
 
 
 if __name__ == '__main__':
-    sys.exit(strand_workflow(globals(), __file__, [f'case_{n}' for n in CASES], REPORT_PATH, 'verify_proxy_start_equivalence'))
+    sys.exit(strand_workflow(globals(), __file__, register_case_strands(globals()), REPORT_PATH, 'verify_proxy_start_equivalence'))

@@ -1,17 +1,18 @@
 # INFRASTRUCTURE
+import re as _re
 from test_strip_fix_fixtures import check
 from test_strip_fix_cases_badge import (
     _TT_MSG, _deltas_for_single_msg, _badge_for, _accumulate, _build_deltas,
     _ops_from_content_change,
 )
 
-# FUNCTIONS
-
 _NUDGE_A = ("First privately list what you need next; then request every item that doesn't "
             "depend on another's result in this one response.")
 _NUDGE_B = ("Only you see that command's output — the user's terminal shows at most a few lines "
             "of it. If the user needs to read any of it, put it in your reply.")
 
+
+# FUNCTIONS
 
 def tt10_nudge_prefixed_tag_badges_neither_word():
     cases = [
@@ -101,7 +102,6 @@ def tt13_lag_classifier_widens_for_nudge_shape():
 
 
 def tt14_rendered_header_badge_words_for_nudge_class():
-    import re as _re
     from src.proxy_display.render_turn import _build_req_header_line
     _ansi = _re.compile(r'\x1b\[[0-9;]*m')
 

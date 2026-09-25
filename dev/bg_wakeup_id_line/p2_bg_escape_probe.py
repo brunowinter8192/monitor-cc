@@ -14,23 +14,16 @@ sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
 
-from proxy import bg_escape
-from proxy.bg_escape import (
+from src.proxy import bg_escape
+from src.proxy.bg_escape import (
     _trigger_bg_escape, _extract_task_id, _derive_tmux_session_name, _send_escape_key,
 )
-from proxy.addon import ProxyAddon, _derive_worker_context
+from src.proxy.addon import ProxyAddon, _derive_worker_context
 
 _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"
 
 _RESULTS = []
-
-
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
-
 
 _WORDING_1 = (
     "Command running in background with ID: bg_task_alpha. "
@@ -44,7 +37,37 @@ _WORDING_2 = (
 )
 
 
+# ORCHESTRATOR
+
+def main():
+    ok = run_probe_workflow()
+    exit_with_status(ok)
+
+
 # FUNCTIONS
+
+def run_probe_workflow():
+    print("=" * 70)
+    print("bg_escape probe — tmux-Escape-on-launch-ack mechanism")
+    print("=" * 70)
+    test_dedup_repeated_acks()
+    test_two_distinct_ids()
+    test_both_wordings_trigger()
+    test_main_context_never_triggers()
+    test_tmux_session_name_derivation()
+    test_fire_writes_log_line()
+    test_real_tmux_roundtrip()
+    test_failure_isolation()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+
+    _write_report(passed, total)
+    return passed == total
+
 
 def test_dedup_repeated_acks():
     print("\n[Test 1] Dedup across repeated acks (142/169 real shape)")
@@ -57,6 +80,12 @@ def test_dedup_repeated_acks():
             _trigger_bg_escape(removed, "worker:esc-live", str(WORKTREE_ROOT))
     check("169 simulated requests, 142 carrying the ack → exactly 1 Escape sent", len(sent_calls) == 1)
     check("task id recorded in dedup store after firing", "bg_task_alpha" in bg_escape._escaped_task_ids)
+
+
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
 
 
 def test_two_distinct_ids():
@@ -214,30 +243,6 @@ def test_failure_isolation():
           flow.request.content is not None and len(flow.request.content) > 0)
 
 
-class _FakeHeaders(dict):
-    def get(self, k, default=None):
-        return super().get(k.lower(), default) if isinstance(k, str) else default
-
-    def pop(self, k, default=None):
-        return dict.pop(self, k.lower(), default)
-
-
-class _FakeRequest:
-    def __init__(self, payload):
-        self.method = "POST"
-        self.pretty_host = "api.anthropic.com"
-        self.path = "/v1/messages"
-        self.headers = _FakeHeaders()
-        self.content = json.dumps(payload).encode("utf-8")
-
-
-class _FakeFlow:
-    def __init__(self, payload):
-        self.request = _FakeRequest(payload)
-        self.metadata = {}
-        self.id = "fake-flow-id"
-
-
 def _build_fake_flow_with_ack():
     payload = {
         "model": "claude-opus-4-6",
@@ -257,29 +262,28 @@ def _build_fake_flow_with_ack():
     return _FakeFlow(payload)
 
 
-# ORCHESTRATOR
+class _FakeFlow:
+    def __init__(self, payload):
+        self.request = _FakeRequest(payload)
+        self.metadata = {}
+        self.id = "fake-flow-id"
 
-def run_probe_workflow():
-    print("=" * 70)
-    print("bg_escape probe — tmux-Escape-on-launch-ack mechanism")
-    print("=" * 70)
-    test_dedup_repeated_acks()
-    test_two_distinct_ids()
-    test_both_wordings_trigger()
-    test_main_context_never_triggers()
-    test_tmux_session_name_derivation()
-    test_fire_writes_log_line()
-    test_real_tmux_roundtrip()
-    test_failure_isolation()
 
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
+class _FakeRequest:
+    def __init__(self, payload):
+        self.method = "POST"
+        self.pretty_host = "api.anthropic.com"
+        self.path = "/v1/messages"
+        self.headers = _FakeHeaders()
+        self.content = json.dumps(payload).encode("utf-8")
 
-    _write_report(passed, total)
-    return passed == total
+
+class _FakeHeaders(dict):
+    def get(self, k, default=None):
+        return super().get(k.lower(), default) if isinstance(k, str) else default
+
+    def pop(self, k, default=None):
+        return dict.pop(self, k.lower(), default)
 
 
 def _write_report(passed, total):
@@ -301,6 +305,9 @@ def _write_report(passed, total):
     print(f"\nReport written to: {out_path}")
 
 
-if __name__ == "__main__":
-    ok = run_probe_workflow()
+def exit_with_status(ok):
     sys.exit(0 if ok else 1)
+
+
+if __name__ == '__main__':
+    main()

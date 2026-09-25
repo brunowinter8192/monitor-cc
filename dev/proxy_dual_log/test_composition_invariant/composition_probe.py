@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import sys
+import traceback as tb
 from datetime import datetime
 from pathlib import Path
 
@@ -9,19 +10,49 @@ from composition_probe_ops import _strip_cache_control, _block_text, compose_blo
 from composition_probe_passes import run_passes_and_collect_ops
 from composition_probe_corpus import run_corpus, get_money_shot_case
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 REPORT_DIR = _AREA_ROOT / "01_reports"
+
+
+# ORCHESTRATOR
+
+def composition_probe_workflow():
+    _WAKEUP_TEXT = load_imports()
+    wakeup_core = _WAKEUP_TEXT.rstrip('\n')
+
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    ts       = datetime.now().strftime("%Y%m%d")
+    ts_human = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    report_path = compute_report_path(ts)
+
+    lines = []
+    emit = make_emitter(lines)
+
+    _emit_intro(emit, ts_human)
+    _emit_money_shot(emit, wakeup_core)
+    R = _emit_corpus_run(emit)
+    _emit_op_shape_guide(emit)
+    _emit_verdict(emit, R)
+
+    run_with_open(report_path, lines)
+    print_report(report_path)
+
 
 # FUNCTIONS
 
-def fmt_spans(spans: list, max_text: int = 80) -> list:
-    lines = []
-    for tag, text in spans:
-        preview = repr(text[:max_text]) + ("..." if len(text) > max_text else "")
-        lines.append(f"  ({tag!r:12}, {preview})")
-    return lines
+def load_imports():
+    from src.proxy.strip_bg_completed import _WAKEUP_TEXT
+    return _WAKEUP_TEXT
+
+
+def compute_report_path(ts):
+    return REPORT_DIR / f"composition_probe_{ts}.md"
+
+
+def make_emitter(lines):
+    def emit(*parts):
+        lines.append("".join(str(p) for p in parts) + "\n")
+    return emit
 
 
 def _emit_intro(emit, ts_human: str) -> None:
@@ -82,9 +113,32 @@ def _emit_money_shot(emit, wakeup_core: str) -> None:
             emit(f"- Inv2 Cfwd recon: {'✅ PASS' if 'Cfwd_recon_FAIL' not in detail else '❌ FAIL'}")
             emit(f"- **Overall: {'✅ BYTE-EXACT' if ok else '❌ ' + detail}**")
     except Exception as ex:
-        import traceback as tb
         emit(f"ERROR: {ex}")
         emit("```"); emit(tb.format_exc()); emit("```")
+
+
+def fmt_spans(spans: list, max_text: int = 80) -> list:
+    lines = []
+    for tag, text in spans:
+        preview = repr(text[:max_text]) + ("..." if len(text) > max_text else "")
+        lines.append(f"  ({tag!r:12}, {preview})")
+    return lines
+
+
+def _emit_corpus_run(emit):
+    emit()
+    emit("## Corpus Run — All Entries Across 5 Stems")
+    emit()
+
+    try:
+        R = run_corpus()
+        _emit_corpus_summary_table(emit, R)
+        return R
+
+    except Exception as ex:
+        emit(f"ERROR in corpus run: {ex}")
+        emit("```"); emit(tb.format_exc()); emit("```")
+        return None
 
 
 def _emit_corpus_summary_table(emit, R: dict) -> None:
@@ -122,23 +176,6 @@ def _emit_corpus_summary_table(emit, R: dict) -> None:
     else:
         emit()
         emit("**No failing cases — all blocks pass both invariants byte-exact ✅**")
-
-
-def _emit_corpus_run(emit):
-    emit()
-    emit("## Corpus Run — All Entries Across 5 Stems")
-    emit()
-
-    try:
-        R = run_corpus()
-        _emit_corpus_summary_table(emit, R)
-        return R
-
-    except Exception as ex:
-        import traceback as tb
-        emit(f"ERROR in corpus run: {ex}")
-        emit("```"); emit(tb.format_exc()); emit("```")
-        return None
 
 
 def _emit_op_shape_guide(emit) -> None:
@@ -183,29 +220,12 @@ def _emit_verdict(emit, R) -> None:
         emit("Results unavailable (corpus run failed).")
 
 
-# ORCHESTRATOR
-
-def composition_probe_workflow():
-    from src.proxy.strip_bg_completed import _WAKEUP_TEXT
-    wakeup_core = _WAKEUP_TEXT.rstrip('\n')
-
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    ts       = datetime.now().strftime("%Y%m%d")
-    ts_human = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    report_path = REPORT_DIR / f"composition_probe_{ts}.md"
-
-    lines = []
-    def emit(*parts):
-        lines.append("".join(str(p) for p in parts) + "\n")
-
-    _emit_intro(emit, ts_human)
-    _emit_money_shot(emit, wakeup_core)
-    R = _emit_corpus_run(emit)
-    _emit_op_shape_guide(emit)
-    _emit_verdict(emit, R)
-
+def run_with_open(report_path, lines):
     with open(report_path, "w") as fout:
         fout.writelines(lines)
+
+
+def print_report(report_path):
     print(f"Report: {report_path}")
 
 

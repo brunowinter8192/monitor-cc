@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import json
 import importlib
 import os
 import subprocess
@@ -11,21 +12,33 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == '--case':
-        globals()['case_' + sys.argv[2]]()
+        run_selected_case()
         print('PASS')
         return
-    names = sorted(n[len('case_'):] for n in globals() if n.startswith('case_'))
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
-        results = list(pool.map(spawn_case, names))
+    names = compute_names()
+    results = collect_results(names)
     report(results)
 
 
 # FUNCTIONS
+
+def run_selected_case():
+    globals()['case_' + sys.argv[2]]()
+
+
+def compute_names():
+    return sorted(n[len('case_'):] for n in globals() if n.startswith('case_'))
+
+
+def collect_results(names):
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        results = list(pool.map(spawn_case, names))
+    return results
 
 
 def spawn_case(name: str) -> tuple:
@@ -140,7 +153,6 @@ def case_unknown_family_is_logged_once_and_request_still_forwarded() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         log = prepare(tmp)
         addon = importlib.import_module('src.proxy.addon').ProxyAddon()
-        import json
         for i in range(2):
             flow = FakeFlow(FakeRequest(json.dumps({'model': 'mystery-model', 'system': [], 'tools': [], 'messages': []}).encode(), {'x-request-id': f'r{i}'}))
             addon.request(flow)

@@ -1,11 +1,11 @@
 # INFRASTRUCTURE
-from proxy.message_passes_simple import _apply_bg_launch_ack_strip
-from proxy.strip_inject_delta import _process_messages_section, _MSG_CODE_TO_FN
-from proxy.diff_engine import _diff_messages, compose_block
-from proxy.logging import _normalize_msg_shape_for_hash
-from proxy.rule_ops import _ops_from_content_change
-from proxy.strip_vocab import attribute_chunk
-from proxy.strip_bg_launch_ack import (
+from src.proxy.message_passes_simple import _apply_bg_launch_ack_strip
+from src.proxy.strip_inject_delta import _process_messages_section, _MSG_CODE_TO_FN
+from src.proxy.diff_engine import _diff_messages, compose_block
+from src.proxy.logging import _normalize_msg_shape_for_hash
+from src.proxy.rule_ops import _ops_from_content_change
+from src.proxy.strip_vocab import attribute_chunk
+from src.proxy.strip_bg_launch_ack import (
     _BG_LAUNCH_ACK_MSG, _BG_LAUNCH_ACK_MSG_MAIN, _BG_AUTO_TIMEOUT_MSG, _BG_AUTO_TIMEOUT_MSG_MAIN,
 )
 

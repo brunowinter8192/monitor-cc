@@ -11,7 +11,7 @@ Synthetic pane entries, worker lists and coordinates go in. Each script seeds a 
 
 ## Modules
 
-### p1_worker_selection_click_probe.py (262 LOC)
+### p1_worker_selection_click_probe.py (270 LOC)
 
 **Purpose:** Proves both worker panes' header click regions have one entry per worker and a click matches the digit key's state change.
 **Reads:** nothing external; seeds worker lists directly.
@@ -21,7 +21,7 @@ Synthetic pane entries, worker lists and coordinates go in. Each script seeds a 
 
 ---
 
-### p2_copy_click_probe.py (224 LOC)
+### p2_copy_click_probe.py (233 LOC)
 
 **Purpose:** Proves each pane's copy-row registry has an entry per copyable row and a symbol-column click copies exactly what the key copies.
 **Reads:** nothing external; seeds pane data, clipboard stubbed.
@@ -31,7 +31,7 @@ Synthetic pane entries, worker lists and coordinates go in. Each script seeds a 
 
 ---
 
-### p3_button_click_probe.py (220 LOC)
+### p3_button_click_probe.py (228 LOC)
 
 **Purpose:** Proves the warnings refresh button and the proxy pane's search-bar header dispatch clicks identically to their keyboard equivalents.
 **Reads:** nothing external; seeds entries directly.
@@ -41,7 +41,7 @@ Synthetic pane entries, worker lists and coordinates go in. Each script seeds a 
 
 ---
 
-### p4_gpu_news_button_probe.py (273 LOC)
+### p4_gpu_news_button_probe.py (281 LOC)
 
 **Purpose:** Proves the gpu per-server button matches its digit key's subprocess call and both gpu and news refresh buttons dispatch without yielding to other regions.
 **Reads:** nothing external; synthetic preset and status data, subprocess launching patched.
@@ -51,7 +51,7 @@ Synthetic pane entries, worker lists and coordinates go in. Each script seeds a 
 
 ---
 
-### p5_proxy_message_copy_click_probe.py (86 LOC)
+### p5_proxy_message_copy_click_probe.py (97 LOC)
 
 **Purpose:** Entry point orchestrating the message, thinking and block copy-granularity suites and writing the combined report.
 **Reads:** nothing external.
@@ -61,7 +61,7 @@ Synthetic pane entries, worker lists and coordinates go in. Each script seeds a 
 
 ---
 
-### proxy_copy_probe_shared.py (58 LOC)
+### proxy_copy_probe_shared.py (59 LOC)
 
 **Purpose:** Shared fixtures of the copy suite: module handles, check recording, clipboard patch, entry builder and expanded render.
 **Reads:** nothing external.

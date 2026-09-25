@@ -11,7 +11,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ## Modules
 
-### render_recorded_request.py (109 LOC)
+### render_recorded_request.py (162 LOC)
 
 **Purpose:** Reconstructs the pane render for one recorded request straight from the on-disk dual log to verify a span-render fix.
 **Reads:** a fixed recorded session's forwarded, stripped and injected logs.
@@ -21,7 +21,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p4_blocklist_223_probe.py (151 LOC)
+### p4_blocklist_223_probe.py (153 LOC)
 
 **Purpose:** Verifies the CC 2.1.223 tool-blocklist extension end to end on the newest main-session recording.
 **Reads:** the newest main-session original and forwarded log pair.
@@ -31,7 +31,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p5_mid_turn_user_msg_preserve_probe.py (112 LOC)
+### p5_mid_turn_user_msg_preserve_probe.py (147 LOC)
 
 **Purpose:** Verifies the CC 2.1.223 mid-turn user-message preserve guard against a recorded incident plus a noise-still-strips case.
 **Reads:** two recorded sessions' original logs.
@@ -41,7 +41,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p6_no_flow_extra_prepend_probe.py (249 LOC)
+### p6_no_flow_extra_prepend_probe.py (284 LOC)
 
 **Purpose:** Verifies an expanded request body equals the request's own payload delta after the out-of-window prepend was removed, plus a reintroduction guard.
 **Reads:** two recorded sessions' forwarded, stripped and injected logs (overridable via arguments).
@@ -51,7 +51,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p7_blocklist_258_probe.py (207 LOC)
+### p7_blocklist_258_probe.py (212 LOC)
 
 **Purpose:** Verifies the CC 2.1.258 tool-blocklist extension and the Edit/Write file-mutation blocklist against the full live corpus.
 **Reads:** all original logs present at run time.
@@ -61,7 +61,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p1_measure_full_replacement_blast_radius.py (41 LOC)
+### p1_measure_full_replacement_blast_radius.py (59 LOC)
 
 **Purpose:** Entry point of the full-replacement blast-radius measurement: owns the corpus list and drives the engine and report.
 **Reads:** four recorded sessions' original logs.
@@ -81,7 +81,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### blast_radius_analysis.py (57 LOC)
+### blast_radius_analysis.py (52 LOC)
 
 **Purpose:** Trim, ratio and distribution helpers plus a real compose-and-render comparison for one classified record.
 **Reads:** nothing; pure functions.
@@ -121,7 +121,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### response_model_corpus_report.py (195 LOC)
+### response_model_corpus_report.py (200 LOC)
 
 **Purpose:** Reads every recorded response log and reports answering-model coverage and header values across the corpus.
 **Reads:** all `*_response.jsonl` files of the main checkout's dual log (hardcoded root).
@@ -151,7 +151,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### post_restart_verification.py (325 LOC)
+### post_restart_verification.py (346 LOC)
 
 **Purpose:** The script a zero-context agent runs after a proxy restart to check that this branch's proxy-side changes took real effect, never vacuously.
 **Reads:** the newest session's six dual-log files, from a log-dir env var or the main checkout.

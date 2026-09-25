@@ -10,6 +10,7 @@ from p5_common import load, tmpdir, check, point_log, log_text, digest
 
 _NEW = os.environ.get('P5_ROOT') is None
 
+
 # ORCHESTRATOR
 
 def main() -> None:
@@ -24,16 +25,8 @@ def main() -> None:
     ghostty_writes(d, mlog)
     demote_keeps_hook_status(mlog)
 
+
 # FUNCTIONS
-
-def run_result(stdout='', returncode=0, stderr=''):
-    return subprocess.CompletedProcess([], returncode, stdout, stderr)
-
-def boom(*a, **k):
-    raise subprocess.TimeoutExpired('x', 1)
-
-def since(mlog, start) -> str:
-    return log_text(mlog)[start:]
 
 def ghostty_reads(mlog) -> None:
     g = load('ghostty')
@@ -68,6 +61,19 @@ def ghostty_reads(mlog) -> None:
         g._refresh_ghostty_tty_to_id(100.0)
     check('g6.ghostty.refresh_flow_and_osascript_rc_logged', ok and 'osascript rc=1' in since(mlog, start))
 
+
+def run_result(stdout='', returncode=0, stderr=''):
+    return subprocess.CompletedProcess([], returncode, stdout, stderr)
+
+
+def boom(*a, **k):
+    raise subprocess.TimeoutExpired('x', 1)
+
+
+def since(mlog, start) -> str:
+    return log_text(mlog)[start:]
+
+
 def bg_timer(mlog) -> None:
     b = load('bg_timer')
     b._cc_proc_cache.clear()
@@ -99,6 +105,7 @@ def bg_timer(mlog) -> None:
         b._abort_bg_sleep_timers([12345])
     check('g6.bg_timer.stamp_error_in_menubar_log', 'stamp write error file=/nonexistent_dir_p5/x.output' in since(mlog, start))
 
+
 def orphans(mlog) -> None:
     o = load('bg_task_orphans')
     with mock.patch.object(o.subprocess, 'run', lambda *a, **k: run_result('  1  0\n 55  1\nbad\n')):
@@ -112,11 +119,13 @@ def orphans(mlog) -> None:
         m2 = o._build_ppid_map()
     check('g6.orphans.ps_failure_logged', m2 == {} and 'ps failed' in since(mlog, start))
 
+
 def proc_cache_refreshes(d, mlog) -> None:
     p = load('proc_cache')
     proc_cache_normal(p, d)
     if _NEW:
         proc_cache_failures(p, mlog)
+
 
 def proc_cache_normal(p, d) -> None:
     tasks = d / 'tasks'
@@ -138,6 +147,7 @@ def proc_cache_normal(p, d) -> None:
     print(f'DIFF proc_cache {digest((sorted(p._bg_task_open_paths), p._bg_task_holder_pids, dict(p._cc_proc_cache), sorted(tmux_ok), sorted(tmux_rc), sorted(tmux_exc), active))}')
     check('g6.proc_cache.normal', p._cc_proc_cache == {'100': ('ttys001', '/the/cwd')} and tmux_ok == {'a', 'b'} and tmux_rc == set() and tmux_exc == {'keep'})
 
+
 def tmux_state_cases(p) -> tuple:
     p._tmux_state_last_refresh = 0.0
     with mock.patch.object(p.subprocess, 'run', lambda *a, **k: run_result('a\nb\n')):
@@ -152,6 +162,7 @@ def tmux_state_cases(p) -> tuple:
     with mock.patch.object(p.subprocess, 'run', boom):
         p._refresh_tmux_state(300.0)
     return tmux_ok, tmux_rc, set(p._tmux_state_cache)
+
 
 def proc_cache_failures(p, mlog) -> None:
     load('menubar_log')._last_by_key.clear()
@@ -170,6 +181,7 @@ def proc_cache_failures(p, mlog) -> None:
     src = inspect.getsource(p._has_active_bg)
     check('g6.proc_cache.dead_handler_removed', not any(isinstance(n, ast.Try) for n in ast.walk(ast.parse(src))))
 
+
 def tmux_rc_logged(p, mlog) -> None:
     p._tmux_state_last_refresh = 0.0
     load('menubar_log')._last_by_key.clear()
@@ -177,6 +189,7 @@ def tmux_rc_logged(p, mlog) -> None:
     with mock.patch.object(p.subprocess, 'run', lambda *a, **k: run_result('', 1, 'no server running')):
         p._refresh_tmux_state(2000.0)
     check('g6.proc_cache.tmux_rc_logged', 'tmux list-sessions rc=1' in since(mlog, start))
+
 
 def per_pid_lsof_failure(p, mlog) -> None:
     p._cc_proc_last_refresh = 0.0
@@ -189,6 +202,7 @@ def per_pid_lsof_failure(p, mlog) -> None:
     with mock.patch.object(p.subprocess, 'run', flaky):
         p._refresh_cc_proc_cache(3000.0)
     check('g6.proc_cache.per_pid_lsof_failure_logged', 'lsof cwd failed pid=100' in since(mlog, start))
+
 
 def tmux_activity(mlog) -> None:
     p = load('proc_cache')
@@ -205,6 +219,7 @@ def tmux_activity(mlog) -> None:
         exc = p._tmux_window_activity('s3')
     t = since(mlog, start)
     check('g6.tmux_activity.failure_is_none_and_logged', rc is None and exc is None and 'display-message rc=1 session=s2' in t and 'activity failed session=s3' in t)
+
 
 def proxy_mtime(d, mlog) -> None:
     p = load('proc_cache')
@@ -233,6 +248,7 @@ def proxy_mtime(d, mlog) -> None:
     check('g6.proxy_mtime.stat_failure_logged', gone is None and 'stat failed file=api_requests_a_opus_projx_1.jsonl' in since(mlog, start))
     paths = load('paths')
     check('g6.proxy_mtime.default_derives_from_root', str(p.MONITOR_CC_ROOT) == str(paths.MONITOR_CC_ROOT))
+
 
 def ghostty_writes(d, mlog) -> None:
     g = load('ghostty')
@@ -269,6 +285,7 @@ def ghostty_writes(d, mlog) -> None:
     start = len(log_text(mlog))
     g._write_cwd_uuid_map()
     check('g6.ghostty.cwd_uuid_failure_logged', 'cwd uuid map write failed' in since(mlog, start))
+
 
 def demote_keeps_hook_status(mlog) -> None:
     if not _NEW:

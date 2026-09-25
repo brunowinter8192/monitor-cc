@@ -16,34 +16,25 @@ _SOCKET = 'mcfixprobe'
 _REAL_TMUX = shutil.which('tmux')
 _SESSION = 'monitor_cc_probe'
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     workdir = Path(tempfile.mkdtemp(prefix='mcfix_tmux_'))
     _install_shim(workdir)
-    os.environ['MONITOR_CC_ROOT'] = str(workdir)
+    assign_values(workdir)
     os.environ.pop('TMUX', None)
     tmux_launcher = importlib.import_module('src.tmux_launcher')
     janitor = importlib.import_module('src.monitor_janitor')
     results = []
-    try:
-        _kill_server()
-        results += _checks_without_server(tmux_launcher, janitor, workdir)
-        _new_session(_SESSION)
-        results += _checks_with_session(tmux_launcher, janitor, workdir)
-    finally:
-        _kill_server()
-        shutil.rmtree(workdir, ignore_errors=True)
-    failed = [name for name, ok in results if not ok]
-    for name, ok in results:
-        print(('PASS: ' if ok else 'FAIL: ') + name)
-    print(f'{len(results) - len(failed)}/{len(results)} passed')
-    sys.exit(1 if failed else 0)
+    results = collect_results(results, tmux_launcher, janitor, workdir)
+    failed = compute_failed(results)
+    print_results(results)
+    print_passed(results, failed)
+    exit_with_status(failed)
 
 
 # FUNCTIONS
-
 
 def _install_shim(workdir: Path) -> None:
     shim = workdir / 'tmux'
@@ -52,25 +43,24 @@ def _install_shim(workdir: Path) -> None:
     os.environ['PATH'] = f'{workdir}:{os.environ["PATH"]}'
 
 
+def assign_values(workdir):
+    os.environ['MONITOR_CC_ROOT'] = str(workdir)
+
+
+def collect_results(results, tmux_launcher, janitor, workdir):
+    try:
+        _kill_server()
+        results += _checks_without_server(tmux_launcher, janitor, workdir)
+        _new_session(_SESSION)
+        results += _checks_with_session(tmux_launcher, janitor, workdir)
+    finally:
+        _kill_server()
+        shutil.rmtree(workdir, ignore_errors=True)
+    return results
+
+
 def _kill_server() -> None:
     subprocess.run([_REAL_TMUX, '-L', _SOCKET, 'kill-server'], capture_output=True)
-
-
-def _new_session(name: str) -> None:
-    subprocess.run([_REAL_TMUX, '-L', _SOCKET, 'new-session', '-d', '-s', name, 'sleep 300'], check=True)
-
-
-def _raises(exc_type, fn, *args) -> bool:
-    try:
-        fn(*args)
-    except exc_type:
-        return True
-    return False
-
-
-def _sweep_log(workdir: Path) -> str:
-    path = workdir / 'src' / 'logs' / 'monitor_sweep.log'
-    return path.read_text() if path.exists() else ''
 
 
 def _checks_without_server(tl, janitor, workdir: Path) -> list:
@@ -91,6 +81,23 @@ def _checks_without_server(tl, janitor, workdir: Path) -> list:
     ]
 
 
+def _sweep_log(workdir: Path) -> str:
+    path = workdir / 'src' / 'logs' / 'monitor_sweep.log'
+    return path.read_text() if path.exists() else ''
+
+
+def _raises(exc_type, fn, *args) -> bool:
+    try:
+        fn(*args)
+    except exc_type:
+        return True
+    return False
+
+
+def _new_session(name: str) -> None:
+    subprocess.run([_REAL_TMUX, '-L', _SOCKET, 'new-session', '-d', '-s', name, 'sleep 300'], check=True)
+
+
 def _checks_with_session(tl, janitor, workdir: Path) -> list:
     limit = tl.get_global_history_limit()
     cmds = {'a': 'sleep 30', 'b': 'sleep 30'}
@@ -105,6 +112,23 @@ def _checks_with_session(tl, janitor, workdir: Path) -> list:
         ('expired real session is killed and reported', entry['killed'] is True),
         ('KILLED line written for the real session', f'{_SESSION} age=' in _sweep_log(workdir) and 'KILLED' in _sweep_log(workdir)),
     ]
+
+
+def compute_failed(results):
+    return [name for name, ok in results if not ok]
+
+
+def print_results(results):
+    for name, ok in results:
+        print(('PASS: ' if ok else 'FAIL: ') + name)
+
+
+def print_passed(results, failed):
+    print(f'{len(results) - len(failed)}/{len(results)} passed')
+
+
+def exit_with_status(failed):
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == '__main__':
