@@ -35,13 +35,19 @@ def hook_matrix_workflow() -> None:
     root, snapshot_log, out_path = _parse_args()
     payloads = _build_payloads(snapshot_log)
     hooks = _list_hooks(root)
-    jobs = [(hook, index, payload) for hook in hooks for index, payload in enumerate(payloads)]
-    with ThreadPoolExecutor(max_workers=24) as pool:
-        lines = list(pool.map(_run_job, jobs))
+    lines = _run_matrix(hooks, payloads)
     _write_report(lines, out_path)
-    print(f'hooks={len(hooks)} payloads={len(payloads)} runs={len(lines)}')
+    _print_counts(hooks, payloads, lines)
 
 # FUNCTIONS
+
+def _run_matrix(hooks: list, payloads: list) -> list:
+    jobs = [(hook, index, payload) for hook in hooks for index, payload in enumerate(payloads)]
+    with ThreadPoolExecutor(max_workers=24) as pool:
+        return list(pool.map(_run_job, jobs))
+
+def _print_counts(hooks: list, payloads: list, lines: list) -> None:
+    print(f'hooks={len(hooks)} payloads={len(payloads)} runs={len(lines)}')
 
 def _parse_args() -> tuple:
     return Path(sys.argv[1]).resolve(), Path(sys.argv[2]), Path(sys.argv[3])

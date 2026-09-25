@@ -22,8 +22,8 @@ def build_session_numbering(session: dict, boundaries: list, continues: list, pr
     if not _has_api_calls(turns):
         return _boundaries_result(usage, reason)
     _annotate(main_thread, flow_status, _index_by_request_id(turns))
-    _locate_msgs(main_thread, _messages_or_empty(messages))
-    return _transcript_result(usage, turns, main_thread)
+    _locate_msgs(main_thread, messages)
+    return {"usage": usage, "pane_turns": turns, "path": _PATH_TRANSCRIPT, "requests": main_thread}
 
 # FUNCTIONS
 
@@ -36,12 +36,6 @@ def _has_api_calls(turns: list) -> bool:
 def _boundaries_result(usage, reason) -> dict:
     return {"usage": usage, "pane_turns": None, "path": _PATH_BOUNDARIES,
             "reason": reason or "transcript carries no api calls"}
-
-def _messages_or_empty(messages) -> list:
-    return messages or []
-
-def _transcript_result(usage, turns: list, main_thread: list) -> dict:
-    return {"usage": usage, "pane_turns": turns, "path": _PATH_TRANSCRIPT, "requests": main_thread}
 
 def _annotate_status(main_thread: list, session: dict) -> None:
     response_path = (session.get("streams") or {}).get("response")
@@ -68,6 +62,7 @@ def _index_by_request_id(turns: list) -> dict:
 
 
 def _locate_msgs(main_thread: list, messages: list) -> None:
+    messages = messages or []
     assistants = [index for index, message in enumerate(messages) if message.get("role") == "assistant"]
     result_index = _tool_result_index(messages)
     for request in main_thread:

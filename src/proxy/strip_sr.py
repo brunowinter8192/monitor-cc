@@ -60,19 +60,14 @@ _MARKER_TO_TEMPLATE = {
 # ORCHESTRATOR
 
 def _strip_system_reminders(content, enabled_templates=None):
-    templates = _resolve_templates(enabled_templates)
-    return _strip_sr_content(content, templates)
+    return _strip_sr_content(content, enabled_templates)
 
 
 # FUNCTIONS
 
-def _resolve_templates(enabled_templates):
-    if enabled_templates is None:
-        return _ALL_TEMPLATES
-    return enabled_templates
-
-
 def _strip_sr_content(content, enabled_templates):
+    if enabled_templates is None:
+        enabled_templates = _ALL_TEMPLATES
     if isinstance(content, str):
         return _apply_sr_strip(content, enabled_templates) or '.'
     if isinstance(content, list):

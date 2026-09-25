@@ -14,7 +14,7 @@ def sync_document(cache: dict, turns: list, inputs: dict, render_turn: Callable)
     _render_dirty_turns(cache, turns, inputs, dirty, render_turn)
     if _needs_rebuild(cache, dirty, structure_changed):
         _rebuild_document(cache, inputs)
-    return _current_document(cache)
+    return cache['document']
 
 # FUNCTIONS
 
@@ -150,9 +150,6 @@ def _assemble_document(cache: dict, inputs: dict) -> dict:
     nav['total_lines'] = len(lines)
     prefix = list(itertools.accumulate((k is not None for k in keys), initial=0))
     return {'lines': lines, 'keys': keys, 'nav': nav, 'parent_prefix': prefix}
-
-def _current_document(cache: dict) -> dict:
-    return cache['document']
 
 def new_turn_cache() -> dict:
     return {

@@ -20,6 +20,11 @@ _BODY = {'model': 'claude-opus-4-5', 'max_tokens': 8, 'messages': [{'role': 'use
 # ORCHESTRATOR
 
 def live_proxy_sandbox_workflow() -> None:
+    _run_in_temp_dir()
+
+# FUNCTIONS
+
+def _run_in_temp_dir() -> None:
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw).resolve()
         shim = _build_live_layout(tmp)
@@ -29,8 +34,6 @@ def live_proxy_sandbox_workflow() -> None:
         _stop_mitmdump(proc)
         upstream.shutdown()
         _report(tmp, answer, proc)
-
-# FUNCTIONS
 
 def _build_live_layout(tmp: Path) -> Path:
     log_dir = tmp / 'src' / 'logs'

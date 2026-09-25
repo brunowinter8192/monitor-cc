@@ -41,7 +41,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### pinned_harness_runner.py (63 LOC)
+### pinned_harness_runner.py (66 LOC)
 
 **Purpose:** Runs the byte-identity harnesses of the dev areas in parallel against a fixed dual-log snapshot and writes one result file per harness.
 **Reads:** a snapshot directory of dual-log files, the harness scripts of dev/proxy, panes, proxy_display, gpu_pane, menubar, constants, workers, pane_flicker.
@@ -51,7 +51,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### import_smoke.py (68 LOC)
+### import_smoke.py (71 LOC)
 
 **Purpose:** Imports every src module in a fresh interpreter, solo and in five random orders, and writes one exit line per job.
 **Reads:** the src tree of the given root.
@@ -61,7 +61,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### ast_import_equivalence.py (47 LOC)
+### ast_import_equivalence.py (50 LOC)
 
 **Purpose:** Proves an import-only commit: normalizes relative imports to absolute and compares each changed file against a git base ref.
 **Reads:** git base ref and the working tree.
@@ -71,7 +71,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### ast_reorder_equivalence.py (38 LOC)
+### ast_reorder_equivalence.py (41 LOC)
 
 **Purpose:** Proves a reorder-only commit: compares the sorted top-level AST nodes of each changed file against a git base ref.
 **Reads:** git base ref and the working tree.
@@ -81,7 +81,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### stepdown_reorder.py (162 LOC)
+### stepdown_reorder.py (168 LOC)
 
 **Purpose:** Reorders function definitions inside the FUNCTIONS section so that callers stand above callees; dry run unless --write is given.
 **Reads:** src modules.
@@ -91,7 +91,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### hook_matrix.py (90 LOC)
+### hook_matrix.py (96 LOC)
 
 **Purpose:** Runs every src/hooks script as registered (python3 with an absolute path, from a cwd holding a decoy src package) over a fixed payload corpus and writes one line per hook and payload.
 **Reads:** the hook scripts of the given root and a snapshot of the hook fire log.
@@ -101,7 +101,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### orch_diff_cases.py (587 LOC)
+### orch_diff_cases.py (590 LOC)
 
 **Purpose:** Runs scripted scenarios against refactored orchestrators (strip passes, tool injection, bg escape, discover, ghostty, desktop detection, sweep, skills, hook writer, hook setup, pane loops, gpu status, monitor, launcher, ccwrap) and dumps a JSON result for diffing two roots.
 **Reads:** the given root.
@@ -111,7 +111,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### live_proxy_sandbox.py (93 LOC)
+### live_proxy_sandbox.py (96 LOC)
 
 **Purpose:** Starts a real mitmdump on private ports from a hand-built live-copy layout that lacks the repo src/proxy, sends one request through a local upstream and checks the dual-log files.
 **Reads:** src/proxy_addon.py, constants, monitor_root and the proxy package of this checkout.
@@ -121,7 +121,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### src_layout_scan.py (168 LOC)
+### src_layout_scan.py (176 LOC)
 
 **Purpose:** Scans src and the two root scripts for layout violations: comments, docstrings, relative imports, section order, orchestrator shape and logic, top-level statements, emojis.
 **Reads:** `src/**/*.py`, `workflow.py`, `setup_py2app.py`.

@@ -39,6 +39,26 @@ def _panel_of(app: 'CCMenuBarApp', name: str):
     if name == 'models': return app.models._models_panel
     return app.launch._launch_panel
 
+def _register_ring_arrows(app: 'CCMenuBarApp', name: str) -> None:
+    app.hotkey.register_arrow_right(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, name, _neighbor(name, 1))))
+    app.hotkey.register_arrow_left(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, name, _neighbor(name, -1))))
+
+def _neighbor(name: str, step: int) -> str:
+    return _RING[(_RING.index(name) + step) % len(_RING)]
+
+def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) -> None:
+    try:
+        from_frame = _panel_of(app, from_panel).frame()
+        _close_panel(app, from_panel)
+        _open_panel(app, to_panel)
+        _panel_of(app, to_panel).setFrame_display_(from_frame, True)
+    except Exception as e:
+        log_menubar('panel', f'cycling {from_panel}->{to_panel} error: {e!r}')
+
 def _close_panel(app: 'CCMenuBarApp', name: str) -> None:
     if name == 'main':     _close_main_panel(app)
     elif name == 'rag':    _close_rag_panel(app)
@@ -90,26 +110,6 @@ def _open_main_panel(app: 'CCMenuBarApp') -> None:
     app.panel._panel_open = True
     app.hotkey.reregister_digits(app.panel._lookups.desktop_to_cwd)
     _register_ring_arrows(app, 'main')
-
-def _register_ring_arrows(app: 'CCMenuBarApp', name: str) -> None:
-    app.hotkey.register_arrow_right(
-        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_close_open(app, name, _neighbor(name, 1))))
-    app.hotkey.register_arrow_left(
-        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_close_open(app, name, _neighbor(name, -1))))
-
-def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) -> None:
-    try:
-        from_frame = _panel_of(app, from_panel).frame()
-        _close_panel(app, from_panel)
-        _open_panel(app, to_panel)
-        _panel_of(app, to_panel).setFrame_display_(from_frame, True)
-    except Exception as e:
-        log_menubar('panel', f'cycling {from_panel}->{to_panel} error: {e!r}')
-
-def _neighbor(name: str, step: int) -> str:
-    return _RING[(_RING.index(name) + step) % len(_RING)]
 
 def _open_rag_panel(app: 'CCMenuBarApp') -> None:
     app.rag.rebuild()

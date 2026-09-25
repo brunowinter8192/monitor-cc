@@ -32,12 +32,15 @@ _RUNNER_CODE = (
 def pinned_harness_workflow() -> None:
     snapshot_dir, out_dir = _parse_args()
     out_dir.mkdir(parents=True, exist_ok=True)
-    with ThreadPoolExecutor(max_workers=len(_HARNESSES)) as pool:
-        results = list(pool.map(lambda h: _run_harness(h, snapshot_dir), _HARNESSES))
+    results = _run_harnesses(snapshot_dir)
     _write_results(results, out_dir)
     _print_summary(results)
 
 # FUNCTIONS
+
+def _run_harnesses(snapshot_dir: Path) -> list:
+    with ThreadPoolExecutor(max_workers=len(_HARNESSES)) as pool:
+        return list(pool.map(lambda h: _run_harness(h, snapshot_dir), _HARNESSES))
 
 def _parse_args() -> tuple:
     return Path(sys.argv[1]), Path(sys.argv[2])

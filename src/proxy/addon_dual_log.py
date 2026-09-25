@@ -12,16 +12,15 @@ from src.proxy.strip_inject_delta import _build_stripped_injected_deltas
 # FUNCTIONS
 
 
+def _resolve_dual_log_file(suffix: str) -> Path:
+    filename = f"api_requests_{proxy_log_id()}_{suffix}.jsonl"
+    return proxy_monitor_root() / "src" / "logs" / "dual_log" / filename
+
 def proxy_log_id() -> str:
     log_id = os.environ.get("PROXY_LOG_ID")
     if not log_id:
         raise RuntimeError("PROXY_LOG_ID is not set")
     return log_id
-
-
-def _resolve_dual_log_file(suffix: str) -> Path:
-    filename = f"api_requests_{proxy_log_id()}_{suffix}.jsonl"
-    return proxy_monitor_root() / "src" / "logs" / "dual_log" / filename
 
 
 def _write_entry(log_file: Path, entry: dict) -> None:
@@ -43,22 +42,25 @@ def _log_original_request(log_file: Path, flow, payload: dict) -> None:
         log_proxy_error("addon_dual_log.original", e)
 
 
-def _log_forwarded_delta(log_file: Path, modified_payload: dict, flow, prev_delta) -> Optional[dict]:
-    try:
-        delta_entry, curr_delta = _build_forwarded_delta(
-            modified_payload,
-            flow.request.headers.get("x-request-id", ""),
-            prev_delta,
-        )
-        delta_entry["flow_id"] = flow.id
-        raw_beta = flow.request.headers.get("anthropic-beta", "")
-        delta_entry["anthropic_beta"] = [f.strip() for f in raw_beta.split(",") if f.strip()]
-        _write_entry(log_file, delta_entry)
-        return curr_delta
-    except Exception as e:
-        log_proxy_error("addon_dual_log.forwarded", e)
-        return None
+def _write_request_dual_logs(flow, payload: dict, modified_payload: dict, model_family: str,
+                              mc_request_id: str, mc_timestamp: str, paths, delta_state, identity) -> None:
+    curr_delta = _log_forwarded_delta(
+        paths.forwarded, modified_payload, flow,
+        delta_state.forwarded_hashes_by_model.get(model_family),
+    )
+    if curr_delta is not None and not _is_sidecar_payload(modified_payload):
+        delta_state.forwarded_hashes_by_model[model_family] = curr_delta
 
+    new_seen = _log_errors_entries(
+        paths.errors, payload, mc_request_id, mc_timestamp,
+        delta_state.error_ids_by_model.get(model_family, set()),
+        identity.worker_context, identity.session_id, flow.id,
+    )
+    if new_seen is not None:
+        delta_state.error_ids_by_model[model_family] = new_seen
+
+def _is_sidecar_payload(payload: dict) -> bool:
+    return len(payload.get("tools") or []) == 0
 
 def _log_errors_entries(log_file: Path, payload: dict, mc_request_id: str, mc_timestamp: str,
                         prev_seen_ids: set, worker_context: str, session_id: str, flow_id: str) -> Optional[set]:
@@ -78,27 +80,21 @@ def _log_errors_entries(log_file: Path, payload: dict, mc_request_id: str, mc_ti
         log_proxy_error("addon_dual_log.errors", e)
         return None
 
-
-def _is_sidecar_payload(payload: dict) -> bool:
-    return len(payload.get("tools") or []) == 0
-
-
-def _write_request_dual_logs(flow, payload: dict, modified_payload: dict, model_family: str,
-                              mc_request_id: str, mc_timestamp: str, paths, delta_state, identity) -> None:
-    curr_delta = _log_forwarded_delta(
-        paths.forwarded, modified_payload, flow,
-        delta_state.forwarded_hashes_by_model.get(model_family),
-    )
-    if curr_delta is not None and not _is_sidecar_payload(modified_payload):
-        delta_state.forwarded_hashes_by_model[model_family] = curr_delta
-
-    new_seen = _log_errors_entries(
-        paths.errors, payload, mc_request_id, mc_timestamp,
-        delta_state.error_ids_by_model.get(model_family, set()),
-        identity.worker_context, identity.session_id, flow.id,
-    )
-    if new_seen is not None:
-        delta_state.error_ids_by_model[model_family] = new_seen
+def _log_forwarded_delta(log_file: Path, modified_payload: dict, flow, prev_delta) -> Optional[dict]:
+    try:
+        delta_entry, curr_delta = _build_forwarded_delta(
+            modified_payload,
+            flow.request.headers.get("x-request-id", ""),
+            prev_delta,
+        )
+        delta_entry["flow_id"] = flow.id
+        raw_beta = flow.request.headers.get("anthropic-beta", "")
+        delta_entry["anthropic_beta"] = [f.strip() for f in raw_beta.split(",") if f.strip()]
+        _write_entry(log_file, delta_entry)
+        return curr_delta
+    except Exception as e:
+        log_proxy_error("addon_dual_log.forwarded", e)
+        return None
 
 
 def _log_4xx_error(flow, errors_log_file: Path) -> None:

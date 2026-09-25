@@ -6,7 +6,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 _MARKERS = ('# INFRASTRUCTURE', '# ORCHESTRATOR', '# FUNCTIONS')
-_EMOJI_RE = re.compile('[\U0001F300-\U0001FAFF☀-➿]')
+_EMOJI_RE = re.compile('[' + chr(0x1F300) + '-' + chr(0x1FAFF) + chr(0x2600) + '-' + chr(0x27BF) + ']')
 _ENTRY_STATEMENTS = {
     'src/proxy_addon.py': 'mitmproxy shim: bootstrap call and addon re-export at module level',
     'src/proxy/addon.py': 'mitmproxy reads the module-level addons list; log filter registration',
@@ -21,12 +21,16 @@ _FRAMEWORK_ORCHESTRATOR_FREE = ('src/proxy/addon.py', 'src/menubar/hotkey_contro
 def src_layout_scan_workflow() -> None:
     findings = _scan_all(_list_files())
     _print_findings(findings)
-    sys.exit(1 if _hard_violations(findings) else 0)
+    sys.exit(_exit_code(findings))
 
 # FUNCTIONS
 
+def _exit_code(findings: dict) -> int:
+    return 1 if _hard_violations(findings) else 0
+
 def _list_files() -> list:
     paths = [p for p in sorted((_ROOT / 'src').rglob('*.py')) if 'logs' not in p.parts]
+    paths += sorted((_ROOT / 'dev' / 'refactoring').glob('*.py'))
     return paths + [_ROOT / 'workflow.py', _ROOT / 'setup_py2app.py']
 
 def _scan_all(files: list) -> dict:
@@ -112,6 +116,10 @@ def _simple(expr) -> bool:
         return all(_simple(x) for x in expr.elts)
     if isinstance(expr, ast.Dict):
         return all(k is None or _simple(k) for k in expr.keys) and all(_simple(v) for v in expr.values)
+    if isinstance(expr, ast.Subscript):
+        return _simple(expr.value) and _simple(expr.slice)
+    if isinstance(expr, ast.Slice):
+        return all(part is None or _simple(part) for part in (expr.lower, expr.upper, expr.step))
     if isinstance(expr, ast.Call):
         return _simple(expr.func) and all(_simple(a) for a in expr.args) and all(_simple(k.value) for k in expr.keywords)
     return isinstance(expr, ast.Starred) and _simple(expr.value)

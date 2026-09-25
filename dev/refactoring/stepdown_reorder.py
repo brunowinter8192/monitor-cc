@@ -11,12 +11,18 @@ _SKIP_FILES = ('src/proxy/addon_dual_log.py', 'src/menubar/model_controller.py',
 # ORCHESTRATOR
 
 def stepdown_workflow() -> None:
-    write = '--write' in sys.argv
+    write = _write_requested()
     files = _list_files()
-    results = [_reorder_file(path, write) for path in files]
+    results = _reorder_all(files, write)
     _print_summary(files, results)
 
 # FUNCTIONS
+
+def _write_requested() -> bool:
+    return '--write' in sys.argv
+
+def _reorder_all(files: list, write: bool) -> list:
+    return [_reorder_file(path, write) for path in files]
 
 def _list_files() -> list:
     paths = [p for p in sorted((_ROOT / 'src').rglob('*.py')) if 'logs' not in p.parts]

@@ -11,7 +11,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 def ast_import_equivalence_workflow() -> None:
     base_ref = sys.argv[1]
     changed = _list_changed(base_ref)
-    mismatches = [path for path in changed if not _equivalent(base_ref, path)]
+    mismatches = _find_mismatches(base_ref, changed)
     _report(changed, mismatches)
 
 # FUNCTIONS
@@ -19,6 +19,9 @@ def ast_import_equivalence_workflow() -> None:
 def _list_changed(base_ref: str) -> list:
     out = subprocess.run(['git', 'diff', base_ref, '--name-only', '--', 'src'], capture_output=True, text=True, cwd=str(_ROOT), check=True).stdout
     return [line for line in out.splitlines() if line.endswith('.py') and (_ROOT / line).exists()]
+
+def _find_mismatches(base_ref: str, changed: list) -> list:
+    return [path for path in changed if not _equivalent(base_ref, path)]
 
 def _equivalent(base_ref: str, path: str) -> bool:
     old = subprocess.run(['git', 'show', f'{base_ref}:{path}'], capture_output=True, text=True, cwd=str(_ROOT)).stdout

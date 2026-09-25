@@ -12,9 +12,6 @@ from src.menubar.space_switch import request_post_event_access_if_missing
 
 # FUNCTIONS
 
-def occupied_desktops(sessions) -> frozenset:
-    return frozenset(s.desktop_no for s in sessions
-                     if not s.is_worker and s.desktop_no is not None)
 
 class LaunchController:
     def __init__(self, app) -> None:
@@ -94,3 +91,7 @@ class LaunchController:
             launch_workflow(desktop, project)
         finally:
             self._launch_in_progress = False
+
+def occupied_desktops(sessions) -> frozenset:
+    return frozenset(s.desktop_no for s in sessions
+                     if not s.is_worker and s.desktop_no is not None)

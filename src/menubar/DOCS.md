@@ -27,7 +27,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### panel_views.py (148 LOC)
+### panel_views.py (149 LOC)
 
 **Purpose:** NSView and NSPanel subclasses: edge-resize content view, cursorless label and button, keyable panel with Cmd editing shortcuts.
 **Reads:** cursor-debug environment switch.
@@ -67,7 +67,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### panel_manager.py (212 LOC)
+### panel_manager.py (213 LOC)
 
 **Purpose:** Controller of the main sessions panel: panel state plus full-rebuild versus in-place-update rendering.
 **Reads:** panel settings; sessions and background-timer data from callers.
@@ -297,7 +297,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### launch_controller.py (96 LOC)
+### launch_controller.py (97 LOC)
 
 **Purpose:** Controller of the Launch tab: desktop selection, the event-post access request and starting a launch on a background thread.
 **Reads:** the current sessions' desktop numbers; panel settings.
@@ -327,7 +327,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### skill_discovery.py (131 LOC)
+### skill_discovery.py (125 LOC)
 
 **Purpose:** Discovers the skills offered for one main session (project, personal and enabled-plugin skills).
 **Reads:** Claude Code settings, plugin manifests and skill files, project and personal skill directories.
@@ -347,7 +347,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### skill_controller.py (52 LOC)
+### skill_controller.py (53 LOC)
 
 **Purpose:** Controller of the skill dropdown: builds and pops up the menu and forwards the choice to the insert step.
 **Reads:** skill discovery result on each click.

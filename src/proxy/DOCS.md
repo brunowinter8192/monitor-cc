@@ -36,7 +36,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### addon_dual_log.py (148 LOC)
+### addon_dual_log.py (144 LOC)
 
 **Purpose:** Builds and writes the dual-log JSONL entries and the flat API error log for one request/response cycle.
 **Reads:** flows and payload dicts from the addon; process environment; repo root via `proxy_error_log.py`.
@@ -146,7 +146,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_sr.py (168 LOC)
+### strip_sr.py (163 LOC)
 
 **Purpose:** Strips system-reminder blocks from message content through a catalog of exact-match templates.
 **Reads:** message content; module-local template catalog.

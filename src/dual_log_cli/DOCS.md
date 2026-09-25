@@ -156,7 +156,7 @@ Read-only command-line inspector for the dual-log streams the proxy writes to th
 
 ---
 
-### numbering.py (113 LOC)
+### numbering.py (108 LOC)
 
 **Purpose:** Resolves a session's transcript once and annotates every request with the token pane's number, turn and response time.
 **Reads:** payload messages from `commands.py`; transcript data via `panes/cache_turns.py`, `format/token_format.py` and `usage.py`.

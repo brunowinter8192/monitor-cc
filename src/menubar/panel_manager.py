@@ -36,33 +36,6 @@ class _PanelLookups:
         self.abort_btns_by_project = {}
         self.abort_project_for_tag = {}
 
-def _sorted_sessions(sessions):
-    pdn = {pn: _project_desktop_no(sessions, pn) for pn in {s.project_name for s in sessions}}
-    inf = float('inf')
-    return sorted(
-        sessions,
-        key=lambda s: (
-            pdn[s.project_name] if pdn[s.project_name] is not None else inf,
-            s.project_name,
-            s.is_worker,
-            s.name,
-        )
-    )
-
-def _make_session_grid() -> NSGridView:
-    grid = NSGridView.gridViewWithNumberOfColumns_rows_(7, 0)
-    grid.setColumnSpacing_(float(_GRID_COL_SPC))
-    grid.setRowSpacing_(1.0)
-    for i in range(7):
-        grid.columnAtIndex_(i).setXPlacement_(NSGridCellPlacementLeading)
-    grid.columnAtIndex_(0).setWidth_(float(_GRID_COL0_W))
-    grid.columnAtIndex_(1).setWidth_(float(_GRID_COL1_W))
-    grid.columnAtIndex_(3).setWidth_(float(_GRID_COL3_W))
-    grid.columnAtIndex_(4).setWidth_(float(_GRID_COL4_W))
-    grid.columnAtIndex_(5).setWidth_(float(_GRID_COL5_W))
-    grid.columnAtIndex_(6).setWidth_(float(_GRID_COL6_W))
-    grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
-    return grid
 
 class PanelManager:
     def __init__(self, app) -> None:
@@ -210,3 +183,31 @@ class PanelManager:
                         _format_bg_badge(proj_bg.min_remaining),
                         {NSFontAttributeName: _MENLO(),
                          NSForegroundColorAttributeName: NSColor.systemOrangeColor()}))
+
+def _make_session_grid() -> NSGridView:
+    grid = NSGridView.gridViewWithNumberOfColumns_rows_(7, 0)
+    grid.setColumnSpacing_(float(_GRID_COL_SPC))
+    grid.setRowSpacing_(1.0)
+    for i in range(7):
+        grid.columnAtIndex_(i).setXPlacement_(NSGridCellPlacementLeading)
+    grid.columnAtIndex_(0).setWidth_(float(_GRID_COL0_W))
+    grid.columnAtIndex_(1).setWidth_(float(_GRID_COL1_W))
+    grid.columnAtIndex_(3).setWidth_(float(_GRID_COL3_W))
+    grid.columnAtIndex_(4).setWidth_(float(_GRID_COL4_W))
+    grid.columnAtIndex_(5).setWidth_(float(_GRID_COL5_W))
+    grid.columnAtIndex_(6).setWidth_(float(_GRID_COL6_W))
+    grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
+    return grid
+
+def _sorted_sessions(sessions):
+    pdn = {pn: _project_desktop_no(sessions, pn) for pn in {s.project_name for s in sessions}}
+    inf = float('inf')
+    return sorted(
+        sessions,
+        key=lambda s: (
+            pdn[s.project_name] if pdn[s.project_name] is not None else inf,
+            s.project_name,
+            s.is_worker,
+            s.name,
+        )
+    )

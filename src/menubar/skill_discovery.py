@@ -22,9 +22,9 @@ class Skill(NamedTuple):
 
 def discover_skills_workflow(cwd: str, claude_dir: Path = CLAUDE_DIR) -> List[Skill]:
     project = _project_skills(cwd)
-    personal = _personal_skills(claude_dir)
+    personal = _dir_skills(claude_dir.joinpath('skills'), _SOURCE_PERSONAL)
     plugin = _plugin_skills(claude_dir)
-    return _concat_skills(project, personal, plugin)
+    return [*project, *personal, *plugin]
 
 # FUNCTIONS
 
@@ -42,9 +42,6 @@ def _dir_skills(skills_root: Path, source: str) -> List[Skill]:
     return [Skill(d.name, d.name, source)
             for d in sorted(skills_root.iterdir())
             if d.is_dir() and (d / _SKILL_FILE).is_file()]
-
-def _personal_skills(claude_dir: Path) -> List[Skill]:
-    return _dir_skills(claude_dir / 'skills', _SOURCE_PERSONAL)
 
 def _plugin_skills(claude_dir: Path) -> List[Skill]:
     keys = _enabled_plugin_keys(claude_dir)
@@ -126,6 +123,3 @@ def _frontmatter_name(skill_file: Path) -> str:
         if line.startswith('name:'):
             return line[len('name:'):].strip().strip('"\'')
     return ''
-
-def _concat_skills(project: List[Skill], personal: List[Skill], plugin: List[Skill]) -> List[Skill]:
-    return project + personal + plugin

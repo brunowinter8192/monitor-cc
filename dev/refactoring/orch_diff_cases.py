@@ -31,10 +31,13 @@ def orch_diff_workflow() -> None:
     root, out_path = _parse_args()
     _prepare_environment(root)
     results = _run_all_cases()
-    out_path.write_text(json.dumps(results, indent=1, sort_keys=True, default=repr))
-    print(f'cases={len(results)}')
+    _write_results(results, out_path)
 
 # FUNCTIONS
+
+def _write_results(results: dict, out_path: Path) -> None:
+    out_path.write_text(json.dumps(results, indent=1, sort_keys=True, default=repr))
+    print(f'cases={len(results)}')
 
 def _parse_args() -> tuple:
     return Path(sys.argv[1]).resolve(), Path(sys.argv[2])

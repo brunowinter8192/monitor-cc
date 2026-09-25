@@ -6,7 +6,7 @@ Global Claude Code safety hooks: standalone scripts that intercept Bash, Edit, R
 
 ## Public Interface
 
-No `__init__.py`; this directory is not a Python package. Each script is a standalone entry point invoked by the Claude Code hook system via the user-level settings file. Registration entry point: `hook_setup.py`. Each script puts the repo root on `sys.path` before importing siblings as `src.hooks.<module>`.
+No `__init__.py`; this directory is imported as an implicit namespace package (`src.hooks`). Each script is a standalone entry point invoked by the Claude Code hook system via the user-level settings file. Registration entry point: `hook_setup.py`. Each script puts the repo root on `sys.path` before importing siblings as `src.hooks.<module>`.
 
 ## Flow
 

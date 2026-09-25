@@ -20,10 +20,6 @@ _TA_TRACKING_OPTS = (NSTrackingCursorUpdate | NSTrackingMouseMoved |
 
 # FUNCTIONS
 
-def _cursor_log(msg: str) -> None:
-    if not os.environ.get('MENUBAR_CURSOR_DEBUG'):
-        return
-    log_menubar('cursor', msg)
 
 class _PanelContentView(NSView):
 
@@ -115,6 +111,11 @@ class _PanelContentView(NSView):
             return self
         _cursor_log(f'hitTest_  loc=({local.x:.1f},{local.y:.1f})  → super (interior)')
         return objc.super(_PanelContentView, self).hitTest_(point)
+
+def _cursor_log(msg: str) -> None:
+    if not os.environ.get('MENUBAR_CURSOR_DEBUG'):
+        return
+    log_menubar('cursor', msg)
 
 class _CursorlessLabel(NSTextField):
     def resetCursorRects(self): pass

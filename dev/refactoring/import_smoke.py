@@ -17,12 +17,15 @@ def import_smoke_workflow() -> None:
     root, out_path = _parse_args()
     modules = _list_modules(root)
     jobs = _build_jobs(modules)
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        results = list(pool.map(lambda job: _run_job(root, job), jobs))
+    results = _run_jobs(root, jobs)
     _write_report(results, out_path)
     _print_summary(results)
 
 # FUNCTIONS
+
+def _run_jobs(root: Path, jobs: list) -> list:
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        return list(pool.map(lambda job: _run_job(root, job), jobs))
 
 def _parse_args() -> tuple:
     return Path(sys.argv[1]).resolve(), Path(sys.argv[2])
