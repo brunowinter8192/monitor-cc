@@ -137,7 +137,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### app.py (345 LOC)
+### app.py (347 LOC)
 
 **Purpose:** The rumps app class: owns the per-concern controllers, the main-thread tick timer and the action target for every button and hotkey.
 **Reads:** the latest discovery snapshot each tick; the settings file on launch.
@@ -257,7 +257,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### system.py (234 LOC)
+### system.py (236 LOC)
 
 **Purpose:** Process entry point, singleton lock and Ghostty click-to-focus and monitor-launch routing for sessions, workers and monitors.
 **Reads:** the lock file; Ghostty terminal-id lookups; process table; the plist template; tmux session state.

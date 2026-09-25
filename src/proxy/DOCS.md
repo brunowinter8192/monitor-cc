@@ -16,7 +16,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ## Modules
 
-### addon.py (364 LOC)
+### addon.py (363 LOC)
 
 **Purpose:** mitmproxy hook class that orchestrates the request-modification and dual-log pipeline and writes the response record.
 **Reads:** mitmproxy flows; process environment for project and log id.
@@ -116,7 +116,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### message_passes_simple.py (184 LOC)
+### message_passes_simple.py (167 LOC)
 
 **Purpose:** Spec-driven pass runner plus the declarative specs for the simple per-block strip rules.
 **Reads:** message list.
@@ -256,7 +256,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_sn_notice.py (60 LOC)
+### strip_sn_notice.py (66 LOC)
 
 **Purpose:** Strips the system-notification paragraph injected ahead of task-notification tags in wake-up messages.
 **Reads:** message content.
@@ -366,7 +366,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### payload_helpers.py (220 LOC)
+### payload_helpers.py (224 LOC)
 
 **Purpose:** Low-level payload inspection and manipulation: system-reminder block lookup, tool-reference stripping and the whole-text block walker.
 **Reads:** message content; payload dicts.

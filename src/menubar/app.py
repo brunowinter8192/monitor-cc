@@ -39,6 +39,9 @@ BLINK_DURATION = 0.2
 POLL_INTERVAL  = 1.5
 TICK_LATENCY_THRESHOLD_MS = 200
 
+_last_log_cleanup_ts: float = 0.0
+
+
 # FUNCTIONS
 
 class _PanelController(NSObject):
@@ -183,7 +186,6 @@ class PanelSettings:
         self.panel_width = panel_width
         self.panel_min_height = panel_min_height
 
-_last_log_cleanup_ts: float = 0.0
 
 def _maybe_cleanup_logs(now: float) -> None:
     global _last_log_cleanup_ts

@@ -17,6 +17,10 @@ from src.tmux_launcher import generate_session_name, check_session_exists, kill_
 _LAUNCHD_LABEL = 'com.brunowinter.monitor-cc-menubar'
 _PLIST_PATH = Path(__file__).resolve().parent / f'{_LAUNCHD_LABEL}.plist'
 
+_PLIST_PATH_KEY_RE = re.compile(
+    r'<key>\s*PATH\s*</key>\s*<string>([^<]*)</string>', re.DOTALL)
+
+
 # ORCHESTRATOR
 
 def run() -> None:
@@ -172,8 +176,6 @@ def _focus_terminal_by_id(term_id: str):
         return f'status=ERR rc={r.returncode} stderr={r.stderr.strip()}', osascript_ms
     return 'status=OK', osascript_ms
 
-_PLIST_PATH_KEY_RE = re.compile(
-    r'<key>\s*PATH\s*</key>\s*<string>([^<]*)</string>', re.DOTALL)
 
 def _resolve_launch_python3() -> str:
     path_value, route = _launch_path_value()

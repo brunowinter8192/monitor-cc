@@ -4,6 +4,9 @@ from src.proxy.strip_sn_notice import _strip_sn_notice
 from src.proxy.strip_bg_completed import _WAKEUP_TEXT
 from src.proxy.rule_ops import _ops_from_content_change
 
+_SR_FULL_WRAP_RE = re.compile(r'\A<system-reminder>\n(.*)</system-reminder>\s*\Z', re.DOTALL)
+
+
 # FUNCTIONS
 
 def _dedup_wakeup_blocks(messages: list) -> tuple:
@@ -38,9 +41,6 @@ def _dedup_wakeup_blocks(messages: list) -> tuple:
         else:
             result.append(msg)
     return result, ops_by_msg_blk
-
-
-_SR_FULL_WRAP_RE = re.compile(r'\A<system-reminder>\n(.*)</system-reminder>\s*\Z', re.DOTALL)
 
 
 def _unwrap_full_sr_wrapper(content):

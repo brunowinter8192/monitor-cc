@@ -218,3 +218,7 @@ def _walk_replace_marker_blocks(content, predicate, replace_fn):
                 result.append(block)
         return result, removed
     return content, removed
+
+
+def _any_marker_guard(check_fn, markers):
+    return lambda c: any(check_fn(c, m) for m in markers)

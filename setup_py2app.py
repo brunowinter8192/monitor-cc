@@ -49,6 +49,24 @@ OPTIONS = {
 _BUNDLE_SRC_KEEP = {'menubar', 'session_finder.py', 'colors.py', 'constants.py', 'tmux_launcher.py',
                     'monitor_janitor.py', 'monitor_root.py', '__init__.py', '__pycache__'}
 
+# ORCHESTRATOR
+
+def setup_workflow() -> None:
+    _run_setup()
+    if 'py2app' in sys.argv:
+        _prune_bundle_bloat()
+        _install_bundle()
+
+# FUNCTIONS
+
+def _run_setup() -> None:
+    setup(
+        name='monitor-cc-menubar',
+        app=APP,
+        data_files=DATA_FILES,
+        options={'py2app': OPTIONS},
+        setup_requires=['py2app'],
+    )
 
 def _prune_bundle_bloat() -> None:
     src_lib = (Path('dist/monitor-cc-menubar.app/Contents/Resources')
@@ -121,15 +139,5 @@ def _install_bundle() -> None:
         print(f'  bootstrap failed (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
         sys.exit(1)
 
-
-setup(
-    name='monitor-cc-menubar',
-    app=APP,
-    data_files=DATA_FILES,
-    options={'py2app': OPTIONS},
-    setup_requires=['py2app'],
-)
-
-if 'py2app' in sys.argv:
-    _prune_bundle_bloat()
-    _install_bundle()
+if __name__ == '__main__':
+    setup_workflow()

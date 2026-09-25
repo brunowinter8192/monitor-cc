@@ -30,6 +30,12 @@ from src.proxy.response_model_probe import make_answering_model_probe
 ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 
+_RESPONSE_HEADER_EXACT = frozenset({
+    "request-id", "retry-after", "anthropic-organization-id",
+    "content-type", "content-encoding",
+})
+_RESPONSE_HEADER_PREFIXES = ("anthropic-ratelimit-", "anthropic-priority-", "anthropic-fast-")
+
 
 # FUNCTIONS
 
@@ -236,13 +242,6 @@ def _finalize_cache_state(delta_state, model_family: str, modified_payload: dict
 
 def _request_identity_encoding(flow: http.HTTPFlow) -> None:
     flow.request.headers["accept-encoding"] = "identity"
-
-
-_RESPONSE_HEADER_EXACT = frozenset({
-    "request-id", "retry-after", "anthropic-organization-id",
-    "content-type", "content-encoding",
-})
-_RESPONSE_HEADER_PREFIXES = ("anthropic-ratelimit-", "anthropic-priority-", "anthropic-fast-")
 
 
 def _filter_response_headers(headers) -> dict:

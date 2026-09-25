@@ -1,4 +1,6 @@
 # INFRASTRUCTURE
+from src.proxy.payload_helpers import _top_level_content_contains
+
 
 _SN_NOTICE_MARKER = '[SYSTEM NOTIFICATION - NOT USER INPUT]'
 
@@ -58,3 +60,7 @@ def _strip_sn_notice_from_text(text):
         if needle in text:
             return text.replace(needle, '', 1)
     return text
+
+
+def _sn_notice_skip(role, content) -> bool:
+    return role == "system" and not _top_level_content_contains(content, "<task-notification>")

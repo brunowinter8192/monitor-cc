@@ -1,14 +1,13 @@
 # INFRASTRUCTURE
 from src.hooks._fire_log import log_fire
 
+_CMD_SUBST = '$('
+
 
 # FUNCTIONS
 
 class _StripError(Exception):
     pass
-
-
-_CMD_SUBST = '$('
 
 
 def _strip_non_shell_active(command: str) -> str:
