@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from ..pane_error_log import log_pane_error
+from src.pane_error_log import log_pane_error
 
 WEBSEARCH_ROOT = Path('/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch')
 LOG_DIR        = WEBSEARCH_ROOT / 'src' / 'logs'

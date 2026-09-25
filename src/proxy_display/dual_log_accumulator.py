@@ -2,10 +2,10 @@
 from pathlib import Path
 from typing import Optional
 
-from ..pane_error_log import log_pane_error
+from src.pane_error_log import log_pane_error
 from src.jsonl.jsonl_reader import JsonlReader
-from .forwarded_parser import _infer_model_family
-from .proxy_badge import _is_total_tokens_nuke, _msgs_delta_is_substantial
+from src.proxy_display.forwarded_parser import _infer_model_family
+from src.proxy_display.proxy_badge import _is_total_tokens_nuke, _msgs_delta_is_substantial
 
 _overlay_epoch = 0
 

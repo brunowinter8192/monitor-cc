@@ -7,8 +7,8 @@ from pathlib import Path
 
 from AppKit import NSAttributedString, NSFontAttributeName
 
-from .menubar_log import log_menubar_change
-from .panel import (_TOP_BAR_H, _LABEL_H, _MENLO,
+from src.menubar.menubar_log import log_menubar_change
+from src.menubar.panel import (_TOP_BAR_H, _LABEL_H, _MENLO,
                     _make_tab_nspanel, _resize_panel_keep_top,
                     _make_line_separator, _make_header_label)
 

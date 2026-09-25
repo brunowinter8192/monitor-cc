@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from .wrapper import run, _DEFAULT_PROJECT, _SCRIPT_REL, _LOG_DIR
+from src.ccwrap.wrapper import run, _DEFAULT_PROJECT, _SCRIPT_REL, _LOG_DIR
 
 # ORCHESTRATOR
 

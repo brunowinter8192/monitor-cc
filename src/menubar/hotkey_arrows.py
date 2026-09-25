@@ -1,8 +1,8 @@
 # INFRASTRUCTURE
 import ctypes
 
-from .menubar_log import log_menubar
-from .hotkey_carbon import (
+from src.menubar.menubar_log import log_menubar
+from src.menubar.hotkey_carbon import (
     _EventHotKeyID, _EventHandlerProcPtr, _MBAR_SIG, _HOTKEY_EVENT_SPEC, _get_hkid,
     _load_carbon, _log_queue_delay, _eventNotHandledErr, _check_status,
 )

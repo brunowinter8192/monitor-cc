@@ -2,9 +2,9 @@
 from AppKit import NSMenu, NSMenuItem
 from Foundation import NSMakePoint
 
-from .menubar_log import log_menubar
-from .skill_discovery import discover_skills_workflow
-from .skill_insert import insert_skill_workflow
+from src.menubar.menubar_log import log_menubar
+from src.menubar.skill_discovery import discover_skills_workflow
+from src.menubar.skill_insert import insert_skill_workflow
 
 _EMPTY_TITLE = 'no skills'
 

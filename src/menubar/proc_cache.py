@@ -6,8 +6,8 @@ import threading
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from .menubar_log import log_menubar_change
-from .paths import HOOKS_FILE as _HOOK_STATE_FILE, MONITOR_CC_ROOT
+from src.menubar.menubar_log import log_menubar_change
+from src.menubar.paths import HOOKS_FILE as _HOOK_STATE_FILE, MONITOR_CC_ROOT
 
 _PROC_REFRESH_INTERVAL = 10.0
 _HOOK_REFRESH_INTERVAL = 1.0

@@ -13,27 +13,27 @@ from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName, NSFont,
                     NSFontAttributeName)
 from Foundation import NSObject, NSOperationQueue
 
-from .bg_timer import _abort_bg_sleep_timers
-from .discovery_worker import start_discovery_worker
-from .focus_controller import FocusController
-from .hotkey_controller import HotkeyController, register_cmd_l, register_cmd_k
-from .menubar_log import log_menubar, log_menubar_change
-from .bar_icons import ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET
-from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
-from .panel_manager import PanelManager
-from .rag_controller import RagController
-from .model_controller import ModelController
-from .launch_controller import LaunchController
-from .skill_controller import SkillController
-from .monitor_sweep_scheduler import maybe_run_sweep_workflow
-from .system import _focus_session, _focus_worker, _open_or_focus_monitor
-from .sessions_controller import SessionsController
-from .app_settings import _load_settings, _save_settings
-from .panel_lifecycle import (_open_main_panel, _open_tab_name, _close_panel,
+from src.menubar.bg_timer import _abort_bg_sleep_timers
+from src.menubar.discovery_worker import start_discovery_worker
+from src.menubar.focus_controller import FocusController
+from src.menubar.hotkey_controller import HotkeyController, register_cmd_l, register_cmd_k
+from src.menubar.menubar_log import log_menubar, log_menubar_change
+from src.menubar.bar_icons import ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET
+from src.menubar.panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
+from src.menubar.panel_manager import PanelManager
+from src.menubar.rag_controller import RagController
+from src.menubar.model_controller import ModelController
+from src.menubar.launch_controller import LaunchController
+from src.menubar.skill_controller import SkillController
+from src.menubar.monitor_sweep_scheduler import maybe_run_sweep_workflow
+from src.menubar.system import _focus_session, _focus_worker, _open_or_focus_monitor
+from src.menubar.sessions_controller import SessionsController
+from src.menubar.app_settings import _load_settings, _save_settings
+from src.menubar.panel_lifecycle import (_open_main_panel, _open_tab_name, _close_panel,
                                _panel_of, _background_panel, _deferred_close_open)
-from .panel import _wire_header_buttons
-from .panel_tabs import TAB_KEYS
-from .setup_menubar import write_plist, write_plist_py2app
+from src.menubar.panel import _wire_header_buttons
+from src.menubar.panel_tabs import TAB_KEYS
+from src.menubar.setup_menubar import write_plist, write_plist_py2app
 
 BLINK_DURATION = 0.2
 POLL_INTERVAL  = 1.5
@@ -188,7 +188,7 @@ _last_log_cleanup_ts: float = 0.0
 def _maybe_cleanup_logs(now: float) -> None:
     global _last_log_cleanup_ts
     if now - _last_log_cleanup_ts > 86400:
-        from .menubar_log import cleanup_old_lines
+        from src.menubar.menubar_log import cleanup_old_lines
         cleanup_old_lines()
         _last_log_cleanup_ts = now
 

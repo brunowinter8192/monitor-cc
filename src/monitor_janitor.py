@@ -4,8 +4,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .monitor_root import resolve_monitor_cc_root
-from .tmux_launcher import kill_session
+from src.monitor_root import resolve_monitor_cc_root
+from src.tmux_launcher import kill_session
 
 _SESSION_PREFIX  = "monitor_cc_"
 _MAX_AGE_SECONDS = 24 * 3600

@@ -5,7 +5,7 @@ import subprocess
 import time
 from typing import Dict, List, Optional, Set, Tuple
 
-from .menubar_log import log_menubar, log_menubar_change
+from src.menubar.menubar_log import log_menubar, log_menubar_change
 
 _GHOSTTY_DET_PREFIX = '__DET_'
 _CGS_SPACE_MASK     = 0x7

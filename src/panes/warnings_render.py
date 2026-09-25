@@ -4,15 +4,15 @@ import json
 import time
 from typing import List, Optional
 
-from ..colors import (
+from src.colors import (
     YELLOW, RED, DIM, WHITE, RESET, HOVER_BG, ZEBRA_BG_A, ZEBRA_BG_B, SOFT_RESET,
     DIM_YELLOW_BG,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..constants import NO_TIME_PLACEHOLDER, WARNINGS_POLL_INTERVAL
-from ..utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
-from ..format.strip_marker import highlight_stripped
-from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
+from src.constants import NO_TIME_PLACEHOLDER, WARNINGS_POLL_INTERVAL
+from src.utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
+from src.format.strip_marker import highlight_stripped
+from src.search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 
 # FUNCTIONS
 

@@ -2,7 +2,7 @@
 import ctypes
 import time
 
-from .desktop_detection import _build_space_map
+from src.menubar.desktop_detection import _build_space_map
 
 _CG = ctypes.CDLL('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
 

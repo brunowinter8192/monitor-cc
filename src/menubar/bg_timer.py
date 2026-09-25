@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
-from .proc_cache import _cc_proc_cache
-from .menubar_log import log_menubar, log_menubar_change
+from src.menubar.proc_cache import _cc_proc_cache
+from src.menubar.menubar_log import log_menubar, log_menubar_change
 
 # ORCHESTRATOR
 

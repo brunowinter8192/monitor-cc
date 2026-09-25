@@ -2,11 +2,11 @@
 import os
 import time
 
-from ..colors import RESET, DIM, YELLOW, RED
-from .log_parser import (
+from src.colors import RESET, DIM, YELLOW, RED
+from src.news_pane.log_parser import (
     find_log_file, find_current_run_lines, filter_events, parse_line,
 )
-from ..pane_error_log import log_pane_error
+from src.pane_error_log import log_pane_error
 
 LOG_POLL_INTERVAL = 0.5
 MAX_LOG_LINES     = 40

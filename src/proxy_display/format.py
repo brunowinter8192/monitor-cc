@@ -2,14 +2,14 @@
 from collections import Counter
 from typing import Optional
 
-from ..colors import (
+from src.colors import (
     RESET, SOFT_RESET, DIM, YELLOW, HOVER_BG,
     DIM_YELLOW_BG, DIM_GREEN_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
-from ..format.token_format import _format_k
-from ..utils import truncate_visible
+from src.format.token_format import _format_k
+from src.utils import truncate_visible
 from src.proxy_display.turn_cache import TurnCache
-from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
+from src.search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 
 # FUNCTIONS
 

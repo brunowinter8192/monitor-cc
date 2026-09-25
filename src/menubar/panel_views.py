@@ -11,7 +11,7 @@ from AppKit import (NSButton, NSCursor,
                     NSTrackingMouseMoved,
                     NSView)
 
-from .menubar_log import log_menubar
+from src.menubar.menubar_log import log_menubar
 
 EDGE             = 8
 _TA_TRACKING_OPTS = (NSTrackingCursorUpdate | NSTrackingMouseMoved |

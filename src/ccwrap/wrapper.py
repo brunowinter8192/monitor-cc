@@ -13,7 +13,7 @@ import tty
 from datetime import datetime
 from pathlib import Path
 
-from . import ansi_log as _alog
+from src.ccwrap import ansi_log as _alog
 
 _DEFAULT_PROJECT = '/Users/brunowinter2000/Documents/ai/monitor-cc'
 _SCRIPT_REL = 'src/claude_proxy_start.sh'

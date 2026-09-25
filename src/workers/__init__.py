@@ -1,2 +1,2 @@
-from .worker_tokens_pane import run_worker_tokens_loop
-from .worker_selection import _write_selection as write_selection
+from src.workers.worker_tokens_pane import run_worker_tokens_loop
+from src.workers.worker_selection import _write_selection as write_selection

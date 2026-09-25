@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 from src.jsonl.jsonl_cache_turns import extract_cache_turns
 from src.jsonl.jsonl_reader import read_json_records
-from ..pane_error_log import log_pane_note
+from src.pane_error_log import log_pane_note
 
 _last_synthetic_key: tuple = ()
 

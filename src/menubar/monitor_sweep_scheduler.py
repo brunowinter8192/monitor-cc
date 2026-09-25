@@ -3,8 +3,8 @@ import json
 import os
 import threading
 
-from .paths import MONITOR_SWEEP_STATE_FILE, MONITOR_CC_ROOT
-from .menubar_log import log_menubar
+from src.menubar.paths import MONITOR_SWEEP_STATE_FILE, MONITOR_CC_ROOT
+from src.menubar.menubar_log import log_menubar
 
 SWEEP_INTERVAL_SECS = 24 * 3600
 
@@ -52,7 +52,7 @@ def _run_sweep() -> None:
     global _sweep_in_progress
     try:
         os.environ.setdefault('MONITOR_CC_ROOT', str(MONITOR_CC_ROOT))
-        from ..monitor_janitor import sweep_workflow
+        from src.monitor_janitor import sweep_workflow
         results = sweep_workflow()
         killed = sum(1 for r in results if r['killed'])
         log_menubar('monitor_sweep',

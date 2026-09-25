@@ -4,9 +4,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..proxy.message_summary import _infer_model_family as infer_family
+from src.proxy.message_summary import _infer_model_family as infer_family
 from src.jsonl.jsonl_reader import JsonlReader
-from .diagnostics import report_skip
+from src.dual_log_cli.diagnostics import report_skip
 
 _MODEL_RE = re.compile(rb'"model"\s*:\s*"([^"]+)"')
 _MODEL_SNIFF_BYTES = 512

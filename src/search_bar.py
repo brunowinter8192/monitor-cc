@@ -1,8 +1,8 @@
 # INFRASTRUCTURE
 from typing import List, Optional, Set
 
-from .colors import RESET, WHITE, CYAN
-from .utils import _cell_width, truncate_visible
+from src.colors import RESET, WHITE, CYAN
+from src.utils import _cell_width, truncate_visible
 
 _SRCH_LABEL = '\033[38;2;108;112;134m'
 _SRCH_IDLE  = '\033[38;2;166;173;200m'

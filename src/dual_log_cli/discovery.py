@@ -3,9 +3,9 @@ import re
 import sys
 from pathlib import Path
 
-from ..monitor_root import resolve_monitor_cc_root, root_source
-from .project_map import build_project_index, project_label
-from .reader import infer_family, iter_jsonl, local_datetime
+from src.monitor_root import resolve_monitor_cc_root, root_source
+from src.dual_log_cli.project_map import build_project_index, project_label
+from src.dual_log_cli.reader import infer_family, iter_jsonl, local_datetime
 
 STREAM_SUFFIXES = ("original", "forwarded", "stripped", "injected", "response", "errors")
 

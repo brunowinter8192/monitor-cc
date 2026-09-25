@@ -3,9 +3,9 @@ import argparse
 import sys
 from datetime import datetime
 
-from .classifier import BadClassifierError, matches_only, parse_only
-from .diagnostics import report_skip
-from .discovery import (
+from src.dual_log_cli.classifier import BadClassifierError, matches_only, parse_only
+from src.dual_log_cli.diagnostics import report_skip
+from src.dual_log_cli.discovery import (
     AmbiguousSessionError,
     UnknownSessionError,
     build_session,
@@ -15,21 +15,21 @@ from .discovery import (
     list_sessions,
     resolve_stem,
 )
-from .numbering import build_session_numbering
-from .overlay import build_overlay, build_sys_tool_overlay
-from .project_map import build_project_index
-from .render_expand import render_expand_full
-from .render_msgs import render_msgs
-from .render_reqs import render_reqs, render_reqs_merged
-from .render_search import render_search
-from .render_sessions import render_sessions
-from .search import find_matches
-from .timeline import load_timeline
-from .timeline_markers import (
+from src.dual_log_cli.numbering import build_session_numbering
+from src.dual_log_cli.overlay import build_overlay, build_sys_tool_overlay
+from src.dual_log_cli.project_map import build_project_index
+from src.dual_log_cli.render_expand import render_expand_full
+from src.dual_log_cli.render_msgs import render_msgs
+from src.dual_log_cli.render_reqs import render_reqs, render_reqs_merged
+from src.dual_log_cli.render_search import render_search
+from src.dual_log_cli.render_sessions import render_sessions
+from src.dual_log_cli.search import find_matches
+from src.dual_log_cli.timeline import load_timeline
+from src.dual_log_cli.timeline_markers import (
     AmbiguousRequestNumberError, UnknownRequestNumberError, resolve_req_output_range, resolve_req_range,
     resolve_req_range_with_next,
 )
-from .timeline_turns import full_turn
+from src.dual_log_cli.timeline_turns import full_turn
 
 # FUNCTIONS
 

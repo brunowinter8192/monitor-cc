@@ -3,8 +3,8 @@ import json
 import os
 from pathlib import Path
 
-from .diagnostics import report_skip
-from ..proxy_display.forwarded_parser import _proxy_session_id_for_project
+from src.dual_log_cli.diagnostics import report_skip
+from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
 
 _PROJECTS_ROOT = Path("~/.claude/projects").expanduser()
 _CWD_SCAN_LINES = 40

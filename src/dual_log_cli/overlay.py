@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
-from ..proxy_display.dual_log_accumulator import accumulate_dual_log
-from .timeline_markers import request_numbers_by_flow
+from src.proxy_display.dual_log_accumulator import accumulate_dual_log
+from src.dual_log_cli.timeline_markers import request_numbers_by_flow
 
 # FUNCTIONS
 

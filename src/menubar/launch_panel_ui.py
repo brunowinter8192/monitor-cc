@@ -5,8 +5,8 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSForegroundColorAttributeName, NSView)
 from Foundation import NSMakeRect
 
-from .panel import _ROW_H, _MENLO
-from .panel_views import _CursorlessButton
+from src.menubar.panel import _ROW_H, _MENLO
+from src.menubar.panel_views import _CursorlessButton
 
 _DESKTOP_BTN_W   = 40
 

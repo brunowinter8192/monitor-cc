@@ -4,9 +4,9 @@ from itertools import islice
 from pathlib import Path
 from typing import List, Optional
 
-from .modes import MODE_ALL, MODE_WARNINGS, MODE_TOKENS, MODE_WORKER_TOKENS, MODE_PROXY, MODE_WORKER_PROXY
+from src.core.modes import MODE_ALL, MODE_WARNINGS, MODE_TOKENS, MODE_WORKER_TOKENS, MODE_PROXY, MODE_WORKER_PROXY
 
-from ..session_finder import find_active_sessions
+from src.session_finder import find_active_sessions
 from src.jsonl.jsonl_reader import JsonlReader
 
 _SESSION_START_SCAN_RECORDS = 5
@@ -21,19 +21,19 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> N
     active_mode = mode
 
     if mode == MODE_WORKER_TOKENS:
-        from ..workers import run_worker_tokens_loop
+        from src.workers import run_worker_tokens_loop
         run_worker_tokens_loop()
     elif mode == MODE_TOKENS:
-        from ..panes import run_tokens_loop
+        from src.panes import run_tokens_loop
         run_tokens_loop()
     elif mode == MODE_WARNINGS:
-        from ..panes import run_warnings_loop
+        from src.panes import run_warnings_loop
         run_warnings_loop()
     elif mode == MODE_PROXY:
-        from ..proxy_display import run_proxy_loop
+        from src.proxy_display import run_proxy_loop
         run_proxy_loop()
     elif mode == MODE_WORKER_PROXY:
-        from ..proxy_display import run_worker_proxy_loop
+        from src.proxy_display import run_worker_proxy_loop
         run_worker_proxy_loop()
     else:
         raise ValueError(f"Unknown monitor mode: {mode!r}")

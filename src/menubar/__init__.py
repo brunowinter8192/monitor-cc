@@ -1,1 +1,1 @@
-from .system import run
+from src.menubar.system import run

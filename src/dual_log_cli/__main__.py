@@ -3,9 +3,9 @@ import argparse
 import os
 import sys
 
-from .cli_args import _parse_args as _build_args
-from .commands import _run_expand, _run_msgs, _run_reqs, _run_search, _run_sessions
-from .discovery import resolve_dual_log_dir
+from src.dual_log_cli.cli_args import _parse_args as _build_args
+from src.dual_log_cli.commands import _run_expand, _run_msgs, _run_reqs, _run_search, _run_sessions
+from src.dual_log_cli.discovery import resolve_dual_log_dir
 
 _USAGE_EPILOG = """dual_log_cli — read-only inspector for src/logs/dual_log/.
 

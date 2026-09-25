@@ -3,13 +3,13 @@ import datetime
 import time
 import re as _re
 from typing import Optional
-from ..colors import (
+from src.colors import (
     RED, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..utils import append_copy_symbol, highlight_query_in_line, right_align_time
-from ..search_bar import _BG_RESTORE_SENTINEL
-from .turn_cache import sync_document, publish_nav
+from src.utils import append_copy_symbol, highlight_query_in_line, right_align_time
+from src.search_bar import _BG_RESTORE_SENTINEL
+from src.format.turn_cache import sync_document, publish_nav
 
 # FUNCTIONS
 
@@ -85,7 +85,7 @@ def _call_thinking_meta(call: dict) -> tuple:
     return has_thinking, sig_chars
 
 def _format_ts(timestamp: str) -> str:
-    from ..utils import format_timestamp
+    from src.utils import format_timestamp
     return format_timestamp(timestamp)
 
 def _fmt_rl_reset_time(epoch_str: str) -> str:

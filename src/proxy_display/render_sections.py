@@ -1,11 +1,11 @@
 # INFRASTRUCTURE
 from typing import Optional
 
-from ..colors import (
+from src.colors import (
     SOFT_RESET, RED, DIM, DIM_YELLOW_BG, DIM_GREEN_BG,
 )
-from .format import _format_k
-from .render_line_helpers import _emit_text_lines, _emit_span_lines, _emit_inline_spans
+from src.proxy_display.format import _format_k
+from src.proxy_display.render_line_helpers import _emit_text_lines, _emit_span_lines, _emit_inline_spans
 
 # FUNCTIONS
 

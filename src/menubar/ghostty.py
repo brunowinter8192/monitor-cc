@@ -5,9 +5,9 @@ import subprocess
 import time
 from typing import Dict, List, Optional
 
-from .menubar_log import log_menubar, log_menubar_change
-from .paths import _APP_SUPPORT
-from .proc_cache import _cc_proc_cache, cc_proc_cache_snapshot
+from src.menubar.menubar_log import log_menubar, log_menubar_change
+from src.menubar.paths import _APP_SUPPORT
+from src.menubar.proc_cache import _cc_proc_cache, cc_proc_cache_snapshot
 
 _GHOSTTY_TTY_REFRESH_INTERVAL = 10.0
 _GHOSTTY_MARKER_PREFIX = '__GHT_'

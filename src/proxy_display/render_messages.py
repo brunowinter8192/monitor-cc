@@ -2,11 +2,11 @@
 import re
 import time
 from collections import Counter
-from ..colors import (
+from src.colors import (
     SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, DIM_GREEN_BG, LIGHT_RED_BG, RESET,
 )
-from ..proxy.strip_vocab import classify_req
-from ..utils import wrap_visible, append_copy_symbol
+from src.proxy.strip_vocab import classify_req
+from src.utils import wrap_visible, append_copy_symbol
 
 _BLOCK_CONTENT_INDENT = "        "
 

@@ -4,8 +4,8 @@ from pathlib import Path
 import subprocess
 import time
 
-from ..session_finder import encode_project_path
-from .worker_format import get_worker_project_name, parse_worker_stats_delta
+from src.session_finder import encode_project_path
+from src.workers.worker_format import get_worker_project_name, parse_worker_stats_delta
 
 # FUNCTIONS
 

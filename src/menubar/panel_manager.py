@@ -7,14 +7,14 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSGridCellPlacementLeading, NSGridView)
 from Foundation import NSRange
 
-from .panel import (
+from src.menubar.panel import (
     _make_nspanel, _resize_panel_keep_top,
     _MENLO, _BADGE_WORKING, _BADGE_IDLE,
     _ROW_H, _LABEL_H,
     _project_desktop_no, _compute_required_height,
     _make_line_separator, _make_header_label, _make_separator_view,
     _make_grid_cell_btn, _format_bg_badge)
-from .panel_grid import (_GRID_COL0_W, _GRID_COL1_W, _GRID_COL3_W, _GRID_COL4_W,
+from src.menubar.panel_grid import (_GRID_COL0_W, _GRID_COL1_W, _GRID_COL3_W, _GRID_COL4_W,
                          _GRID_COL5_W, _GRID_COL6_W, _GRID_COL_SPC)
 
 # FUNCTIONS

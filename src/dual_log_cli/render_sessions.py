@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from .render_format import fmt_timestamp
+from src.dual_log_cli.render_format import fmt_timestamp
 
 # FUNCTIONS
 

@@ -4,21 +4,21 @@ from typing import Dict, Optional, Set, Tuple
 import os
 import time
 
-from ..constants import INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL
-from ..utils import format_timestamp
-from ..ram_audit import register_ram_dump
-from ..pane_error_log import log_pane_error
+from src.constants import INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL
+from src.utils import format_timestamp
+from src.ram_audit import register_ram_dump
+from src.pane_error_log import log_pane_error
 from src.jsonl.jsonl_reader import read_json_records
-from ..input.click_handler import (
+from src.input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
     resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
-from .warnings_render import (
+from src.panes.warnings_render import (
     _format_warnings_pane, _format_warnings_header, _serialize_warnings,
     build_warnings_search_matches,
 )
-from .. import search_bar
+from src import search_bar
 
 tool_errors: list = []
 error_expand_states: Dict[int, bool] = {}
@@ -234,12 +234,12 @@ def _read_errors_log(path: Path, last_pos: int) -> tuple:
         return [], last_pos
 
 def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
-    from ..core import monitor as _monitor
-    from ..proxy_display.parser import (
+    from src.core import monitor as _monitor
+    from src.proxy_display.parser import (
         find_errors_log_path,
         proxy_session_id_for_project, get_proxy_session_start_ts,
     )
-    from ..proxy_display.side_logs import scan_worker_errors_logs
+    from src.proxy_display.side_logs import scan_worker_errors_logs
     global tool_errors, error_expand_states, error_line_map, error_scroll_offset, error_hover_row
     global _last_project_filter, _last_refresh_ts, _force_refresh, _monitor_start_ts
     global _errors_log_pos, _errors_log_path, _worker_errors_positions

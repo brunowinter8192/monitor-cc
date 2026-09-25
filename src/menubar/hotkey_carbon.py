@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import ctypes
 
-from .menubar_log import log_menubar
+from src.menubar.menubar_log import log_menubar
 
 _OSStatus = ctypes.c_int32
 

@@ -1,8 +1,8 @@
 # INFRASTRUCTURE
 from typing import Dict, Optional, Tuple
 
-from ..colors import RESET, YELLOW, DIM, WHITE, GREEN, RED
-from ..utils import _ANSI_ESCAPE_RE
+from src.colors import RESET, YELLOW, DIM, WHITE, GREEN, RED
+from src.utils import _ANSI_ESCAPE_RE
 
 _STATUS_COLORS = {
     'working': GREEN,

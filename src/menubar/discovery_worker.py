@@ -3,10 +3,10 @@ import threading
 import time
 from typing import Dict, List, NamedTuple
 
-from .discover import list_alive_sessions, get_last_session_timings, SessionInfo
-from .bg_timer import _scan_bg_sleep_timers, BgSleepInfo
-from .bg_task_orphans import scan_bg_task_orphans
-from .menubar_log import log_menubar, log_menubar_change
+from src.menubar.discover import list_alive_sessions, get_last_session_timings, SessionInfo
+from src.menubar.bg_timer import _scan_bg_sleep_timers, BgSleepInfo
+from src.menubar.bg_task_orphans import scan_bg_task_orphans
+from src.menubar.menubar_log import log_menubar, log_menubar_change
 
 REFRESH_INTERVAL = 1.5
 BG_REFRESH_LATENCY_THRESHOLD_MS = 200

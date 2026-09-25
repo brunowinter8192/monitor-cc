@@ -2,14 +2,14 @@
 import os
 from typing import Optional, Tuple
 
-from ..constants import PROXY_MESSAGES_KEEP_LAST
-from .format import _is_standalone_entry
-from .forwarded_parser import _lazy_load_messages_forwarded, reconstruct_all_messages
-from .parser import _find_dual_log_paths
-from .dual_log_accumulator import accumulate_dual_log
-from .search import build_search_matches
-from .side_logs import read_response_log
-from .. import search_bar
+from src.constants import PROXY_MESSAGES_KEEP_LAST
+from src.proxy_display.format import _is_standalone_entry
+from src.proxy_display.forwarded_parser import _lazy_load_messages_forwarded, reconstruct_all_messages
+from src.proxy_display.parser import _find_dual_log_paths
+from src.proxy_display.dual_log_accumulator import accumulate_dual_log
+from src.proxy_display.search import build_search_matches
+from src.proxy_display.side_logs import read_response_log
+from src import search_bar
 
 # FUNCTIONS
 

@@ -9,10 +9,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from .ghostty import get_ghostty_terminal_id, get_ghostty_terminal_id_for_tty, _reprobe_single_tty
-from .menubar_log import log_menubar, log_menubar_change
-from .paths import PID_FILE as _LOCK_PATH, MONITOR_CC_ROOT
-from ..tmux_launcher import generate_session_name, check_session_exists, kill_session
+from src.menubar.ghostty import get_ghostty_terminal_id, get_ghostty_terminal_id_for_tty, _reprobe_single_tty
+from src.menubar.menubar_log import log_menubar, log_menubar_change
+from src.menubar.paths import PID_FILE as _LOCK_PATH, MONITOR_CC_ROOT
+from src.tmux_launcher import generate_session_name, check_session_exists, kill_session
 
 _LAUNCHD_LABEL = 'com.brunowinter.monitor-cc-menubar'
 _PLIST_PATH = Path(__file__).resolve().parent / f'{_LAUNCHD_LABEL}.plist'
@@ -25,7 +25,7 @@ def run() -> None:
     if _lock_fh is None:
         print('Another menubar instance is already running, exiting.', file=sys.stderr)
         sys.exit(0)
-    from .app import CCMenuBarApp
+    from src.menubar.app import CCMenuBarApp
     app = CCMenuBarApp()
     app.run()
 

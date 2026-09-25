@@ -2,10 +2,10 @@
 import json
 from pathlib import Path
 
-from .diagnostics import report_skip
-from .discovery import stem_identity
-from .project_map import build_project_index, project_label
-from .reader import iter_jsonl, local_datetime
+from src.dual_log_cli.diagnostics import report_skip
+from src.dual_log_cli.discovery import stem_identity
+from src.dual_log_cli.project_map import build_project_index, project_label
+from src.dual_log_cli.reader import iter_jsonl, local_datetime
 
 _PROJECTS_ROOT = Path("~/.claude/projects").expanduser()
 

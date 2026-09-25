@@ -3,8 +3,8 @@ from datetime import datetime
 import re
 import unicodedata
 
-from .colors import RESET, YELLOW, SOFT_RESET
-from .constants import NO_TIME_PLACEHOLDER, WORKER_COL_WIDTH
+from src.colors import RESET, YELLOW, SOFT_RESET
+from src.constants import NO_TIME_PLACEHOLDER, WORKER_COL_WIDTH
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 _TIME_RIGHT_RESERVE_CELLS = 3

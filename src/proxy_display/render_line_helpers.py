@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from ..colors import SOFT_RESET, DIM
+from src.colors import SOFT_RESET, DIM
 
 def _emit_text_lines(text: str, indent: str, bg: str = '', transform=None) -> tuple:
     lines = []

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import List, NamedTuple
 
-from .menubar_log import log_menubar
+from src.menubar.menubar_log import log_menubar
 
 CLAUDE_DIR = Path.home() / '.claude'
 

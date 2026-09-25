@@ -1,10 +1,10 @@
 # INFRASTRUCTURE
 from src.proxy_display.format import _assign_turns_to_entries
 
-from .discovery import stem_identity
-from .reader import local_datetime
-from .render_format import _clock, _fmt_duration, _skipped_lines
-from .timeline_grouping import _group_markers_by_turn, _turn_preview
+from src.dual_log_cli.discovery import stem_identity
+from src.dual_log_cli.reader import local_datetime
+from src.dual_log_cli.render_format import _clock, _fmt_duration, _skipped_lines
+from src.dual_log_cli.timeline_grouping import _group_markers_by_turn, _turn_preview
 
 _REQ_NUMBER_WIDTH = 4
 _PREVIEW_CHARS = 100

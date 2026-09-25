@@ -2,8 +2,8 @@
 import json
 from pathlib import Path
 
-from ..proxy.logging import _delta_hash
-from .reader import infer_family, iter_jsonl
+from src.proxy.logging import _delta_hash
+from src.dual_log_cli.reader import infer_family, iter_jsonl
 
 _BILLING_HEADER_SYS_INDEX = 0
 

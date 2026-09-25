@@ -17,9 +17,9 @@ from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSFont,
                     NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSMakeSize, NSRange
 
-from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
-from .panel_tabs import TAB_SEPARATOR, header_pieces
-from .panel_views import _CursorlessButton, _CursorlessLabel, _KeyablePanel, _PanelContentView
+from src.menubar.panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
+from src.menubar.panel_tabs import TAB_SEPARATOR, header_pieces
+from src.menubar.panel_views import _CursorlessButton, _CursorlessLabel, _KeyablePanel, _PanelContentView
 
 _NAME_WIDTH    = 22
 _MENLO         = lambda: NSFont.fontWithName_size_('Menlo', 13.0)

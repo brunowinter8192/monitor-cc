@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import bisect
 
-from .timeline_markers import request_markers
+from src.dual_log_cli.timeline_markers import request_markers
 
 # FUNCTIONS
 

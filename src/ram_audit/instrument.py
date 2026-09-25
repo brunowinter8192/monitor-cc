@@ -11,8 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from ..monitor_root import resolve_monitor_cc_root
-from ..pane_error_log import log_pane_note
+from src.monitor_root import resolve_monitor_cc_root
+from src.pane_error_log import log_pane_note
 
 
 # FUNCTIONS

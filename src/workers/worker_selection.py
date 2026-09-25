@@ -3,7 +3,7 @@ from typing import Optional
 import hashlib
 import os
 
-from ..pane_error_log import log_pane_error
+from src.pane_error_log import log_pane_error
 
 # FUNCTIONS
 

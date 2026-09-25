@@ -1,15 +1,15 @@
 # INFRASTRUCTURE
 import time
 from typing import Optional
-from ..colors import (
+from src.colors import (
     SOFT_RESET, RED, GREEN, WHITE, YELLOW, DIM,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..utils import _ANSI_ESCAPE_RE, _cell_width, highlight_query_in_line, right_align_time
-from .format import _shorten_model, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
-from .render_messages import _aggregate_req_buckets
-from .proxy_badge import badge_flags
-from ..search_bar import _BG_RESTORE_SENTINEL
+from src.utils import _ANSI_ESCAPE_RE, _cell_width, highlight_query_in_line, right_align_time
+from src.proxy_display.format import _shorten_model, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
+from src.proxy_display.render_messages import _aggregate_req_buckets
+from src.proxy_display.proxy_badge import badge_flags
+from src.search_bar import _BG_RESTORE_SENTINEL
 
 # FUNCTIONS
 
@@ -104,9 +104,9 @@ def _mark_search_lines(lines: list, query: str, is_current: bool) -> list:
     return [highlight_query_in_line(line, query, marker, _BG_RESTORE_SENTINEL) for line in lines]
 
 def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalone: bool, prev_same, expand_states: dict, pane_width: int, search_query: str = '', is_search_current: bool = False, copy_feedback=None) -> tuple:
-    from .render_sections import render_tools, render_fields_delta, render_beta, render_directives
-    from .render_sections_system import render_system_blocks
-    from .render_messages import render_messages
+    from src.proxy_display.render_sections import render_tools, render_fields_delta, render_beta, render_directives
+    from src.proxy_display.render_sections_system import render_system_blocks
+    from src.proxy_display.render_messages import render_messages
     lines = _status_line(entry)
     keys = [None] * len(lines)
     _section_ref = None if is_standalone else prev_same

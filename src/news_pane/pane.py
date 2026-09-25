@@ -5,21 +5,21 @@ import re
 import subprocess
 import time
 
-from ..colors import (
+from src.colors import (
     RESET, GREEN, YELLOW, DIM, CYAN,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..constants import INPUT_POLL_INTERVAL
-from ..input.click_handler import (
+from src.constants import INPUT_POLL_INTERVAL
+from src.input.click_handler import (
     setup_keyboard_input, restore_terminal, read_keypress, wait_for_input,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard,
 )
-from ..utils import compute_header_rule_len, highlight_query_in_line
-from .log_parser import (
+from src.utils import compute_header_rule_len, highlight_query_in_line
+from src.news_pane.log_parser import (
     TARGET_COLLECTION, WEBSEARCH_ROOT, read_last_run_ts,
 )
-from ..pane_error_log import log_pane_error, log_pane_note
-from .. import search_bar
+from src.pane_error_log import log_pane_error, log_pane_note
+from src import search_bar
 
 NEWS_POLL_INTERVAL      = 2.0
 

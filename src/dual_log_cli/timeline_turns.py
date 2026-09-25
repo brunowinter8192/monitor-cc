@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from ..proxy.message_summary import _summarize_message
+from src.proxy.message_summary import _summarize_message
 
 PREVIEW_CHARS = 100
 

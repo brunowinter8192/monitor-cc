@@ -1,9 +1,9 @@
 # INFRASTRUCTURE
 from typing import List
 
-from ..utils import _ANSI_ESCAPE_RE
-from .format import _is_standalone_entry
-from .render_turn import _render_req_expanded, _resolve_prev_same_family
+from src.utils import _ANSI_ESCAPE_RE
+from src.proxy_display.format import _is_standalone_entry
+from src.proxy_display.render_turn import _render_req_expanded, _resolve_prev_same_family
 
 # FUNCTIONS
 

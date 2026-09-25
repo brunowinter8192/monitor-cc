@@ -3,30 +3,30 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 import time
 
-from ..colors import RESET, YELLOW
-from ..constants import (
+from src.colors import RESET, YELLOW
+from src.constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
-from .parser import find_proxy_log_path, _find_original_log_path, _find_response_log_path
-from .forwarded_parser import parse_proxy_log_forwarded, _infer_model_family
-from .dual_log_accumulator import accumulate_original_tools
-from .proxy_pane_shared import (
+from src.proxy_display.parser import find_proxy_log_path, _find_original_log_path, _find_response_log_path
+from src.proxy_display.forwarded_parser import parse_proxy_log_forwarded, _infer_model_family
+from src.proxy_display.dual_log_accumulator import accumulate_original_tools
+from src.proxy_display.proxy_pane_shared import (
     _entry_idx_from_key, _terminal_size, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body, _accumulate_dual_logs_and_attach,
     _copy_feedback_key, _accumulate_request_ids, _attach_http_status,
 )
-from .format import format_proxy_block
+from src.proxy_display.format import format_proxy_block
 from src.proxy_display.turn_cache import TurnCache
-from ..panes.cache_turns import build_cache_turns
-from ..input.click_handler import (
+from src.panes.cache_turns import build_cache_turns
+from src.input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard, wait_for_input,
 )
-from ..frame_writer import write_frame, hide_cursor, show_cursor
-from ..ram_audit import register_ram_dump
-from ..pane_error_log import log_pane_error
-from .. import search_bar
+from src.frame_writer import write_frame, hide_cursor, show_cursor
+from src.ram_audit import register_ram_dump
+from src.pane_error_log import log_pane_error
+from src import search_bar
 
 _PROXY_HEADER_LINES = 1
 _SEARCH_BAR_LABEL = 'search: '
@@ -69,7 +69,7 @@ _proxy_search: search_bar.SearchState = search_bar.SearchState()
 # ORCHESTRATOR
 
 def run_proxy_loop() -> None:
-    from ..core import monitor as _monitor
+    from src.core import monitor as _monitor
     global _proxy_current_main_session, _proxy_session_start_ts, _copy_feedback_until
 
     register_ram_dump('proxy', _proxy_ram_state)

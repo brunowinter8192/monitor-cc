@@ -2,9 +2,9 @@
 import subprocess
 import time
 
-from .ghostty import get_ghostty_terminal_id
-from .menubar_log import log_menubar
-from .system import _applescript_quote
+from src.menubar.ghostty import get_ghostty_terminal_id
+from src.menubar.menubar_log import log_menubar
+from src.menubar.system import _applescript_quote
 
 _OSASCRIPT_TIMEOUT = 5
 _TEXT_TEMPLATE = 'Aktiviere den Skill {name}.'

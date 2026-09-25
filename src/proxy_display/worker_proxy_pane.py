@@ -3,34 +3,34 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 import time
 
-from ..colors import RESET, YELLOW, DIM
-from ..constants import (
+from src.colors import RESET, YELLOW, DIM
+from src.constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
-from .parser import find_worker_proxy_log, _find_response_log_path
-from .forwarded_parser import _parse_forwarded_log, _infer_model_family
-from .format import format_proxy_block
+from src.proxy_display.parser import find_worker_proxy_log, _find_response_log_path
+from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
+from src.proxy_display.format import format_proxy_block
 from src.proxy_display.turn_cache import TurnCache
-from ..panes.cache_turns import build_cache_turns
-from ..workers.worker_tmux import find_worker_jsonl, list_workers, attach_worker_stats
-from ..workers.worker_selection import get_selection_file_path
-from ..workers import write_selection
-from ..workers.worker_switch_header import format_worker_switch_header as _format_worker_proxy_header
-from ..input.click_handler import (
+from src.panes.cache_turns import build_cache_turns
+from src.workers.worker_tmux import find_worker_jsonl, list_workers, attach_worker_stats
+from src.workers.worker_selection import get_selection_file_path
+from src.workers import write_selection
+from src.workers.worker_switch_header import format_worker_switch_header as _format_worker_proxy_header
+from src.input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, parse_digit_key, copy_to_clipboard, wait_for_input,
 )
-from ..utils import visual_line_count
-from ..frame_writer import write_frame, hide_cursor, show_cursor
-from ..ram_audit import register_ram_dump
-from ..pane_error_log import log_pane_error
-from .proxy_pane_shared import (
+from src.utils import visual_line_count
+from src.frame_writer import write_frame, hide_cursor, show_cursor
+from src.ram_audit import register_ram_dump
+from src.pane_error_log import log_pane_error
+from src.proxy_display.proxy_pane_shared import (
     _entry_idx_from_key, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _terminal_size, _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body,
     _accumulate_dual_logs_and_attach, _copy_feedback_key, _accumulate_request_ids, _attach_http_status,
 )
-from .. import search_bar
+from src import search_bar
 
 worker_proxy_entries: List[dict] = []
 worker_proxy_expand_states: Dict[int, bool] = {}
@@ -66,7 +66,7 @@ _worker_proxy_search: search_bar.SearchState = search_bar.SearchState()
 # ORCHESTRATOR
 
 def run_worker_proxy_loop() -> None:
-    from ..core import monitor as _monitor
+    from src.core import monitor as _monitor
     global _worker_copy_feedback_until
     register_ram_dump('worker_proxy', _worker_proxy_ram_state)
     last_output = None

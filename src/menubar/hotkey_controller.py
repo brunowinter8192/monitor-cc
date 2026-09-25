@@ -1,14 +1,14 @@
 # INFRASTRUCTURE
 import ctypes
 
-from .menubar_log import log_menubar
-from .system import _focus_session
-from .hotkey_carbon import (
+from src.menubar.menubar_log import log_menubar
+from src.menubar.system import _focus_session
+from src.menubar.hotkey_carbon import (
     _EventHotKeyID, _EventHandlerProcPtr, _MBAR_SIG, _HOTKEY_EVENT_SPEC, _get_hkid,
     _load_carbon, _log_queue_delay, _eventNotHandledErr, _check_status,
 )
-from .hotkey_digits import register_cmd_digits, unregister_hotkeys
-from .hotkey_arrows import (
+from src.menubar.hotkey_digits import register_cmd_digits, unregister_hotkeys
+from src.menubar.hotkey_arrows import (
     register_cmd_arrow_right, register_cmd_arrow_left,
     unregister_cmd_arrow_right, unregister_cmd_arrow_left,
 )

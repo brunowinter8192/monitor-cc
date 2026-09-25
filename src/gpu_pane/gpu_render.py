@@ -2,9 +2,9 @@
 import os
 import re
 
-from ..colors import RESET, GREEN, YELLOW, RED, DIM, ORANGE, SEARCH_MATCH_BG, SEARCH_CURRENT_BG
-from ..utils import format_timestamp, compute_header_rule_len, highlight_query_in_line
-from .gpu_actions import _toggle_state
+from src.colors import RESET, GREEN, YELLOW, RED, DIM, ORANGE, SEARCH_MATCH_BG, SEARCH_CURRENT_BG
+from src.utils import format_timestamp, compute_header_rule_len, highlight_query_in_line
+from src.gpu_pane.gpu_actions import _toggle_state
 
 IDLE_TIMEOUT = int(os.getenv("RAG_SERVER_IDLE_TIMEOUT", "3600"))
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')

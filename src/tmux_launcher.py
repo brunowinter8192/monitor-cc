@@ -6,7 +6,7 @@ import subprocess
 import sys
 from typing import Optional
 
-from .constants import TMUX_HISTORY_LIMIT
+from src.constants import TMUX_HISTORY_LIMIT
 
 _WINDOW_LAYOUT = [
     (0, 'tokens',   [('tokens',        None,   None)]),

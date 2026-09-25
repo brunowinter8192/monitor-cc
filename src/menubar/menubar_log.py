@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
-from .paths import _APP_SUPPORT
+from src.menubar.paths import _APP_SUPPORT
 
 MENUBAR_LOG    = _APP_SUPPORT / 'menubar.log'
 RETENTION_SECS = 7 * 86400

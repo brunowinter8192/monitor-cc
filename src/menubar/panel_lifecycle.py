@@ -1,9 +1,9 @@
 # INFRASTRUCTURE
 from Foundation import NSOperationQueue
 
-from .menubar_log import log_menubar
-from .panel import _reposition_panel, _reposition_tab_panel
-from .panel_tabs import TAB_KEYS
+from src.menubar.menubar_log import log_menubar
+from src.menubar.panel import _reposition_panel, _reposition_tab_panel
+from src.menubar.panel_tabs import TAB_KEYS
 
 _RING = TAB_KEYS
 

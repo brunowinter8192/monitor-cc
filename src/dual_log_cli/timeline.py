@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
-from .reader import infer_family, load_last_request
-from .timeline_boundaries import build_turn_times, continue_requests, request_boundaries
-from .timeline_turns import build_turns
+from src.dual_log_cli.reader import infer_family, load_last_request
+from src.dual_log_cli.timeline_boundaries import build_turn_times, continue_requests, request_boundaries
+from src.dual_log_cli.timeline_turns import build_turns
 
 # FUNCTIONS
 

@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from .render_format import _clock, _window_date, fmt_chars
+from src.dual_log_cli.render_format import _clock, _window_date, fmt_chars
 
 # FUNCTIONS
 

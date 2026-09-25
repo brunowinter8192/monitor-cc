@@ -3,15 +3,15 @@ import json, os, time
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional
 
-from ..session_finder import get_project_directories, encode_project_path
-from .proc_cache import (
+from src.session_finder import get_project_directories, encode_project_path
+from src.menubar.proc_cache import (
     _refresh_cc_proc_cache, _refresh_tmux_state, _refresh_bg_task_cache,
     _tmux_session_exists, _tmux_window_activity, _read_hook_state, _proxy_log_newest_mtime,
     _has_active_bg, _cc_proc_cache,
 )
-from .ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map, _ghostty_tty_to_id
-from .desktop_detection import detect_main_desktop_numbers
-from .menubar_log import log_menubar_change
+from src.menubar.ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map, _ghostty_tty_to_id
+from src.menubar.desktop_detection import detect_main_desktop_numbers
+from src.menubar.menubar_log import log_menubar_change
 
 ALIVE_WINDOW_SECS      = 3600
 WORKING_THRESHOLD_SECS = 10

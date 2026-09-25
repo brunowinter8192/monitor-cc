@@ -6,12 +6,12 @@ from collections import deque
 from pathlib import Path
 from typing import Optional
 
-from ..constants import PROXY_MESSAGES_KEEP_LAST
-from ..monitor_root import resolve_monitor_cc_root
-from ..pane_error_log import log_pane_error, log_pane_note
+from src.constants import PROXY_MESSAGES_KEEP_LAST
+from src.monitor_root import resolve_monitor_cc_root
+from src.pane_error_log import log_pane_error, log_pane_note
 from src.jsonl.jsonl_reader import JsonlReader
-from ..proxy.message_summary import _infer_model_family, _summarize_message
-from ..proxy.logging import _compute_diff
+from src.proxy.message_summary import _infer_model_family, _summarize_message
+from src.proxy.logging import _compute_diff
 
 _missing_marker_noted: set = set()
 

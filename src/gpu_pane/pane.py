@@ -3,17 +3,17 @@ import os
 import subprocess
 import time
 
-from ..constants import INPUT_POLL_INTERVAL
-from ..input.click_handler import (
+from src.constants import INPUT_POLL_INTERVAL
+from src.input.click_handler import (
     setup_keyboard_input, restore_terminal, read_keypress, wait_for_input,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard,
 )
-from .status import all_statuses, get_anomalies, PRESET_NAMES, _fetch_collections
-from .errors import errors_today, errors_today_by_server
-from .gpu_actions import _toggle_state, _expire_toggle_states, _fire_button
-from .gpu_render import _button_regions, _render_pane, _strip_ansi
-from ..pane_error_log import log_pane_error
-from .. import search_bar
+from src.gpu_pane.status import all_statuses, get_anomalies, PRESET_NAMES, _fetch_collections
+from src.gpu_pane.errors import errors_today, errors_today_by_server
+from src.gpu_pane.gpu_actions import _toggle_state, _expire_toggle_states, _fire_button
+from src.gpu_pane.gpu_render import _button_regions, _render_pane, _strip_ansi
+from src.pane_error_log import log_pane_error
+from src import search_bar
 
 GPU_POLL_INTERVAL         = 2.0
 COLLECTIONS_POLL_INTERVAL = 30.0
