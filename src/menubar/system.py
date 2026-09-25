@@ -95,6 +95,26 @@ def _focus_session(cwd: str) -> None:
         fh.write(msg)
     log_menubar('latency', f'focus lookup_ms={lookup_ms:.1f} osascript_ms={osascript_ms:.1f} {label}')
 
+def _focus_worker(tmux_session_name: str) -> None:
+    import time
+    _t0 = time.monotonic()
+    tty = _find_worker_viewer_tty(tmux_session_name)
+    lookup_ms = (time.monotonic() - _t0) * 1000
+    if tty is None:
+        log_menubar('latency', f'focus_worker session={tmux_session_name} lookup_ms={lookup_ms:.1f} '
+                                f'NO-OP reason=no_attach_client')
+        return
+    term_id = get_ghostty_terminal_id_for_tty(tty)
+    if term_id is None:
+        log_menubar('latency', f'focus_worker session={tmux_session_name} tty={tty} lookup_ms={lookup_ms:.1f} '
+                                f'NO-OP reason=tty_unmapped')
+        return
+    outcome, osascript_ms = _focus_terminal_by_id(term_id)
+    log_menubar('latency', f'focus_worker session={tmux_session_name} lookup_ms={lookup_ms:.1f} '
+                            f'osascript_ms={osascript_ms:.1f} id={term_id} {outcome} attempt=1')
+    if outcome != 'status=OK':
+        _retry_focus_worker_after_reprobe(tmux_session_name, tty)
+
 def _find_worker_viewer_tty(tmux_session_name: str) -> Optional[str]:
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,tty=,args='],
@@ -121,41 +141,6 @@ def _find_worker_viewer_tty(tmux_session_name: str) -> Optional[str]:
             return tty
     return None
 
-def _focus_worker(tmux_session_name: str) -> None:
-    import time
-    _t0 = time.monotonic()
-    tty = _find_worker_viewer_tty(tmux_session_name)
-    lookup_ms = (time.monotonic() - _t0) * 1000
-    if tty is None:
-        log_menubar('latency', f'focus_worker session={tmux_session_name} lookup_ms={lookup_ms:.1f} '
-                                f'NO-OP reason=no_attach_client')
-        return
-    term_id = get_ghostty_terminal_id_for_tty(tty)
-    if term_id is None:
-        log_menubar('latency', f'focus_worker session={tmux_session_name} tty={tty} lookup_ms={lookup_ms:.1f} '
-                                f'NO-OP reason=tty_unmapped')
-        return
-    outcome, osascript_ms = _focus_terminal_by_id(term_id)
-    log_menubar('latency', f'focus_worker session={tmux_session_name} lookup_ms={lookup_ms:.1f} '
-                            f'osascript_ms={osascript_ms:.1f} id={term_id} {outcome} attempt=1')
-    if outcome != 'status=OK':
-        _retry_focus_worker_after_reprobe(tmux_session_name, tty)
-
-def _retry_focus_worker_after_reprobe(tmux_session_name: str, tty: str) -> None:
-    import time
-    _t0 = time.monotonic()
-    fresh_id = _reprobe_single_tty(tty)
-    reprobe_ms = (time.monotonic() - _t0) * 1000
-    if fresh_id is None:
-        log_menubar('latency', f'focus_worker_reprobe session={tmux_session_name} tty={tty} '
-                                f'reprobe_ms={reprobe_ms:.1f} result=miss')
-        return
-    log_menubar('latency', f'focus_worker_reprobe session={tmux_session_name} tty={tty} '
-                            f'reprobe_ms={reprobe_ms:.1f} result={fresh_id}')
-    outcome2, osascript_ms2 = _focus_terminal_by_id(fresh_id)
-    log_menubar('latency', f'focus_worker session={tmux_session_name} '
-                            f'osascript_ms={osascript_ms2:.1f} id={fresh_id} {outcome2} attempt=2')
-
 def _focus_terminal_by_id(term_id: str):
     import time
     safe_id = term_id.replace('"', '\\"')
@@ -176,6 +161,40 @@ def _focus_terminal_by_id(term_id: str):
         return f'status=ERR rc={r.returncode} stderr={r.stderr.strip()}', osascript_ms
     return 'status=OK', osascript_ms
 
+def _retry_focus_worker_after_reprobe(tmux_session_name: str, tty: str) -> None:
+    import time
+    _t0 = time.monotonic()
+    fresh_id = _reprobe_single_tty(tty)
+    reprobe_ms = (time.monotonic() - _t0) * 1000
+    if fresh_id is None:
+        log_menubar('latency', f'focus_worker_reprobe session={tmux_session_name} tty={tty} '
+                                f'reprobe_ms={reprobe_ms:.1f} result=miss')
+        return
+    log_menubar('latency', f'focus_worker_reprobe session={tmux_session_name} tty={tty} '
+                            f'reprobe_ms={reprobe_ms:.1f} result={fresh_id}')
+    outcome2, osascript_ms2 = _focus_terminal_by_id(fresh_id)
+    log_menubar('latency', f'focus_worker session={tmux_session_name} '
+                            f'osascript_ms={osascript_ms2:.1f} id={fresh_id} {outcome2} attempt=2')
+
+def _open_or_focus_monitor(cwd: str) -> None:
+    session_name = generate_session_name(cwd)
+    if check_session_exists(session_name):
+        kill_session(session_name)
+    _launch_monitor(cwd)
+
+def _launch_monitor(cwd: str) -> None:
+    try:
+        python3_path = _resolve_launch_python3()
+    except RuntimeError as exc:
+        log_menubar('monitor', f'launch FAILED cwd={cwd} err={exc}')
+        return
+    shell_cmd = _build_monitor_launch_cmd(MONITOR_CC_ROOT, python3_path, cwd)
+    r = _launch_monitor_ghostty_native(shell_cmd)
+    if r.returncode != 0:
+        log_menubar('monitor', f'launch FAILED cwd={cwd} rc={r.returncode} '
+                                f'stderr={r.stderr.strip()}')
+    else:
+        log_menubar('monitor', f'launch OK cwd={cwd}')
 
 def _resolve_launch_python3() -> str:
     path_value, route = _launch_path_value()
@@ -199,9 +218,6 @@ def _build_monitor_launch_cmd(root: Path, python3_path: str, cwd: str) -> str:
     return (f'cd {shlex.quote(str(root))} && '
             f'{shlex.quote(python3_path)} workflow.py --project {shlex.quote(cwd)}')
 
-def _applescript_quote(s: str) -> str:
-    return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
-
 def _launch_monitor_ghostty_native(shell_cmd: str):
     script = (
         'tell application "Ghostty"\n'
@@ -215,22 +231,5 @@ def _launch_monitor_ghostty_native(shell_cmd: str):
     return subprocess.run(['osascript', '-e', script], capture_output=True, text=True,
                           encoding='utf-8', errors='replace', timeout=10)
 
-def _launch_monitor(cwd: str) -> None:
-    try:
-        python3_path = _resolve_launch_python3()
-    except RuntimeError as exc:
-        log_menubar('monitor', f'launch FAILED cwd={cwd} err={exc}')
-        return
-    shell_cmd = _build_monitor_launch_cmd(MONITOR_CC_ROOT, python3_path, cwd)
-    r = _launch_monitor_ghostty_native(shell_cmd)
-    if r.returncode != 0:
-        log_menubar('monitor', f'launch FAILED cwd={cwd} rc={r.returncode} '
-                                f'stderr={r.stderr.strip()}')
-    else:
-        log_menubar('monitor', f'launch OK cwd={cwd}')
-
-def _open_or_focus_monitor(cwd: str) -> None:
-    session_name = generate_session_name(cwd)
-    if check_session_exists(session_name):
-        kill_session(session_name)
-    _launch_monitor(cwd)
+def _applescript_quote(s: str) -> str:
+    return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'

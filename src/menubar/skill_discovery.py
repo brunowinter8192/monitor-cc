@@ -28,14 +28,13 @@ def discover_skills_workflow(cwd: str, claude_dir: Path = CLAUDE_DIR) -> List[Sk
 
 # FUNCTIONS
 
-def _personal_skills(claude_dir: Path) -> List[Skill]:
-    return _dir_skills(claude_dir / 'skills', _SOURCE_PERSONAL)
-
-def _concat_skills(project: List[Skill], personal: List[Skill], plugin: List[Skill]) -> List[Skill]:
-    return project + personal + plugin
-
 class PluginProblem(Exception):
     pass
+
+def _project_skills(cwd: str) -> List[Skill]:
+    if not cwd:
+        return []
+    return _dir_skills(Path(cwd) / '.claude' / 'skills', _SOURCE_PROJECT)
 
 def _dir_skills(skills_root: Path, source: str) -> List[Skill]:
     if not skills_root.is_dir():
@@ -44,21 +43,8 @@ def _dir_skills(skills_root: Path, source: str) -> List[Skill]:
             for d in sorted(skills_root.iterdir())
             if d.is_dir() and (d / _SKILL_FILE).is_file()]
 
-def _project_skills(cwd: str) -> List[Skill]:
-    if not cwd:
-        return []
-    return _dir_skills(Path(cwd) / '.claude' / 'skills', _SOURCE_PROJECT)
-
-def _read_json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding='utf-8'))
-
-def _enabled_plugin_keys(claude_dir: Path) -> List[str]:
-    try:
-        enabled = _read_json(claude_dir / 'settings.json').get('enabledPlugins', {})
-    except Exception as exc:
-        log_menubar('skill', f'FAILED settings_unreadable detail={exc!r}')
-        return []
-    return sorted(key for key, on in enabled.items() if on is True)
+def _personal_skills(claude_dir: Path) -> List[Skill]:
+    return _dir_skills(claude_dir / 'skills', _SOURCE_PERSONAL)
 
 def _plugin_skills(claude_dir: Path) -> List[Skill]:
     keys = _enabled_plugin_keys(claude_dir)
@@ -74,6 +60,17 @@ def _plugin_skills(claude_dir: Path) -> List[Skill]:
         skills.extend(_skills_of_plugin_logged(key, installed))
     return skills
 
+def _enabled_plugin_keys(claude_dir: Path) -> List[str]:
+    try:
+        enabled = _read_json(claude_dir / 'settings.json').get('enabledPlugins', {})
+    except Exception as exc:
+        log_menubar('skill', f'FAILED settings_unreadable detail={exc!r}')
+        return []
+    return sorted(key for key, on in enabled.items() if on is True)
+
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding='utf-8'))
+
 def _skills_of_plugin_logged(key: str, installed: dict) -> List[Skill]:
     try:
         return _skills_of_plugin(key, installed)
@@ -82,15 +79,6 @@ def _skills_of_plugin_logged(key: str, installed: dict) -> List[Skill]:
     except Exception as exc:
         log_menubar('skill', f'FAILED plugin={key} reason=unexpected detail={exc!r}')
     return []
-
-def _install_path(key: str, installed: dict) -> Path:
-    entries = installed.get(key) or []
-    if not entries:
-        raise PluginProblem('not_installed')
-    user_entries = [e for e in entries if e.get('scope') == 'user']
-    if not user_entries:
-        log_menubar('skill', f'plugin={key} has no user-scope install entry, using first entry')
-    return Path((user_entries or entries)[0]['installPath'])
 
 def _skills_of_plugin(key: str, installed: dict) -> List[Skill]:
     install_path = _install_path(key, installed)
@@ -119,6 +107,15 @@ def _skills_of_plugin(key: str, installed: dict) -> List[Skill]:
         skills.append(Skill(short, f'{plugin_name}:{short}', _SOURCE_PLUGIN))
     return skills
 
+def _install_path(key: str, installed: dict) -> Path:
+    entries = installed.get(key) or []
+    if not entries:
+        raise PluginProblem('not_installed')
+    user_entries = [e for e in entries if e.get('scope') == 'user']
+    if not user_entries:
+        log_menubar('skill', f'plugin={key} has no user-scope install entry, using first entry')
+    return Path((user_entries or entries)[0]['installPath'])
+
 def _frontmatter_name(skill_file: Path) -> str:
     lines = skill_file.read_text(encoding='utf-8', errors='replace').splitlines()
     if not lines or lines[0].strip() != '---':
@@ -129,3 +126,6 @@ def _frontmatter_name(skill_file: Path) -> str:
         if line.startswith('name:'):
             return line[len('name:'):].strip().strip('"\'')
     return ''
+
+def _concat_skills(project: List[Skill], personal: List[Skill], plugin: List[Skill]) -> List[Skill]:
+    return project + personal + plugin

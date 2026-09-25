@@ -187,13 +187,6 @@ class PanelSettings:
         self.panel_min_height = panel_min_height
 
 
-def _maybe_cleanup_logs(now: float) -> None:
-    global _last_log_cleanup_ts
-    if now - _last_log_cleanup_ts > 86400:
-        from src.menubar.menubar_log import cleanup_old_lines
-        cleanup_old_lines()
-        _last_log_cleanup_ts = now
-
 class CCMenuBarApp(rumps.App):
     def __init__(self):
         super().__init__(ICON_NORMAL, quit_button=None, menu=[])
@@ -316,6 +309,14 @@ class CCMenuBarApp(rumps.App):
             log_menubar('latency', f'tick total={_tick_total_ms:.0f}ms {breakdown}')
 
 
+def _maybe_cleanup_logs(now: float) -> None:
+    global _last_log_cleanup_ts
+    if now - _last_log_cleanup_ts > 86400:
+        from src.menubar.menubar_log import cleanup_old_lines
+        cleanup_old_lines()
+        _last_log_cleanup_ts = now
+
+
 def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) -> None:
     if os.getenv('MENUBAR_DIAGNOSTICS') != '1':
         return
@@ -324,12 +325,22 @@ def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) ->
             f'displayed={sorted(displayed_items)} action={action}')
     log_menubar('tick', line)
 
+
 def _write_launch_plist(frozen: bool) -> None:
     log_menubar('restart', f'route={"py2app" if frozen else "source"}')
     if frozen:
         write_plist_py2app()
     else:
         write_plist()
+
+
+def _blink(app: 'CCMenuBarApp') -> None:
+    _set_bar_icon(app, ICON_BLINK)
+    def _restore():
+        NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _set_bar_icon(app, ICON_NORMAL))
+    threading.Timer(BLINK_DURATION, _restore).start()
+
 
 def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:
     astr = NSAttributedString.alloc().initWithString_attributes_(
@@ -338,10 +349,3 @@ def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:
             NSBaselineOffsetAttributeName: ICON_BASELINE_OFFSET,
         })
     app._nsapp.nsstatusitem.button().setAttributedTitle_(astr)
-
-def _blink(app: 'CCMenuBarApp') -> None:
-    _set_bar_icon(app, ICON_BLINK)
-    def _restore():
-        NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _set_bar_icon(app, ICON_NORMAL))
-    threading.Timer(BLINK_DURATION, _restore).start()

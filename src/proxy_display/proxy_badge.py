@@ -16,6 +16,15 @@ _TOTAL_TOKENS_TRAILING_TAG_RE = re.compile(r"<total_tokens>\d+ tokens left</tota
 
 # FUNCTIONS
 
+def _is_total_tokens_nuke(blks) -> bool:
+    if not isinstance(blks, dict):
+        return False
+    texts = [
+        t for blk in blks.values() if isinstance(blk, list)
+        for t in blk if isinstance(t, str)
+    ]
+    return len(texts) == 1 and _is_total_tokens_nuke_text(texts[0])
+
 def _is_total_tokens_nuke_text(text: str) -> bool:
     stripped = text.strip()
     if _TOTAL_TOKENS_NUKE_RE.match(stripped):
@@ -26,6 +35,13 @@ def _is_total_tokens_nuke_text(text: str) -> bool:
     paragraphs = [p.strip() for p in text[:m.start()].split('\n\n')]
     paragraphs = [p for p in paragraphs if p]
     return bool(paragraphs) and all(p in _TOTAL_TOKENS_NUDGE_PARAGRAPHS for p in paragraphs)
+
+def _msgs_delta_is_substantial(msgs_delta: dict, entry_type: str) -> bool:
+    is_injected = entry_type == 'injected_delta'
+    return any(
+        _msg_delta_entry_is_substantial(blks, is_injected)
+        for blks in (msgs_delta or {}).values()
+    )
 
 def _msg_delta_entry_is_substantial(blks, is_injected: bool) -> bool:
     if not isinstance(blks, dict):
@@ -49,25 +65,6 @@ def _msg_delta_entry_is_substantial(blks, is_injected: bool) -> bool:
         return False
     return bool(texts)
 
-
-def _is_total_tokens_nuke(blks) -> bool:
-    if not isinstance(blks, dict):
-        return False
-    texts = [
-        t for blk in blks.values() if isinstance(blk, list)
-        for t in blk if isinstance(t, str)
-    ]
-    return len(texts) == 1 and _is_total_tokens_nuke_text(texts[0])
-
-
-def _msgs_delta_is_substantial(msgs_delta: dict, entry_type: str) -> bool:
-    is_injected = entry_type == 'injected_delta'
-    return any(
-        _msg_delta_entry_is_substantial(blks, is_injected)
-        for blks in (msgs_delta or {}).values()
-    )
-
-
 def badge_flags(entry: dict) -> tuple:
     fid = entry.get('flow_id', '')
     show_strip = bool(entry.get('_strip_fns_lookup', {}).get(fid, False))
@@ -75,7 +72,6 @@ def badge_flags(entry: dict) -> tuple:
     if not show_inject and show_strip and entry.get('_inject_msgs_lookup', {}).get(fid):
         show_inject = True
     return show_strip, show_inject
-
 
 def _chars_to_tokens(chars: int) -> int:
     return int(chars / 3.5)

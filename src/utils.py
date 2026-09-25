@@ -9,13 +9,6 @@ from src.constants import NO_TIME_PLACEHOLDER, WORKER_COL_WIDTH
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 _TIME_RIGHT_RESERVE_CELLS = 3
 
-def _cell_width(ch: str) -> int:
-    cp = ord(ch)
-    if 0x1F000 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF:
-        return 2
-    if unicodedata.east_asian_width(ch) in ('W', 'F'):
-        return 2
-    return 1
 
 # FUNCTIONS
 
@@ -63,6 +56,14 @@ def append_copy_symbol(line: str, copy_sym: str, pane_width: int) -> str:
         return line + ' ' * pad + ' ' + copy_sym
     return line
 
+def _cell_width(ch: str) -> int:
+    cp = ord(ch)
+    if 0x1F000 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF:
+        return 2
+    if unicodedata.east_asian_width(ch) in ('W', 'F'):
+        return 2
+    return 1
+
 def compute_header_rule_len(prefix_text: str, btn_label: str, rule_cap: int, pane_width: int,
                              rule_min: int = 4, gap: int = 1) -> tuple:
     full_rule_len = min(pane_width, rule_cap)
@@ -97,6 +98,17 @@ def highlight_query_in_line(line: str, query: str, match_bg: str, restore_bg: st
         result = f"{match_bg}{chunk}{restore_bg}".join(parts)
     return result
 
+def right_align_time(line: str, time_str: str, pane_width: int, bg_restore: str = '') -> str:
+    if not time_str:
+        return line
+    time_cells = sum(_cell_width(ch) for ch in time_str)
+    budget = pane_width - _TIME_RIGHT_RESERVE_CELLS - time_cells - 1
+    content = truncate_visible(line, budget) if budget > 0 else ''
+    visible = sum(_cell_width(ch) for ch in _ANSI_ESCAPE_RE.sub('', content))
+    restore = bg_restore if bg_restore and bg_restore in line and bg_restore not in content else ''
+    pad = max(1, pane_width - _TIME_RIGHT_RESERVE_CELLS - time_cells - visible)
+    return f"{content}{SOFT_RESET}{restore}{' ' * pad}{time_str}"
+
 def truncate_visible(line: str, pane_width: int) -> str:
     if pane_width <= 0:
         return line
@@ -117,17 +129,6 @@ def truncate_visible(line: str, pane_width: int) -> str:
         width += cw
         i += 1
     return line[:i] + '\u2026'
-
-def right_align_time(line: str, time_str: str, pane_width: int, bg_restore: str = '') -> str:
-    if not time_str:
-        return line
-    time_cells = sum(_cell_width(ch) for ch in time_str)
-    budget = pane_width - _TIME_RIGHT_RESERVE_CELLS - time_cells - 1
-    content = truncate_visible(line, budget) if budget > 0 else ''
-    visible = sum(_cell_width(ch) for ch in _ANSI_ESCAPE_RE.sub('', content))
-    restore = bg_restore if bg_restore and bg_restore in line and bg_restore not in content else ''
-    pad = max(1, pane_width - _TIME_RIGHT_RESERVE_CELLS - time_cells - visible)
-    return f"{content}{SOFT_RESET}{restore}{' ' * pad}{time_str}"
 
 def wrap_visible(text: str, width_cells: int) -> list:
     if width_cells <= 0:

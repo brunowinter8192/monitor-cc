@@ -52,6 +52,24 @@ def run_warnings_loop() -> None:
 
 # FUNCTIONS
 
+def _warnings_ram_state() -> list:
+    return [
+        ('tool_errors',                  tool_errors),
+        ('error_expand_states',          error_expand_states),
+        ('error_line_map',               error_line_map),
+        ('_worker_errors_positions',     _worker_errors_positions),
+        ('error_hover_row',              str(error_hover_row)),
+        ('error_scroll_offset',          error_scroll_offset),
+        ('_errors_log_pos',              _errors_log_pos),
+        ('_errors_log_path',             str(_errors_log_path)),
+        ('_last_project_filter',         str(_last_project_filter)),
+        ('_last_refresh_ts',             _last_refresh_ts),
+        ('_force_refresh',               _force_refresh),
+        ('_monitor_start_ts',            _monitor_start_ts),
+        ('_warnings_search_query',       _warnings_search.query),
+        ('_warnings_search_matches',     _warnings_search.matches),
+    ]
+
 def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
@@ -81,22 +99,6 @@ def _run_iteration(loop_state: dict) -> None:
     if input_changed:
         _render_if_changed(loop_state)
     wait_for_input(INPUT_POLL_INTERVAL)
-
-def _expire_copy_feedback(now: float, input_changed: bool) -> bool:
-    global _error_copy_feedback_until
-    _error_copy_feedback_until = {k: v for k, v in _error_copy_feedback_until.items() if v > now}
-    if _error_copy_feedback_until:
-        return True
-    return input_changed
-
-def _render_if_changed(loop_state: dict) -> None:
-    output, header = _build_warnings_output()
-    if output != loop_state['last_output']:
-        print("\033[2J\033[3J\033[H", end='', flush=True)
-        if output:
-            print(output, end='', flush=True)
-            print(f"\033[H{header}\033[K", end='', flush=True)
-        loop_state['last_output'] = output
 
 def _poll_warnings_input() -> bool:
     input_changed = False
@@ -128,24 +130,6 @@ def _poll_warnings_input() -> bool:
             if _handle_warnings_key(char):
                 input_changed = True
     return input_changed
-
-def _warnings_ram_state() -> list:
-    return [
-        ('tool_errors',                  tool_errors),
-        ('error_expand_states',          error_expand_states),
-        ('error_line_map',               error_line_map),
-        ('_worker_errors_positions',     _worker_errors_positions),
-        ('error_hover_row',              str(error_hover_row)),
-        ('error_scroll_offset',          error_scroll_offset),
-        ('_errors_log_pos',              _errors_log_pos),
-        ('_errors_log_path',             str(_errors_log_path)),
-        ('_last_project_filter',         str(_last_project_filter)),
-        ('_last_refresh_ts',             _last_refresh_ts),
-        ('_force_refresh',               _force_refresh),
-        ('_monitor_start_ts',            _monitor_start_ts),
-        ('_warnings_search_query',       _warnings_search.query),
-        ('_warnings_search_matches',     _warnings_search.matches),
-    ]
 
 def _handle_warnings_mouse(button: int, col: int, row: int) -> bool:
     global error_hover_row, error_scroll_offset, error_expand_states, _error_copy_feedback_until, _force_refresh
@@ -182,17 +166,8 @@ def _handle_warnings_mouse(button: int, col: int, row: int) -> bool:
         return True
     return False
 
-def _handle_warnings_key(char: str) -> bool:
-    global _force_refresh
-    if char == 'y':
-        key = resolve_parent_key(error_line_map, error_hover_row)
-        if key is not None:
-            copy_to_clipboard(_serialize_warnings(key, tool_errors))
-        return False
-    if char in ('r', 'R'):
-        _force_refresh = True
-        return True
-    return False
+def _handle_warnings_search_release() -> bool:
+    return search_bar.handle_search_mouse_release(_warnings_search, copy_to_clipboard)
 
 def _handle_warnings_search_cancel() -> bool:
     return search_bar.handle_search_cancel(_warnings_search)
@@ -211,37 +186,17 @@ def _jump_warnings_search_match(forward: bool) -> bool:
     _warnings_search.current_idx = (_warnings_search.current_idx + (1 if forward else -1)) % len(_warnings_search.matches)
     return True
 
-def _handle_warnings_search_release() -> bool:
-    return search_bar.handle_search_mouse_release(_warnings_search, copy_to_clipboard)
-
-def _render_warnings_search_bar(pane_width: int) -> str:
-    return search_bar.render_search_bar(_warnings_search, pane_width, label=_WARNINGS_SEARCH_BAR_LABEL)
-
-def _errors_record_to_display(rec: dict) -> dict:
-    worker_field = rec.get('worker', '')
-    worker_name = worker_field[len('worker:'):] if worker_field.startswith('worker:') else \
-                  rec.get('_worker_name_from_file', '')
-    ts_raw = rec.get('ts', '')
-    error_full = rec.get('error_full', '') or ''
-    return {
-        'timestamp': format_timestamp(ts_raw),
-        'tool_name': rec.get('tool_name', ''),
-        'summary': error_full[:80],
-        'full_text': error_full,
-        'tool_call_input': {},
-        'worker_name': worker_name,
-        '_tool_use_id': rec.get('tool_use_id', ''),
-        '_ts_raw': ts_raw,
-        '_proxy_file': rec.get('proxy_file', ''),
-        '_request_id': rec.get('request_id', ''),
-    }
-
-def _read_errors_log(path: Path, last_pos: int) -> tuple:
-    try:
-        return read_json_records(path, last_pos)
-    except OSError:
-        log_pane_error('warnings')
-        return [], last_pos
+def _handle_warnings_key(char: str) -> bool:
+    global _force_refresh
+    if char == 'y':
+        key = resolve_parent_key(error_line_map, error_hover_row)
+        if key is not None:
+            copy_to_clipboard(_serialize_warnings(key, tool_errors))
+        return False
+    if char in ('r', 'R'):
+        _force_refresh = True
+        return True
+    return False
 
 def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
     from src.core import monitor as _monitor
@@ -287,12 +242,47 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
     _last_refresh_ts = now
     return True, now
 
-def _worker_errors_notice() -> str:
-    if _last_project_filter is None:
-        return 'worker errors: no project'
-    if _monitor_start_ts is None:
-        return 'worker errors: no proxy session marker'
-    return ''
+def _read_errors_log(path: Path, last_pos: int) -> tuple:
+    try:
+        return read_json_records(path, last_pos)
+    except OSError:
+        log_pane_error('warnings')
+        return [], last_pos
+
+def _errors_record_to_display(rec: dict) -> dict:
+    worker_field = rec.get('worker', '')
+    worker_name = worker_field[len('worker:'):] if worker_field.startswith('worker:') else \
+                  rec.get('_worker_name_from_file', '')
+    ts_raw = rec.get('ts', '')
+    error_full = rec.get('error_full', '') or ''
+    return {
+        'timestamp': format_timestamp(ts_raw),
+        'tool_name': rec.get('tool_name', ''),
+        'summary': error_full[:80],
+        'full_text': error_full,
+        'tool_call_input': {},
+        'worker_name': worker_name,
+        '_tool_use_id': rec.get('tool_use_id', ''),
+        '_ts_raw': ts_raw,
+        '_proxy_file': rec.get('proxy_file', ''),
+        '_request_id': rec.get('request_id', ''),
+    }
+
+def _expire_copy_feedback(now: float, input_changed: bool) -> bool:
+    global _error_copy_feedback_until
+    _error_copy_feedback_until = {k: v for k, v in _error_copy_feedback_until.items() if v > now}
+    if _error_copy_feedback_until:
+        return True
+    return input_changed
+
+def _render_if_changed(loop_state: dict) -> None:
+    output, header = _build_warnings_output()
+    if output != loop_state['last_output']:
+        print("\033[2J\033[3J\033[H", end='', flush=True)
+        if output:
+            print(output, end='', flush=True)
+            print(f"\033[H{header}\033[K", end='', flush=True)
+        loop_state['last_output'] = output
 
 def _build_warnings_output() -> tuple:
     global error_line_map, error_copy_rows, _error_pane_width, _warnings_header_regions
@@ -323,3 +313,13 @@ def _build_warnings_output() -> tuple:
         search_query=_warnings_search.query,
     )
     return output, header
+
+def _worker_errors_notice() -> str:
+    if _last_project_filter is None:
+        return 'worker errors: no project'
+    if _monitor_start_ts is None:
+        return 'worker errors: no proxy session marker'
+    return ''
+
+def _render_warnings_search_bar(pane_width: int) -> str:
+    return search_bar.render_search_bar(_warnings_search, pane_width, label=_WARNINGS_SEARCH_BAR_LABEL)

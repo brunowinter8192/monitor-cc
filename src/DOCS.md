@@ -139,7 +139,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### utils.py (169 LOC)
+### utils.py (170 LOC)
 
 **Purpose:** shared no-I/O formatting primitives: timestamps, cell-width-aware truncation and wrapping, highlighting, right-aligned time column.
 **Reads:** nothing.

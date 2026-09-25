@@ -36,21 +36,51 @@ def all_statuses() -> tuple[list[dict], list[dict]]:
 
 # FUNCTIONS
 
-def _configure_logger() -> None:
-    if not _logger.handlers:
-        _LOG_DIR = Path(__file__).parent / 'logs'
-        try:
-            _LOG_DIR.mkdir(parents=True, exist_ok=True)
-            _fh = TimedRotatingFileHandler(_LOG_DIR / 'gpu_pane.log', when='d', interval=1, backupCount=7)
-            _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-            _logger.addHandler(_fh)
-        except OSError:
-            log_pane_error('gpu_status')
-        _logger.setLevel(logging.WARNING)
-
 def _reset_anomalies() -> None:
     global _last_anomalies
     _last_anomalies = []
+
+def _check_legacy_files() -> None:
+    global _legacy_warned
+    legacy = list(RAG_LOCKS_DIR.glob('rag-server-*.port'))
+    if not legacy:
+        return
+    for lf in legacy:
+        _last_anomalies.append({'kind': 'legacy_file',
+                                'message': f'legacy port file: {lf} (delete after Phase 5)',
+                                'source': str(lf)})
+    if not _legacy_warned:
+        _legacy_warned = True
+        try:
+            _logger.warning(
+                f'legacy port file(s): {[str(f) for f in legacy]} (delete after Phase 5)')
+        except Exception:
+            pass
+
+def _ensure_preset_names() -> None:
+    global _preset_failure
+    if PRESET_NAMES:
+        return
+    try:
+        PRESET_NAMES[:] = _discover_preset_names()
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, KeyError, RuntimeError) as exc:
+        cause = f'{type(exc).__name__}: {exc}'
+        _last_anomalies.append({'kind': 'presets_unavailable', 'message': f'preset discovery failed: {cause}',
+                                'source': 'rag-cli server presets'})
+        if cause != _preset_failure:
+            _logger.warning(f'preset discovery failed: {cause}')
+        _preset_failure = cause
+        return
+    _preset_failure = None
+
+def _discover_preset_names() -> list[str]:
+    r = subprocess.run(
+        ['rag-cli', 'server', 'presets', '--json'],
+        capture_output=True, text=True, timeout=3,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f'rc={r.returncode}')
+    return [p['name'] for p in json.loads(r.stdout)]
 
 def _load_states() -> tuple:
     states_by_name: dict[str, dict] = {}
@@ -79,6 +109,13 @@ def _read_state_file(sf: Path):
         _warn('malformed_json', f'malformed state file: {sf}', str(sf))
         return _SKIP
 
+def _warn(kind: str, message: str, source: str) -> None:
+    _last_anomalies.append({'kind': kind, 'message': message, 'source': source})
+    try:
+        _logger.warning(message)
+    except Exception:
+        pass
+
 def _pid_is_dead(pid, sf: Path) -> bool:
     if pid is not None:
         try:
@@ -105,10 +142,6 @@ def _build_statuses(states_by_name: dict, arbitrary: list) -> tuple:
                           for s in sorted(arbitrary, key=lambda x: x.get('port', 0))]
     return preset_statuses, arbitrary_statuses
 
-def get_anomalies() -> list[dict]:
-    return list(_last_anomalies)
-
-
 def _status_for_preset(name: str, state: dict | None) -> dict:
     if state is None:
         return {
@@ -118,7 +151,6 @@ def _status_for_preset(name: str, state: dict | None) -> dict:
             'log_path': None, 'model_name': None,
         }
     return _status_for_state(state, kind='preset')
-
 
 def _status_for_state(state: dict, kind: str = 'arbitrary') -> dict:
     port = state.get('port')
@@ -146,7 +178,6 @@ def _status_for_state(state: dict, kind: str = 'arbitrary') -> dict:
         'model_name': state.get('model_name'),
     }
 
-
 def _state_file_idle(port: int | None) -> float | None:
     if port is None:
         return None
@@ -154,18 +185,6 @@ def _state_file_idle(port: int | None) -> float | None:
         return time.time() - (RAG_LOCKS_DIR / f'server-port-{port}.json').stat().st_mtime
     except FileNotFoundError:
         return None
-
-
-def _check_health_port(port: int | None) -> bool:
-    if port is None:
-        return False
-    try:
-        req = urllib.request.Request(f'http://localhost:{port}/health')
-        with urllib.request.urlopen(req, timeout=2.0) as resp:
-            return resp.status == 200
-    except Exception:
-        return False
-
 
 def _read_rss_mb(pid: int | None) -> int | None:
     if pid is None:
@@ -179,33 +198,30 @@ def _read_rss_mb(pid: int | None) -> int | None:
         pass
     return None
 
-
-def _discover_preset_names() -> list[str]:
-    r = subprocess.run(
-        ['rag-cli', 'server', 'presets', '--json'],
-        capture_output=True, text=True, timeout=3,
-    )
-    if r.returncode != 0:
-        raise RuntimeError(f'rc={r.returncode}')
-    return [p['name'] for p in json.loads(r.stdout)]
-
-
-def _ensure_preset_names() -> None:
-    global _preset_failure
-    if PRESET_NAMES:
-        return
+def _check_health_port(port: int | None) -> bool:
+    if port is None:
+        return False
     try:
-        PRESET_NAMES[:] = _discover_preset_names()
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, KeyError, RuntimeError) as exc:
-        cause = f'{type(exc).__name__}: {exc}'
-        _last_anomalies.append({'kind': 'presets_unavailable', 'message': f'preset discovery failed: {cause}',
-                                'source': 'rag-cli server presets'})
-        if cause != _preset_failure:
-            _logger.warning(f'preset discovery failed: {cause}')
-        _preset_failure = cause
-        return
-    _preset_failure = None
+        req = urllib.request.Request(f'http://localhost:{port}/health')
+        with urllib.request.urlopen(req, timeout=2.0) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
 
+def _configure_logger() -> None:
+    if not _logger.handlers:
+        _LOG_DIR = Path(__file__).parent / 'logs'
+        try:
+            _LOG_DIR.mkdir(parents=True, exist_ok=True)
+            _fh = TimedRotatingFileHandler(_LOG_DIR / 'gpu_pane.log', when='d', interval=1, backupCount=7)
+            _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+            _logger.addHandler(_fh)
+        except OSError:
+            log_pane_error('gpu_status')
+        _logger.setLevel(logging.WARNING)
+
+def get_anomalies() -> list[dict]:
+    return list(_last_anomalies)
 
 def _fetch_collections() -> list[dict] | None:
     global _collections_failure
@@ -223,32 +239,5 @@ def _fetch_collections() -> list[dict] | None:
         log_pane_note('gpu', f'collections unavailable: {cause}')
     _collections_failure = cause
     return collections
-
-
-def _warn(kind: str, message: str, source: str) -> None:
-    _last_anomalies.append({'kind': kind, 'message': message, 'source': source})
-    try:
-        _logger.warning(message)
-    except Exception:
-        pass
-
-
-def _check_legacy_files() -> None:
-    global _legacy_warned
-    legacy = list(RAG_LOCKS_DIR.glob('rag-server-*.port'))
-    if not legacy:
-        return
-    for lf in legacy:
-        _last_anomalies.append({'kind': 'legacy_file',
-                                'message': f'legacy port file: {lf} (delete after Phase 5)',
-                                'source': str(lf)})
-    if not _legacy_warned:
-        _legacy_warned = True
-        try:
-            _logger.warning(
-                f'legacy port file(s): {[str(f) for f in legacy]} (delete after Phase 5)')
-        except Exception:
-            pass
-
 
 _configure_logger()

@@ -27,7 +27,7 @@ Entry point: `python3 -m src.ccwrap [--project <path>]`. `__init__.py` is empty;
 
 ---
 
-### wrapper.py (143 LOC)
+### wrapper.py (138 LOC)
 
 **Purpose:** PTY lifecycle manager: fork, bidirectional I/O, window-resize forwarding, stdin raw-mode handling, exit-code propagation.
 **Reads:** stdin keystrokes (when a tty) and child PTY output.

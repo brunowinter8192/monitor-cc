@@ -40,19 +40,6 @@ _ACK_PATH_RE = re.compile(
 )
 
 
-def _is_bg_launch_ack(text):
-    stripped = text.lstrip()
-    return stripped.startswith(_BG_LAUNCH_ACK_PREFIX) or stripped.startswith(_BG_LAUNCH_ACK_PREFIX_2)
-
-
-def _is_bg_auto_timeout_ack(text):
-    return text.lstrip().startswith(_BG_LAUNCH_ACK_PREFIX_3)
-
-
-def _is_bg_launch_ack_any(text):
-    return _is_bg_launch_ack(text) or _is_bg_auto_timeout_ack(text)
-
-
 # ORCHESTRATOR
 
 def _strip_bg_launch_ack(content, is_main=False):
@@ -76,3 +63,13 @@ def _build_launch_ack_replacement(ack_text, is_main=False):
     if task_id:
         lines.append('ID: ' + task_id)
     return '\n'.join(lines) + '\n'
+
+def _is_bg_auto_timeout_ack(text):
+    return text.lstrip().startswith(_BG_LAUNCH_ACK_PREFIX_3)
+
+def _is_bg_launch_ack_any(text):
+    return _is_bg_launch_ack(text) or _is_bg_auto_timeout_ack(text)
+
+def _is_bg_launch_ack(text):
+    stripped = text.lstrip()
+    return stripped.startswith(_BG_LAUNCH_ACK_PREFIX) or stripped.startswith(_BG_LAUNCH_ACK_PREFIX_2)

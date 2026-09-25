@@ -39,10 +39,27 @@ def _require_tmux() -> None:
         print("Error: tmux is not installed. Install with: brew install tmux")
         sys.exit(1)
 
+def is_tmux_installed() -> bool:
+    result = subprocess.run(["which", "tmux"], capture_output=True)
+    installed = result.returncode == 0
+    return installed
+
 def _require_outside_tmux() -> None:
     if is_inside_tmux():
         print("Error: Already inside tmux session. Use --mode tokens")
         sys.exit(1)
+
+def is_inside_tmux() -> bool:
+    in_tmux = "TMUX" in os.environ
+    return in_tmux
+
+def generate_session_name(project_path: Optional[str] = None) -> str:
+    if project_path is None:
+        return "monitor_cc_global"
+    normalized_path = os.path.normpath(os.path.expanduser(project_path))
+    path_hash = hashlib.md5(normalized_path.encode()).hexdigest()[:8]
+    session_name = f"monitor_cc_{path_hash}"
+    return session_name
 
 def _clear_stale_session(session_name: str) -> None:
     if check_session_exists(session_name):
@@ -50,8 +67,25 @@ def _clear_stale_session(session_name: str) -> None:
         print("This might be a stale session. Killing it and creating fresh one...")
         kill_session(session_name)
 
+def check_session_exists(session_name: str) -> bool:
+    result = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
+    exists = result.returncode == 0
+    return exists
+
+def kill_session(session_name: str) -> bool:
+    result = subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
+    return result.returncode == 0
+
 def _project_arg(project_filter: Optional[str]) -> str:
     return f"--project {project_filter}" if project_filter else ""
+
+def _build_mode_commands(script_path: str, project_path: Optional[str]) -> dict:
+    project_arg = f"--project {project_path}" if project_path else ""
+    cmds = {
+        mode: f"python3 {script_path} --mode {mode} {project_arg}"
+        for mode in ('tokens', 'proxy', 'worker-tokens', 'worker-proxy', 'warnings', 'gpu', 'news', 'news-log')
+    }
+    return cmds
 
 def _create_session_windows(session_name: str, mode_cmds: dict) -> None:
     original_history_limit = get_global_history_limit()
@@ -59,6 +93,13 @@ def _create_session_windows(session_name: str, mode_cmds: dict) -> None:
     _create_windows(session_name, mode_cmds)
     if original_history_limit is not None:
         restore_global_history_limit(original_history_limit)
+
+def get_global_history_limit() -> Optional[str]:
+    result = subprocess.run(["tmux", "show-options", "-gv", "history-limit"], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"history-limit: show-options rc={result.returncode} (no tmux server), restore skipped", file=sys.stderr)
+        return None
+    return result.stdout.strip()
 
 def _create_windows(session_name: str, cmds: dict) -> None:
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, cmds['tokens']], check=True)
@@ -76,39 +117,6 @@ def _create_windows(session_name: str, cmds: dict) -> None:
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:6.0", "-l", "50%", cmds['news-log']], check=True)
 
     subprocess.run(["tmux", "select-window", "-t", f"{session_name}:0"])
-
-def is_tmux_installed() -> bool:
-    result = subprocess.run(["which", "tmux"], capture_output=True)
-    installed = result.returncode == 0
-    return installed
-
-def is_inside_tmux() -> bool:
-    in_tmux = "TMUX" in os.environ
-    return in_tmux
-
-def generate_session_name(project_path: Optional[str] = None) -> str:
-    if project_path is None:
-        return "monitor_cc_global"
-    normalized_path = os.path.normpath(os.path.expanduser(project_path))
-    path_hash = hashlib.md5(normalized_path.encode()).hexdigest()[:8]
-    session_name = f"monitor_cc_{path_hash}"
-    return session_name
-
-def check_session_exists(session_name: str) -> bool:
-    result = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-    exists = result.returncode == 0
-    return exists
-
-def kill_session(session_name: str) -> bool:
-    result = subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
-    return result.returncode == 0
-
-def get_global_history_limit() -> Optional[str]:
-    result = subprocess.run(["tmux", "show-options", "-gv", "history-limit"], capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"history-limit: show-options rc={result.returncode} (no tmux server), restore skipped", file=sys.stderr)
-        return None
-    return result.stdout.strip()
 
 def restore_global_history_limit(original_value: str) -> None:
     subprocess.run(["tmux", "set-option", "-g", "history-limit", original_value])
@@ -160,13 +168,49 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
     restart_cmd = f"python3 {script_path} --mode restart-panes --session '#{{session_name}}' {project_arg}"
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-r", "run-shell", restart_cmd])
 
-def _build_mode_commands(script_path: str, project_path: Optional[str]) -> dict:
-    project_arg = f"--project {project_path}" if project_path else ""
-    cmds = {
-        mode: f"python3 {script_path} --mode {mode} {project_arg}"
-        for mode in ('tokens', 'proxy', 'worker-tokens', 'worker-proxy', 'warnings', 'gpu', 'news', 'news-log')
-    }
-    return cmds
+def restart_panes(session_name: str, project_path: Optional[str] = None, script_path: str = '') -> None:
+    mode_cmds = _build_mode_commands(script_path, project_path)
+
+    win_result = subprocess.run(
+        ["tmux", "list-windows", "-t", session_name, "-F", "#{window_index}"],
+        capture_output=True, text=True, check=True
+    )
+    existing_windows = {int(x) for x in win_result.stdout.strip().split('\n') if x.strip().isdigit()}
+
+    for win_idx, win_name, pane_specs in _WINDOW_LAYOUT:
+        if win_idx not in existing_windows:
+            _create_missing_window(session_name, win_idx, win_name, pane_specs, mode_cmds)
+        else:
+            _fill_missing_panes(session_name, win_idx, pane_specs, mode_cmds)
+
+    _respawn_all_panes(session_name)
+
+    subprocess.run(["tmux", "display-message", "-t", session_name, "Monitor restarted"])
+
+def _create_missing_window(session_name: str, win_idx: int, win_name: str, pane_specs: list, mode_cmds: dict) -> None:
+    first_mode = pane_specs[0][0]
+    subprocess.run([
+        "tmux", "new-window", "-t", f"{session_name}:{win_idx}",
+        "-n", win_name, mode_cmds[first_mode]
+    ], check=True)
+    for mode, split_from, pct in pane_specs[1:]:
+        raw, present = _list_pane_modes(session_name, win_idx)
+        src = present.get(split_from) if split_from else _first_pane_idx(raw)
+        if src is None:
+            raise RuntimeError(f"cannot place pane {mode!r} in window {win_idx}: parent {split_from!r} unresolved")
+        subprocess.run([
+            "tmux", "split-window", "-h",
+            "-t", f"{session_name}:{win_idx}.{src}",
+            "-l", pct, mode_cmds[mode]
+        ], check=True)
+
+def _list_pane_modes(session_name: str, win_idx: int) -> tuple:
+    raw = subprocess.run(
+        ["tmux", "list-panes", "-t", f"{session_name}:{win_idx}",
+         "-F", "#{pane_index}|#{pane_start_command}"],
+        capture_output=True, text=True, check=True
+    ).stdout
+    return raw, _parse_pane_modes(raw)
 
 def _parse_pane_modes(list_panes_output: str) -> dict:
     present = {}
@@ -186,31 +230,6 @@ def _first_pane_idx(list_panes_output: str) -> Optional[str]:
             if idx.isdigit():
                 return idx
     return None
-
-def _list_pane_modes(session_name: str, win_idx: int) -> tuple:
-    raw = subprocess.run(
-        ["tmux", "list-panes", "-t", f"{session_name}:{win_idx}",
-         "-F", "#{pane_index}|#{pane_start_command}"],
-        capture_output=True, text=True, check=True
-    ).stdout
-    return raw, _parse_pane_modes(raw)
-
-def _create_missing_window(session_name: str, win_idx: int, win_name: str, pane_specs: list, mode_cmds: dict) -> None:
-    first_mode = pane_specs[0][0]
-    subprocess.run([
-        "tmux", "new-window", "-t", f"{session_name}:{win_idx}",
-        "-n", win_name, mode_cmds[first_mode]
-    ], check=True)
-    for mode, split_from, pct in pane_specs[1:]:
-        raw, present = _list_pane_modes(session_name, win_idx)
-        src = present.get(split_from) if split_from else _first_pane_idx(raw)
-        if src is None:
-            raise RuntimeError(f"cannot place pane {mode!r} in window {win_idx}: parent {split_from!r} unresolved")
-        subprocess.run([
-            "tmux", "split-window", "-h",
-            "-t", f"{session_name}:{win_idx}.{src}",
-            "-l", pct, mode_cmds[mode]
-        ], check=True)
 
 def _fill_missing_panes(session_name: str, win_idx: int, pane_specs: list, mode_cmds: dict) -> None:
     _raw, present = _list_pane_modes(session_name, win_idx)
@@ -237,22 +256,3 @@ def _respawn_all_panes(session_name: str) -> None:
             if line.strip().isdigit():
                 subprocess.run(["tmux", "respawn-pane", "-k",
                                  "-t", f"{session_name}:{win_idx}.{line.strip()}"], check=True)
-
-def restart_panes(session_name: str, project_path: Optional[str] = None, script_path: str = '') -> None:
-    mode_cmds = _build_mode_commands(script_path, project_path)
-
-    win_result = subprocess.run(
-        ["tmux", "list-windows", "-t", session_name, "-F", "#{window_index}"],
-        capture_output=True, text=True, check=True
-    )
-    existing_windows = {int(x) for x in win_result.stdout.strip().split('\n') if x.strip().isdigit()}
-
-    for win_idx, win_name, pane_specs in _WINDOW_LAYOUT:
-        if win_idx not in existing_windows:
-            _create_missing_window(session_name, win_idx, win_name, pane_specs, mode_cmds)
-        else:
-            _fill_missing_panes(session_name, win_idx, pane_specs, mode_cmds)
-
-    _respawn_all_panes(session_name)
-
-    subprocess.run(["tmux", "display-message", "-t", session_name, "Monitor restarted"])

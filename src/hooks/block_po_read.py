@@ -35,16 +35,6 @@ def block_po_read_workflow() -> None:
 
 # FUNCTIONS
 
-def _is_violation(command: str, cwd) -> bool:
-    stripped = _strip_non_shell_active(command)
-    segments = [s for s in _SEGMENT_SPLIT.split(stripped) if s.strip()]
-    return any(_is_po_read_segment(seg, cwd) for seg in segments)
-
-def _block(command: str, session_id) -> None:
-    print(_BLOCK_MSG, file=sys.stderr, end="")
-    log_fire("block_po_read", "block", "Bash", command, reason=_BLOCK_MSG, session_id=session_id)
-    sys.exit(2)
-
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -53,6 +43,11 @@ def _parse_command():
     except Exception as e:
         log_fire("block_po_read", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None, None
+
+def _is_violation(command: str, cwd) -> bool:
+    stripped = _strip_non_shell_active(command)
+    segments = [s for s in _SEGMENT_SPLIT.split(stripped) if s.strip()]
+    return any(_is_po_read_segment(seg, cwd) for seg in segments)
 
 def _is_po_read_segment(seg: str, cwd) -> bool:
     cleaned = _strip_redirects(seg)
@@ -76,6 +71,13 @@ def _strip_redirects(seg: str) -> str:
         cleaned = new
     return cleaned
 
+def _po_export_size(token: str, cwd):
+    path = _resolve_po_path(token, cwd)
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return None
+
 def _resolve_po_path(token: str, cwd) -> str:
     prefix_match = _TOKEN_PREFIX_RE.match(token)
     path = prefix_match.group(1) if prefix_match else token
@@ -85,13 +87,10 @@ def _resolve_po_path(token: str, cwd) -> str:
         path = os.path.join(base, path)
     return path
 
-def _po_export_size(token: str, cwd):
-    path = _resolve_po_path(token, cwd)
-    try:
-        return os.path.getsize(path)
-    except OSError:
-        return None
-
+def _block(command: str, session_id) -> None:
+    print(_BLOCK_MSG, file=sys.stderr, end="")
+    log_fire("block_po_read", "block", "Bash", command, reason=_BLOCK_MSG, session_id=session_id)
+    sys.exit(2)
 
 if __name__ == "__main__":
     block_po_read_workflow()

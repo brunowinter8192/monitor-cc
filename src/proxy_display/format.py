@@ -37,6 +37,7 @@ def _shorten_model(model: str) -> str:
         return 'opus'
     return model[:8] if model else '?'
 
+
 def _is_standalone_entry(entry: dict) -> bool:
     if entry.get('is_continue'):
         return False
@@ -63,6 +64,48 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
         if not assigned:
             groups[0]['entry_pairs'].append((entry_idx, entry))
     return [g for g in groups if g['entry_pairs']]
+
+
+def _compute_collision_idxs(rendered_opus_labels: list) -> set:
+    label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
+    return {idx for idx, lbl in rendered_opus_labels if label_counts[lbl] >= 2}
+
+
+def format_proxy_block(entries: list, expand_states: dict, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '', request_id_by_flow: Optional[dict] = None, *, turn_cache: TurnCache) -> tuple:
+    if not entries:
+        return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
+    from src.proxy_display.frozen_turns import assign_groups, render_frozen
+    groups = assign_groups(entries, turns, turn_cache)
+    flat = render_frozen(
+        entries, groups, expand_states, pane_width, turns,
+        copy_feedback, search_match_set, search_current_entry_idx, search_query, request_id_by_flow, turn_cache,
+    )
+    if item_positions_out is not None:
+        item_positions_out.update(flat['positions'])
+    visible_lines, visible_keys, initial_parent_count, total_lines = _slice_viewport(
+        flat['lines'], flat['keys'], flat['parent_prefix'], pane_height, scroll_offset, line_map
+    )
+    result_lines = _apply_row_backgrounds(visible_lines, visible_keys, flat['collision'], hover_row, copy_rows_out, pane_width, initial_parent_count)
+    return '\n'.join(result_lines), total_lines
+
+
+def _slice_viewport(all_lines: list, line_keys: list, parent_prefix: list, pane_height: int, scroll_offset: int, line_map: Optional[dict]) -> tuple:
+    total_lines = len(all_lines)
+    viewport_lines = max(1, pane_height - 1)
+    max_scroll = max(0, len(all_lines) - viewport_lines)
+    clamped_offset = min(scroll_offset, max_scroll)
+    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
+    end = start + viewport_lines
+    visible_lines = all_lines[start:end]
+    visible_keys = line_keys[start:end]
+    if line_map is not None:
+        line_map.clear()
+        for row_idx, key in enumerate(visible_keys):
+            if key is not None:
+                line_map[row_idx + 1] = key
+    initial_parent_count = parent_prefix[start]
+    return visible_lines, visible_keys, initial_parent_count, total_lines
+
 
 def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_entry_idxs: set, hover_row, copy_rows_out, pane_width: int, initial_parent_count: int) -> list:
     parent_count = initial_parent_count
@@ -101,41 +144,3 @@ def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_en
         trunc = truncate_visible(line, pane_width)
         result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
     return result_lines
-
-def _compute_collision_idxs(rendered_opus_labels: list) -> set:
-    label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
-    return {idx for idx, lbl in rendered_opus_labels if label_counts[lbl] >= 2}
-
-def _slice_viewport(all_lines: list, line_keys: list, parent_prefix: list, pane_height: int, scroll_offset: int, line_map: Optional[dict]) -> tuple:
-    total_lines = len(all_lines)
-    viewport_lines = max(1, pane_height - 1)
-    max_scroll = max(0, len(all_lines) - viewport_lines)
-    clamped_offset = min(scroll_offset, max_scroll)
-    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
-    end = start + viewport_lines
-    visible_lines = all_lines[start:end]
-    visible_keys = line_keys[start:end]
-    if line_map is not None:
-        line_map.clear()
-        for row_idx, key in enumerate(visible_keys):
-            if key is not None:
-                line_map[row_idx + 1] = key
-    initial_parent_count = parent_prefix[start]
-    return visible_lines, visible_keys, initial_parent_count, total_lines
-
-def format_proxy_block(entries: list, expand_states: dict, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '', request_id_by_flow: Optional[dict] = None, *, turn_cache: TurnCache) -> tuple:
-    if not entries:
-        return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
-    from src.proxy_display.frozen_turns import assign_groups, render_frozen
-    groups = assign_groups(entries, turns, turn_cache)
-    flat = render_frozen(
-        entries, groups, expand_states, pane_width, turns,
-        copy_feedback, search_match_set, search_current_entry_idx, search_query, request_id_by_flow, turn_cache,
-    )
-    if item_positions_out is not None:
-        item_positions_out.update(flat['positions'])
-    visible_lines, visible_keys, initial_parent_count, total_lines = _slice_viewport(
-        flat['lines'], flat['keys'], flat['parent_prefix'], pane_height, scroll_offset, line_map
-    )
-    result_lines = _apply_row_backgrounds(visible_lines, visible_keys, flat['collision'], hover_row, copy_rows_out, pane_width, initial_parent_count)
-    return '\n'.join(result_lines), total_lines

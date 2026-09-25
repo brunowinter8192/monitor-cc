@@ -50,55 +50,13 @@ def _report_dir(directory: Path, branch: str) -> Path:
     return directory
 
 
-def stem_identity(stem: str):
-    body = stem[len(_STEM_PREFIX):] if stem.startswith(_STEM_PREFIX) else stem
-    body = _TRAILING_EPOCH_RE.sub("", body)
-    if body.startswith("worker_"):
-        match = _WORKER_BODY_RE.match(body[len("worker_"):])
-        if not match:
-            return None
-        return ("worker", match.group("sid"), match.group("name"))
-    head, _, tail = body.partition("_")
-    if not tail:
-        return None
-    return ("main", head, tail)
-
-
-def project_for_stem(stem: str, project_index: dict = None) -> str:
-    identity = stem_identity(stem)
-    if identity is None:
-        return stem
-    index = project_index or {}
-    if identity[0] == "worker":
-        _, sid, _name = identity
-        return index.get("sid_to_cwd", {}).get(sid) or sid
-    _, _head, label = identity
-    for cwd in sorted(index.get("cwd_to_dir", {})):
-        if project_label(cwd) == label:
-            return cwd
-    return label
-
-
-def display_stem(stem: str) -> str:
-    identity = stem_identity(stem)
-    if identity is None or identity[0] != "worker":
-        return stem
-    _, _sid, name = identity
-    has_prefix = stem.startswith(_STEM_PREFIX)
-    body = stem[len(_STEM_PREFIX):] if has_prefix else stem
-    epoch_match = _TRAILING_EPOCH_RE.search(body)
-    epoch = epoch_match.group(0) if epoch_match else ""
-    return f"{_STEM_PREFIX if has_prefix else ''}worker_{name}{epoch}"
-
-
-def group_streams(dual_log_dir: Path) -> dict:
-    stems: dict = {}
-    for entry in sorted(dual_log_dir.glob("*.jsonl")):
-        match = _STEM_RE.match(entry.name)
-        if not match:
-            continue
-        stems.setdefault(match.group("stem"), {})[match.group("stream")] = entry
-    return stems
+def list_sessions(dual_log_dir: Path, project_index: dict = None) -> list:
+    if project_index is None:
+        project_index = build_project_index()
+    sessions = [build_session(stem, streams, project_index)
+                for stem, streams in group_streams(dual_log_dir).items()]
+    sessions.sort(key=lambda s: (s["start"], s["stem"]), reverse=True)
+    return sessions
 
 
 def build_session(stem: str, streams: dict, project_index: dict = None) -> dict:
@@ -148,13 +106,55 @@ def _main_family(families: dict) -> str:
     return max(ranked)[1]
 
 
-def list_sessions(dual_log_dir: Path, project_index: dict = None) -> list:
-    if project_index is None:
-        project_index = build_project_index()
-    sessions = [build_session(stem, streams, project_index)
-                for stem, streams in group_streams(dual_log_dir).items()]
-    sessions.sort(key=lambda s: (s["start"], s["stem"]), reverse=True)
-    return sessions
+def display_stem(stem: str) -> str:
+    identity = stem_identity(stem)
+    if identity is None or identity[0] != "worker":
+        return stem
+    _, _sid, name = identity
+    has_prefix = stem.startswith(_STEM_PREFIX)
+    body = stem[len(_STEM_PREFIX):] if has_prefix else stem
+    epoch_match = _TRAILING_EPOCH_RE.search(body)
+    epoch = epoch_match.group(0) if epoch_match else ""
+    return f"{_STEM_PREFIX if has_prefix else ''}worker_{name}{epoch}"
+
+
+def stem_identity(stem: str):
+    body = stem[len(_STEM_PREFIX):] if stem.startswith(_STEM_PREFIX) else stem
+    body = _TRAILING_EPOCH_RE.sub("", body)
+    if body.startswith("worker_"):
+        match = _WORKER_BODY_RE.match(body[len("worker_"):])
+        if not match:
+            return None
+        return ("worker", match.group("sid"), match.group("name"))
+    head, _, tail = body.partition("_")
+    if not tail:
+        return None
+    return ("main", head, tail)
+
+
+def project_for_stem(stem: str, project_index: dict = None) -> str:
+    identity = stem_identity(stem)
+    if identity is None:
+        return stem
+    index = project_index or {}
+    if identity[0] == "worker":
+        _, sid, _name = identity
+        return index.get("sid_to_cwd", {}).get(sid) or sid
+    _, _head, label = identity
+    for cwd in sorted(index.get("cwd_to_dir", {})):
+        if project_label(cwd) == label:
+            return cwd
+    return label
+
+
+def group_streams(dual_log_dir: Path) -> dict:
+    stems: dict = {}
+    for entry in sorted(dual_log_dir.glob("*.jsonl")):
+        match = _STEM_RE.match(entry.name)
+        if not match:
+            continue
+        stems.setdefault(match.group("stem"), {})[match.group("stream")] = entry
+    return stems
 
 
 def filter_sessions(sessions: list, context: str = "", scope: str = "",

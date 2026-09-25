@@ -37,11 +37,6 @@ def _render_sys_blocks_body(entry_idx: int, entry: dict, sys_blocks: list, prev_
         keys.extend(blk_keys)
     return lines, keys
 
-def _sys_block_spans(entry: dict, bidx: int) -> tuple:
-    s_spans = entry['_stripped_spans']['system'].get(str(bidx))
-    i_spans = entry['_injected_spans']['system'].get(str(bidx))
-    return s_spans, i_spans
-
 def _render_one_sys_block(entry_idx: int, entry: dict, sb: dict, expand_states: dict) -> tuple:
     lines = []
     keys = []
@@ -59,6 +54,11 @@ def _render_one_sys_block(entry_idx: int, entry: dict, sb: dict, expand_states: 
         lines.extend(c_lines)
         keys.extend(c_keys)
     return lines, keys
+
+def _sys_block_spans(entry: dict, bidx: int) -> tuple:
+    s_spans = entry['_stripped_spans']['system'].get(str(bidx))
+    i_spans = entry['_injected_spans']['system'].get(str(bidx))
+    return s_spans, i_spans
 
 def _render_sys_block_content(sb: dict, s_spans, i_spans) -> tuple:
     lines = []

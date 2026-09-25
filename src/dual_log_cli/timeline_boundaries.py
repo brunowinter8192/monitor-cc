@@ -11,14 +11,43 @@ _BILLING_HEADER_SYS_INDEX = 0
 # FUNCTIONS
 
 
-def _system_block_chars(block) -> int:
-    if isinstance(block, dict):
-        return len(block.get("text", "") or "")
-    return len(str(block))
+def request_boundaries(forwarded_path: Path, family: str) -> list:
+    boundaries = []
+    request_no = 0
+    prev_count = 0
+    sys_hash_by_index: dict = {}
+    tools_name_by_index: dict = {}
+    tools_hash_by_name: dict = {}
+    for entry in iter_jsonl(forwarded_path):
+        if entry.get("type") != "forwarded_delta":
+            continue
+        if infer_family(entry.get("model", "")) != family:
+            continue
+        counts = entry.get("counts", {}) or {}
+        if _is_sidecar(counts):
+            continue
+        request_no += 1
+        count = counts.get("messages", 0)
+        restart = count < prev_count
+        is_first = bool(entry.get("is_first", False))
+        boundaries.append({
+            "request_no": request_no,
+            "flow_id": entry.get("flow_id", ""),
+            "timestamp": entry.get("timestamp", ""),
+            "model": entry.get("model", ""),
+            "start_index": 0 if restart else prev_count,
+            "message_count": count,
+            "restart": restart,
+            "sys_lines": _sys_lines(entry.get("system_delta") or {}, sys_hash_by_index, is_first),
+            "tool_lines": _tool_lines(entry.get("tools_delta") or {}, counts.get("tools", 0),
+                                       tools_name_by_index, tools_hash_by_name, is_first),
+        })
+        prev_count = count
+    return boundaries
 
 
-def _tool_chars(tool) -> int:
-    return len(json.dumps(tool))
+def _is_sidecar(counts: dict) -> bool:
+    return counts.get("tools", 0) == 0
 
 
 def _sys_lines(delta: dict, hash_by_index: dict, is_first: bool) -> list:
@@ -39,6 +68,12 @@ def _sys_lines(delta: dict, hash_by_index: dict, is_first: bool) -> list:
         hash_by_index[index] = content_hash
         lines.append({"label": f"sys[{index}]", "chars": _system_block_chars(element), "tag": tag})
     return lines
+
+
+def _system_block_chars(block) -> int:
+    if isinstance(block, dict):
+        return len(block.get("text", "") or "")
+    return len(str(block))
 
 
 def _tool_lines(delta: dict, tools_count: int, name_by_index: dict, hash_by_name: dict, is_first: bool) -> list:
@@ -84,49 +119,8 @@ def _tool_lines(delta: dict, tools_count: int, name_by_index: dict, hash_by_name
     return lines
 
 
-def _is_sidecar(counts: dict) -> bool:
-    return counts.get("tools", 0) == 0
-
-
-def request_boundaries(forwarded_path: Path, family: str) -> list:
-    boundaries = []
-    request_no = 0
-    prev_count = 0
-    sys_hash_by_index: dict = {}
-    tools_name_by_index: dict = {}
-    tools_hash_by_name: dict = {}
-    for entry in iter_jsonl(forwarded_path):
-        if entry.get("type") != "forwarded_delta":
-            continue
-        if infer_family(entry.get("model", "")) != family:
-            continue
-        counts = entry.get("counts", {}) or {}
-        if _is_sidecar(counts):
-            continue
-        request_no += 1
-        count = counts.get("messages", 0)
-        restart = count < prev_count
-        is_first = bool(entry.get("is_first", False))
-        boundaries.append({
-            "request_no": request_no,
-            "flow_id": entry.get("flow_id", ""),
-            "timestamp": entry.get("timestamp", ""),
-            "model": entry.get("model", ""),
-            "start_index": 0 if restart else prev_count,
-            "message_count": count,
-            "restart": restart,
-            "sys_lines": _sys_lines(entry.get("system_delta") or {}, sys_hash_by_index, is_first),
-            "tool_lines": _tool_lines(entry.get("tools_delta") or {}, counts.get("tools", 0),
-                                       tools_name_by_index, tools_hash_by_name, is_first),
-        })
-        prev_count = count
-    return boundaries
-
-
-def _is_continue(counts: dict, entry: dict) -> bool:
-    if not _is_sidecar(counts):
-        return False
-    return bool((entry.get("diagnostics") or {}).get("previous_message_id"))
+def _tool_chars(tool) -> int:
+    return len(json.dumps(tool))
 
 
 def continue_requests(forwarded_path: Path, family: str) -> list:
@@ -145,6 +139,12 @@ def continue_requests(forwarded_path: Path, family: str) -> list:
             "tool_use_ids": _tool_use_ids(entry),
         })
     return continues
+
+
+def _is_continue(counts: dict, entry: dict) -> bool:
+    if not _is_sidecar(counts):
+        return False
+    return bool((entry.get("diagnostics") or {}).get("previous_message_id"))
 
 
 def _tool_use_ids(entry: dict) -> list:

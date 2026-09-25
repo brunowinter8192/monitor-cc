@@ -15,6 +15,24 @@ _DIGIT_HANDLER_REF  = None
 
 # FUNCTIONS
 
+def register_cmd_digits(callback_map: dict) -> tuple:
+    _ensure_digit_handler()
+    _DIGIT_CALLBACKS.clear()
+    _DIGIT_CALLBACKS.update({s: cb for s, cb in callback_map.items() if s in _DIGIT_KEYCODES})
+    carbon = _load_carbon()
+    target = carbon.GetApplicationEventTarget()
+    hk_refs = []
+    for slot, keycode in _DIGIT_KEYCODES.items():
+        if slot not in _DIGIT_CALLBACKS:
+            continue
+        hk_ref = ctypes.c_void_p()
+        _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
+            keycode, 0x0100,
+            _EventHotKeyID(_MBAR_SIG, slot + 1),
+            target, 0, ctypes.byref(hk_ref)), f'slot={slot}')
+        hk_refs.append(hk_ref)
+    return None, hk_refs
+
 def _ensure_digit_handler():
     global _DIGIT_HANDLER_CB, _DIGIT_HANDLER_REF
     if _DIGIT_HANDLER_CB is not None:
@@ -43,24 +61,6 @@ def _ensure_digit_handler():
         target, _DIGIT_HANDLER_CB, 1, ctypes.byref(_HOTKEY_EVENT_SPEC),
         None, ctypes.byref(handler_ref)), 'digits')
     _DIGIT_HANDLER_REF = handler_ref
-
-def register_cmd_digits(callback_map: dict) -> tuple:
-    _ensure_digit_handler()
-    _DIGIT_CALLBACKS.clear()
-    _DIGIT_CALLBACKS.update({s: cb for s, cb in callback_map.items() if s in _DIGIT_KEYCODES})
-    carbon = _load_carbon()
-    target = carbon.GetApplicationEventTarget()
-    hk_refs = []
-    for slot, keycode in _DIGIT_KEYCODES.items():
-        if slot not in _DIGIT_CALLBACKS:
-            continue
-        hk_ref = ctypes.c_void_p()
-        _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
-            keycode, 0x0100,
-            _EventHotKeyID(_MBAR_SIG, slot + 1),
-            target, 0, ctypes.byref(hk_ref)), f'slot={slot}')
-        hk_refs.append(hk_ref)
-    return None, hk_refs
 
 def unregister_hotkeys(refs: list) -> None:
     carbon = _load_carbon()

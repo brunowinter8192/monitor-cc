@@ -7,44 +7,6 @@ _COLLECTION_KEYS = frozenset({"system", "tools", "messages"})
 
 # FUNCTIONS
 
-def _get_text(element) -> str:
-    if element is None:
-        return ""
-    if isinstance(element, str):
-        return element
-    if isinstance(element, dict):
-        t = element.get("text")
-        if t is not None:
-            return str(t)
-        return json.dumps(element, ensure_ascii=False)
-    return json.dumps(element, ensure_ascii=False)
-
-
-def _diff_text(orig_text: str, fwd_text: str) -> list:
-    if orig_text == fwd_text:
-        return [("equal", orig_text)]
-    if not orig_text:
-        return [("injected", fwd_text)]
-    if not fwd_text:
-        return [("stripped", orig_text)]
-    ratio = SequenceMatcher(None, orig_text, fwd_text).ratio()
-    if ratio < RATIO_THRESHOLD:
-        return [("stripped", orig_text), ("injected", fwd_text)]
-    spans = []
-    ow, fw = orig_text.split(), fwd_text.split()
-    for tag, i1, i2, j1, j2 in SequenceMatcher(None, ow, fw).get_opcodes():
-        if tag == "equal":
-            spans.append(("equal", " ".join(ow[i1:i2])))
-        elif tag == "delete":
-            spans.append(("stripped", " ".join(ow[i1:i2])))
-        elif tag == "insert":
-            spans.append(("injected", " ".join(fw[j1:j2])))
-        else:
-            spans.append(("stripped", " ".join(ow[i1:i2])))
-            spans.append(("injected", " ".join(fw[j1:j2])))
-    return spans
-
-
 def _get_inner_text(block) -> str:
     if isinstance(block, str):
         return block
@@ -67,6 +29,13 @@ def _get_inner_text(block) -> str:
 def _span_counts(spans: list) -> tuple:
     return (sum(1 for t, _ in spans if t == "stripped"),
             sum(1 for t, _ in spans if t == "injected"))
+
+
+def compose_block(c0_text: str, block_ops: list) -> list:
+    spans = [("equal", c0_text)] if c0_text else []
+    for off, rem, inj in block_ops:
+        spans = apply_edit_to_spans(spans, off, rem, inj)
+    return spans
 
 
 def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -> list:
@@ -113,13 +82,6 @@ def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -
     return new_spans
 
 
-def compose_block(c0_text: str, block_ops: list) -> list:
-    spans = [("equal", c0_text)] if c0_text else []
-    for off, rem, inj in block_ops:
-        spans = apply_edit_to_spans(spans, off, rem, inj)
-    return spans
-
-
 def _diff_system(orig_sys: list, fwd_sys: list) -> list:
     n = max(len(orig_sys), len(fwd_sys)) if (orig_sys or fwd_sys) else 0
     diffs = []
@@ -129,6 +91,44 @@ def _diff_system(orig_sys: list, fwd_sys: list) -> list:
         o_text, f_text = _get_text(ob), _get_text(fb)
         diffs.append({"idx": i, "o_text": o_text, "f_text": f_text, "spans": _diff_text(o_text, f_text)})
     return diffs
+
+
+def _get_text(element) -> str:
+    if element is None:
+        return ""
+    if isinstance(element, str):
+        return element
+    if isinstance(element, dict):
+        t = element.get("text")
+        if t is not None:
+            return str(t)
+        return json.dumps(element, ensure_ascii=False)
+    return json.dumps(element, ensure_ascii=False)
+
+
+def _diff_text(orig_text: str, fwd_text: str) -> list:
+    if orig_text == fwd_text:
+        return [("equal", orig_text)]
+    if not orig_text:
+        return [("injected", fwd_text)]
+    if not fwd_text:
+        return [("stripped", orig_text)]
+    ratio = SequenceMatcher(None, orig_text, fwd_text).ratio()
+    if ratio < RATIO_THRESHOLD:
+        return [("stripped", orig_text), ("injected", fwd_text)]
+    spans = []
+    ow, fw = orig_text.split(), fwd_text.split()
+    for tag, i1, i2, j1, j2 in SequenceMatcher(None, ow, fw).get_opcodes():
+        if tag == "equal":
+            spans.append(("equal", " ".join(ow[i1:i2])))
+        elif tag == "delete":
+            spans.append(("stripped", " ".join(ow[i1:i2])))
+        elif tag == "insert":
+            spans.append(("injected", " ".join(fw[j1:j2])))
+        else:
+            spans.append(("stripped", " ".join(ow[i1:i2])))
+            spans.append(("injected", " ".join(fw[j1:j2])))
+    return spans
 
 
 def _diff_tools(orig_tools: list, fwd_tools: list) -> dict:

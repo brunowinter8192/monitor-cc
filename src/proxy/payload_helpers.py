@@ -35,29 +35,6 @@ def _find_all_system_reminder_blocks(content) -> list:
     return []
 
 
-def _find_task_notification_blocks(content) -> list:
-    pat = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
-    if isinstance(content, str):
-        return pat.findall(content)
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "text":
-                result.extend(pat.findall(block.get("text", "")))
-            elif block.get("type") == "tool_result":
-                inner = block.get("content", "")
-                if isinstance(inner, str):
-                    result.extend(pat.findall(inner))
-                elif isinstance(inner, list):
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get("type") == "text":
-                            result.extend(pat.findall(sub.get("text", "")))
-        return result
-    return []
-
-
 def _strip_blocked_tool_references(payload: dict) -> dict:
     messages = payload.get("messages", [])
     new_messages = []
@@ -125,6 +102,29 @@ def _extract_task_notification_output_file(content) -> str:
     return ''
 
 
+def _find_task_notification_blocks(content) -> list:
+    pat = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
+    if isinstance(content, str):
+        return pat.findall(content)
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                result.extend(pat.findall(block.get("text", "")))
+            elif block.get("type") == "tool_result":
+                inner = block.get("content", "")
+                if isinstance(inner, str):
+                    result.extend(pat.findall(inner))
+                elif isinstance(inner, list):
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get("type") == "text":
+                            result.extend(pat.findall(sub.get("text", "")))
+        return result
+    return []
+
+
 def _extract_task_notification_task_id(content) -> str:
     _TASK_ID_PAT = re.compile(r'<task-id>(.*?)</task-id>', re.DOTALL)
     for block_text in _find_task_notification_blocks(content):
@@ -167,30 +167,6 @@ def _top_level_content_contains(content, substring: str) -> bool:
     return False
 
 
-def _walk_tool_result_inner(block, predicate, replace_fn, removed):
-    inner = block.get('content', '')
-    if isinstance(inner, str):
-        if predicate(inner):
-            removed.append(inner)
-            return {**block, 'content': replace_fn(inner)}
-        return block
-    if isinstance(inner, list):
-        new_sub = []
-        sub_changed = False
-        for sub in inner:
-            if isinstance(sub, dict) and sub.get('type') == 'text':
-                text = sub.get('text', '')
-                if predicate(text):
-                    removed.append(text)
-                    new_sub.append({**sub, 'text': replace_fn(text)})
-                    sub_changed = True
-                else:
-                    new_sub.append(sub)
-            else:
-                new_sub.append(sub)
-        return {**block, 'content': new_sub} if sub_changed else block
-    return block
-
 def _walk_replace_marker_blocks(content, predicate, replace_fn):
     removed = []
     if isinstance(content, str):
@@ -218,6 +194,31 @@ def _walk_replace_marker_blocks(content, predicate, replace_fn):
                 result.append(block)
         return result, removed
     return content, removed
+
+
+def _walk_tool_result_inner(block, predicate, replace_fn, removed):
+    inner = block.get('content', '')
+    if isinstance(inner, str):
+        if predicate(inner):
+            removed.append(inner)
+            return {**block, 'content': replace_fn(inner)}
+        return block
+    if isinstance(inner, list):
+        new_sub = []
+        sub_changed = False
+        for sub in inner:
+            if isinstance(sub, dict) and sub.get('type') == 'text':
+                text = sub.get('text', '')
+                if predicate(text):
+                    removed.append(text)
+                    new_sub.append({**sub, 'text': replace_fn(text)})
+                    sub_changed = True
+                else:
+                    new_sub.append(sub)
+            else:
+                new_sub.append(sub)
+        return {**block, 'content': new_sub} if sub_changed else block
+    return block
 
 
 def _any_marker_guard(check_fn, markers):

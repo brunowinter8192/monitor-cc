@@ -4,20 +4,6 @@ from src.proxy.message_summary import _has_cache_control
 
 # FUNCTIONS
 
-def _normalize_user_content_shape(msg: dict) -> dict:
-    if msg.get("role") != "user":
-        return msg
-    content = msg.get("content")
-    if not isinstance(content, list) or len(content) != 1:
-        return msg
-    block = content[0]
-    if not isinstance(block, dict):
-        return msg
-    if set(block.keys()) == {"type", "text"} and block["type"] == "text":
-        return {**msg, "content": block["text"]}
-    return msg
-
-
 def _strip_all_cache_control(payload: dict) -> dict:
     result = dict(payload)
 
@@ -55,6 +41,35 @@ def _strip_all_cache_control(payload: dict) -> dict:
         new_messages.append(new_msg)
     result["messages"] = new_messages
 
+    return result
+
+
+def _normalize_user_content_shape(msg: dict) -> dict:
+    if msg.get("role") != "user":
+        return msg
+    content = msg.get("content")
+    if not isinstance(content, list) or len(content) != 1:
+        return msg
+    block = content[0]
+    if not isinstance(block, dict):
+        return msg
+    if set(block.keys()) == {"type", "text"} and block["type"] == "text":
+        return {**msg, "content": block["text"]}
+    return msg
+
+
+def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dict:
+    result = dict(payload)
+    cc_marker = {"type": "ephemeral", "ttl": "1h"}
+
+    _apply_bp1_system(result, cc_marker)
+    _apply_bp2_tools(result, cc_marker)
+
+    messages = result.get("messages", [])
+    messages, _ = _apply_bp3_unchanged_tail(messages, prev_mod_messages, cc_marker)
+    messages, _ = _apply_bp4_last_message(messages, cc_marker)
+
+    result["messages"] = messages
     return result
 
 
@@ -100,32 +115,6 @@ def _apply_bp3_unchanged_tail(messages: list, prev_mod_messages, cc_marker: dict
     return messages, False
 
 
-def _apply_bp4_last_message(messages: list, cc_marker: dict) -> tuple:
-    if not messages:
-        return messages, False
-    last_idx = len(messages) - 1
-    if not _has_cache_control(messages[last_idx]):
-        messages = list(messages) if not isinstance(messages, list) else messages
-        messages[last_idx] = _add_cache_control_to_message(messages[last_idx], cc_marker)
-        return messages, True
-    return messages, False
-
-
-def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dict:
-    result = dict(payload)
-    cc_marker = {"type": "ephemeral", "ttl": "1h"}
-
-    _apply_bp1_system(result, cc_marker)
-    _apply_bp2_tools(result, cc_marker)
-
-    messages = result.get("messages", [])
-    messages, _ = _apply_bp3_unchanged_tail(messages, prev_mod_messages, cc_marker)
-    messages, _ = _apply_bp4_last_message(messages, cc_marker)
-
-    result["messages"] = messages
-    return result
-
-
 def _add_cache_control_to_message(msg: dict, cc_marker: dict) -> dict:
     new_msg = dict(msg)
     content = new_msg.get("content", "")
@@ -138,3 +127,14 @@ def _add_cache_control_to_message(msg: dict, cc_marker: dict) -> dict:
     elif isinstance(content, str):
         new_msg["content"] = [{"type": "text", "text": content, "cache_control": cc_marker}]
     return new_msg
+
+
+def _apply_bp4_last_message(messages: list, cc_marker: dict) -> tuple:
+    if not messages:
+        return messages, False
+    last_idx = len(messages) - 1
+    if not _has_cache_control(messages[last_idx]):
+        messages = list(messages) if not isinstance(messages, list) else messages
+        messages[last_idx] = _add_cache_control_to_message(messages[last_idx], cc_marker)
+        return messages, True
+    return messages, False

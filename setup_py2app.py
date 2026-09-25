@@ -82,13 +82,6 @@ def _prune_bundle_bloat() -> None:
     if removed:
         print(f'  pruned from bundle src/: {", ".join(sorted(removed))}')
 
-
-def _find_signing_identity(name: str) -> bool:
-    r = subprocess.run(['security', 'find-identity', '-p', 'codesigning'],
-                       capture_output=True, timeout=10)
-    return name in r.stdout.decode(errors='replace')
-
-
 def _install_bundle() -> None:
     label  = 'com.brunowinter.monitor-cc-menubar'
     dist   = Path('dist/monitor-cc-menubar.app')
@@ -138,6 +131,11 @@ def _install_bundle() -> None:
     else:
         print(f'  bootstrap failed (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
         sys.exit(1)
+
+def _find_signing_identity(name: str) -> bool:
+    r = subprocess.run(['security', 'find-identity', '-p', 'codesigning'],
+                       capture_output=True, timeout=10)
+    return name in r.stdout.decode(errors='replace')
 
 if __name__ == '__main__':
     setup_workflow()

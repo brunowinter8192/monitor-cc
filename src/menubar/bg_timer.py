@@ -18,48 +18,6 @@ class BgSleepInfo(NamedTuple):
 
 # FUNCTIONS
 
-def _parse_etime(etime: str) -> Optional[int]:
-    try:
-        days_str, _, rest = etime.partition('-')
-        if not rest:
-            rest, days_str = days_str, '0'
-        parts = rest.split(':')
-        d = int(days_str) * 86400
-        weights = (1, 60, 3600)
-        return d + sum(int(v) * w for v, w in zip(reversed(parts), weights))
-    except (ValueError, IndexError):
-        log_menubar_change('bg_timer', 'etime', f'unparseable etime={etime!r}')
-    return None
-
-def _is_bare_sleep(tokens: List[str]) -> bool:
-    return len(tokens) == 2 and tokens[0] == 'sleep' and tokens[1].replace('.', '', 1).isdigit()
-
-def _worker_cli_wait_index(tokens: List[str]) -> Optional[int]:
-    for i, tok in enumerate(tokens[:-1]):
-        if os.path.basename(tok) == 'worker-cli' and tokens[i + 1] == 'wait':
-            return i
-    return None
-
-def _parse_wait_timeout(tokens: List[str]) -> Optional[int]:
-    for i, tok in enumerate(tokens):
-        if tok == '--timeout' and i + 1 < len(tokens) and tokens[i + 1].isdigit():
-            return int(tokens[i + 1])
-        if tok.startswith('--timeout=') and tok[len('--timeout='):].isdigit():
-            return int(tok[len('--timeout='):])
-    return None
-
-def _resolve_ancestor_cwd(start_pid: str, pid_info: Dict[str, Tuple[str, str, str]]) -> str:
-    ancestor_pid = start_pid
-    for _ in range(5):
-        if ancestor_pid in _cc_proc_cache:
-            break
-        ancestor_info = pid_info.get(ancestor_pid)
-        if ancestor_info is None:
-            break
-        ancestor_pid = ancestor_info[0]
-    cc_entry = _cc_proc_cache.get(ancestor_pid)
-    return cc_entry[1] if cc_entry else ''
-
 def _scan_bg_sleep_timers(cwd_to_project: Dict[str, str]) -> Dict[str, BgSleepInfo]:
     try:
         r = subprocess.run(
@@ -106,20 +64,47 @@ def _scan_bg_sleep_timers(cwd_to_project: Dict[str, str]) -> Dict[str, BgSleepIn
         for proj, entries in buckets.items()
     }
 
-def _resolve_pid_output_file(pid: int) -> Optional[str]:
+def _parse_etime(etime: str) -> Optional[int]:
     try:
-        r = subprocess.run(
-            ['lsof', '-p', str(pid), '-a', '-d', '1,2', '-Fn'],
-            capture_output=True, text=True,
-            encoding='utf-8', errors='replace', timeout=2)
-    except Exception as exc:
-        log_menubar_change('bg_timer', 'lsof_output', f'lsof failed pid={pid} err={exc!r}')
-        return None
-    log_menubar_change('bg_timer', 'lsof_output', None)
-    for line in r.stdout.splitlines():
-        if line.startswith('n') and line.endswith('.output'):
-            return line[1:]
+        days_str, _, rest = etime.partition('-')
+        if not rest:
+            rest, days_str = days_str, '0'
+        parts = rest.split(':')
+        d = int(days_str) * 86400
+        weights = (1, 60, 3600)
+        return d + sum(int(v) * w for v, w in zip(reversed(parts), weights))
+    except (ValueError, IndexError):
+        log_menubar_change('bg_timer', 'etime', f'unparseable etime={etime!r}')
     return None
+
+def _worker_cli_wait_index(tokens: List[str]) -> Optional[int]:
+    for i, tok in enumerate(tokens[:-1]):
+        if os.path.basename(tok) == 'worker-cli' and tokens[i + 1] == 'wait':
+            return i
+    return None
+
+def _parse_wait_timeout(tokens: List[str]) -> Optional[int]:
+    for i, tok in enumerate(tokens):
+        if tok == '--timeout' and i + 1 < len(tokens) and tokens[i + 1].isdigit():
+            return int(tokens[i + 1])
+        if tok.startswith('--timeout=') and tok[len('--timeout='):].isdigit():
+            return int(tok[len('--timeout='):])
+    return None
+
+def _resolve_ancestor_cwd(start_pid: str, pid_info: Dict[str, Tuple[str, str, str]]) -> str:
+    ancestor_pid = start_pid
+    for _ in range(5):
+        if ancestor_pid in _cc_proc_cache:
+            break
+        ancestor_info = pid_info.get(ancestor_pid)
+        if ancestor_info is None:
+            break
+        ancestor_pid = ancestor_info[0]
+    cc_entry = _cc_proc_cache.get(ancestor_pid)
+    return cc_entry[1] if cc_entry else ''
+
+def _is_bare_sleep(tokens: List[str]) -> bool:
+    return len(tokens) == 2 and tokens[0] == 'sleep' and tokens[1].replace('.', '', 1).isdigit()
 
 def _abort_bg_sleep_timers(sleep_pids: List[int]) -> int:
     killed = 0
@@ -155,3 +140,18 @@ def _abort_bg_sleep_timers(sleep_pids: List[int]) -> int:
     except Exception as e:
         print(f'[abort-log] abort_action write error: {e}', file=sys.stderr)
     return killed
+
+def _resolve_pid_output_file(pid: int) -> Optional[str]:
+    try:
+        r = subprocess.run(
+            ['lsof', '-p', str(pid), '-a', '-d', '1,2', '-Fn'],
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=2)
+    except Exception as exc:
+        log_menubar_change('bg_timer', 'lsof_output', f'lsof failed pid={pid} err={exc!r}')
+        return None
+    log_menubar_change('bg_timer', 'lsof_output', None)
+    for line in r.stdout.splitlines():
+        if line.startswith('n') and line.endswith('.output'):
+            return line[1:]
+    return None

@@ -34,22 +34,6 @@ from src.dual_log_cli.timeline_turns import full_turn
 # FUNCTIONS
 
 
-def _valid_day(value: str) -> bool:
-    try:
-        datetime.strptime(value, "%Y-%m-%d")
-    except ValueError:
-        return False
-    return True
-
-
-def _reject_bad_days(args: argparse.Namespace) -> int:
-    for flag, value in (("--since", args.since), ("--until", args.until)):
-        if value and not _valid_day(value):
-            print(f"{flag}: {value!r} is not a valid date, expected YYYY-MM-DD", file=sys.stderr)
-            return 2
-    return 0
-
-
 def _run_sessions(dual_log_dir, args: argparse.Namespace) -> int:
     code = _reject_bad_days(args)
     if code:
@@ -64,14 +48,20 @@ def _run_sessions(dual_log_dir, args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_for(dual_log_dir, session_arg: str) -> tuple:
+def _reject_bad_days(args: argparse.Namespace) -> int:
+    for flag, value in (("--since", args.since), ("--until", args.until)):
+        if value and not _valid_day(value):
+            print(f"{flag}: {value!r} is not a valid date, expected YYYY-MM-DD", file=sys.stderr)
+            return 2
+    return 0
+
+
+def _valid_day(value: str) -> bool:
     try:
-        stem = resolve_stem(dual_log_dir, session_arg)
-    except (AmbiguousSessionError, UnknownSessionError) as exc:
-        print(str(exc), file=sys.stderr)
-        return None, 2
-    session = build_session(stem, group_streams(dual_log_dir)[stem], build_project_index())
-    return load_timeline(session), 0
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
 
 
 def _run_search(dual_log_dir, args: argparse.Namespace) -> int:
@@ -198,6 +188,16 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
     sys_tool_overlay = build_sys_tool_overlay(data["session"], data["family"], data["requests"])
     sys.stdout.write(render_msgs(data, start, end, usage_by_flow, overlay, sys_tool_overlay))
     return 0
+
+
+def _load_for(dual_log_dir, session_arg: str) -> tuple:
+    try:
+        stem = resolve_stem(dual_log_dir, session_arg)
+    except (AmbiguousSessionError, UnknownSessionError) as exc:
+        print(str(exc), file=sys.stderr)
+        return None, 2
+    session = build_session(stem, group_streams(dual_log_dir)[stem], build_project_index())
+    return load_timeline(session), 0
 
 
 def _numbered_view(data: dict) -> dict:

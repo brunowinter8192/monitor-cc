@@ -2,6 +2,7 @@
 from pathlib import Path
 from typing import Dict
 
+# FUNCTIONS
 
 class DualLogPaths:
     def __init__(self, original: Path, forwarded: Path, stripped: Path, injected: Path,

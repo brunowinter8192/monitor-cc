@@ -13,16 +13,35 @@ from src.search_bar import _BG_RESTORE_SENTINEL
 
 # FUNCTIONS
 
-def _resolve_prev_same_family(entries: list, entry_idx: int) -> Optional[dict]:
-    entry = entries[entry_idx]
-    if _is_standalone_entry(entry) or entry.get('is_continue'):
-        return None
-    ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
-    for i in range(entry_idx - 1, -1, -1):
-        pf = 'haiku' if 'haiku' in entries[i].get('model', '').lower() else 'opus'
-        if pf == ef and not _is_standalone_entry(entries[i]) and not entries[i].get('is_continue'):
-            return entries[i]
-    return None
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, number_by_flow: dict, label_counts: dict, time_by_flow: dict = None, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '', labels: list = None) -> tuple:
+    lines = []
+    keys = []
+    for pair_pos, (entry_idx, entry) in enumerate(group['entry_pairs']):
+        model_short = _shorten_model(entry.get('model', '?'))
+        num_label = labels[pair_pos] if labels is not None else _req_label(entry, model_short, number_by_flow, label_counts)
+        msg_count = entry.get('message_count', 0)
+        warn_parts = []
+        is_standalone = _is_standalone_entry(entry)
+        if model_short != 'haiku' and not is_standalone and num_label != 'REQ #?' and rendered_opus_labels is not None:
+            rendered_opus_labels.append((entry_idx, num_label))
+        prev_same = _resolve_prev_same_family(entries, entry_idx)
+        if prev_same is not None:
+            if entry.get('tools_hash') and prev_same.get('tools_hash') and entry.get('tools_hash') != prev_same.get('tools_hash'):
+                warn_parts.append(f"{RED}!T{SOFT_RESET}")
+        warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else ''
+        req_key = ('req', entry_idx)
+        is_req_expanded = expand_states.get(req_key, False)
+        req_symbol = '▼' if is_req_expanded else '▶'
+        mods_str = _compute_req_mods_str(entry, prev_same)
+        is_search_current = search_current_entry_idx is not None and entry_idx == search_current_entry_idx
+        is_search_match = bool(search_match_set) and entry_idx in search_match_set
+        lines.append(_build_req_header_line(entry, entry_idx, num_label, req_symbol, model_short, msg_count, mods_str, warn_str, pane_width, copy_feedback, is_search_match, is_search_current, (time_by_flow or {}).get(entry.get('flow_id'), '') if num_label.startswith('REQ #') else ''))
+        keys.append(req_key)
+        if is_req_expanded:
+            e_lines, e_keys = _render_req_expanded(entry_idx, entry, entries, is_standalone, prev_same, expand_states, pane_width, search_query if is_search_match else '', is_search_current, copy_feedback)
+            lines.extend(e_lines)
+            keys.extend(e_keys)
+    return lines, keys
 
 def _req_label(entry: dict, model_short: str, number_by_flow: dict, label_counts: dict) -> str:
     if _is_standalone_entry(entry):
@@ -33,6 +52,17 @@ def _req_label(entry: dict, model_short: str, number_by_flow: dict, label_counts
     seen = label_counts.get(number, 0)
     label_counts[number] = seen + 1
     return f'REQ #{number}' if seen == 0 else f'REQ #{number}.{seen}'
+
+def _resolve_prev_same_family(entries: list, entry_idx: int) -> Optional[dict]:
+    entry = entries[entry_idx]
+    if _is_standalone_entry(entry) or entry.get('is_continue'):
+        return None
+    ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
+    for i in range(entry_idx - 1, -1, -1):
+        pf = 'haiku' if 'haiku' in entries[i].get('model', '').lower() else 'opus'
+        if pf == ef and not _is_standalone_entry(entries[i]) and not entries[i].get('is_continue'):
+            return entries[i]
+    return None
 
 def _compute_req_mods_str(entry: dict, prev_same) -> str:
     _curr = entry.get('tools_names', [])
@@ -46,24 +76,6 @@ def _compute_req_mods_str(entry: dict, prev_same) -> str:
     if removed > 0:
         return f" {YELLOW}tl-{removed}{SOFT_RESET}"
     return ''
-
-def _status_marker(entry: dict) -> str:
-    if 'http_status' not in entry:
-        return ''
-    status = entry['http_status']
-    if status is None:
-        return f" {DIM}[pending]{SOFT_RESET}{WHITE}"
-    if status == 200:
-        return ''
-    return f" {RED}[{status}]{SOFT_RESET}{WHITE}"
-
-def _status_line(entry: dict) -> list:
-    if 'http_status' not in entry:
-        return []
-    status = entry['http_status']
-    text = 'pending (no _response line yet)' if status is None else str(status)
-    color = DIM if status in (None, 200) else RED
-    return [f"    {color}status: {text}{SOFT_RESET}"]
 
 def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symbol: str, model_short: str, msg_count: int, mods_str: str, warn_str: str, pane_width: int, copy_feedback, is_search_match: bool = False, is_search_current: bool = False, time_str: str = '') -> str:
     e_sys = entry.get('system_total_chars', 0)
@@ -97,11 +109,15 @@ def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symb
             return header_raw + ' ' * pad + ' ' + copy_sym
     return header_raw
 
-def _mark_search_lines(lines: list, query: str, is_current: bool) -> list:
-    if not query:
-        return lines
-    marker = SEARCH_CURRENT_BG if is_current else SEARCH_MATCH_BG
-    return [highlight_query_in_line(line, query, marker, _BG_RESTORE_SENTINEL) for line in lines]
+def _status_marker(entry: dict) -> str:
+    if 'http_status' not in entry:
+        return ''
+    status = entry['http_status']
+    if status is None:
+        return f" {DIM}[pending]{SOFT_RESET}{WHITE}"
+    if status == 200:
+        return ''
+    return f" {RED}[{status}]{SOFT_RESET}{WHITE}"
 
 def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalone: bool, prev_same, expand_states: dict, pane_width: int, search_query: str = '', is_search_current: bool = False, copy_feedback=None) -> tuple:
     from src.proxy_display.render_sections import render_tools, render_fields_delta, render_beta, render_directives
@@ -139,32 +155,16 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     lines = _mark_search_lines(lines, search_query, is_search_current)
     return lines, keys
 
-def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, number_by_flow: dict, label_counts: dict, time_by_flow: dict = None, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '', labels: list = None) -> tuple:
-    lines = []
-    keys = []
-    for pair_pos, (entry_idx, entry) in enumerate(group['entry_pairs']):
-        model_short = _shorten_model(entry.get('model', '?'))
-        num_label = labels[pair_pos] if labels is not None else _req_label(entry, model_short, number_by_flow, label_counts)
-        msg_count = entry.get('message_count', 0)
-        warn_parts = []
-        is_standalone = _is_standalone_entry(entry)
-        if model_short != 'haiku' and not is_standalone and num_label != 'REQ #?' and rendered_opus_labels is not None:
-            rendered_opus_labels.append((entry_idx, num_label))
-        prev_same = _resolve_prev_same_family(entries, entry_idx)
-        if prev_same is not None:
-            if entry.get('tools_hash') and prev_same.get('tools_hash') and entry.get('tools_hash') != prev_same.get('tools_hash'):
-                warn_parts.append(f"{RED}!T{SOFT_RESET}")
-        warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else ''
-        req_key = ('req', entry_idx)
-        is_req_expanded = expand_states.get(req_key, False)
-        req_symbol = '▼' if is_req_expanded else '▶'
-        mods_str = _compute_req_mods_str(entry, prev_same)
-        is_search_current = search_current_entry_idx is not None and entry_idx == search_current_entry_idx
-        is_search_match = bool(search_match_set) and entry_idx in search_match_set
-        lines.append(_build_req_header_line(entry, entry_idx, num_label, req_symbol, model_short, msg_count, mods_str, warn_str, pane_width, copy_feedback, is_search_match, is_search_current, (time_by_flow or {}).get(entry.get('flow_id'), '') if num_label.startswith('REQ #') else ''))
-        keys.append(req_key)
-        if is_req_expanded:
-            e_lines, e_keys = _render_req_expanded(entry_idx, entry, entries, is_standalone, prev_same, expand_states, pane_width, search_query if is_search_match else '', is_search_current, copy_feedback)
-            lines.extend(e_lines)
-            keys.extend(e_keys)
-    return lines, keys
+def _status_line(entry: dict) -> list:
+    if 'http_status' not in entry:
+        return []
+    status = entry['http_status']
+    text = 'pending (no _response line yet)' if status is None else str(status)
+    color = DIM if status in (None, 200) else RED
+    return [f"    {color}status: {text}{SOFT_RESET}"]
+
+def _mark_search_lines(lines: list, query: str, is_current: bool) -> list:
+    if not query:
+        return lines
+    marker = SEARCH_CURRENT_BG if is_current else SEARCH_MATCH_BG
+    return [highlight_query_in_line(line, query, marker, _BG_RESTORE_SENTINEL) for line in lines]

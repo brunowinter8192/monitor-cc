@@ -80,28 +80,6 @@ def _strip_sr_content(content, enabled_templates):
     return content
 
 
-def _strip_sr_block(block, enabled_templates):
-    if not isinstance(block, dict):
-        return block
-    if block.get('type') == 'text':
-        new_text = _apply_sr_strip(block.get('text', ''), enabled_templates)
-        return {**block, 'text': new_text or '.'}
-    return block
-
-def _match_template(inner, enabled_templates):
-    for tid in enabled_templates:
-        spec = _SR_TEMPLATES.get(tid)
-        if not spec:
-            continue
-        identifiers = spec[0] if isinstance(spec[0], list) else [spec[0]]
-        required_fragment = spec[2] if len(spec) > 2 else None
-        for identifier in identifiers:
-            if inner.startswith(identifier):
-                if required_fragment is None or required_fragment in inner:
-                    return tid, spec[1]
-    return None, None
-
-
 def _apply_sr_strip(text, enabled_templates):
     if not text or '<system-reminder>' not in text:
         return text
@@ -126,6 +104,29 @@ def _apply_sr_strip(text, enabled_templates):
         return '<system-reminder>' + cleaned + '</system-reminder>' + trailing_nl
 
     return _STANDALONE_SR_RE.sub(_replace, text)
+
+
+def _match_template(inner, enabled_templates):
+    for tid in enabled_templates:
+        spec = _SR_TEMPLATES.get(tid)
+        if not spec:
+            continue
+        identifiers = spec[0] if isinstance(spec[0], list) else [spec[0]]
+        required_fragment = spec[2] if len(spec) > 2 else None
+        for identifier in identifiers:
+            if inner.startswith(identifier):
+                if required_fragment is None or required_fragment in inner:
+                    return tid, spec[1]
+    return None, None
+
+
+def _strip_sr_block(block, enabled_templates):
+    if not isinstance(block, dict):
+        return block
+    if block.get('type') == 'text':
+        new_text = _apply_sr_strip(block.get('text', ''), enabled_templates)
+        return {**block, 'text': new_text or '.'}
+    return block
 
 
 def _strip_plan_mode_blocks(content):

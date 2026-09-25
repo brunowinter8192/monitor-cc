@@ -46,13 +46,6 @@ def _dispatch_mode(mode: str) -> None:
     else:
         raise ValueError(f"Unknown monitor mode: {mode!r}")
 
-def is_agent_file(filepath: Path) -> bool:
-    return filepath.name.startswith('agent-')
-
-def _get_newest_main_session() -> Optional[Path]:
-    main_sessions = get_main_session_files()
-    return main_sessions[0] if main_sessions else None
-
 def _get_session_start_ts() -> Optional[str]:
     session = _get_newest_main_session()
     if not session:
@@ -65,6 +58,13 @@ def _get_session_start_ts() -> Optional[str]:
             return dt_adjusted.isoformat().replace('+00:00', 'Z')
     return None
 
+def _get_newest_main_session() -> Optional[Path]:
+    main_sessions = get_main_session_files()
+    return main_sessions[0] if main_sessions else None
+
 def get_main_session_files() -> List[Path]:
     sessions = find_active_sessions(active_project_filter)
     return [s for s in sessions if not is_agent_file(s)]
+
+def is_agent_file(filepath: Path) -> bool:
+    return filepath.name.startswith('agent-')

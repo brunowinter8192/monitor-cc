@@ -15,7 +15,7 @@ Dedicated tmux pane event loops for the token/cache tracker and the warnings pan
 
 ## Modules
 
-### token_pane.py (340 LOC)
+### token_pane.py (339 LOC)
 
 **Purpose:** Token/cache-tracker pane loop with incremental transcript read, interactive view, response-log polling, and the periodic log sweep.
 **Reads:** session JSONL and response dual-log (incremental); active project filter from `core/monitor.py`.
@@ -25,7 +25,7 @@ Dedicated tmux pane event loops for the token/cache tracker and the warnings pan
 
 ---
 
-### cache_turns.py (70 LOC)
+### cache_turns.py (71 LOC)
 
 **Purpose:** Incrementally reads new session JSONL lines and merges the resulting cache turns into the existing list.
 **Reads:** the session JSONL from a given position (parameters only).
@@ -55,7 +55,7 @@ Dedicated tmux pane event loops for the token/cache tracker and the warnings pan
 
 ---
 
-### warnings_render.py (192 LOC)
+### warnings_render.py (187 LOC)
 
 **Purpose:** Pure rendering helpers for the warnings pane: pane body, header, clipboard text and search matching.
 **Reads:** all state passed as arguments.

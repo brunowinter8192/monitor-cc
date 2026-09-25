@@ -108,7 +108,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_broad_find.py (119 LOC)
+### block_broad_find.py (118 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking find over broad roots with no depth limit or head bound.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -118,7 +118,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_cli_chained.py (177 LOC)
+### block_cli_chained.py (176 LOC)
 
 **Purpose:** PreToolUse Bash hook enforcing piping, redirect and same-call readback rules for the policed CLIs known to `_known_cli.py`.
 **Reads:** stdin (PreToolUse JSON payload). Session working directory as fallback.
@@ -238,7 +238,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_path_typo.py (111 LOC)
+### block_path_typo.py (110 LOC)
 
 **Purpose:** PreToolUse Bash/Read/Write/Edit hook auto-rewriting known path typos; name kept for settings matcher continuity although it rewrites.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -288,7 +288,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_worker_kill_while_working.py (103 LOC)
+### block_worker_kill_while_working.py (102 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking a worker kill while a live status check reports the worker as working.
 **Reads:** stdin (PreToolUse JSON payload). Live worker status via subprocess.
@@ -298,7 +298,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_worker_send_while_working.py (103 LOC)
+### block_worker_send_while_working.py (102 LOC)
 
 **Purpose:** PreToolUse Sibling of the kill guard applied to worker sends; deliberately duplicated rather than shared.
 **Reads:** stdin (PreToolUse JSON payload). Live worker status via subprocess.
@@ -318,7 +318,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_po_read.py (97 LOC)
+### block_po_read.py (96 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking shell reads of small persisted-output export files, pointing at the poread tool.
 **Reads:** stdin (PreToolUse JSON payload). Target file size from disk.
@@ -358,7 +358,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### hook_setup.py (189 LOC)
+### hook_setup.py (187 LOC)
 
 **Purpose:** idempotent installer registering every hook script into the user-level Claude Code settings file, sweeping stale entries first.
 **Reads:** the user-level settings file; local main-branch git state; the working tree.

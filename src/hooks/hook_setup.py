@@ -68,86 +68,6 @@ def hook_setup_workflow() -> None:
 
 # FUNCTIONS
 
-def _install_scripts(settings: dict, installable: list) -> int:
-    hooks = settings.setdefault("hooks", {})
-    installed = 0
-    for script, matcher in installable:
-        installed += _install_script(hooks, script, matcher)
-    return installed
-
-def _install_script(hooks: dict, script: str, matcher: str) -> int:
-    command = f"python3 {_HOOKS_DIR / script}"
-    bucket = hooks.setdefault(_EVENT, [])
-    if _already_installed(bucket, command, matcher):
-        return 0
-    _add_hook(bucket, command, matcher)
-    return 1
-
-def decide_entries(hook_scripts: list, git_query_fn, tree_query_fn) -> tuple:
-    to_install, skipped, cache = [], [], {}
-    for entry in hook_scripts:
-        script, matcher = entry
-        if script not in cache:
-            cache[script] = _script_verdict(script, git_query_fn, tree_query_fn)
-        install, reason = cache[script]
-        if install:
-            to_install.append(entry)
-        else:
-            skipped.append((script, matcher, reason))
-    return to_install, skipped
-
-
-def _script_verdict(script: str, git_query_fn, tree_query_fn) -> tuple:
-    present = git_query_fn(script)
-    if present is False:
-        return False, (
-            f"{script} is not committed on '{_MAIN_BRANCH}' — not registered "
-            f"(would become a dead absolute path once the tree leaves this branch)")
-    if present is None:
-        return False, (
-            f"{script}: could not verify '{_MAIN_BRANCH}'-branch presence (git query failed) "
-            f"— not registered (fail-safe: unverifiable presence is treated as absent)")
-    if not tree_query_fn(script):
-        return False, (
-            f"{script} is committed on '{_MAIN_BRANCH}' but missing from the current working tree "
-            f"— not registered (would be a dead absolute path immediately)")
-    return True, None
-
-def _report_skipped(skipped: list) -> None:
-    seen = set()
-    for script, _matcher, reason in skipped:
-        if script in seen:
-            continue
-        seen.add(script)
-        print(f"SKIPPED: {reason}", file=sys.stderr)
-
-@functools.lru_cache(maxsize=None)
-def _main_branch_resolves() -> bool:
-    try:
-        result = subprocess.run(
-            ['git', '-C', str(_REPO_ROOT), 'rev-parse', '--verify', '--quiet', _MAIN_BRANCH],
-            capture_output=True, timeout=5,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-def _script_on_main(script_filename: str):
-    if not _main_branch_resolves():
-        return None
-    try:
-        result = subprocess.run(
-            ['git', '-C', str(_REPO_ROOT), 'cat-file', '-e',
-             f'{_MAIN_BRANCH}:src/hooks/{script_filename}'],
-            capture_output=True, timeout=5,
-        )
-        return result.returncode == 0
-    except Exception:
-        return None
-
-def _script_in_worktree(script_filename: str) -> bool:
-    return os.path.exists(_HOOKS_DIR / script_filename)
-
 def _sweep_stale_hooks(settings: dict) -> int:
     hooks = settings.get("hooks", {})
     swept = 0
@@ -169,6 +89,85 @@ def _sweep_stale_hooks(settings: dict) -> int:
         hooks[event] = new_groups
     return swept
 
+def decide_entries(hook_scripts: list, git_query_fn, tree_query_fn) -> tuple:
+    to_install, skipped, cache = [], [], {}
+    for entry in hook_scripts:
+        script, matcher = entry
+        if script not in cache:
+            cache[script] = _script_verdict(script, git_query_fn, tree_query_fn)
+        install, reason = cache[script]
+        if install:
+            to_install.append(entry)
+        else:
+            skipped.append((script, matcher, reason))
+    return to_install, skipped
+
+def _script_verdict(script: str, git_query_fn, tree_query_fn) -> tuple:
+    present = git_query_fn(script)
+    if present is False:
+        return False, (
+            f"{script} is not committed on '{_MAIN_BRANCH}' — not registered "
+            f"(would become a dead absolute path once the tree leaves this branch)")
+    if present is None:
+        return False, (
+            f"{script}: could not verify '{_MAIN_BRANCH}'-branch presence (git query failed) "
+            f"— not registered (fail-safe: unverifiable presence is treated as absent)")
+    if not tree_query_fn(script):
+        return False, (
+            f"{script} is committed on '{_MAIN_BRANCH}' but missing from the current working tree "
+            f"— not registered (would be a dead absolute path immediately)")
+    return True, None
+
+def _script_on_main(script_filename: str):
+    if not _main_branch_resolves():
+        return None
+    try:
+        result = subprocess.run(
+            ['git', '-C', str(_REPO_ROOT), 'cat-file', '-e',
+             f'{_MAIN_BRANCH}:src/hooks/{script_filename}'],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return None
+
+@functools.lru_cache(maxsize=None)
+def _main_branch_resolves() -> bool:
+    try:
+        result = subprocess.run(
+            ['git', '-C', str(_REPO_ROOT), 'rev-parse', '--verify', '--quiet', _MAIN_BRANCH],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+def _script_in_worktree(script_filename: str) -> bool:
+    return os.path.exists(_HOOKS_DIR / script_filename)
+
+def _report_skipped(skipped: list) -> None:
+    seen = set()
+    for script, _matcher, reason in skipped:
+        if script in seen:
+            continue
+        seen.add(script)
+        print(f"SKIPPED: {reason}", file=sys.stderr)
+
+def _install_scripts(settings: dict, installable: list) -> int:
+    hooks = settings.setdefault("hooks", {})
+    installed = 0
+    for script, matcher in installable:
+        installed += _install_script(hooks, script, matcher)
+    return installed
+
+def _install_script(hooks: dict, script: str, matcher: str) -> int:
+    command = f"python3 {_HOOKS_DIR / script}"
+    bucket = hooks.setdefault(_EVENT, [])
+    if _already_installed(bucket, command, matcher):
+        return 0
+    _add_hook(bucket, command, matcher)
+    return 1
+
 def _already_installed(pre_tool_use: list, command: str, matcher: str) -> bool:
     for group in pre_tool_use:
         if group.get("matcher") != matcher:
@@ -183,7 +182,6 @@ def _add_hook(pre_tool_use: list, command: str, matcher: str) -> None:
         "matcher": matcher,
         "hooks": [{"type": "command", "command": command, "timeout": _HOOK_TIMEOUT}],
     })
-
 
 if __name__ == "__main__":
     hook_setup_workflow()

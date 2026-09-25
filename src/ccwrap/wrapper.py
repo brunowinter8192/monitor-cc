@@ -52,6 +52,19 @@ def _apply_winsize(master_fd: int) -> None:
     rows, cols = _get_winsize()
     _set_winsize(master_fd, rows, cols)
 
+def _get_winsize():
+    buf = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\x00' * 8)
+    return struct.unpack('HHHH', buf)[:2]
+
+def _set_winsize(master_fd: int, rows: int, cols: int) -> None:
+    fcntl.ioctl(master_fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
+
+def _install_sigwinch(master_fd: int) -> None:
+    def _handler(signum, frame):
+        r, c = _get_winsize()
+        _set_winsize(master_fd, r, c)
+    signal.signal(signal.SIGWINCH, _handler)
+
 def _enter_raw_mode(stdin_fd: int):
     old_attrs = None
     if os.isatty(stdin_fd):
@@ -67,30 +80,6 @@ def _relay_session(master_fd: int, stdin_fd: int, bin_fh, ansi_fh, child_pid: in
     finally:
         _restore_session(master_fd, stdin_fd, bin_fh, ansi_fh, old_attrs)
     return exit_code
-
-def _restore_session(master_fd: int, stdin_fd: int, bin_fh, ansi_fh, old_attrs) -> None:
-    signal.signal(signal.SIGWINCH, signal.SIG_DFL)
-    if old_attrs is not None:
-        termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_attrs)
-    bin_fh.close()
-    ansi_fh.close()
-    os.close(master_fd)
-
-def _get_winsize():
-    buf = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\x00' * 8)
-    return struct.unpack('HHHH', buf)[:2]
-
-
-def _set_winsize(master_fd: int, rows: int, cols: int) -> None:
-    fcntl.ioctl(master_fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
-
-
-def _install_sigwinch(master_fd: int) -> None:
-    def _handler(signum, frame):
-        r, c = _get_winsize()
-        _set_winsize(master_fd, r, c)
-    signal.signal(signal.SIGWINCH, _handler)
-
 
 def _io_loop(master_fd: int, stdin_fd: int, bin_fh, ansi_fh) -> None:
     buf = b''
@@ -123,7 +112,6 @@ def _io_loop(master_fd: int, stdin_fd: int, bin_fh, ansi_fh) -> None:
             else:
                 fds = [master_fd]
 
-
 def _carry_tail(data: bytes) -> bytes:
     if not data:
         return b''
@@ -133,7 +121,6 @@ def _carry_tail(data: bytes) -> bytes:
         return data[-2:]
     return b''
 
-
 def _wait_child(child_pid: int) -> int:
     _, status = os.waitpid(child_pid, 0)
     if os.WIFEXITED(status):
@@ -141,3 +128,11 @@ def _wait_child(child_pid: int) -> int:
     if os.WIFSIGNALED(status):
         return 128 + os.WTERMSIG(status)
     return 1
+
+def _restore_session(master_fd: int, stdin_fd: int, bin_fh, ansi_fh, old_attrs) -> None:
+    signal.signal(signal.SIGWINCH, signal.SIG_DFL)
+    if old_attrs is not None:
+        termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_attrs)
+    bin_fh.close()
+    ansi_fh.close()
+    os.close(master_fd)

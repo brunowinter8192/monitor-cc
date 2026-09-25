@@ -16,6 +16,18 @@ _ARROW_HANDLER_REF  = None
 
 # FUNCTIONS
 
+def register_cmd_arrow_right(callback) -> tuple:
+    _ensure_arrow_handler()
+    _ARROW_CALLBACKS[_CMD_RIGHT_ID] = callback
+    carbon = _load_carbon()
+    target = carbon.GetApplicationEventTarget()
+    hk_ref = ctypes.c_void_p()
+    _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
+        0x7C, 0x0100,
+        _EventHotKeyID(_MBAR_SIG, _CMD_RIGHT_ID),
+        target, 0, ctypes.byref(hk_ref)), 'cmd+right')
+    return None, hk_ref
+
 def _ensure_arrow_handler():
     global _ARROW_HANDLER_CB, _ARROW_HANDLER_REF
     if _ARROW_HANDLER_CB is not None:
@@ -44,18 +56,6 @@ def _ensure_arrow_handler():
         target, _ARROW_HANDLER_CB, 1, ctypes.byref(_HOTKEY_EVENT_SPEC),
         None, ctypes.byref(handler_ref)), 'arrows')
     _ARROW_HANDLER_REF = handler_ref
-
-def register_cmd_arrow_right(callback) -> tuple:
-    _ensure_arrow_handler()
-    _ARROW_CALLBACKS[_CMD_RIGHT_ID] = callback
-    carbon = _load_carbon()
-    target = carbon.GetApplicationEventTarget()
-    hk_ref = ctypes.c_void_p()
-    _check_status('RegisterEventHotKey', carbon.RegisterEventHotKey(
-        0x7C, 0x0100,
-        _EventHotKeyID(_MBAR_SIG, _CMD_RIGHT_ID),
-        target, 0, ctypes.byref(hk_ref)), 'cmd+right')
-    return None, hk_ref
 
 def register_cmd_arrow_left(callback) -> tuple:
     _ensure_arrow_handler()

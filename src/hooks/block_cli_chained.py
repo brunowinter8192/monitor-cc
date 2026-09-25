@@ -43,18 +43,6 @@ def block_cli_chained_workflow() -> None:
 
 # FUNCTIONS
 
-def _check_rules(command: str, session_id, cwd) -> None:
-    stripped = _strip_non_shell_active(command)
-    chain_segments = _build_chain_segments(stripped, command)
-    if not _any_segment_stages_with_cli(chain_segments, stripped, cwd):
-        return
-    _check_rule1_pipe(chain_segments, stripped, command, session_id, cwd)
-    _check_rule2_redirect(chain_segments, stripped, command, session_id, cwd)
-    _check_rule3_readback(chain_segments, stripped, command, session_id, cwd)
-
-def _any_segment_stages_with_cli(chain_segments: list, stripped: str, cwd) -> bool:
-    return any(_segment_stages_with_cli(seg, stripped, cwd) for seg in chain_segments)
-
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -69,21 +57,14 @@ def _parse_command():
         log_fire("block_cli_chained", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None, None
 
-def _split_spans(text: str, sep_re) -> list:
-    spans = []
-    pos = 0
-    for m in sep_re.finditer(text):
-        spans.append((pos, m.start()))
-        pos = m.end()
-    spans.append((pos, len(text)))
-    return spans
-
-def _trim_span(text: str, s: int, e: int) -> tuple:
-    while s < e and text[s].isspace():
-        s += 1
-    while e > s and text[e - 1].isspace():
-        e -= 1
-    return s, e
+def _check_rules(command: str, session_id, cwd) -> None:
+    stripped = _strip_non_shell_active(command)
+    chain_segments = _build_chain_segments(stripped, command)
+    if not _any_segment_stages_with_cli(chain_segments, stripped, cwd):
+        return
+    _check_rule1_pipe(chain_segments, stripped, command, session_id, cwd)
+    _check_rule2_redirect(chain_segments, stripped, command, session_id, cwd)
+    _check_rule3_readback(chain_segments, stripped, command, session_id, cwd)
 
 def _build_chain_segments(stripped: str, original: str) -> list:
     segments = []
@@ -105,6 +86,25 @@ def _build_chain_segments(stripped: str, original: str) -> list:
         })
     return segments
 
+def _split_spans(text: str, sep_re) -> list:
+    spans = []
+    pos = 0
+    for m in sep_re.finditer(text):
+        spans.append((pos, m.start()))
+        pos = m.end()
+    spans.append((pos, len(text)))
+    return spans
+
+def _trim_span(text: str, s: int, e: int) -> tuple:
+    while s < e and text[s].isspace():
+        s += 1
+    while e > s and text[e - 1].isspace():
+        e -= 1
+    return s, e
+
+def _any_segment_stages_with_cli(chain_segments: list, stripped: str, cwd) -> bool:
+    return any(_segment_stages_with_cli(seg, stripped, cwd) for seg in chain_segments)
+
 def _segment_stages_with_cli(segment: dict, command_context: str, cwd) -> bool:
     for s, e in segment['stage_spans']:
         if resolve_cli_segment(segment['stripped'][s:e], command_context, cwd) is not None:
@@ -119,6 +119,12 @@ def _check_rule1_pipe(chain_segments: list, command_context: str, command: str, 
             if resolve_cli_segment(stage_stripped, command_context, cwd) is not None:
                 blocked = segment['original'].strip()
                 _block(_RULE1_MESSAGE.format(segment=blocked), command, session_id)
+
+def _block(message: str, command: str, session_id) -> None:
+    print(message, file=sys.stderr, end="")
+    log_fire("block_cli_chained", "block", "Bash", command,
+             reason=message, session_id=session_id)
+    sys.exit(2)
 
 def _check_rule2_redirect(chain_segments: list, command_context: str, command: str, session_id, cwd) -> None:
     for segment in chain_segments:
@@ -165,13 +171,6 @@ def _check_rule3_readback(chain_segments: list, command_context: str, command: s
 def _first_token(text: str) -> str:
     m = _FIRST_TOKEN_RE.match(text)
     return m.group(1) if m else ""
-
-def _block(message: str, command: str, session_id) -> None:
-    print(message, file=sys.stderr, end="")
-    log_fire("block_cli_chained", "block", "Bash", command,
-             reason=message, session_id=session_id)
-    sys.exit(2)
-
 
 if __name__ == "__main__":
     block_cli_chained_workflow()

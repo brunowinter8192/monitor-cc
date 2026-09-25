@@ -137,7 +137,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### app.py (347 LOC)
+### app.py (351 LOC)
 
 **Purpose:** The rumps app class: owns the per-concern controllers, the main-thread tick timer and the action target for every button and hotkey.
 **Reads:** the latest discovery snapshot each tick; the settings file on launch.
@@ -217,7 +217,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### hotkey_carbon.py (72 LOC)
+### hotkey_carbon.py (73 LOC)
 
 **Purpose:** Shared Carbon FFI plumbing for all hotkey registration paths.
 **Reads:** nothing.
@@ -257,7 +257,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### system.py (236 LOC)
+### system.py (235 LOC)
 
 **Purpose:** Process entry point, singleton lock and Ghostty click-to-focus and monitor-launch routing for sessions, workers and monitors.
 **Reads:** the lock file; Ghostty terminal-id lookups; process table; the plist template; tmux session state.
@@ -367,7 +367,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### desktop_detection.py (355 LOC)
+### desktop_detection.py (362 LOC)
 
 **Purpose:** Batch detection of Mission Control desktop numbers for all main sessions via private CoreGraphics Services plus one AppleScript round-trip.
 **Reads:** CGS and window-list APIs; Ghostty window names via `osascript`; maps from the caller.

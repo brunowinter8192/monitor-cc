@@ -22,6 +22,30 @@ def local_datetime(timestamp: str):
     return aware_utc.astimezone()
 
 
+def load_last_request(original_path: Path) -> tuple:
+    skipped = 0
+    with open(original_path, "rb") as fh:
+        for offset, length in iter_line_offsets_reverse(original_path):
+            model = sniff_model(fh, offset)
+            if model and infer_family(model) == "haiku":
+                skipped += 1
+                continue
+            fh.seek(offset)
+            raw = fh.read(length)
+            try:
+                entry = json.loads(raw)
+            except json.JSONDecodeError:
+                report_skip("reader", f"{original_path.name}@{offset}", "malformed line skipped")
+                skipped += 1
+                continue
+            tools = (entry.get("payload") or {}).get("tools") or []
+            if not tools:
+                skipped += 1
+                continue
+            return entry, length, skipped
+    return None, 0, skipped
+
+
 def iter_line_offsets_reverse(path: Path, chunk_bytes: int = _REVERSE_CHUNK_BYTES):
     size = path.stat().st_size
     if size == 0:
@@ -53,30 +77,6 @@ def sniff_model(fh, offset: int) -> str:
     fh.seek(offset)
     match = _MODEL_RE.search(fh.read(_MODEL_SNIFF_BYTES))
     return match.group(1).decode("utf-8", "replace") if match else ""
-
-
-def load_last_request(original_path: Path) -> tuple:
-    skipped = 0
-    with open(original_path, "rb") as fh:
-        for offset, length in iter_line_offsets_reverse(original_path):
-            model = sniff_model(fh, offset)
-            if model and infer_family(model) == "haiku":
-                skipped += 1
-                continue
-            fh.seek(offset)
-            raw = fh.read(length)
-            try:
-                entry = json.loads(raw)
-            except json.JSONDecodeError:
-                report_skip("reader", f"{original_path.name}@{offset}", "malformed line skipped")
-                skipped += 1
-                continue
-            tools = (entry.get("payload") or {}).get("tools") or []
-            if not tools:
-                skipped += 1
-                continue
-            return entry, length, skipped
-    return None, 0, skipped
 
 
 def iter_jsonl(path: Path):

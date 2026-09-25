@@ -75,12 +75,6 @@ def _reset_title_diag() -> None:
 def _cache_valid(cwds: frozenset, now: float) -> bool:
     return cwds == _det_cache_cwds and (now - _det_cache_ts) < _DET_CACHE_TTL
 
-def _store_cache(result: Dict[str, Optional[int]], now: float, cwds: frozenset) -> None:
-    global _det_cache, _det_cache_ts, _det_cache_cwds
-    _det_cache = result
-    _det_cache_ts = now
-    _det_cache_cwds = cwds
-
 def _resolve_cwds_to_desktops(
     cwd_uuid_map: Dict[str, str],
     cwd_tty_map:  Dict[str, str],
@@ -121,60 +115,6 @@ def _resolve_cwds_to_desktops(
         reason = repr(exc)[:80].replace('\n', ' ')
         log_menubar('detection', f'all_failed n_mains={len(cwds)} reason=error:{reason}')
     return result, cwd_ctx
-
-def _log_transitions(result: Dict[str, Optional[int]], cwd_ctx: Dict[str, dict]) -> None:
-    global _last_result
-    for cwd, new_no in result.items():
-        old_no = _last_result.get(cwd)
-        if new_no == old_no:
-            continue
-        label  = os.path.basename(os.path.dirname(cwd)) + '/' + os.path.basename(cwd)
-        ctx    = cwd_ctx.get(cwd, {})
-        detail = f'win={repr(ctx.get("win", ""))[:40]} n_cand={ctx.get("n_cand", "?")}'
-        log_menubar('detection', f'transition {label} {old_no}->{new_no} {detail}')
-    _last_result = dict(result)
-
-def _sel(s: str):                      return _OBJ.sel_registerName(s.encode())
-def _msg1v(obj, s: str, a):            return ctypes.cast(_IMP, _FT_vvv)(obj, _sel(s), a)
-def _msg1cp(obj, s: str, a: bytes):    return ctypes.cast(_IMP, _FT_vvcp)(obj, _sel(s), a)
-def _msg1l(obj, s: str, a: int):       return ctypes.cast(_IMP, _FT_vvl)(obj, _sel(s), ctypes.c_long(a))
-def _msgl(obj, s: str) -> int:         return ctypes.cast(_IMP, _FT_lvv)(obj, _sel(s))
-def _msgp(obj, s: str):                return ctypes.cast(_IMP, _FT_pvv)(obj, _sel(s))
-
-def _nsstr(s: str):
-    cls = _OBJ.objc_getClass(b"NSString")
-    return _msg1cp(cls, "stringWithUTF8String:", s.encode())
-
-def _normalize_window_title(t: Optional[str]) -> Optional[str]:
-    if t is None or len(t) < 2:
-        return t
-    if t[1] == ' ' and not (t[0].isascii() and (t[0].isalnum() or t[0] in '/-_.')):
-        return t[2:]
-    return t
-
-def _cf_count(arr) -> int:         return _msgl(arr, "count")
-def _cf_at(arr, i: int):           return _msg1l(arr, "objectAtIndex:", i)
-def _dict_val(d, key: str):        return _msg1v(d, "objectForKey:", _nsstr(key))
-
-def _dict_str(d, key: str) -> Optional[str]:
-    v = _dict_val(d, key)
-    if not v:
-        return None
-    r = _msgp(v, "UTF8String")
-    return r.decode() if r else None
-
-def _dict_long(d, key: str) -> Optional[int]:
-    v = _dict_val(d, key)
-    return _msgl(v, "intValue") if v else None
-
-def _make_uint_array(values: List[int]):
-    NSMutableArray = _OBJ.objc_getClass(b"NSMutableArray")
-    NSNumber       = _OBJ.objc_getClass(b"NSNumber")
-    arr = ctypes.cast(_IMP, _FT_vv)(NSMutableArray, _sel("array"))
-    for v in values:
-        n = ctypes.cast(_IMP, _FT_vvl)(NSNumber, _sel("numberWithUnsignedInt:"), ctypes.c_long(v))
-        ctypes.cast(_IMP, _FT_nvv)(arr, _sel("addObject:"), n)
-    return arr
 
 def _ghostty_pid_int() -> Optional[int]:
     r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
@@ -218,19 +158,12 @@ def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
             win_to_name[win_id] = _normalize_window_title(win_name)
     return uuid_to_win, win_to_name
 
-def _cgwindow_title(cid: int, wid: int) -> Optional[str]:
-    global _cgw_title_diag_logged
-    out_ref = ctypes.c_void_p(0)
-    key_ns  = _nsstr("kCGSWindowTitle")
-    rc = _CG.CGSCopyWindowProperty(cid, wid, key_ns, ctypes.byref(out_ref))
-    if rc != 0 or not out_ref.value:
-        if not _cgw_title_diag_logged:
-            log_menubar('detection', f'cgw_title_first_fail wid={wid} rc={rc} '
-                                     f'out_ptr={out_ref.value}')
-            _cgw_title_diag_logged = True
-        return None
-    s = _msgp(out_ref.value, "UTF8String")
-    return s.decode() if s else None
+def _normalize_window_title(t: Optional[str]) -> Optional[str]:
+    if t is None or len(t) < 2:
+        return t
+    if t[1] == ' ' and not (t[0].isascii() and (t[0].isalnum() or t[0] in '/-_.')):
+        return t[2:]
+    return t
 
 def _cgwindow_list_ghostty(ghostty_pid_int: int, cid: int) -> Dict[str, List[int]]:
     arr   = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
@@ -253,6 +186,46 @@ def _cgwindow_list_ghostty(ghostty_pid_int: int, cid: int) -> Dict[str, List[int
         log_menubar('detection', f'cgw_list_empty pid={ghostty_pid_int} iterated={count} '
                                  f'no_names_returned')
     return by_name
+
+def _cf_count(arr) -> int:         return _msgl(arr, "count")
+
+def _msgl(obj, s: str) -> int:         return ctypes.cast(_IMP, _FT_lvv)(obj, _sel(s))
+
+def _sel(s: str):                      return _OBJ.sel_registerName(s.encode())
+
+def _cf_at(arr, i: int):           return _msg1l(arr, "objectAtIndex:", i)
+
+def _msg1l(obj, s: str, a: int):       return ctypes.cast(_IMP, _FT_vvl)(obj, _sel(s), ctypes.c_long(a))
+
+def _dict_long(d, key: str) -> Optional[int]:
+    v = _dict_val(d, key)
+    return _msgl(v, "intValue") if v else None
+
+def _dict_val(d, key: str):        return _msg1v(d, "objectForKey:", _nsstr(key))
+
+def _msg1v(obj, s: str, a):            return ctypes.cast(_IMP, _FT_vvv)(obj, _sel(s), a)
+
+def _nsstr(s: str):
+    cls = _OBJ.objc_getClass(b"NSString")
+    return _msg1cp(cls, "stringWithUTF8String:", s.encode())
+
+def _msg1cp(obj, s: str, a: bytes):    return ctypes.cast(_IMP, _FT_vvcp)(obj, _sel(s), a)
+
+def _cgwindow_title(cid: int, wid: int) -> Optional[str]:
+    global _cgw_title_diag_logged
+    out_ref = ctypes.c_void_p(0)
+    key_ns  = _nsstr("kCGSWindowTitle")
+    rc = _CG.CGSCopyWindowProperty(cid, wid, key_ns, ctypes.byref(out_ref))
+    if rc != 0 or not out_ref.value:
+        if not _cgw_title_diag_logged:
+            log_menubar('detection', f'cgw_title_first_fail wid={wid} rc={rc} '
+                                     f'out_ptr={out_ref.value}')
+            _cgw_title_diag_logged = True
+        return None
+    s = _msgp(out_ref.value, "UTF8String")
+    return s.decode() if s else None
+
+def _msgp(obj, s: str):                return ctypes.cast(_IMP, _FT_pvv)(obj, _sel(s))
 
 def _build_space_map(cid: int) -> Dict[int, Tuple[str, int]]:
     dsp_arr    = _CG.CGSCopyManagedDisplaySpaces(cid)
@@ -280,47 +253,12 @@ def _build_space_map(cid: int) -> Dict[int, Tuple[str, int]]:
     log_menubar_change('detection', 'space_map', '; '.join(problems) if problems else None)
     return space_map
 
-def _spaces_for_wid(cid: int, wid: int) -> List[int]:
-    wid_arr    = _make_uint_array([wid])
-    result_arr = _CG.CGSCopySpacesForWindows(cid, _CGS_SPACE_MASK, wid_arr)
-    if not result_arr:
-        return []
-    spaces = []
-    for i in range(_cf_count(result_arr)):
-        ns_num = _cf_at(result_arr, i)
-        sid    = _msgl(ns_num, "intValue") if ns_num else None
-        if sid is not None:
-            spaces.append(sid)
-    return spaces
-
-def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int], cid: int) -> Optional[int]:
-    marker = f'{_GHOSTTY_DET_PREFIX}{os.urandom(4).hex()}'
-    try:
-        with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
-            fh.write(f'\033]2;{marker}\007'.encode())
-    except OSError as e:
-        log_menubar('detection', f'osc2_write_failed tty={tty} err={repr(e)[:80]}')
+def _dict_str(d, key: str) -> Optional[str]:
+    v = _dict_val(d, key)
+    if not v:
         return None
-    time.sleep(0.5)
-    by_name = _cgwindow_list_ghostty(ghostty_pid_int, cid)
-    matched = by_name.get(marker, [])
-    try:
-        with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
-            fh.write(b'\033]2;\007')
-    except OSError as e:
-        log_menubar('detection', f'osc2_restore_failed tty={tty} err={repr(e)[:80]}')
-    if not matched:
-        log_menubar('detection', f'osc2_no_marker tty={tty} (write may have been ignored, or tab not focused)')
-        return None
-    if len(matched) == 1:
-        log_menubar('detection', f'osc2_match tty={tty} wid={matched[0]}')
-        return matched[0]
-    overlap = [w for w in matched if w in candidates]
-    if len(overlap) == 1:
-        log_menubar('detection', f'osc2_overlap tty={tty} wid={overlap[0]}')
-        return overlap[0]
-    log_menubar('detection', f'osc2_ambiguous tty={tty} matched={matched} overlap={overlap}')
-    return None
+    r = _msgp(v, "UTF8String")
+    return r.decode() if r else None
 
 def _resolve_cgwindow_id(
     window_name: str,
@@ -353,3 +291,72 @@ def _resolve_cgwindow_id(
 def _log_route(window_name: str, route: str, wid: int) -> None:
     log_menubar_change('detection', f'route:{window_name}',
                        f'route={route} window_name={repr(window_name)[:60]} wid={wid}')
+
+def _spaces_for_wid(cid: int, wid: int) -> List[int]:
+    wid_arr    = _make_uint_array([wid])
+    result_arr = _CG.CGSCopySpacesForWindows(cid, _CGS_SPACE_MASK, wid_arr)
+    if not result_arr:
+        return []
+    spaces = []
+    for i in range(_cf_count(result_arr)):
+        ns_num = _cf_at(result_arr, i)
+        sid    = _msgl(ns_num, "intValue") if ns_num else None
+        if sid is not None:
+            spaces.append(sid)
+    return spaces
+
+def _make_uint_array(values: List[int]):
+    NSMutableArray = _OBJ.objc_getClass(b"NSMutableArray")
+    NSNumber       = _OBJ.objc_getClass(b"NSNumber")
+    arr = ctypes.cast(_IMP, _FT_vv)(NSMutableArray, _sel("array"))
+    for v in values:
+        n = ctypes.cast(_IMP, _FT_vvl)(NSNumber, _sel("numberWithUnsignedInt:"), ctypes.c_long(v))
+        ctypes.cast(_IMP, _FT_nvv)(arr, _sel("addObject:"), n)
+    return arr
+
+def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int], cid: int) -> Optional[int]:
+    marker = f'{_GHOSTTY_DET_PREFIX}{os.urandom(4).hex()}'
+    try:
+        with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
+            fh.write(f'\033]2;{marker}\007'.encode())
+    except OSError as e:
+        log_menubar('detection', f'osc2_write_failed tty={tty} err={repr(e)[:80]}')
+        return None
+    time.sleep(0.5)
+    by_name = _cgwindow_list_ghostty(ghostty_pid_int, cid)
+    matched = by_name.get(marker, [])
+    try:
+        with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
+            fh.write(b'\033]2;\007')
+    except OSError as e:
+        log_menubar('detection', f'osc2_restore_failed tty={tty} err={repr(e)[:80]}')
+    if not matched:
+        log_menubar('detection', f'osc2_no_marker tty={tty} (write may have been ignored, or tab not focused)')
+        return None
+    if len(matched) == 1:
+        log_menubar('detection', f'osc2_match tty={tty} wid={matched[0]}')
+        return matched[0]
+    overlap = [w for w in matched if w in candidates]
+    if len(overlap) == 1:
+        log_menubar('detection', f'osc2_overlap tty={tty} wid={overlap[0]}')
+        return overlap[0]
+    log_menubar('detection', f'osc2_ambiguous tty={tty} matched={matched} overlap={overlap}')
+    return None
+
+def _log_transitions(result: Dict[str, Optional[int]], cwd_ctx: Dict[str, dict]) -> None:
+    global _last_result
+    for cwd, new_no in result.items():
+        old_no = _last_result.get(cwd)
+        if new_no == old_no:
+            continue
+        label  = os.path.basename(os.path.dirname(cwd)) + '/' + os.path.basename(cwd)
+        ctx    = cwd_ctx.get(cwd, {})
+        detail = f'win={repr(ctx.get("win", ""))[:40]} n_cand={ctx.get("n_cand", "?")}'
+        log_menubar('detection', f'transition {label} {old_no}->{new_no} {detail}')
+    _last_result = dict(result)
+
+def _store_cache(result: Dict[str, Optional[int]], now: float, cwds: frozenset) -> None:
+    global _det_cache, _det_cache_ts, _det_cache_cwds
+    _det_cache = result
+    _det_cache_ts = now
+    _det_cache_cwds = cwds

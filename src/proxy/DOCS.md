@@ -16,7 +16,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ## Modules
 
-### addon.py (363 LOC)
+### addon.py (366 LOC)
 
 **Purpose:** mitmproxy hook class that orchestrates the request-modification and dual-log pipeline and writes the response record.
 **Reads:** mitmproxy flows; process environment for project and log id.
@@ -46,7 +46,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### addon_state.py (35 LOC)
+### addon_state.py (36 LOC)
 
 **Purpose:** Plain state holder classes for the addon's per-concern instance state.
 **Reads:** none.
@@ -146,7 +146,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_sr.py (167 LOC)
+### strip_sr.py (168 LOC)
 
 **Purpose:** Strips system-reminder blocks from message content through a catalog of exact-match templates.
 **Reads:** message content; module-local template catalog.
@@ -176,7 +176,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_bg_launch_ack.py (78 LOC)
+### strip_bg_launch_ack.py (75 LOC)
 
 **Purpose:** Replaces the background-launch acknowledgement wordings with a short hold instruction.
 **Reads:** message content.
@@ -256,7 +256,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_sn_notice.py (66 LOC)
+### strip_sn_notice.py (62 LOC)
 
 **Purpose:** Strips the system-notification paragraph injected ahead of task-notification tags in wake-up messages.
 **Reads:** message content.
@@ -366,7 +366,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### payload_helpers.py (224 LOC)
+### payload_helpers.py (225 LOC)
 
 **Purpose:** Low-level payload inspection and manipulation: system-reminder block lookup, tool-reference stripping and the whole-text block walker.
 **Reads:** message content; payload dicts.

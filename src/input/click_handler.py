@@ -38,17 +38,6 @@ def restore_terminal() -> None:
 def wait_for_input(timeout: float) -> None:
     select.select([_stdin_fd], [], [], timeout)
 
-def _utf8_continuation_count(lead_byte: int) -> int:
-    if lead_byte & 0x80 == 0x00:
-        return 0
-    if lead_byte & 0xE0 == 0xC0:
-        return 1
-    if lead_byte & 0xF0 == 0xE0:
-        return 2
-    if lead_byte & 0xF8 == 0xF0:
-        return 3
-    return 0
-
 def read_keypress() -> Optional[str]:
     if select.select([_stdin_fd], [], [], 0)[0]:
         data = os.read(_stdin_fd, 1)
@@ -64,6 +53,17 @@ def read_keypress() -> Optional[str]:
             data += more
         return data.decode('utf-8', errors='replace')
     return None
+
+def _utf8_continuation_count(lead_byte: int) -> int:
+    if lead_byte & 0x80 == 0x00:
+        return 0
+    if lead_byte & 0xE0 == 0xC0:
+        return 1
+    if lead_byte & 0xF0 == 0xE0:
+        return 2
+    if lead_byte & 0xF8 == 0xF0:
+        return 3
+    return 0
 
 def parse_digit_key(char: str) -> Optional[int]:
     if char and char in '123456789':

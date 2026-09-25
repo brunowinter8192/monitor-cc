@@ -16,7 +16,7 @@ Key or click → `gpu_actions.py` fires the `rag-cli` action and tracks the tran
 
 ## Modules
 
-### pane.py (249 LOC)
+### pane.py (244 LOC)
 
 **Purpose:** Event loop with keyboard and mouse dispatch, search bar and preset toggling.
 **Reads:** status, anomalies, errors and collections from the sibling modules.
@@ -46,7 +46,7 @@ Key or click → `gpu_actions.py` fires the `rag-cli` action and tracks the tran
 
 ---
 
-### status.py (254 LOC)
+### status.py (243 LOC)
 
 **Purpose:** Reads the RAG state-file registry, builds server status lists, detects anomalies and fetches collections.
 **Reads:** RAG state files; server health endpoints; process memory via `ps`; `rag-cli` output.

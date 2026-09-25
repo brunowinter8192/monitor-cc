@@ -33,6 +33,22 @@ def _inject_poread_content(content):
 
 # FUNCTIONS
 
+def _is_poread_marker_valid(text, cache):
+    parsed = _parse_poread_marker(text)
+    if parsed is None:
+        return False
+    path, expected_bytes, expected_hash = parsed
+    if expected_bytes > POREAD_MAX_BYTES:
+        log_proxy_error_on_change(f"inject_poread {path}", f"marker declares {expected_bytes}B, over the {POREAD_MAX_BYTES}B ceiling, refusing to inject: {path}")
+        return False
+    data = _read_validated_poread_source(path, expected_bytes, expected_hash)
+    if data is None:
+        log_proxy_error_on_change(f"inject_poread {path}", f"source changed or unavailable, refusing to inject: {path}")
+        return False
+    cache[text] = data
+    return True
+
+
 def _parse_poread_marker(text):
     stripped = text.strip()
     if not stripped.startswith(POREAD_MARKER_PREFIX):
@@ -56,22 +72,6 @@ def _read_validated_poread_source(path, expected_bytes, expected_hash):
     if hashlib.sha256(data).hexdigest()[:POREAD_HASH_LEN] != expected_hash:
         return None
     return data
-
-
-def _is_poread_marker_valid(text, cache):
-    parsed = _parse_poread_marker(text)
-    if parsed is None:
-        return False
-    path, expected_bytes, expected_hash = parsed
-    if expected_bytes > POREAD_MAX_BYTES:
-        log_proxy_error_on_change(f"inject_poread {path}", f"marker declares {expected_bytes}B, over the {POREAD_MAX_BYTES}B ceiling, refusing to inject: {path}")
-        return False
-    data = _read_validated_poread_source(path, expected_bytes, expected_hash)
-    if data is None:
-        log_proxy_error_on_change(f"inject_poread {path}", f"source changed or unavailable, refusing to inject: {path}")
-        return False
-    cache[text] = data
-    return True
 
 
 def _build_poread_replacement(marker_text, cache):

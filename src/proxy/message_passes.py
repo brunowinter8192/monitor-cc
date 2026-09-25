@@ -72,15 +72,6 @@ def _apply_role_system_strip(messages: list) -> tuple:
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-def _apply_marker_sr_strip(content, marker: str, mod_name: str) -> tuple:
-    if not _top_level_content_contains(content, marker):
-        return content, None
-    new_content = _strip_system_reminder(content, marker)
-    if new_content == content:
-        return content, None
-    return new_content, mod_name
-
-
 def _apply_cumulative_sr_strips(messages: list) -> tuple:
     pyright_enabled = _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False)
     result = []
@@ -122,6 +113,15 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
+def _apply_marker_sr_strip(content, marker: str, mod_name: str) -> tuple:
+    if not _top_level_content_contains(content, marker):
+        return content, None
+    new_content = _strip_system_reminder(content, marker)
+    if new_content == content:
+        return content, None
+    return new_content, mod_name
+
+
 def _apply_final_sr_pass(messages: list) -> tuple:
     result = []
     pass_mods = []
@@ -147,70 +147,6 @@ def _apply_final_sr_pass(messages: list) -> tuple:
         else:
             result.append(msg)
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-def _handle_tn_message(msg: dict, old_content) -> tuple:
-    new_msg = dict(msg)
-    is_failed_bg = _content_contains(old_content, "<status>failed</status>")
-    also_stripped_nag = False
-    mod_names = []
-    output_path = _extract_task_notification_output_file(old_content)
-    task_id = _extract_task_notification_task_id(old_content)
-    _tn_lines = [_WAKEUP_TEXT.rstrip('\n')]
-    if output_path:
-        _tn_lines.append('Output: ' + output_path)
-    if task_id:
-        _tn_lines.append('ID: ' + task_id)
-    injected_text = '\n'.join(_tn_lines) + '\n'
-    new_msg["content"] = _replace_task_notification_tags(old_content, injected_text)
-    if _top_level_content_contains(new_msg["content"], "task tools haven"):
-        new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
-        mod_names.append("stripped_task_tools_nag")
-        also_stripped_nag = True
-    new_msg["content"], wrapper_removed = _unwrap_full_sr_wrapper(new_msg["content"])
-    removed = []
-    if new_msg["content"] != old_content:
-        mod_name = "replaced_task_notification" if is_failed_bg else "trimmed_task_notification"
-        mod_names.append(mod_name)
-        removed = _find_task_notification_blocks(old_content) + wrapper_removed
-        if also_stripped_nag:
-            removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
-    return new_msg, mod_names, removed, injected_text
-
-
-def _apply_sr_marker_branch(msg: dict, old_content, marker: str) -> tuple:
-    new_msg = dict(msg)
-    new_msg["content"] = _strip_system_reminder(old_content, marker)
-    changed = new_msg["content"] != old_content
-    removed = _find_system_reminder_blocks(old_content, marker) if changed else None
-    return new_msg, changed, removed
-
-
-def _handle_ui_message(msg: dict, old_content) -> tuple:
-    marker = "user sent a new message while you were working"
-    new_msg = dict(msg)
-    new_msg["content"] = _strip_user_interrupt_sr(old_content, marker)
-    changed = new_msg["content"] != old_content
-    removed = None
-    if changed:
-        _ui_blocks = _find_system_reminder_blocks(old_content, marker)
-        removed = [line for block in _ui_blocks for line in _IMP_LINE_RE.findall(block)] or _ui_blocks
-    return new_msg, changed, removed
-
-
-def _commit_simple_branch(idx: int, new_msg: dict, old_content, changed: bool, mod_name: str, removed, acc: dict, full_replace: bool = False) -> None:
-    if not changed:
-        return
-    acc["changed_indices"].append(idx)
-    acc["pass_mods"].append(mod_name)
-    acc["pass_removed_by_idx"][idx] = removed
-    acc["pass_ops_by_msg_blk"][idx] = _ops_from_content_change(old_content, new_msg["content"], full_replace=full_replace)
-
-
-def _handle_rejection_message(msg: dict, old_content) -> tuple:
-    new_msg = dict(msg)
-    new_msg["content"] = _strip_rejection_message(old_content)
-    return new_msg, new_msg["content"] != old_content
 
 
 def _apply_first_pass(messages: list) -> tuple:
@@ -250,3 +186,67 @@ def _apply_first_pass(messages: list) -> tuple:
             result.append(msg)
     return (result, acc["pass_mods"], acc["pass_removed_by_idx"], acc["changed_indices"],
             pass_injected_by_idx, acc["pass_ops_by_msg_blk"])
+
+
+def _handle_tn_message(msg: dict, old_content) -> tuple:
+    new_msg = dict(msg)
+    is_failed_bg = _content_contains(old_content, "<status>failed</status>")
+    also_stripped_nag = False
+    mod_names = []
+    output_path = _extract_task_notification_output_file(old_content)
+    task_id = _extract_task_notification_task_id(old_content)
+    _tn_lines = [_WAKEUP_TEXT.rstrip('\n')]
+    if output_path:
+        _tn_lines.append('Output: ' + output_path)
+    if task_id:
+        _tn_lines.append('ID: ' + task_id)
+    injected_text = '\n'.join(_tn_lines) + '\n'
+    new_msg["content"] = _replace_task_notification_tags(old_content, injected_text)
+    if _top_level_content_contains(new_msg["content"], "task tools haven"):
+        new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
+        mod_names.append("stripped_task_tools_nag")
+        also_stripped_nag = True
+    new_msg["content"], wrapper_removed = _unwrap_full_sr_wrapper(new_msg["content"])
+    removed = []
+    if new_msg["content"] != old_content:
+        mod_name = "replaced_task_notification" if is_failed_bg else "trimmed_task_notification"
+        mod_names.append(mod_name)
+        removed = _find_task_notification_blocks(old_content) + wrapper_removed
+        if also_stripped_nag:
+            removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
+    return new_msg, mod_names, removed, injected_text
+
+
+def _apply_sr_marker_branch(msg: dict, old_content, marker: str) -> tuple:
+    new_msg = dict(msg)
+    new_msg["content"] = _strip_system_reminder(old_content, marker)
+    changed = new_msg["content"] != old_content
+    removed = _find_system_reminder_blocks(old_content, marker) if changed else None
+    return new_msg, changed, removed
+
+
+def _commit_simple_branch(idx: int, new_msg: dict, old_content, changed: bool, mod_name: str, removed, acc: dict, full_replace: bool = False) -> None:
+    if not changed:
+        return
+    acc["changed_indices"].append(idx)
+    acc["pass_mods"].append(mod_name)
+    acc["pass_removed_by_idx"][idx] = removed
+    acc["pass_ops_by_msg_blk"][idx] = _ops_from_content_change(old_content, new_msg["content"], full_replace=full_replace)
+
+
+def _handle_ui_message(msg: dict, old_content) -> tuple:
+    marker = "user sent a new message while you were working"
+    new_msg = dict(msg)
+    new_msg["content"] = _strip_user_interrupt_sr(old_content, marker)
+    changed = new_msg["content"] != old_content
+    removed = None
+    if changed:
+        _ui_blocks = _find_system_reminder_blocks(old_content, marker)
+        removed = [line for block in _ui_blocks for line in _IMP_LINE_RE.findall(block)] or _ui_blocks
+    return new_msg, changed, removed
+
+
+def _handle_rejection_message(msg: dict, old_content) -> tuple:
+    new_msg = dict(msg)
+    new_msg["content"] = _strip_rejection_message(old_content)
+    return new_msg, new_msg["content"] != old_content

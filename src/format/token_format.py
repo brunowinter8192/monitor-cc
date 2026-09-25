@@ -13,17 +13,146 @@ from src.format.turn_cache import sync_document, publish_nav
 
 # FUNCTIONS
 
-def shorten_tool_name(name: str) -> str:
-    if name.startswith('mcp__'):
-        parts = name.split('__')
-        if len(parts) >= 3:
-            return parts[-1]
-    return name
+def request_numbers_by_id(turns: list) -> dict:
+    numbers = {}
+    for turn, row in zip(turns, call_numbers(turns)):
+        for call, request_num in zip(turn.get('api_calls', []), row):
+            request_id = call.get('request_id', '')
+            if request_id:
+                numbers.setdefault(request_id, request_num)
+    return numbers
 
-def _format_k(n: int) -> str:
-    if n >= 1000:
-        return f"{n / 1000:.0f}k" if n >= 10000 else f"{n / 1000:.1f}k"
-    return str(n)
+def call_numbers(turns: list) -> list:
+    numbers = []
+    request_num = 0
+    for turn in turns:
+        row = []
+        for _call in turn.get('api_calls', []):
+            request_num += 1
+            row.append(request_num)
+        numbers.append(row)
+    return numbers
+
+def request_times_by_id(turns: list) -> dict:
+    times = {}
+    for turn in turns:
+        for call in turn.get('api_calls', []):
+            request_id = call.get('request_id', '')
+            if request_id:
+                times.setdefault(request_id, _call_time_str(call))
+    return times
+
+def _call_time_str(call: dict) -> str:
+    timestamp = call.get('timestamp', '')
+    return _format_ts(timestamp) if timestamp else ''
+
+def _format_ts(timestamp: str) -> str:
+    from src.utils import format_timestamp
+    return format_timestamp(timestamp)
+
+def format_cache_tracker(turns: list, expand_states: dict, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None, copy_feedback: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '', nav_out: Optional[dict] = None, *, turn_cache: dict) -> tuple:
+    if not turns:
+        return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0, 0
+
+    inputs = _build_render_inputs(
+        expand_states, pane_width, response_rid_map, copy_feedback,
+        search_match_set, search_current_key, search_query)
+    document = sync_document(turn_cache, turns, inputs, _render_turn_segment)
+    if nav_out is not None:
+        publish_nav(turn_cache, nav_out)
+
+    return _compute_cache_viewport(
+        document['lines'], document['keys'], pane_height, pane_width, scroll_offset, document['parent_prefix'])
+
+def _build_render_inputs(expand_states: dict, pane_width: int, response_rid_map: dict, copy_feedback: Optional[dict],
+                         search_match_set: Optional[set], search_current_key, search_query: str) -> dict:
+    wide = pane_width >= 60
+    preamble_lines = [] if wide else [f"{WHITE}CR/CC/D = Read/Create/Direct{SOFT_RESET}"]
+    return {
+        'expand_states': expand_states, 'pane_width': pane_width, 'wide': wide,
+        'response_rid_map': response_rid_map, 'copy_feedback': copy_feedback,
+        'search_match_set': search_match_set, 'search_current_key': search_current_key,
+        'search_query': search_query, 'preamble_lines': preamble_lines,
+    }
+
+def _render_turn_segment(turn_idx: int, turn: dict, number_row: list, inputs: dict, lines: list, keys: list, nav: dict) -> None:
+    _render_turn_lines(
+        turn_idx, turn, inputs['expand_states'], inputs['pane_width'], inputs['wide'], number_row,
+        inputs['response_rid_map'], inputs['copy_feedback'], inputs['search_match_set'],
+        inputs['search_current_key'], inputs['search_query'], nav, lines, keys)
+
+def _render_turn_lines(turn_idx: int, turn: dict, expand_states: dict, pane_width: int, wide: bool,
+                       numbers: list, response_rid_map: dict, copy_feedback: Optional[dict],
+                       search_match_set: Optional[set], search_current_key, search_query: str,
+                       nav_out: Optional[dict], all_lines: list, line_keys: list) -> None:
+    turn_key = ('turn', turn_idx)
+    turn_line = _format_turn_header_line(turn_idx, turn, pane_width)
+    turn_is_match = bool(search_match_set) and turn_key in search_match_set
+    if turn_is_match:
+        marker = SEARCH_CURRENT_BG if turn_key == search_current_key else SEARCH_MATCH_BG
+        turn_line = f"{marker}{turn_line}{_BG_RESTORE_SENTINEL}"
+    if nav_out is not None:
+        nav_out[turn_key] = len(all_lines)
+    all_lines.append(turn_line)
+    line_keys.append(None)
+
+    api_calls = turn.get('api_calls', [])
+    for call_idx, call in enumerate(api_calls):
+        is_expanded = expand_states.get((turn_idx, call_idx), False)
+        call_line, key, marker = _render_call_line(
+            turn_idx, call_idx, call, is_expanded, numbers[call_idx], wide, pane_width,
+            search_match_set, search_current_key, copy_feedback)
+        if nav_out is not None:
+            nav_out[key] = len(all_lines)
+        all_lines.append(call_line)
+        line_keys.append(key)
+        if is_expanded:
+            exp_lines, exp_keys = _render_expanded_call_lines(call, response_rid_map)
+            if marker is not None and search_query:
+                exp_lines = [highlight_query_in_line(l, search_query, marker, _BG_RESTORE_SENTINEL) for l in exp_lines]
+            all_lines.extend(exp_lines)
+            line_keys.extend(exp_keys)
+
+    all_lines.append('')
+    line_keys.append(None)
+
+def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
+    wide = pane_width >= 60
+    prompt_max = min(pane_width - 15, 60) if wide else min(pane_width - 8, 30)
+    prompt = turn.get('prompt', '').replace('\n', ' ')
+    timestamp = _format_ts(turn.get('timestamp', ''))
+    truncated = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
+    api_calls = turn.get('api_calls', [])
+    thinking_calls = sum(1 for call in api_calls if _call_thinking_meta(call)[0])
+    think_str = f" ({thinking_calls}/{len(api_calls)} th)" if thinking_calls > 0 else ""
+    row = f"{PASTEL_PURPLE}Turn {turn_idx + 1}{think_str}: \"{truncated}\"{SOFT_RESET}"
+    return right_align_time(row, timestamp, pane_width)
+
+def _call_thinking_meta(call: dict) -> tuple:
+    has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
+    sig_chars = sum(b.get('sig_chars', 0) for b in call.get('content_blocks', []) if b.get('type') == 'thinking')
+    return has_thinking, sig_chars
+
+def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: bool, request_num: int,
+                      wide: bool, pane_width: int, search_match_set: Optional[set],
+                      search_current_key, copy_feedback: Optional[dict]) -> tuple:
+    cr = call.get('cache_read', 0)
+    cc = call.get('cache_creation', 0)
+    d = call.get('direct', 0)
+    out = call.get('output_tokens', 0)
+    key = (turn_idx, call_idx)
+    symbol = '▼' if is_expanded else '▶'
+    has_thinking, sig_chars = _call_thinking_meta(call)
+    call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars, _call_time_str(call), pane_width)
+    call_is_match = bool(search_match_set) and key in search_match_set
+    marker = None
+    if call_is_match:
+        marker = SEARCH_CURRENT_BG if key == search_current_key else SEARCH_MATCH_BG
+        call_line = f"{marker}{call_line}{_BG_RESTORE_SENTINEL}"
+    if copy_feedback is not None:
+        is_flash = copy_feedback.get(key, 0) > time.time()
+        call_line = append_copy_symbol(call_line, '✓' if is_flash else '⎘', pane_width)
+    return call_line, key, marker
 
 def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False, sig_chars: int = 0, time_str: str = '', pane_width: int = 0) -> str:
     cc_broken = cc > cr
@@ -46,54 +175,23 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bo
         return right_align_time(row, time_str, pane_width)
     return row
 
-def call_numbers(turns: list) -> list:
-    numbers = []
-    request_num = 0
-    for turn in turns:
-        row = []
-        for _call in turn.get('api_calls', []):
-            request_num += 1
-            row.append(request_num)
-        numbers.append(row)
-    return numbers
+def _format_k(n: int) -> str:
+    if n >= 1000:
+        return f"{n / 1000:.0f}k" if n >= 10000 else f"{n / 1000:.1f}k"
+    return str(n)
 
-def request_numbers_by_id(turns: list) -> dict:
-    numbers = {}
-    for turn, row in zip(turns, call_numbers(turns)):
-        for call, request_num in zip(turn.get('api_calls', []), row):
-            request_id = call.get('request_id', '')
-            if request_id:
-                numbers.setdefault(request_id, request_num)
-    return numbers
-
-def _call_time_str(call: dict) -> str:
-    timestamp = call.get('timestamp', '')
-    return _format_ts(timestamp) if timestamp else ''
-
-def request_times_by_id(turns: list) -> dict:
-    times = {}
-    for turn in turns:
-        for call in turn.get('api_calls', []):
-            request_id = call.get('request_id', '')
-            if request_id:
-                times.setdefault(request_id, _call_time_str(call))
-    return times
-
-def _call_thinking_meta(call: dict) -> tuple:
-    has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
-    sig_chars = sum(b.get('sig_chars', 0) for b in call.get('content_blocks', []) if b.get('type') == 'thinking')
-    return has_thinking, sig_chars
-
-def _format_ts(timestamp: str) -> str:
-    from src.utils import format_timestamp
-    return format_timestamp(timestamp)
-
-def _fmt_rl_reset_time(epoch_str: str) -> str:
-    ts = datetime.datetime.fromtimestamp(int(epoch_str))
-    now = datetime.datetime.now()
-    if ts.date() == now.date():
-        return ts.strftime('%H:%M')
-    return ts.strftime('%a %H:%M')
+def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
+    lines = []
+    keys = []
+    for group_lines, group_keys in (
+        _render_usage_extras_lines(call),
+        _render_rate_limit_lines(call, response_rid_map),
+        _render_answering_model_line(call, response_rid_map),
+        _render_content_block_lines(call),
+    ):
+        lines.extend(group_lines)
+        keys.extend(group_keys)
+    return lines, keys
 
 def _render_usage_extras_lines(call: dict) -> tuple:
     lines = []
@@ -161,6 +259,30 @@ def _render_rate_limit_lines(call: dict, response_rid_map: dict) -> tuple:
         keys.append(None)
     return lines, keys
 
+def _fmt_rl_reset_time(epoch_str: str) -> str:
+    ts = datetime.datetime.fromtimestamp(int(epoch_str))
+    now = datetime.datetime.now()
+    if ts.date() == now.date():
+        return ts.strftime('%H:%M')
+    return ts.strftime('%a %H:%M')
+
+def _render_answering_model_line(call: dict, response_rid_map: dict) -> tuple:
+    lines = []
+    keys = []
+    rid = call.get('request_id', '')
+    entry = (response_rid_map or {}).get(rid) if rid else None
+    if not entry:
+        return lines, keys
+    answering_model = entry.get('answering_model', '')
+    if not answering_model:
+        return lines, keys
+    forwarded_model = entry.get('proxy_forwarded_model', '')
+    mismatch = bool(forwarded_model) and forwarded_model != answering_model
+    color = RED if mismatch else DIM
+    lines.append(f"    {color}model: {answering_model}{SOFT_RESET}")
+    keys.append(None)
+    return lines, keys
+
 def _render_content_block_lines(call: dict) -> tuple:
     lines = []
     keys = []
@@ -195,35 +317,12 @@ def _render_content_block_lines(call: dict) -> tuple:
             keys.append(None)
     return lines, keys
 
-def _render_answering_model_line(call: dict, response_rid_map: dict) -> tuple:
-    lines = []
-    keys = []
-    rid = call.get('request_id', '')
-    entry = (response_rid_map or {}).get(rid) if rid else None
-    if not entry:
-        return lines, keys
-    answering_model = entry.get('answering_model', '')
-    if not answering_model:
-        return lines, keys
-    forwarded_model = entry.get('proxy_forwarded_model', '')
-    mismatch = bool(forwarded_model) and forwarded_model != answering_model
-    color = RED if mismatch else DIM
-    lines.append(f"    {color}model: {answering_model}{SOFT_RESET}")
-    keys.append(None)
-    return lines, keys
-
-def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
-    lines = []
-    keys = []
-    for group_lines, group_keys in (
-        _render_usage_extras_lines(call),
-        _render_rate_limit_lines(call, response_rid_map),
-        _render_answering_model_line(call, response_rid_map),
-        _render_content_block_lines(call),
-    ):
-        lines.extend(group_lines)
-        keys.extend(group_keys)
-    return lines, keys
+def shorten_tool_name(name: str) -> str:
+    if name.startswith('mcp__'):
+        parts = name.split('__')
+        if len(parts) >= 3:
+            return parts[-1]
+    return name
 
 def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int, parent_prefix: Optional[list] = None) -> tuple:
     viewport_lines = pane_height - 1
@@ -249,102 +348,3 @@ def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, 
     visible_keys = line_keys[start:end]
     initial_parent_count = parent_prefix[start] if parent_prefix is not None else sum(1 for k in line_keys[:start] if k is not None)
     return visible_lines, visible_keys, sticky_header, start, initial_parent_count
-
-def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
-    wide = pane_width >= 60
-    prompt_max = min(pane_width - 15, 60) if wide else min(pane_width - 8, 30)
-    prompt = turn.get('prompt', '').replace('\n', ' ')
-    timestamp = _format_ts(turn.get('timestamp', ''))
-    truncated = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
-    api_calls = turn.get('api_calls', [])
-    thinking_calls = sum(1 for call in api_calls if _call_thinking_meta(call)[0])
-    think_str = f" ({thinking_calls}/{len(api_calls)} th)" if thinking_calls > 0 else ""
-    row = f"{PASTEL_PURPLE}Turn {turn_idx + 1}{think_str}: \"{truncated}\"{SOFT_RESET}"
-    return right_align_time(row, timestamp, pane_width)
-
-def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: bool, request_num: int,
-                      wide: bool, pane_width: int, search_match_set: Optional[set],
-                      search_current_key, copy_feedback: Optional[dict]) -> tuple:
-    cr = call.get('cache_read', 0)
-    cc = call.get('cache_creation', 0)
-    d = call.get('direct', 0)
-    out = call.get('output_tokens', 0)
-    key = (turn_idx, call_idx)
-    symbol = '▼' if is_expanded else '▶'
-    has_thinking, sig_chars = _call_thinking_meta(call)
-    call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars, _call_time_str(call), pane_width)
-    call_is_match = bool(search_match_set) and key in search_match_set
-    marker = None
-    if call_is_match:
-        marker = SEARCH_CURRENT_BG if key == search_current_key else SEARCH_MATCH_BG
-        call_line = f"{marker}{call_line}{_BG_RESTORE_SENTINEL}"
-    if copy_feedback is not None:
-        is_flash = copy_feedback.get(key, 0) > time.time()
-        call_line = append_copy_symbol(call_line, '✓' if is_flash else '⎘', pane_width)
-    return call_line, key, marker
-
-def _render_turn_lines(turn_idx: int, turn: dict, expand_states: dict, pane_width: int, wide: bool,
-                       numbers: list, response_rid_map: dict, copy_feedback: Optional[dict],
-                       search_match_set: Optional[set], search_current_key, search_query: str,
-                       nav_out: Optional[dict], all_lines: list, line_keys: list) -> None:
-    turn_key = ('turn', turn_idx)
-    turn_line = _format_turn_header_line(turn_idx, turn, pane_width)
-    turn_is_match = bool(search_match_set) and turn_key in search_match_set
-    if turn_is_match:
-        marker = SEARCH_CURRENT_BG if turn_key == search_current_key else SEARCH_MATCH_BG
-        turn_line = f"{marker}{turn_line}{_BG_RESTORE_SENTINEL}"
-    if nav_out is not None:
-        nav_out[turn_key] = len(all_lines)
-    all_lines.append(turn_line)
-    line_keys.append(None)
-
-    api_calls = turn.get('api_calls', [])
-    for call_idx, call in enumerate(api_calls):
-        is_expanded = expand_states.get((turn_idx, call_idx), False)
-        call_line, key, marker = _render_call_line(
-            turn_idx, call_idx, call, is_expanded, numbers[call_idx], wide, pane_width,
-            search_match_set, search_current_key, copy_feedback)
-        if nav_out is not None:
-            nav_out[key] = len(all_lines)
-        all_lines.append(call_line)
-        line_keys.append(key)
-        if is_expanded:
-            exp_lines, exp_keys = _render_expanded_call_lines(call, response_rid_map)
-            if marker is not None and search_query:
-                exp_lines = [highlight_query_in_line(l, search_query, marker, _BG_RESTORE_SENTINEL) for l in exp_lines]
-            all_lines.extend(exp_lines)
-            line_keys.extend(exp_keys)
-
-    all_lines.append('')
-    line_keys.append(None)
-
-def _render_turn_segment(turn_idx: int, turn: dict, number_row: list, inputs: dict, lines: list, keys: list, nav: dict) -> None:
-    _render_turn_lines(
-        turn_idx, turn, inputs['expand_states'], inputs['pane_width'], inputs['wide'], number_row,
-        inputs['response_rid_map'], inputs['copy_feedback'], inputs['search_match_set'],
-        inputs['search_current_key'], inputs['search_query'], nav, lines, keys)
-
-def _build_render_inputs(expand_states: dict, pane_width: int, response_rid_map: dict, copy_feedback: Optional[dict],
-                         search_match_set: Optional[set], search_current_key, search_query: str) -> dict:
-    wide = pane_width >= 60
-    preamble_lines = [] if wide else [f"{WHITE}CR/CC/D = Read/Create/Direct{SOFT_RESET}"]
-    return {
-        'expand_states': expand_states, 'pane_width': pane_width, 'wide': wide,
-        'response_rid_map': response_rid_map, 'copy_feedback': copy_feedback,
-        'search_match_set': search_match_set, 'search_current_key': search_current_key,
-        'search_query': search_query, 'preamble_lines': preamble_lines,
-    }
-
-def format_cache_tracker(turns: list, expand_states: dict, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None, copy_feedback: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '', nav_out: Optional[dict] = None, *, turn_cache: dict) -> tuple:
-    if not turns:
-        return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0, 0
-
-    inputs = _build_render_inputs(
-        expand_states, pane_width, response_rid_map, copy_feedback,
-        search_match_set, search_current_key, search_query)
-    document = sync_document(turn_cache, turns, inputs, _render_turn_segment)
-    if nav_out is not None:
-        publish_nav(turn_cache, nav_out)
-
-    return _compute_cache_viewport(
-        document['lines'], document['keys'], pane_height, pane_width, scroll_offset, document['parent_prefix'])

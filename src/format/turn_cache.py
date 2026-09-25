@@ -18,42 +18,6 @@ def sync_document(cache: dict, turns: list, inputs: dict, render_turn: Callable)
 
 # FUNCTIONS
 
-def _collect_changes(cache: dict, turns: list, inputs: dict) -> tuple:
-    dirty, structure_changed = _turn_structure_changes(cache, turns)
-    dirty |= _expand_changes(cache, inputs)
-    dirty |= _flash_changes(cache, inputs)
-    dirty |= _search_changes(cache, inputs)
-    dirty |= _response_data_changes(cache, turns, inputs)
-    return dirty, structure_changed
-
-def _needs_rebuild(cache: dict, dirty, structure_changed) -> bool:
-    return dirty or structure_changed or cache['document'] is None
-
-def _rebuild_document(cache: dict, inputs: dict) -> None:
-    cache['document'] = _assemble_document(cache, inputs)
-    cache['generation'] += 1
-
-def _current_document(cache: dict) -> dict:
-    return cache['document']
-
-def new_turn_cache() -> dict:
-    return {
-        'signature': None, 'entries': [], 'bases': [], 'document': None, 'generation': 0,
-        'expanded': frozenset(), 'flash': frozenset(), 'rid_fingerprints': {},
-        'search_ref': None, 'search_len': -1, 'search_keys': frozenset(),
-        'search_current': None, 'search_query': '',
-        'nav_owner': None, 'nav_generation': -1,
-    }
-
-def publish_nav(cache: dict, nav_out: dict) -> None:
-    document = cache['document']
-    if cache['nav_owner'] is nav_out and cache['nav_generation'] == cache['generation'] and len(nav_out) == len(document['nav']):
-        return
-    nav_out.clear()
-    nav_out.update(document['nav'])
-    cache['nav_owner'] = nav_out
-    cache['nav_generation'] = cache['generation']
-
 def _global_signature(inputs: dict) -> tuple:
     return (inputs['pane_width'], inputs['wide'], inputs['copy_feedback'] is None, tuple(inputs['preamble_lines']))
 
@@ -64,6 +28,14 @@ def _reset_on_signature_change(cache: dict, signature: tuple) -> None:
     cache['entries'] = []
     cache['bases'] = []
     cache['document'] = None
+
+def _collect_changes(cache: dict, turns: list, inputs: dict) -> tuple:
+    dirty, structure_changed = _turn_structure_changes(cache, turns)
+    dirty |= _expand_changes(cache, inputs)
+    dirty |= _flash_changes(cache, inputs)
+    dirty |= _search_changes(cache, inputs)
+    dirty |= _response_data_changes(cache, turns, inputs)
+    return dirty, structure_changed
 
 def _turn_structure_changes(cache: dict, turns: list) -> tuple:
     entries = cache['entries']
@@ -80,17 +52,17 @@ def _turn_structure_changes(cache: dict, turns: list) -> tuple:
     cache['bases'] = bases
     return dirty, True
 
-def _key_turn_index(key: tuple) -> int:
-    return key[1] if key[0] == 'turn' else key[0]
-
-def _turn_indices(keys) -> set:
-    return {_key_turn_index(k) for k in keys if k is not None}
-
 def _expand_changes(cache: dict, inputs: dict) -> set:
     expanded = frozenset(k for k, v in inputs['expand_states'].items() if v)
     changed = expanded ^ cache['expanded']
     cache['expanded'] = expanded
     return _turn_indices(changed)
+
+def _turn_indices(keys) -> set:
+    return {_key_turn_index(k) for k in keys if k is not None}
+
+def _key_turn_index(key: tuple) -> int:
+    return key[1] if key[0] == 'turn' else key[0]
 
 def _flash_changes(cache: dict, inputs: dict) -> set:
     copy_feedback = inputs['copy_feedback']
@@ -155,6 +127,13 @@ def _render_dirty_turns(cache: dict, turns: list, inputs: dict, dirty: set, rend
         render_turn(i, turn, number_row, inputs, lines, keys, nav)
         entries[i] = {'turn': turn, 'base': bases[i], 'lines': lines, 'keys': keys, 'nav': nav}
 
+def _needs_rebuild(cache: dict, dirty, structure_changed) -> bool:
+    return dirty or structure_changed or cache['document'] is None
+
+def _rebuild_document(cache: dict, inputs: dict) -> None:
+    cache['document'] = _assemble_document(cache, inputs)
+    cache['generation'] += 1
+
 def _assemble_document(cache: dict, inputs: dict) -> dict:
     lines = list(inputs['preamble_lines'])
     keys = [None] * len(lines)
@@ -171,3 +150,24 @@ def _assemble_document(cache: dict, inputs: dict) -> dict:
     nav['total_lines'] = len(lines)
     prefix = list(itertools.accumulate((k is not None for k in keys), initial=0))
     return {'lines': lines, 'keys': keys, 'nav': nav, 'parent_prefix': prefix}
+
+def _current_document(cache: dict) -> dict:
+    return cache['document']
+
+def new_turn_cache() -> dict:
+    return {
+        'signature': None, 'entries': [], 'bases': [], 'document': None, 'generation': 0,
+        'expanded': frozenset(), 'flash': frozenset(), 'rid_fingerprints': {},
+        'search_ref': None, 'search_len': -1, 'search_keys': frozenset(),
+        'search_current': None, 'search_query': '',
+        'nav_owner': None, 'nav_generation': -1,
+    }
+
+def publish_nav(cache: dict, nav_out: dict) -> None:
+    document = cache['document']
+    if cache['nav_owner'] is nav_out and cache['nav_generation'] == cache['generation'] and len(nav_out) == len(document['nav']):
+        return
+    nav_out.clear()
+    nav_out.update(document['nav'])
+    cache['nav_owner'] = nav_out
+    cache['nav_generation'] = cache['generation']

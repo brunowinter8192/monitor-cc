@@ -17,12 +17,34 @@ _NO_INDEXING = 'no indexing currently running'
 
 # FUNCTIONS
 
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError as e:
-        return e.errno != errno.ESRCH
+class RagController:
+    def __init__(self, app) -> None:
+        self.app = app
+        self._rag_open: bool = False
+        self._rag_panel, self._rag_sv, self._rag_header = _make_tab_nspanel('RAG')
+        self._rag_status_label = None
+
+    def tick(self, sessions) -> None:
+        if self._rag_status_label is None:
+            return
+        status = _read_rag_status()
+        self._rag_status_label.setAttributedStringValue_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                status, {NSFontAttributeName: _MENLO()}))
+
+    def rebuild(self) -> None:
+        app = self.app
+        for sv in list(self._rag_sv.arrangedSubviews()):
+            self._rag_sv.removeView_(sv)
+            sv.removeFromSuperview()
+        pw = app.settings.panel_width
+        required_h = _TOP_BAR_H + _LABEL_H + _LABEL_H
+        _resize_panel_keep_top(self._rag_panel, app.settings.panel_width, max(app.settings.panel_min_height, required_h))
+        self._rag_sv.addView_inGravity_(_make_line_separator(pw), 1)
+        status = _read_rag_status()
+        label  = _make_header_label(status, pw)
+        self._rag_sv.addView_inGravity_(label, 1)
+        self._rag_status_label = label
 
 def _read_rag_status(lock_path: Path = _RAG_LOCK) -> str:
     try:
@@ -68,6 +90,13 @@ def _rag_status_from_lock(lock_path: Path) -> str:
     else:
         return f'{collection} \u00b7 {elapsed}'
 
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError as e:
+        return e.errno != errno.ESRCH
+
 def _format_elapsed(started_at: str) -> str:
     try:
         start = datetime.fromisoformat(started_at)
@@ -81,32 +110,3 @@ def _format_elapsed(started_at: str) -> str:
     if mins > 0:
         return f'{mins}m{s:02d}s'
     return f'{s}s'
-
-class RagController:
-    def __init__(self, app) -> None:
-        self.app = app
-        self._rag_open: bool = False
-        self._rag_panel, self._rag_sv, self._rag_header = _make_tab_nspanel('RAG')
-        self._rag_status_label = None
-
-    def tick(self, sessions) -> None:
-        if self._rag_status_label is None:
-            return
-        status = _read_rag_status()
-        self._rag_status_label.setAttributedStringValue_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                status, {NSFontAttributeName: _MENLO()}))
-
-    def rebuild(self) -> None:
-        app = self.app
-        for sv in list(self._rag_sv.arrangedSubviews()):
-            self._rag_sv.removeView_(sv)
-            sv.removeFromSuperview()
-        pw = app.settings.panel_width
-        required_h = _TOP_BAR_H + _LABEL_H + _LABEL_H
-        _resize_panel_keep_top(self._rag_panel, app.settings.panel_width, max(app.settings.panel_min_height, required_h))
-        self._rag_sv.addView_inGravity_(_make_line_separator(pw), 1)
-        status = _read_rag_status()
-        label  = _make_header_label(status, pw)
-        self._rag_sv.addView_inGravity_(label, 1)
-        self._rag_status_label = label

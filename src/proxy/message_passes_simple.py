@@ -91,6 +91,10 @@ _POREAD_SPEC = {
 
 # FUNCTIONS
 
+def _apply_po_preview_strip(messages: list) -> tuple:
+    return _run_simple_pass(messages, _PO_PREVIEW_SPEC)
+
+
 def _run_simple_pass(messages: list, spec: dict) -> tuple:
     result = []
     pass_mods = []
@@ -123,10 +127,6 @@ def _run_simple_pass(messages: list, spec: dict) -> tuple:
         else:
             result.append(msg)
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-def _apply_po_preview_strip(messages: list) -> tuple:
-    return _run_simple_pass(messages, _PO_PREVIEW_SPEC)
 
 
 def _apply_bg_exit_strip(messages: list) -> tuple:

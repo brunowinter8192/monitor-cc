@@ -48,23 +48,6 @@ def _load_events(log_path) -> list:
         return []
     return filter_events(find_current_run_lines(log_path))
 
-def _format_event_line(raw: str, max_width: int) -> str:
-    parsed = parse_line(raw)
-    if parsed is None:
-        return f"  {raw[:max(0, max_width - 2)]}"
-    ts, level, msg = parsed
-    prefix_plain = f"  {ts}  "
-    max_msg = max(0, max_width - len(prefix_plain))
-    if len(msg) > max_msg:
-        msg = msg[:max_msg - 1] + '…'
-    prefix = f"  {DIM}{ts}{RESET}  "
-    if level == 'WARNING':
-        return f"{prefix}{YELLOW}{msg}{RESET}"
-    if level == 'ERROR':
-        return f"{prefix}{RED}{msg}{RESET}"
-    return f"{prefix}{msg}"
-
-
 def _render_log_pane(pane_width: int, pane_height: int,
                      log_path, events: list[str]) -> str:
     lines: list[str] = []
@@ -83,3 +66,19 @@ def _render_log_pane(pane_width: int, pane_height: int,
         lines.append(_format_event_line(raw, pane_width))
 
     return "\n".join(lines)
+
+def _format_event_line(raw: str, max_width: int) -> str:
+    parsed = parse_line(raw)
+    if parsed is None:
+        return f"  {raw[:max(0, max_width - 2)]}"
+    ts, level, msg = parsed
+    prefix_plain = f"  {ts}  "
+    max_msg = max(0, max_width - len(prefix_plain))
+    if len(msg) > max_msg:
+        msg = msg[:max_msg - 1] + '…'
+    prefix = f"  {DIM}{ts}{RESET}  "
+    if level == 'WARNING':
+        return f"{prefix}{YELLOW}{msg}{RESET}"
+    if level == 'ERROR':
+        return f"{prefix}{RED}{msg}{RESET}"
+    return f"{prefix}{msg}"

@@ -44,11 +44,6 @@ def switch_to_desktop_workflow(desktop: int) -> float:
 class SpaceSwitchError(Exception):
     pass
 
-def request_post_event_access_if_missing() -> bool:
-    if _CG.CGPreflightPostEventAccess():
-        return True
-    return bool(_CG.CGRequestPostEventAccess())
-
 def _require_post_event_access() -> None:
     if not _CG.CGPreflightPostEventAccess():
         raise SpaceSwitchError('postevent_not_granted')
@@ -60,24 +55,16 @@ def _space_id_for_desktop(desktop: int) -> int:
         raise SpaceSwitchError(f'desktop_{desktop}_space_matches={len(matches)}')
     return matches[0]
 
-def _post_key(keycode: int, down: bool) -> None:
-    event = _CG.CGEventCreateKeyboardEvent(None, keycode, down)
-    _CG.CGEventSetFlags(event, _FLAG_CONTROL)
-    _CG.CGEventPost(_TAP_SESSION, event)
-    _CF.CFRelease(event)
-
 def _post_desktop_hotkey(desktop: int) -> None:
     keycode = _DESKTOP_KEYCODES[desktop]
     _post_key(keycode, True)
     _post_key(keycode, False)
 
-def active_space_id() -> int:
-    return int(_CG.CGSGetActiveSpace(_CG.CGSMainConnectionID()))
-
-def active_desktop_number():
-    space_map = _build_space_map(_CG.CGSMainConnectionID())
-    info = space_map.get(active_space_id())
-    return info[1] if info else None
+def _post_key(keycode: int, down: bool) -> None:
+    event = _CG.CGEventCreateKeyboardEvent(None, keycode, down)
+    _CG.CGEventSetFlags(event, _FLAG_CONTROL)
+    _CG.CGEventPost(_TAP_SESSION, event)
+    _CF.CFRelease(event)
 
 def _wait_until_active(target_space: int) -> float:
     t0 = time.monotonic()
@@ -86,3 +73,16 @@ def _wait_until_active(target_space: int) -> float:
             return (time.monotonic() - t0) * 1000
         time.sleep(_POLL_INTERVAL)
     raise SpaceSwitchError(f'switch_timeout_{_SWITCH_TIMEOUT:.0f}s')
+
+def active_space_id() -> int:
+    return int(_CG.CGSGetActiveSpace(_CG.CGSMainConnectionID()))
+
+def request_post_event_access_if_missing() -> bool:
+    if _CG.CGPreflightPostEventAccess():
+        return True
+    return bool(_CG.CGRequestPostEventAccess())
+
+def active_desktop_number():
+    space_map = _build_space_map(_CG.CGSMainConnectionID())
+    info = space_map.get(active_space_id())
+    return info[1] if info else None

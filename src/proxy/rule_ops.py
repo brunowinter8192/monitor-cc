@@ -3,39 +3,6 @@ import json
 
 # FUNCTIONS
 
-def _extract_block_op(before: str, after: str, full_replace: bool = False) -> list:
-    if before == after:
-        return []
-    if full_replace:
-        return [(0, before, after)]
-    p = 0
-    while p < len(before) and p < len(after) and before[p] == after[p]:
-        p += 1
-    s = 0
-    max_s = min(len(before) - p, len(after) - p)
-    while s < max_s and before[-(s + 1)] == after[-(s + 1)]:
-        s += 1
-    removed  = before[p: (len(before) - s) if s else len(before)]
-    injected = after[p:  (len(after)  - s) if s else len(after)]
-    return [(p, removed, injected)]
-
-
-def _block_inner_text(block) -> str:
-    if isinstance(block, str):
-        return block
-    if isinstance(block, dict):
-        if "text" in block:
-            return str(block["text"])
-        if block.get("type") == "tool_result":
-            c = block.get("content", "")
-            if isinstance(c, str):
-                return c
-            if isinstance(c, list):
-                return "\n".join(b.get("text", "") for b in c if isinstance(b, dict) and "text" in b)
-        return json.dumps(block, ensure_ascii=False)
-    return json.dumps(block, ensure_ascii=False)
-
-
 def _ops_from_content_change(old_content, new_content, full_replace: bool = False) -> dict:
     ops: dict = {}
     if isinstance(old_content, list) and isinstance(new_content, list):
@@ -54,6 +21,39 @@ def _ops_from_content_change(old_content, new_content, full_replace: bool = Fals
         for op in _extract_block_op(old_content, new_content, full_replace):
             ops.setdefault(0, []).append(op)
     return ops
+
+
+def _block_inner_text(block) -> str:
+    if isinstance(block, str):
+        return block
+    if isinstance(block, dict):
+        if "text" in block:
+            return str(block["text"])
+        if block.get("type") == "tool_result":
+            c = block.get("content", "")
+            if isinstance(c, str):
+                return c
+            if isinstance(c, list):
+                return "\n".join(b.get("text", "") for b in c if isinstance(b, dict) and "text" in b)
+        return json.dumps(block, ensure_ascii=False)
+    return json.dumps(block, ensure_ascii=False)
+
+
+def _extract_block_op(before: str, after: str, full_replace: bool = False) -> list:
+    if before == after:
+        return []
+    if full_replace:
+        return [(0, before, after)]
+    p = 0
+    while p < len(before) and p < len(after) and before[p] == after[p]:
+        p += 1
+    s = 0
+    max_s = min(len(before) - p, len(after) - p)
+    while s < max_s and before[-(s + 1)] == after[-(s + 1)]:
+        s += 1
+    removed  = before[p: (len(before) - s) if s else len(before)]
+    injected = after[p:  (len(after)  - s) if s else len(after)]
+    return [(p, removed, injected)]
 
 
 def _merge_ops(dst: dict, src: dict) -> None:

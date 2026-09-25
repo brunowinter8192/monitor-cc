@@ -24,11 +24,6 @@ class SearchState:
         self.sel_anchor: Optional[int] = None
         self.sel_end: Optional[int] = None
 
-def clear_selection(state: SearchState) -> None:
-    state.dragging = False
-    state.sel_anchor = None
-    state.sel_end = None
-
 def handle_search_cancel(state: SearchState) -> bool:
     state.focused = False
     state.query = ''
@@ -36,6 +31,11 @@ def handle_search_cancel(state: SearchState) -> bool:
     state.match_set = set()
     clear_selection(state)
     return True
+
+def clear_selection(state: SearchState) -> None:
+    state.dragging = False
+    state.sel_anchor = None
+    state.sel_end = None
 
 def handle_search_input(state: SearchState, char: str, on_commit, kill_line_char: str = KILL_LINE_CHAR, max_len: int = 200) -> bool:
     had_selection = state.sel_anchor is not None
@@ -65,6 +65,14 @@ def handle_search_input(state: SearchState, char: str, on_commit, kill_line_char
             return True
     return had_selection
 
+def handle_search_mouse_press(state: SearchState, col: int, label: str) -> bool:
+    state.focused = True
+    idx = col_to_query_index(col, state.query, label)
+    state.sel_anchor = idx
+    state.sel_end = idx
+    state.dragging = True
+    return True
+
 def col_to_query_index(col: int, query: str, label: str) -> int:
     rel = col - 1 - len(label)
     if rel <= 0:
@@ -76,14 +84,6 @@ def col_to_query_index(col: int, query: str, label: str) -> int:
             return idx if (rel - pos) * 2 < w else idx + 1
         pos += w
     return len(query)
-
-def handle_search_mouse_press(state: SearchState, col: int, label: str) -> bool:
-    state.focused = True
-    idx = col_to_query_index(col, state.query, label)
-    state.sel_anchor = idx
-    state.sel_end = idx
-    state.dragging = True
-    return True
 
 def handle_search_mouse_motion(state: SearchState, col: int, label: str) -> bool:
     state.sel_end = col_to_query_index(col, state.query, label)
