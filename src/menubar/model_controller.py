@@ -3,15 +3,14 @@ import threading
 
 from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSForegroundColorAttributeName)
-from Foundation import NSMakeRect, NSOperationQueue
+from Foundation import NSOperationQueue
 
 from src.menubar.menubar_log import log_menubar
 from src.menubar.panel import (_TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator,
                     _make_tab_nspanel, _resize_panel_keep_top)
 from src.menubar.model_selection import _PendingSelection, _thinking_is_enabled
 from src.menubar.model_panel_ui import (_make_model_row_btn, _make_apply_btn,
-                             _APPLY_BTN_W, _APPLY_SUCCESS_TITLE, _APPLY_SUCCESS_W,
-                             _APPLY_SUCCESS_DURATION)
+                             _APPLY_SUCCESS_TITLE, _APPLY_SUCCESS_DURATION)
 
 # FUNCTIONS
 
@@ -159,9 +158,6 @@ class ModelController:
             btn = self._buttons.apply
             if btn is None:
                 return
-            frame = btn.frame()
-            btn.setFrame_display_(
-                NSMakeRect(frame.origin.x, frame.origin.y, _APPLY_SUCCESS_W, frame.size.height), True)
             btn.setTitle_(_APPLY_SUCCESS_TITLE)
             threading.Timer(_APPLY_SUCCESS_DURATION, self._schedule_apply_revert).start()
         except Exception as exc:
@@ -175,9 +171,6 @@ class ModelController:
             btn = self._buttons.apply
             if btn is None:
                 return
-            frame = btn.frame()
-            btn.setFrame_display_(
-                NSMakeRect(frame.origin.x, frame.origin.y, _APPLY_BTN_W, frame.size.height), True)
             btn.setTitle_('Apply')
         except Exception as exc:
             log_menubar('model', f'apply success revert failed: {exc!r}')

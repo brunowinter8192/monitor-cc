@@ -8,9 +8,8 @@ from pathlib import Path
 from src.pane_error_log import log_pane_error, log_pane_note
 
 _RETENTION = 7 * 86400
+_LEGACY_TS_SUFFIX = '+00:00Z'
 
-
-# FUNCTIONS
 
 @dataclass(frozen=True)
 class LogSpec:
@@ -138,6 +137,8 @@ _LOG_REGISTRY: tuple = (
 )
 
 
+# FUNCTIONS
+
 def sweep_eligible_specs(logs_dir: Path) -> list:
     return [
         (spec, logs_dir / spec.path_pattern)
@@ -152,8 +153,10 @@ def cleanup_old_jsonl(path: Path) -> None:
             return
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=_RETENTION)
         lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
-        kept, unparsable = _partition_lines(lines, cutoff)
+        kept, unparsable, legacy = _partition_lines(lines, cutoff)
         _write_atomic(path, ''.join(kept))
+        if legacy:
+            log_pane_note('log_janitor', f'{path.name}: handled {legacy} lines with legacy ts suffix {_LEGACY_TS_SUFFIX}')
         if unparsable:
             log_pane_note('log_janitor', f'{path.name}: kept {unparsable} lines whose ts could not be parsed')
     except Exception:
@@ -162,27 +165,36 @@ def cleanup_old_jsonl(path: Path) -> None:
 def _partition_lines(lines: list, cutoff: datetime) -> tuple:
     kept = []
     unparsable = 0
+    legacy = 0
     for line in lines:
         if not line.strip():
             continue
-        state = _line_state(line, cutoff)
+        state, is_legacy = _line_state(line, cutoff)
+        if is_legacy:
+            legacy += 1
         if state == 'expired':
             continue
         if state == 'unparsable':
             unparsable += 1
         kept.append(line)
-    return kept, unparsable
+    return kept, unparsable, legacy
 
-def _line_state(line: str, cutoff: datetime) -> str:
+def _line_state(line: str, cutoff: datetime) -> tuple:
+    is_legacy = False
     try:
         ts_raw = json.loads(line).get('ts', '')
         if ts_raw:
-            ts_dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
-            if ts_dt < cutoff:
-                return 'expired'
+            ts_norm, is_legacy = _normalize_ts(ts_raw)
+            if datetime.fromisoformat(ts_norm) < cutoff:
+                return 'expired', is_legacy
     except (ValueError, TypeError):
-        return 'unparsable'
-    return 'kept'
+        return 'unparsable', is_legacy
+    return 'kept', is_legacy
+
+def _normalize_ts(ts_raw: str) -> tuple:
+    if ts_raw.endswith(_LEGACY_TS_SUFFIX):
+        return ts_raw[:-1], True
+    return ts_raw.replace('Z', '+00:00'), False
 
 def _write_atomic(path: Path, text: str) -> None:
     tmp = path.with_name(path.name + '.tmp')
