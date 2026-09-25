@@ -17,6 +17,13 @@ _NEW = '2026-07-30T16:09:30.317412+00:00'
 
 
 def main():
+    _run_sandboxed_checks()
+    print('PASS')
+
+
+# FUNCTIONS
+
+def _run_sandboxed_checks() -> None:
     with tempfile.TemporaryDirectory() as tmp_root:
         os.environ['MONITOR_CC_ROOT'] = tmp_root
         os.environ['PROXY_LOG_ID'] = 'ts_probe_0'
@@ -29,10 +36,7 @@ def main():
         _check_mixed_ordering()
         _check_bg_escape_janitor(root)
         _check_registry_sweep(root)
-    print('PASS')
 
-
-# FUNCTIONS
 
 class _Headers(dict):
     def get(self, k, default=None):

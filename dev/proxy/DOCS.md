@@ -251,7 +251,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_writer_timestamps.py (135 LOC)
+### test_writer_timestamps.py (139 LOC)
 
 **Purpose:** Proves the original, response and bg_escape writers emit fromisoformat-parsable UTC timestamps and the janitor prunes bg_escape_events.jsonl by age.
 **Reads:** `fixtures/bg_escape_events_legacy_ts.jsonl` (6 real legacy-ts lines).
