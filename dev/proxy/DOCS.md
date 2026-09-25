@@ -251,6 +251,16 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
+### test_api_errors_ts.py (117 LOC)
+
+**Purpose:** Proves the proxy's api_errors ts parses and the janitor prunes legacy and new format lines by age with runtime notes.
+**Reads:** first lines of the main checkout's `src/logs/api_errors.jsonl`.
+**Writes:** stdout PASS; temp monitor root only.
+**Called by:** none; run after changes to the 4xx logger or the janitor timestamp handling.
+**Calls out:** `src/proxy/addon_dual_log.py`, `src/panes/log_janitor.py`.
+
+---
+
 ### test_proxy_error_log.py (252 LOC)
 
 **Purpose:** Cases proving each formerly stderr-only proxy handler now writes to the proxy error log, plus log-on-change, size cap and silent logger failure.

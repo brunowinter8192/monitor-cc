@@ -87,7 +87,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### model_controller.py (183 LOC)
+### model_controller.py (176 LOC)
 
 **Purpose:** Controller of the Models side panel: model, effort, token and thinking cycle rows plus the Apply action.
 **Reads:** the model-selection and proxy-rules files on open and after each cycle click; panel settings.
@@ -107,7 +107,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### model_panel_ui.py (25 LOC)
+### model_panel_ui.py (24 LOC)
 
 **Purpose:** Row and Apply-button factories for the Models panel.
 **Reads:** nothing.
