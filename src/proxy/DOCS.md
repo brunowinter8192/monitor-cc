@@ -6,7 +6,7 @@ mitmproxy addon package that intercepts every Claude Code Messages request, appl
 
 ## Public Interface
 
-`__init__.py` is empty. The entry path is `src/proxy_addon.py`, which mitmproxy loads via `-s` (see `src/claude_proxy_start.sh`).
+`__init__.py` is empty. The entry path is `src/proxy_addon.py`, which mitmproxy loads via `-s` (see `src/claude_proxy_start.sh`). The per-session live copy mirrors `src/` (`__init__.py`, `constants.py`, `monitor_root.py`, `proxy/`), so absolute `src.` imports resolve inside the frozen copy.
 
 ## Flow
 

@@ -18,7 +18,7 @@ workflow.py → run_monitor (project filter, mode)
 ```
 
 Every pane loop reads the active project filter, the active mode and the session lookups of
-`monitor.py` through a lazy `from ..core import monitor as _monitor`.
+`monitor.py` through a lazy `from src.core import monitor`.
 
 ## Modules
 
@@ -37,7 +37,7 @@ Every pane loop reads the active project filter, the active mode and the session
 **Purpose:** session discovery and mode dispatcher; lazily imports the pane package for the given mode and resolves the newest main session file.
 **Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`.
 **Writes:** mutates its module-level state (active project filter, active mode).
-**Called by:** `workflow.py` (top-level entry); `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `workers/worker_tokens_pane.py` (all via `from ..core import monitor as _monitor`).
+**Called by:** `workflow.py` (top-level entry); `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `workers/worker_tokens_pane.py` (all via `from src.core import monitor`).
 **Calls out:** none.
 
 ---
