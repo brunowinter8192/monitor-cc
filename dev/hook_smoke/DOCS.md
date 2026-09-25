@@ -31,7 +31,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### run_all.py (74 LOC)
+### run_all.py (75 LOC)
 
 **Purpose:** Runs every test module of this directory as one parallel fail-fast strand and writes a fixed-name report.
 **Reads:** the `test_*.py` modules (executed via `runpy`).
@@ -221,6 +221,16 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
+### test_block_worker_spawn_placement.py (55 LOC)
+
+**Purpose:** Smoke for the spawn guard: only `--no-worktree` blocks, the new and old spawn forms and quoted mentions pass, a worktree cwd skips the guard.
+**Reads:** nothing.
+**Writes:** stdout only.
+**Called by:** none; manual CLI from the project root.
+**Calls out:** none; drives the hook via `subprocess`.
+
+---
+
 ### test_fire_log.py (162 LOC)
 
 **Purpose:** Regression for the shared hook fire-logging helper: block and rewrite decisions append the expected record and an env override is honored.
@@ -291,9 +301,9 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_rewrite_worker_wait.py (108 LOC)
+### test_rewrite_worker_wait.py (99 LOC)
 
-**Purpose:** Smoke for the worker-wait rewrite hook: correct forms no-op, background forced true, leading cd collapsed, other chains still block, false-positive guards.
+**Purpose:** Smoke for the worker-wait rewrite hook: correct forms no-op, background forced true, every chain including a leading cd blocks, false-positive guards.
 **Reads:** nothing.
 **Writes:** stdout only.
 **Called by:** none; manual CLI from the project root.

@@ -11,10 +11,11 @@ CASES = [
      "worker-cli wait", True, 0, None, None),
     ("bare with --timeout, run_in_background true — already correct NO-OP",
      "worker-cli wait --timeout 600", True, 0, None, None),
-    ("bare with project_path, run_in_background true — already correct NO-OP",
+    ("bare with a path, run_in_background true — hook only normalises the flag, "
+     "the CLI rejects the path NO-OP",
      "worker-cli wait /path/to/project", True, 0, None, None),
-    ("bare with project_path + --timeout, run_in_background true — already "
-     "correct NO-OP",
+    ("bare with a path + --timeout, run_in_background true — hook only "
+     "normalises the flag, the CLI rejects the path NO-OP",
      "worker-cli wait /path/to/project --timeout 600", True, 0, None, None),
     ("rewrite_background_sleep.py's own output — already correct NO-OP",
      "worker-cli wait", True, 0, None, None),
@@ -27,28 +28,18 @@ CASES = [
      "unchanged REWRITE",
      "worker-cli wait --timeout 600", False, 0, "worker-cli wait --timeout 600", True),
 
-    ("cd ; worker-cli wait, no path of its own — path injected, flag forced "
-     "REWRITE (the actual incident shape)",
+    ("cd ; worker-cli wait (the actual incident shape) — leading cd, run "
+     "from the project directory BLOCK",
      "cd /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch; worker-cli wait",
-     True, 0,
-     "worker-cli wait /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch",
-     True),
-    ("cd && worker-cli wait, no path of its own — path injected REWRITE",
-     "cd /tmp && worker-cli wait", True, 0, "worker-cli wait /tmp", True),
-    ("cd ; worker-cli wait, run_in_background false too — both forced in one "
-     "payload REWRITE",
-     "cd /tmp; worker-cli wait", False, 0, "worker-cli wait /tmp", True),
-    ("cd ; worker-cli wait --timeout 600, no path of its own — path injected "
-     "before the flag REWRITE",
-     "cd /tmp; worker-cli wait --timeout 600", True, 0,
-     "worker-cli wait /tmp --timeout 600", True),
-    ("cd ; worker-cli wait already has its own path — cd dropped as redundant "
-     "REWRITE",
-     "cd /tmp; worker-cli wait /other/project", True, 0,
-     "worker-cli wait /other/project", True),
-    ("cd \\n worker-cli wait (newline separator, real spawn-cd-prefix shape) "
-     "REWRITE",
-     "cd /tmp\nworker-cli wait", True, 0, "worker-cli wait /tmp", True),
+     True, 2, None, None),
+    ("cd && worker-cli wait — leading cd BLOCK",
+     "cd /tmp && worker-cli wait", True, 2, None, None),
+    ("cd ; worker-cli wait, run_in_background false — leading cd BLOCK",
+     "cd /tmp; worker-cli wait", False, 2, None, None),
+    ("cd ; worker-cli wait --timeout 600 — leading cd BLOCK",
+     "cd /tmp; worker-cli wait --timeout 600", True, 2, None, None),
+    ("cd \\n worker-cli wait (newline separator) BLOCK",
+     "cd /tmp\nworker-cli wait", True, 2, None, None),
 
     ("worker-cli wait && rag-cli index docs — trailing chain, unfixable "
      "BLOCK",
