@@ -25,7 +25,7 @@ blind diffing for messages.
 **Writes:** `groundtruth_message_spans_probe_reports/groundtruth_spans_<timestamp>.md` (the reports
 directory stays at the area root, `dev/proxy_dual_log/`, not in this subfolder).
 **Called by:** none — manual, one-off design-validation probe.
-**Calls out:** `groundtruth_spans_cases.py`, `_report.py`.
+**Calls out:** `groundtruth_spans_cases.py`, `groundtruth_spans_report.py`.
 
 ---
 
@@ -35,7 +35,7 @@ directory stays at the area root, `dev/proxy_dual_log/`, not in this subfolder).
 src/ mirror helpers, and fidelity checks.
 **Reads:** nothing — pure text/span functions.
 **Writes:** nothing.
-**Called by:** `groundtruth_spans_cases.py`, `_report.py`.
+**Called by:** `groundtruth_spans_cases.py`, `groundtruth_spans_report.py`.
 **Calls out:** none.
 
 ---
