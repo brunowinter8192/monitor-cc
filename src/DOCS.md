@@ -99,6 +99,16 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
+### copy_proxy_live.sh (33 LOC)
+
+**Purpose:** Single owner of the proxy live-copy layout: copies the shim and a `src/` mirror (`__init__.py`, `constants.py`, `monitor_root.py`, `proxy/`) to the given targets.
+**Reads:** `proxy_addon.py`, `__init__.py`, `constants.py`, `monitor_root.py`, `proxy/` next to itself.
+**Writes:** the live addon file and the live directory given as arguments.
+**Called by:** `claude_proxy_start.sh`; iterative-dev `src/spawn/worker_proxy.sh` via the monitor root in the proxy marker.
+**Calls out:** none
+
+---
+
 ### search_bar.py (147 LOC)
 
 **Purpose:** shared search-bar state, rendering, key and mouse handling, and search-highlight embedding used by every pane.
@@ -149,11 +159,11 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### claude_proxy_start.sh (208 LOC)
+### claude_proxy_start.sh (205 LOC)
 
 **Purpose:** shell entry point that launches mitmproxy plus Claude Code with the proxy environment; orchestrates the sourced janitor and marker libraries.
 **Reads:** the model-selection rules file, existing log files, per-project marker files.
-**Writes:** per-session live proxy-addon copy (shim plus a `src/` mirror with `__init__.py`, `constants.py`, `monitor_root.py`, `proxy/`), marker files, the active-plugins file of the project.
+**Writes:** per-session live proxy-addon copy (made by `copy_proxy_live.sh`), marker files, the active-plugins file of the project.
 **Called by:** invoked directly (main session start); the command `ccwrap/wrapper.py` wraps.
 **Calls out:** `mitmproxy`, `jq`, worker-cli (iterative-dev project).
 

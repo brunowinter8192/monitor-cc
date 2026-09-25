@@ -141,7 +141,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### live_proxy_sandbox.py (96 LOC)
+### live_proxy_sandbox.py (92 LOC)
 
 **Purpose:** Starts a real mitmdump on private ports from a hand-built live-copy layout that lacks the repo src/proxy, sends one request through a local upstream and checks the dual-log files.
 **Reads:** src/proxy_addon.py, constants, monitor_root and the proxy package of this checkout.
@@ -157,6 +157,16 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 **Reads:** `src/**/*.py`, `workflow.py`, `setup_py2app.py`.
 **Writes:** stdout findings; exit 1 on any hard violation.
 **Called by:** manual, at the end of a layout pass.
+**Calls out:** none
+
+---
+
+### worker_proxy_sandbox.py (135 LOC)
+
+**Purpose:** Runs the real `_worker_proxy_setup` of a given iterative-dev tree against a temp monitor root, temp marker and private ports and checks the worker proxy forwards a request and writes dual logs.
+**Reads:** the iterative-dev tree passed as argument, monitor-cc `src/`.
+**Writes:** a temp directory and a temp `/tmp/.monitor_cc_proxy_<id>` marker, removed at the end; stdout report.
+**Called by:** manual, after any change to the live-copy layout or `worker_proxy.sh`.
 **Calls out:** none
 
 ---

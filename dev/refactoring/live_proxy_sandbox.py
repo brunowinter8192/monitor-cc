@@ -2,7 +2,6 @@
 import http.server
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -37,13 +36,10 @@ def _run_in_temp_dir() -> None:
 
 def _build_live_layout(tmp: Path) -> Path:
     log_dir = tmp / 'src' / 'logs'
-    live_src = log_dir / '.proxy_live_sbx' / 'src'
-    live_src.mkdir(parents=True)
+    log_dir.mkdir(parents=True)
     shim = log_dir / '.proxy_addon_live_sbx.py'
-    shutil.copy(_ROOT / 'src' / 'proxy_addon.py', shim)
-    for name in ('__init__.py', 'constants.py', 'monitor_root.py'):
-        shutil.copy(_ROOT / 'src' / name, live_src / name)
-    shutil.copytree(_ROOT / 'src' / 'proxy', live_src / 'proxy', ignore=shutil.ignore_patterns('__pycache__'))
+    live_dir = log_dir / '.proxy_live_sbx'
+    subprocess.run([str(_ROOT / 'src' / 'copy_proxy_live.sh'), str(shim), str(live_dir)], check=True)
     return shim
 
 def _start_upstream() -> http.server.HTTPServer:
