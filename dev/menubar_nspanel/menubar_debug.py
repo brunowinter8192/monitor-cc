@@ -12,7 +12,18 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _WORKFLOW    = _PROJECT_ROOT / 'workflow.py'
 _PYTHON      = _PROJECT_ROOT / 'venv' / 'bin' / 'python3'
 
+
 # ORCHESTRATOR
+
+def main():
+    parser = argparse.ArgumentParser(description='Run menubar app in foreground with diagnostics.')
+    parser.add_argument('--rebootstrap', action='store_true',
+                        help='Re-register launchd service after stopping')
+    args = parser.parse_args()
+    menubar_debug_workflow(args.rebootstrap)
+
+
+# FUNCTIONS
 
 def menubar_debug_workflow(rebootstrap: bool) -> None:
     _bootout()
@@ -27,7 +38,6 @@ def menubar_debug_workflow(rebootstrap: bool) -> None:
     if rebootstrap:
         _bootstrap()
 
-# FUNCTIONS
 
 def _bootout() -> None:
     r = subprocess.run(['launchctl', 'bootout', _GUI_TARGET],
@@ -36,6 +46,7 @@ def _bootout() -> None:
         print(f'bootout {_LABEL}: ok')
     else:
         print(f'bootout {_LABEL}: not loaded (ok)')
+
 
 def _bootstrap() -> None:
     if not _PLIST.exists():
@@ -50,8 +61,4 @@ def _bootstrap() -> None:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Run menubar app in foreground with diagnostics.')
-    parser.add_argument('--rebootstrap', action='store_true',
-                        help='Re-register launchd service after stopping')
-    args = parser.parse_args()
-    menubar_debug_workflow(args.rebootstrap)
+    main()

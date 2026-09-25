@@ -34,13 +34,12 @@ def main() -> None:
         _run_case_in_child(args.case)
         return
     names = sorted(cases())
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
-        results = list(pool.map(_spawn_case, names))
+    results = collect_results(names)
     text = _build_report(results)
     path = write_report(__file__, text)
     print(text)
     print(f'report: {path}')
-    if any(not r['ok'] for r in results):
+    if check_condition(results):
         sys.exit(1)
 
 
@@ -288,6 +287,12 @@ def _case_header_recentering() -> str:
     return f'header stays centered in the top-bar strip when the panel width changes (422, 522, 322): {out}'
 
 
+def collect_results(names):
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        results = list(pool.map(_spawn_case, names))
+    return results
+
+
 def _spawn_case(name: str) -> dict:
     r = subprocess.run([sys.executable, '-m', 'dev.session_launcher.t3_tab_click', '--case', name],
                        capture_output=True, text=True, cwd=str(_ROOT), timeout=180)
@@ -309,6 +314,10 @@ def _build_report(results) -> str:
     lines.append('')
     lines.append(f'RESULT: {"PASS" if all(r["ok"] for r in results) else "FAIL"}')
     return '\n'.join(lines)
+
+
+def check_condition(results):
+    return any(not r['ok'] for r in results)
 
 
 if __name__ == '__main__':

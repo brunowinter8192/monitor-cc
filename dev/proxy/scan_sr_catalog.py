@@ -47,8 +47,8 @@ def scan_sr_catalog_workflow():
 
     print(f'Done. {len(logs)} logs, {total_entries} entries.')
     print(f'  Stripped SR templates: {len(stripped_sr)}')
-    print(f'  False positives: {sum(d["count"] for d in false_positives.values())}')
-    print(f'  Missed SRs: {sum(d["count"] for d in missed_sr.values())}')
+    print_false_positives(false_positives)
+    print_missed_srs(missed_sr)
     print(f'  TNs stripped: {stripped_tn["count"]}')
     _report_skipped_lines()
 
@@ -216,6 +216,14 @@ def _process_missed_srs(msgs: list, sr_re, missed_sr: dict) -> None:
 def _note_skipped_line() -> None:
     global _SKIPPED_LINES
     _SKIPPED_LINES += 1
+
+
+def print_false_positives(false_positives):
+    print(f'  False positives: {sum(d["count"] for d in false_positives.values())}')
+
+
+def print_missed_srs(missed_sr):
+    print(f'  Missed SRs: {sum(d["count"] for d in missed_sr.values())}')
 
 
 def _report_skipped_lines() -> None:

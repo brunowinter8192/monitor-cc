@@ -39,6 +39,25 @@ KNOWN_SHORTCUTS = [
 
 # ORCHESTRATOR
 
+def main():
+    args = _parse_args()
+    run(args.proxy_jsonl, args.min_count, args.top)
+
+
+# FUNCTIONS
+
+def _parse_args():
+    p = argparse.ArgumentParser(
+        description='Repetition-based Bash waste analysis from a proxy-log JSONL snapshot.'
+    )
+    p.add_argument('proxy_jsonl', help='Path to proxy-log JSONL file')
+    p.add_argument('--min-count', type=int, default=2, metavar='N',
+                   help='Minimum occurrence count for a group (default: 2)')
+    p.add_argument('--top', type=int, default=20, metavar='K',
+                   help='Show top K groups in the table (default: 20)')
+    return p.parse_args()
+
+
 def run(path, min_count, top_k):
     snapshot = _find_snapshot(path)
     if snapshot is None:
@@ -51,8 +70,6 @@ def run(path, min_count, top_k):
     report = _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total)
     print(report)
 
-
-# FUNCTIONS
 
 def _find_snapshot(path):
     best, best_count = None, -1
@@ -269,18 +286,5 @@ def _render_full_samples(shown):
     return L
 
 
-def _parse_args():
-    p = argparse.ArgumentParser(
-        description='Repetition-based Bash waste analysis from a proxy-log JSONL snapshot.'
-    )
-    p.add_argument('proxy_jsonl', help='Path to proxy-log JSONL file')
-    p.add_argument('--min-count', type=int, default=2, metavar='N',
-                   help='Minimum occurrence count for a group (default: 2)')
-    p.add_argument('--top', type=int, default=20, metavar='K',
-                   help='Show top K groups in the table (default: 20)')
-    return p.parse_args()
-
-
 if __name__ == '__main__':
-    args = _parse_args()
-    run(args.proxy_jsonl, args.min_count, args.top)
+    main()

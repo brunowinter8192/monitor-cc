@@ -36,6 +36,35 @@ Or with named flags:
 
 # ORCHESTRATOR
 
+def main():
+    parser = argparse.ArgumentParser(
+        description="Span-level strip/inject diff of proxy Original vs Forwarded logs.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_MODULE_DOC,
+    )
+    parser.add_argument("original", nargs="?", help="Path to _original.jsonl")
+    parser.add_argument("forwarded", nargs="?", help="Path to _forwarded.jsonl")
+    parser.add_argument("--original", dest="original_flag", help="Path to _original.jsonl (named)")
+    parser.add_argument("--forwarded", dest="forwarded_flag", help="Path to _forwarded.jsonl (named)")
+    args = parser.parse_args()
+    orig = compute_orig(args)
+    fwd  = compute_fwd(args)
+    if not orig or not fwd:
+        parser.print_help()
+        sys.exit(1)
+    diff_strip_inject_workflow(Path(orig), Path(fwd))
+
+
+# FUNCTIONS
+
+def compute_orig(args):
+    return args.original_flag or args.original
+
+
+def compute_fwd(args):
+    return args.forwarded_flag or args.forwarded
+
+
 def diff_strip_inject_workflow(original_path: Path, forwarded_path: Path) -> None:
     orig_entries = _load_jsonl(original_path)
     fwd_entries = _load_jsonl(forwarded_path)
@@ -43,8 +72,6 @@ def diff_strip_inject_workflow(original_path: Path, forwarded_path: Path) -> Non
     matched = _match_requests(orig_entries, fwd_entries, fwd_states)
     _print_report(matched, forwarded_path.name)
 
-
-# FUNCTIONS
 
 def _load_jsonl(path: Path) -> list:
     entries = []
@@ -234,20 +261,5 @@ def _print_messages_diff(o_msgs: list, f_msgs: list, diff_messages) -> tuple:
     return msgs_s, msgs_i
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Span-level strip/inject diff of proxy Original vs Forwarded logs.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=_MODULE_DOC,
-    )
-    parser.add_argument("original", nargs="?", help="Path to _original.jsonl")
-    parser.add_argument("forwarded", nargs="?", help="Path to _forwarded.jsonl")
-    parser.add_argument("--original", dest="original_flag", help="Path to _original.jsonl (named)")
-    parser.add_argument("--forwarded", dest="forwarded_flag", help="Path to _forwarded.jsonl (named)")
-    args = parser.parse_args()
-    orig = args.original_flag or args.original
-    fwd  = args.forwarded_flag or args.forwarded
-    if not orig or not fwd:
-        parser.print_help()
-        sys.exit(1)
-    diff_strip_inject_workflow(Path(orig), Path(fwd))
+if __name__ == '__main__':
+    main()

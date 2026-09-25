@@ -15,12 +15,14 @@ _INJECTION = (
 _GUARD = "if __name__ == "
 _STRAND_LIST_HEAD = "_STRANDS = [\n"
 
+
 # ORCHESTRATOR
 
 def strand_abort_probe_workflow() -> int:
     targets = parse_targets(sys.argv[1:])
-    verdicts = [probe_target(target) for target in targets]
+    verdicts = compute_verdicts(targets)
     return report_verdicts(verdicts)
+
 
 # FUNCTIONS
 
@@ -28,6 +30,11 @@ def parse_targets(argv: list) -> list:
     if not argv:
         raise SystemExit('usage: strand_abort_probe.py <path relative to dev/> [...]')
     return [_ROOT / 'dev' / rel for rel in argv]
+
+
+def compute_verdicts(targets):
+    return [probe_target(target) for target in targets]
+
 
 def probe_target(target: Path) -> dict:
     strands = read_strands(target)
@@ -39,16 +46,19 @@ def probe_target(target: Path) -> dict:
         mutant.unlink()
     return {'target': target, 'strands': strands, 'proc': proc}
 
+
 def read_strands(target: Path) -> list:
     for node in ast.parse(target.read_text()).body:
         if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', '') == '_STRANDS':
             return ast.literal_eval(node.value)
     raise SystemExit(f'{target}: no _STRANDS list')
 
+
 def build_mutant_text(text: str) -> str:
     text = text.replace(_STRAND_LIST_HEAD, _STRAND_LIST_HEAD + f"    '{_INJECTED}',\n", 1)
     index = text.rindex(_GUARD)
     return text[:index] + _INJECTION + text[index:]
+
 
 def report_verdicts(verdicts: list) -> int:
     failed = 0
@@ -57,6 +67,7 @@ def report_verdicts(verdicts: list) -> int:
         print(('OK   ' if not problems else 'FAIL ') + str(verdict['target'].relative_to(_ROOT / 'dev')) + ''.join(f' | {p}' for p in problems))
         failed += bool(problems)
     return 1 if failed else 0
+
 
 def check_verdict(verdict: dict) -> list:
     out = verdict['proc'].stdout
@@ -74,6 +85,7 @@ def check_verdict(verdict: dict) -> list:
     if f'{len(strands)}/{len(strands) + 1} strands passed' not in out:
         problems.append('summary line wrong')
     return problems
+
 
 if __name__ == '__main__':
     sys.exit(strand_abort_probe_workflow())

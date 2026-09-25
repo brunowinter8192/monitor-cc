@@ -21,7 +21,7 @@ Synthetic argv, mocked config or recorded dual-log payloads go in. Each script d
 
 ---
 
-### p2_model_params_probe.py (54 LOC)
+### p2_model_params_probe.py (62 LOC)
 
 **Purpose:** Entry point of the model-parameter probe: runs the test groups from the two group modules and writes the report.
 **Reads:** nothing persistent; fixtures are built in-process.
@@ -61,7 +61,7 @@ Synthetic argv, mocked config or recorded dual-log payloads go in. Each script d
 
 ---
 
-### p3_cache_breakpoints_probe.py (284 LOC)
+### p3_cache_breakpoints_probe.py (293 LOC)
 
 **Purpose:** Replays two recorded pin-bump-era sessions through a real proxy addon and checks cache-breakpoint positional stability.
 **Reads:** two pinned dual-log session stems, currently rotated out of the live corpus, so the script raises before writing.
@@ -71,7 +71,7 @@ Synthetic argv, mocked config or recorded dual-log payloads go in. Each script d
 
 ---
 
-### p4_dual_log_integrity_probe.py (243 LOC)
+### p4_dual_log_integrity_probe.py (252 LOC)
 
 **Purpose:** Verifies the composition invariant and top-level payload and schema stability on the same two recorded sessions.
 **Reads:** the same two pinned session stems, currently absent.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+# INFRASTRUCTURE
 import json
 import sys
 from collections import Counter, defaultdict
@@ -10,18 +10,28 @@ PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 DEFAULT_PROJECT = None
 REPORTS_DIR = Path(__file__).parent / '01_reports'
 
-
 _SKIPPED_LINES = 0
 
 
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
+# ORCHESTRATOR
+
+def main():
+    if len(sys.argv) > 1:
+        filepath = Path(sys.argv[1])
+    else:
+        filepath = find_latest_jsonl(DEFAULT_PROJECT)
+
+    report = scan_jsonl(filepath)
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_path = compute_output_path(timestamp)
+    output_path.write_text(report, encoding='utf-8')
+    print(f'Report written to: {output_path}')
+    _report_skipped_lines()
 
 
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
-
+# FUNCTIONS
 
 def find_latest_jsonl(project_name: str = None) -> Path:
     if project_name:
@@ -39,13 +49,21 @@ def find_latest_jsonl(project_name: str = None) -> Path:
     return jsonl_files[0]
 
 
-def truncate(text: str, max_len: int = 200) -> str:
-    if not text:
-        return ''
-    s = str(text).replace('\n', '\\n')
-    if len(s) > max_len:
-        return s[:max_len] + '...'
-    return s
+def scan_jsonl(filepath: Path) -> str:
+    type_counts, type_keys, type_subtypes, type_is_meta, type_examples = _collect_type_stats(filepath)
+
+    lines = []
+    lines.append(f'# JSONL Message Types')
+    lines.append(f'')
+    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
+    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append(f'**Total messages:** {sum(type_counts.values())}')
+    lines.append(f'')
+
+    lines.extend(_summary_table_lines(type_counts, type_subtypes, type_is_meta))
+    lines.extend(_detail_section_lines(type_counts, type_keys, type_subtypes, type_examples))
+
+    return '\n'.join(lines)
 
 
 def _collect_type_stats(filepath: Path) -> tuple:
@@ -82,6 +100,11 @@ def _collect_type_stats(filepath: Path) -> tuple:
     return type_counts, type_keys, type_subtypes, type_is_meta, type_examples
 
 
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
 def _summary_table_lines(type_counts, type_subtypes, type_is_meta) -> list:
     lines = []
     lines.append(f'## Summary')
@@ -96,6 +119,29 @@ def _summary_table_lines(type_counts, type_subtypes, type_is_meta) -> list:
         lines.append(f'| `{msg_type}` | {count} | {subtypes} | {meta_dist} |')
 
     lines.append(f'')
+    return lines
+
+
+def _detail_section_lines(type_counts, type_keys, type_subtypes, type_examples) -> list:
+    lines = []
+    for msg_type, count in type_counts.most_common():
+        lines.append(f'## `{msg_type}` ({count}x)')
+        lines.append(f'')
+        lines.append(f'**Keys:** `{"`, `".join(sorted(type_keys[msg_type]))}`')
+        lines.append(f'')
+
+        if type_subtypes[msg_type]:
+            lines.append(f'**Subtypes:** {", ".join(sorted(type_subtypes[msg_type]))}')
+            lines.append(f'')
+
+        example = type_examples[msg_type]
+        lines.append(f'**Example (truncated):**')
+        lines.append(f'```json')
+        example_clean = _clean_example(example)
+        lines.append(json.dumps(example_clean, indent=2, ensure_ascii=False))
+        lines.append(f'```')
+        lines.append(f'')
+
     return lines
 
 
@@ -128,60 +174,21 @@ def _clean_example(example: dict) -> dict:
     return example_clean
 
 
-def _detail_section_lines(type_counts, type_keys, type_subtypes, type_examples) -> list:
-    lines = []
-    for msg_type, count in type_counts.most_common():
-        lines.append(f'## `{msg_type}` ({count}x)')
-        lines.append(f'')
-        lines.append(f'**Keys:** `{"`, `".join(sorted(type_keys[msg_type]))}`')
-        lines.append(f'')
-
-        if type_subtypes[msg_type]:
-            lines.append(f'**Subtypes:** {", ".join(sorted(type_subtypes[msg_type]))}')
-            lines.append(f'')
-
-        example = type_examples[msg_type]
-        lines.append(f'**Example (truncated):**')
-        lines.append(f'```json')
-        example_clean = _clean_example(example)
-        lines.append(json.dumps(example_clean, indent=2, ensure_ascii=False))
-        lines.append(f'```')
-        lines.append(f'')
-
-    return lines
+def truncate(text: str, max_len: int = 200) -> str:
+    if not text:
+        return ''
+    s = str(text).replace('\n', '\\n')
+    if len(s) > max_len:
+        return s[:max_len] + '...'
+    return s
 
 
-def scan_jsonl(filepath: Path) -> str:
-    type_counts, type_keys, type_subtypes, type_is_meta, type_examples = _collect_type_stats(filepath)
-
-    lines = []
-    lines.append(f'# JSONL Message Types')
-    lines.append(f'')
-    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
-    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    lines.append(f'**Total messages:** {sum(type_counts.values())}')
-    lines.append(f'')
-
-    lines.extend(_summary_table_lines(type_counts, type_subtypes, type_is_meta))
-    lines.extend(_detail_section_lines(type_counts, type_keys, type_subtypes, type_examples))
-
-    return '\n'.join(lines)
+def compute_output_path(timestamp):
+    return REPORTS_DIR / f'message_types_{timestamp}.md'
 
 
-def main():
-    if len(sys.argv) > 1:
-        filepath = Path(sys.argv[1])
-    else:
-        filepath = find_latest_jsonl(DEFAULT_PROJECT)
-
-    report = scan_jsonl(filepath)
-
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_path = REPORTS_DIR / f'message_types_{timestamp}.md'
-    output_path.write_text(report, encoding='utf-8')
-    print(f'Report written to: {output_path}')
-    _report_skipped_lines()
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 if __name__ == '__main__':

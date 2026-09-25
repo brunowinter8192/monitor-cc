@@ -46,16 +46,35 @@ Usage (from project root):
 
 # ORCHESTRATOR
 
-def single_workflow(stem: str) -> int:
-    rows = replay(stem)
-    md = sum(1 for r in rows if r[1].get('messages_delta'))
-    show_strip, show_inject = badge_maps(rows)
-    print(f'{stem}: {len(rows)} requests, {md} with stripped messages_delta, '
-          f'{sum(show_strip.values())} showing `strip`, {sum(show_inject.values())} showing `inject`')
-    return 0
+def main():
+    ap = argparse.ArgumentParser(description=_MODULE_DOC, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('stem', help='log stem, e.g. api_requests_opus_monitor_cc_1788011077')
+    ap.add_argument('--compare', action='store_true',
+                    help='report the badge signal under the old rule vs the new one')
+    args = ap.parse_args()
+    if args.compare:
+        sys.exit(compare_workflow(args.stem))
+    sys.exit(single_workflow(args.stem))
 
 
 # FUNCTIONS
+
+def compare_workflow(stem: str) -> int:
+    rows = replay(stem)
+
+    base_hc_s = has_content_map(rows, 1, baseline=True)
+    base_hc_i = has_content_map(rows, 2, baseline=True)
+    show_strip, show_inject = badge_maps(rows)
+
+    buckets = _build_buckets(rows)
+
+    _print_classification_summary(stem, rows, buckets)
+    _print_write_side(rows, base_hc_s, base_hc_i, show_strip, show_inject)
+    ok = _compute_and_print_verdict(rows, buckets, show_strip, show_inject)
+
+    print(f'\n{"PASS" if ok else "FAIL"}\n')
+    return 0 if ok else 1
+
 
 def replay(stem: str) -> list:
     from src.proxy import strip_inject_delta as sid
@@ -99,24 +118,6 @@ def _load_jsonl(path: Path) -> list:
     return entries
 
 
-def badge_maps(entries: list) -> tuple:
-    from src.proxy_display.proxy_badge import badge_flags
-    hc_s = has_content_map(entries, 1)
-    hc_i = has_content_map(entries, 2)
-    mi_s = msg_idx_map(entries, 1)
-    mi_i = msg_idx_map(entries, 2)
-    strip_by_fid: dict = {}
-    inject_by_fid: dict = {}
-    for rid, _s, _i, _o in entries:
-        entry = {
-            'flow_id': rid,
-            '_strip_fns_lookup': hc_s, '_inject_fns_lookup': hc_i,
-            '_strip_msgs_lookup': mi_s, '_inject_msgs_lookup': mi_i,
-        }
-        strip_by_fid[rid], inject_by_fid[rid] = badge_flags(entry)
-    return strip_by_fid, inject_by_fid
-
-
 def has_content_map(entries: list, which: int, baseline: bool = False) -> dict:
     from src.proxy_display import dual_log_accumulator as _accumulator
     from src.proxy_display.dual_log_accumulator import accumulate_dual_log
@@ -139,6 +140,24 @@ def has_content_map(entries: list, which: int, baseline: bool = False) -> dict:
     return merged
 
 
+def badge_maps(entries: list) -> tuple:
+    from src.proxy_display.proxy_badge import badge_flags
+    hc_s = has_content_map(entries, 1)
+    hc_i = has_content_map(entries, 2)
+    mi_s = msg_idx_map(entries, 1)
+    mi_i = msg_idx_map(entries, 2)
+    strip_by_fid: dict = {}
+    inject_by_fid: dict = {}
+    for rid, _s, _i, _o in entries:
+        entry = {
+            'flow_id': rid,
+            '_strip_fns_lookup': hc_s, '_inject_fns_lookup': hc_i,
+            '_strip_msgs_lookup': mi_s, '_inject_msgs_lookup': mi_i,
+        }
+        strip_by_fid[rid], inject_by_fid[rid] = badge_flags(entry)
+    return strip_by_fid, inject_by_fid
+
+
 def msg_idx_map(entries: list, which: int) -> dict:
     from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     with tempfile.NamedTemporaryFile('w', suffix='.jsonl', delete=False) as f:
@@ -156,23 +175,11 @@ def msg_idx_map(entries: list, which: int) -> dict:
     return merged
 
 
-def _shape_classifier():
-    from src.proxy_display.proxy_badge import _is_total_tokens_nuke_text
-    return _is_total_tokens_nuke_text
-
-
-def _is_tt_msg(msg: dict) -> bool:
-    if msg.get('role') != 'system':
-        return False
-    is_nuke_text = _shape_classifier()
-    content = msg.get('content', '')
-    if isinstance(content, str):
-        return is_nuke_text(content)
-    if isinstance(content, list):
-        return (len(content) == 1 and isinstance(content[0], dict)
-                and content[0].get('type') == 'text'
-                and is_nuke_text(str(content[0].get('text', ''))))
-    return False
+def _build_buckets(rows: list) -> dict:
+    buckets: dict = {}
+    for rid, s_entry, _i_entry, orig_payload in rows:
+        buckets.setdefault(classify(s_entry, orig_payload), []).append(rid)
+    return buckets
 
 
 def classify(base_s: dict, orig_payload: dict) -> str:
@@ -192,15 +199,23 @@ def classify(base_s: dict, orig_payload: dict) -> str:
     return 'mixed' if has_tt else 'real_strip'
 
 
-def _canon(entry: dict) -> str:
-    return json.dumps({k: v for k, v in entry.items() if k != 'timestamp'}, sort_keys=True)
+def _is_tt_msg(msg: dict) -> bool:
+    if msg.get('role') != 'system':
+        return False
+    is_nuke_text = _shape_classifier()
+    content = msg.get('content', '')
+    if isinstance(content, str):
+        return is_nuke_text(content)
+    if isinstance(content, list):
+        return (len(content) == 1 and isinstance(content[0], dict)
+                and content[0].get('type') == 'text'
+                and is_nuke_text(str(content[0].get('text', ''))))
+    return False
 
 
-def _build_buckets(rows: list) -> dict:
-    buckets: dict = {}
-    for rid, s_entry, _i_entry, orig_payload in rows:
-        buckets.setdefault(classify(s_entry, orig_payload), []).append(rid)
-    return buckets
+def _shape_classifier():
+    from src.proxy_display.proxy_badge import _is_total_tokens_nuke_text
+    return _is_total_tokens_nuke_text
 
 
 def _print_classification_summary(stem: str, rows: list, buckets: dict) -> None:
@@ -246,33 +261,22 @@ def _compute_and_print_verdict(rows: list, buckets: dict, show_strip: dict, show
             and tt_spans_kept == len(tt_ids))
 
 
-def compare_workflow(stem: str) -> int:
-    rows = replay(stem)
-
-    base_hc_s = has_content_map(rows, 1, baseline=True)
-    base_hc_i = has_content_map(rows, 2, baseline=True)
-    show_strip, show_inject = badge_maps(rows)
-
-    buckets = _build_buckets(rows)
-
-    _print_classification_summary(stem, rows, buckets)
-    _print_write_side(rows, base_hc_s, base_hc_i, show_strip, show_inject)
-    ok = _compute_and_print_verdict(rows, buckets, show_strip, show_inject)
-
-    print(f'\n{"PASS" if ok else "FAIL"}\n')
-    return 0 if ok else 1
-
-
 def _flows_with_injected_msgs(rows: list) -> set:
     return {rid for rid, _s, i_e, _o in rows if i_e.get('messages_delta')}
 
 
+def single_workflow(stem: str) -> int:
+    rows = replay(stem)
+    md = sum(1 for r in rows if r[1].get('messages_delta'))
+    show_strip, show_inject = badge_maps(rows)
+    print(f'{stem}: {len(rows)} requests, {md} with stripped messages_delta, '
+          f'{sum(show_strip.values())} showing `strip`, {sum(show_inject.values())} showing `inject`')
+    return 0
+
+
+def _canon(entry: dict) -> str:
+    return json.dumps({k: v for k, v in entry.items() if k != 'timestamp'}, sort_keys=True)
+
+
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser(description=_MODULE_DOC, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('stem', help='log stem, e.g. api_requests_opus_monitor_cc_1788011077')
-    ap.add_argument('--compare', action='store_true',
-                    help='report the badge signal under the old rule vs the new one')
-    args = ap.parse_args()
-    if args.compare:
-        sys.exit(compare_workflow(args.stem))
-    sys.exit(single_workflow(args.stem))
+    main()

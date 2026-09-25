@@ -17,13 +17,18 @@ _SKIPPED_LINES = 0
 
 def main():
     rows = []
-    rows += [_check_forwarded(p) for p in sorted(_MAIN_LOGS.rglob('*_forwarded.jsonl'))]
-    rows += [_check_transcript(p) for p in sorted(_PROJECTS.rglob('*.jsonl')) if 'subagents' not in p.parts]
+    rows = update_rows(rows)
+    rows = update_rows_2(rows)
     _write_report(rows)
     _report_skipped_lines()
 
 
 # FUNCTIONS
+
+def update_rows(rows):
+    rows += [_check_forwarded(p) for p in sorted(_MAIN_LOGS.rglob('*_forwarded.jsonl'))]
+    return rows
+
 
 def _check_forwarded(path: Path) -> tuple:
     stamps = []
@@ -48,6 +53,11 @@ def _first_disorder(stamps: list):
         if stamps[i] < stamps[i - 1]:
             return i
     return None
+
+
+def update_rows_2(rows):
+    rows += [_check_transcript(p) for p in sorted(_PROJECTS.rglob('*.jsonl')) if 'subagents' not in p.parts]
+    return rows
 
 
 def _check_transcript(path: Path) -> tuple:

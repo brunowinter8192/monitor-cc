@@ -17,10 +17,7 @@ _HOVER_ROWS = (2, 5, 9, 14, 20, 27, 33, 41, 49)
 def main():
     args = _parse_args()
     sim = Sim(args.root)
-    try:
-        steps = scenarios()[args.scenario](sim)
-    finally:
-        sim.cleanup()
+    steps = collect_steps(args, sim)
     Path(args.out).write_text(json.dumps(steps), encoding='utf-8')
 
 
@@ -32,6 +29,14 @@ def _parse_args():
     parser.add_argument('--scenario', required=True)
     parser.add_argument('--out', required=True)
     return parser.parse_args()
+
+
+def collect_steps(args, sim):
+    try:
+        steps = scenarios()[args.scenario](sim)
+    finally:
+        sim.cleanup()
+    return steps
 
 
 def scenarios():

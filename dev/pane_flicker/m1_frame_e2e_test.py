@@ -26,16 +26,21 @@ _SGR_OR_CHAR_RE = re.compile(r'\x1b\[([0-9;]*)m|(.)', re.S)
 # ORCHESTRATOR
 
 def test_workflow() -> int:
+    results = collect_results()
+    verdicts = evaluate(results)
+    write_report(verdicts, results)
+    return compute_exit_code(verdicts)
+
+
+# FUNCTIONS
+
+def collect_results():
     with tempfile.TemporaryDirectory(prefix='flicker_m1_') as tmp:
         work_dir = Path(tmp)
         old_root = extract_old_tree(work_dir)
         results = run_all_strands({'old': old_root, 'new': WORKTREE_ROOT}, work_dir)
-    verdicts = evaluate(results)
-    write_report(verdicts, results)
-    return 0 if all(ok for _, ok, _ in verdicts) else 1
+    return results
 
-
-# FUNCTIONS
 
 def extract_old_tree(work_dir: Path) -> Path:
     old_root = work_dir / 'old_tree'
@@ -365,6 +370,10 @@ def write_report(verdicts: list, results: dict) -> None:
         if not ok:
             print(f'FAIL {label} {hint}')
     print(f'{passed}/{len(verdicts)} checks passed')
+
+
+def compute_exit_code(verdicts):
+    return 0 if all(ok for _, ok, _ in verdicts) else 1
 
 
 if __name__ == '__main__':

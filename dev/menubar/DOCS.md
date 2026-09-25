@@ -11,7 +11,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ## Modules
 
-### discover_byte_identity.py (144 LOC)
+### discover_byte_identity.py (148 LOC)
 
 **Purpose:** Identity harness for the project-directory scan of `discover.py`: patches every I/O boundary and hashes four scenarios.
 **Reads:** nothing external; inline fixtures.
@@ -21,7 +21,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### model_controller_byte_identity.py (162 LOC)
+### model_controller_byte_identity.py (166 LOC)
 
 **Purpose:** Identity harness for the model controller: hashes a sandboxed persistence cycle and a headless UI subview dump.
 **Reads:** the real proxy rules file under the user's shared-rules directory (read-only seed), so a changed file changes the hash.
@@ -31,7 +31,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### panel_manager_byte_identity.py (172 LOC)
+### panel_manager_byte_identity.py (176 LOC)
 
 **Purpose:** Identity harness for the panel manager: hashes a synthetic multi-project rebuild and an in-place update, dumping every grid row and lookup map.
 **Reads:** nothing external; synthetic session data.
@@ -131,7 +131,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_run_all.py (37 LOC)
+### p5_run_all.py (45 LOC)
 
 **Purpose:** Runs all phase 5 strands in parallel subprocesses; each stops at its first failing check, siblings finish, the parent reports aborted strands.
 **Reads:** nothing.

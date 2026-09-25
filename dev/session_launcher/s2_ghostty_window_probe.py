@@ -30,20 +30,10 @@ def main() -> None:
     args = _parse_args()
     home_space = active_space()
     ids = space_ids()
-    home_idx = ids.index(home_space) + 1
+    home_idx = compute_home_idx(ids, home_space)
     targets = _target_sequence(home_idx, args.cycles)
     perms = permission_state()
-    results = []
-    for variant in _VARIANTS:
-        for cycle, target_idx in enumerate(targets, start=1):
-            result = _run_cycle(variant, cycle, target_idx, home_space, ids, args.method)
-            results.append(result)
-            print(_format_console(result), flush=True)
-            if not result['closed'] or not result['returned']:
-                print(f'ABORT: closed={result["closed"]} returned={result["returned"]} new_window={result["new_wid"]} as_id={result["as_id"]}')
-                path = write_report(__file__, _build_report(results, perms, home_idx, args.method))
-                print(f'report: {path}')
-                return
+    results = _run_cycles(targets, home_space, ids, args.method)
     path = write_report(__file__, _build_report(results, perms, home_idx, args.method))
     print(f'report: {path}')
 
@@ -57,9 +47,26 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def compute_home_idx(ids, home_space):
+    return ids.index(home_space) + 1
+
+
 def _target_sequence(home_idx: int, cycles: int) -> List[int]:
     others = [d for d in range(1, 6) if d != home_idx]
     return [others[i % len(others)] for i in range(cycles)]
+
+
+def _run_cycles(targets: List[int], home_space: int, ids: List[int], method: str) -> list:
+    results = []
+    for variant in _VARIANTS:
+        for cycle, target_idx in enumerate(targets, start=1):
+            result = _run_cycle(variant, cycle, target_idx, home_space, ids, method)
+            results.append(result)
+            print(_format_console(result), flush=True)
+            if not result['closed'] or not result['returned']:
+                print(f'ABORT: closed={result["closed"]} returned={result["returned"]} new_window={result["new_wid"]} as_id={result["as_id"]}')
+                return results
+    return results
 
 
 def _run_cycle(variant: str, cycle: int, target_idx: int, home_space: int, ids: List[int], method: str) -> dict:

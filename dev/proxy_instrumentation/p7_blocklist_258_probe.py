@@ -24,7 +24,7 @@ def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     newest_log = _newest_main_session_log()
     results, n_scanned, modified, removed_names = _check_newly_blocked_extension(newest_log)
-    results += _check_rw_extension(modified, removed_names)
+    results = update_results(results, modified, removed_names)
     _write_report(newest_log, n_scanned, results)
 
 
@@ -107,6 +107,11 @@ def _scan_corpus_for_live_tool_use(paths: list, target_names: set = NEWLY_BLOCKE
                             if name in target_names:
                                 hits.append((path.name, name))
     return len(paths), hits
+
+
+def update_results(results, modified, removed_names):
+    results += _check_rw_extension(modified, removed_names)
+    return results
 
 
 def _check_rw_extension(modified: dict, removed_names: list) -> list:

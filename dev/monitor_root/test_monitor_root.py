@@ -23,8 +23,7 @@ def main() -> None:
         run_case(sys.argv[2])
         return
     names = collect_cases()
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
-        results = list(pool.map(spawn_case, names))
+    results = collect_results(names)
     report(results)
 
 
@@ -37,6 +36,12 @@ def run_case(name: str) -> None:
 
 def collect_cases() -> list:
     return sorted(n[len('case_'):] for n in globals() if n.startswith('case_'))
+
+
+def collect_results(names):
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        results = list(pool.map(spawn_case, names))
+    return results
 
 
 def spawn_case(name: str) -> tuple:

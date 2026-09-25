@@ -19,11 +19,9 @@ CASES = ('selection_write_failure_logged', 'selection_read_only_missing_file', '
 def main() -> int:
     if len(sys.argv) > 2 and sys.argv[1] == '--case':
         return run_case(sys.argv[2])
-    with ThreadPoolExecutor(max_workers=len(CASES)) as pool:
-        results = list(pool.map(run_strand, CASES))
-    for case, code, tail in results:
-        print(f"{'PASS' if code == 0 else 'FAIL'} {case}" + ('' if code == 0 else f' :: {tail}'))
-    return 0 if all(code == 0 for _, code, _ in results) else 1
+    results = collect_results()
+    code = print_case_verdicts(results)
+    return compute_exit_code(code, results)
 
 
 # FUNCTIONS
@@ -34,10 +32,26 @@ def run_case(case: str) -> int:
     return 0
 
 
+def collect_results():
+    with ThreadPoolExecutor(max_workers=len(CASES)) as pool:
+        results = list(pool.map(run_strand, CASES))
+    return results
+
+
 def run_strand(case: str) -> tuple:
     proc = subprocess.run([sys.executable, __file__, '--case', case], capture_output=True, text=True, env={**os.environ, 'MCFIX_TREE': TREE})
     tail = (proc.stderr.strip().splitlines() or [''])[-1]
     return case, proc.returncode, tail
+
+
+def print_case_verdicts(results):
+    for case, code, tail in results:
+        print(f"{'PASS' if code == 0 else 'FAIL'} {case}" + ('' if code == 0 else f' :: {tail}'))
+    return code
+
+
+def compute_exit_code(code, results):
+    return 0 if all(code == 0 for _, code, _ in results) else 1
 
 
 def case_selection_write_failure_logged() -> None:

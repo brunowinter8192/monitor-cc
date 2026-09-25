@@ -20,9 +20,9 @@ _SKIPPED_LINES = 0
 
 def probe_sys_tool_original_chars_workflow() -> None:
     dual_log_dir = _resolve_dual_log_dir()
-    stems = sorted(set(p[:-len("_original.jsonl")] for p in glob.glob(str(dual_log_dir / "*_original.jsonl"))))
+    stems = compute_stems(dual_log_dir)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    report_path = REPORT_DIR / f"probe_sys_tool_original_chars_{date.today().isoformat()}.md"
+    report_path = compute_report_path()
     if not stems:
         report_path.write_text("# probe_sys_tool_original_chars\n\nno sessions found\n", encoding="utf-8")
         print(f"no sessions found; report written to {report_path}")
@@ -34,11 +34,11 @@ def probe_sys_tool_original_chars_workflow() -> None:
         f"under `{dual_log_dir}`.",
         "",
     ]
-    lines += _measure_whole_tool_coverage(stems)
-    lines += _measure_tool_content_stability(stems)
-    lines += _measure_system_stability(stems)
-    lines += _measure_recording_pattern(stems)
-    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    lines = update_lines(lines, stems)
+    lines = update_lines_2(lines, stems)
+    lines = update_lines_3(lines, stems)
+    lines = update_lines_4(lines, stems)
+    write_report_text(report_path, lines)
     print(f"report written to {report_path}")
     _report_skipped_lines()
 
@@ -58,6 +58,19 @@ def _resolve_dual_log_dir() -> Path:
         if from_worktree.exists():
             return from_worktree
     return direct
+
+
+def compute_stems(dual_log_dir):
+    return sorted(set(p[:-len("_original.jsonl")] for p in glob.glob(str(dual_log_dir / "*_original.jsonl"))))
+
+
+def compute_report_path():
+    return REPORT_DIR / f"probe_sys_tool_original_chars_{date.today().isoformat()}.md"
+
+
+def update_lines(lines, stems):
+    lines += _measure_whole_tool_coverage(stems)
+    return lines
 
 
 def _measure_whole_tool_coverage(stems: list) -> list:
@@ -136,6 +149,11 @@ def _infer_family(model: str) -> str:
     return "opus"
 
 
+def update_lines_2(lines, stems):
+    lines += _measure_tool_content_stability(stems)
+    return lines
+
+
 def _measure_tool_content_stability(stems: list) -> list:
     lines = ["## 2. Tool content stability across a session", ""]
     checked, mismatches = 0, 0
@@ -173,6 +191,11 @@ def _delta_hash(element) -> str:
     return hashlib.md5(json.dumps(element, sort_keys=True).encode("utf-8")).hexdigest()[:10]
 
 
+def update_lines_3(lines, stems):
+    lines += _measure_system_stability(stems)
+    return lines
+
+
 def _measure_system_stability(stems: list) -> list:
     lines = ["## 3. System block stability (indices 1-3, family-first vs. family-last)", ""]
     checked, flagged = 0, 0
@@ -205,6 +228,11 @@ def _measure_system_stability(stems: list) -> list:
     lines.append(f"**{checked} sessions checked** (family with >=2 requests); **{flagged} show a length or "
                  f"content mismatch** at indices 1-3 between the family's first and last request.")
     lines.append("")
+    return lines
+
+
+def update_lines_4(lines, stems):
+    lines += _measure_recording_pattern(stems)
     return lines
 
 
@@ -246,6 +274,10 @@ def _measure_recording_pattern(stems: list) -> list:
                  f"see `process-docs/dual_log_cli/`, not a new finding).")
     lines.append("")
     return lines
+
+
+def write_report_text(report_path, lines):
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _report_skipped_lines() -> None:

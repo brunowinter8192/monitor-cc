@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-
+# INFRASTRUCTURE
 import argparse
 import subprocess
 from pathlib import Path
 
 from PIL import Image
-
 
 PANE_TARGETS = [
     ("0.0", "main"),
@@ -41,12 +40,28 @@ COMBINED_WIDTH = 3200
 COMBINED_HEIGHT = 2500
 
 
-def run(cmd: list[str]) -> str:
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{result.stderr}")
-    return result.stdout.strip()
+# ORCHESTRATOR
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Screenshot all 10 Monitor_CC tmux panes (5 windows).")
+    parser.add_argument("--session", default=None, help="tmux session name (default: auto-detect monitor_cc_*)")
+    args = parser.parse_args()
+
+    session = compute_session(args)
+
+    png_paths = []
+    process_pane_targets(session, png_paths)
+
+    combined = compose_layout(png_paths)
+    combined.save(str(OUTPUT_PATH))
+
+    print(str(OUTPUT_PATH))
+
+
+# FUNCTIONS
+
+def compute_session(args):
+    return args.session if args.session else detect_session()
 
 
 def detect_session() -> str:
@@ -58,8 +73,19 @@ def detect_session() -> str:
     raise RuntimeError("No monitor_cc_* session found. Is the monitor running?")
 
 
-def get_pane_width(session: str, pane: str) -> str:
-    return run(["tmux", "display", "-p", "-t", f"{session}:{pane}", "#{pane_width}"])
+def run(cmd: list[str]) -> str:
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{result.stderr}")
+    return result.stdout.strip()
+
+
+def process_pane_targets(session, png_paths):
+    for idx, (pane, _label) in enumerate(PANE_TARGETS):
+        txt_path = capture_pane_text(session, pane, idx)
+        columns = get_pane_width(session, pane)
+        png_path = render_pane_png(txt_path, idx, columns)
+        png_paths.append(png_path)
 
 
 def capture_pane_text(session: str, pane: str, idx: int) -> str:
@@ -67,6 +93,10 @@ def capture_pane_text(session: str, pane: str, idx: int) -> str:
     content = run(["tmux", "capture-pane", "-p", "-e", "-t", f"{session}:{pane}"])
     Path(txt_path).write_text(content, encoding="utf-8")
     return txt_path
+
+
+def get_pane_width(session: str, pane: str) -> str:
+    return run(["tmux", "display", "-p", "-t", f"{session}:{pane}", "#{pane_width}"])
 
 
 def render_pane_png(txt_path: str, idx: int, columns: str) -> str:
@@ -92,27 +122,6 @@ def compose_layout(png_paths: list[str]) -> Image.Image:
         pane_img = pane_img.resize((slot_w, slot_h), Image.LANCZOS)
         combined.paste(pane_img, (slot_x, slot_y))
     return combined
-
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Screenshot all 10 Monitor_CC tmux panes (5 windows).")
-    parser.add_argument("--session", default=None, help="tmux session name (default: auto-detect monitor_cc_*)")
-    args = parser.parse_args()
-
-    session = args.session if args.session else detect_session()
-
-    png_paths = []
-    for idx, (pane, _label) in enumerate(PANE_TARGETS):
-        txt_path = capture_pane_text(session, pane, idx)
-        columns = get_pane_width(session, pane)
-        png_path = render_pane_png(txt_path, idx, columns)
-        png_paths.append(png_path)
-
-    combined = compose_layout(png_paths)
-    combined.save(str(OUTPUT_PATH))
-
-    print(str(OUTPUT_PATH))
 
 
 if __name__ == "__main__":

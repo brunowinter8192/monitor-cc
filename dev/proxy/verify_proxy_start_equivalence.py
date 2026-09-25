@@ -30,18 +30,18 @@ CASES = {
 
 def equivalence_workflow_case(name: str) -> None:
     case_dir = make_case_dir()
-    project = case_dir / 'proj'
+    project = compute_project(case_dir)
     project.mkdir()
     spec = resolve_spec(CASES[name], project)
-    try:
-        old = run_variant('old', spec, case_dir, project)
-        new = run_variant('new', spec, case_dir, project)
-    finally:
-        shutil.rmtree(case_dir, ignore_errors=True)
+    old, new = collect_old(spec, case_dir, project)
     assert_equal(name, old, drop_launcher_log_lines(new))
 
 
 # FUNCTIONS
+
+def compute_project(case_dir):
+    return case_dir / 'proj'
+
 
 def resolve_spec(spec: dict, project: Path) -> dict:
     resolved = dict(spec)
@@ -50,6 +50,15 @@ def resolve_spec(spec: dict, project: Path) -> dict:
     else:
         resolved['args'] = []
     return resolved
+
+
+def collect_old(spec, case_dir, project):
+    try:
+        old = run_variant('old', spec, case_dir, project)
+        new = run_variant('new', spec, case_dir, project)
+    finally:
+        shutil.rmtree(case_dir, ignore_errors=True)
+    return old, new
 
 
 def assert_equal(name: str, old: dict, new: dict) -> None:

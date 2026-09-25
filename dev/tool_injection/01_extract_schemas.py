@@ -58,6 +58,19 @@ def extract_schemas_workflow() -> None:
     total_written = 0
     all_samples = []
 
+    total_written = collect_total_written(total_written, all_samples)
+
+    print(f"\nTotal: {total_written} schemas written to {_OUTPUT_BASE}/")
+    print("\nMCP prefix patterns (verified against api_requests_opus_monitor_cc_1776092124.jsonl):")
+    print_items()
+
+    print("\n--- Sample schemas (Opus spotcheck) ---")
+    print_all_samples(all_samples)
+
+
+# FUNCTIONS
+
+def collect_total_written(total_written, all_samples):
     for plugin_name, server_path, server_project_dir, venv_dir in _SERVERS:
         venv_python = _ensure_venv(plugin_name, venv_dir, server_project_dir)
         schemas = _extract_plugin_schemas(plugin_name, server_path, server_project_dir, venv_python)
@@ -66,20 +79,8 @@ def extract_schemas_workflow() -> None:
         print(f"[{plugin_name}] {written} schemas written to {_OUTPUT_BASE / plugin_name}/")
         if schemas:
             all_samples.append((plugin_name, schemas[:3]))
+    return total_written
 
-    print(f"\nTotal: {total_written} schemas written to {_OUTPUT_BASE}/")
-    print("\nMCP prefix patterns (verified against api_requests_opus_monitor_cc_1776092124.jsonl):")
-    for plugin_name, prefix in _MCP_PREFIXES.items():
-        print(f"  {plugin_name}: {prefix}<tool_name>")
-
-    print("\n--- Sample schemas (Opus spotcheck) ---")
-    for plugin_name, samples in all_samples:
-        print(f"\n[{plugin_name}]")
-        for schema in samples:
-            print(json.dumps(schema, indent=2))
-
-
-# FUNCTIONS
 
 def _ensure_venv(plugin_name: str, venv_dir: str, server_project_dir: str) -> str:
     python_path = os.path.join(venv_dir, "bin", "python3")
@@ -116,6 +117,18 @@ def _write_schemas(plugin_name: str, schemas: list[dict]) -> int:
         out_path = out_dir / f"{tool_bare_name}.json"
         out_path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
     return len(schemas)
+
+
+def print_items():
+    for plugin_name, prefix in _MCP_PREFIXES.items():
+        print(f"  {plugin_name}: {prefix}<tool_name>")
+
+
+def print_all_samples(all_samples):
+    for plugin_name, samples in all_samples:
+        print(f"\n[{plugin_name}]")
+        for schema in samples:
+            print(json.dumps(schema, indent=2))
 
 
 if __name__ == "__main__":

@@ -21,8 +21,8 @@ def probe_b_workflow():
     args = _parse_args()
     Path(args.outfile).parent.mkdir(parents=True, exist_ok=True)
     atexit.register(_cleanup_all)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    install_signal_handler()
+    install_signal_handler_2()
     _setup_pipes(args.sessions)
     _run_probe(args.sessions, args.duration, args.outfile)
     print(f"[probe_b] done → {args.outfile}")
@@ -46,6 +46,14 @@ def _cleanup_all():
                 os.unlink(fpath)
     _active_pipes.clear()
     print("[probe_b] cleanup done")
+
+
+def install_signal_handler():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+
+def install_signal_handler_2():
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 
 def _setup_pipes(sessions):

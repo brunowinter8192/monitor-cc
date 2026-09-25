@@ -30,6 +30,17 @@ _FORMS = ('currentDate', 'gitStatus', 'other')
 
 # ORCHESTRATOR
 
+def main():
+    stats = scan_all()
+    report = render_report(stats)
+    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    OUT_FILE.write_text(report)
+    print(report)
+    print(f'Written to {OUT_FILE}')
+
+
+# FUNCTIONS
+
 def scan_all():
     files = sorted(LOGS_DIR.glob('*_original.jsonl'))
     seen = set()
@@ -57,8 +68,6 @@ def scan_all():
 
     return _build_stats(len(files), total_entries, buckets_old, buckets_new)
 
-
-# FUNCTIONS
 
 def _new_bucket_dict():
     return {bucket: {form: set() for form in _FORMS} for bucket in _BUCKET_NAMES}
@@ -124,6 +133,11 @@ def _build_stats(num_files, total_entries, buckets_old, buckets_new):
     }
 
 
+def render_report(stats):
+    lines = _render_tables_lines(stats) + _render_summary_lines(stats)
+    return '\n'.join(lines)
+
+
 def _render_tables_lines(stats):
     return [
         '# strip_sr.py — env-context `_ENV_CONTEXT_RE` replay (gitStatus widening fix)',
@@ -184,15 +198,5 @@ def _render_summary_lines(stats):
     ]
 
 
-def render_report(stats):
-    lines = _render_tables_lines(stats) + _render_summary_lines(stats)
-    return '\n'.join(lines)
-
-
 if __name__ == '__main__':
-    stats = scan_all()
-    report = render_report(stats)
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUT_FILE.write_text(report)
-    print(report)
-    print(f'Written to {OUT_FILE}')
+    main()

@@ -42,17 +42,14 @@ def main() -> None:
     lines.append('| case | pass | detail |')
     lines.append('|---|---|---|')
     all_pass = True
-    for r in results:
-        all_pass = all_pass and r['ok']
-        lines.append(f"| {r['label']} | {'PASS' if r['ok'] else 'FAIL'} | {r['detail']} |")
+    all_pass = collect_all_pass(results, all_pass, lines)
     lines.append('')
-    lines.append(f"## Overall: {'ALL PASS' if all_pass else 'FAILURES PRESENT'}")
+    run_append(lines, all_pass)
     REPORT_PATH.write_text('\n'.join(lines))
     print(f'Report written: {REPORT_PATH}')
-    for r in results:
-        print(('PASS' if r['ok'] else 'FAIL'), r['label'], '-', r['detail'])
-    print('ALL PASS' if all_pass else 'FAILURES PRESENT')
-    sys.exit(0 if all_pass else 1)
+    print_results(results)
+    print_all_pass(all_pass)
+    exit_with_status(all_pass)
 
 
 # FUNCTIONS
@@ -108,6 +105,30 @@ def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected
         'detail': f"orig_prefix_match={original_content.startswith(expected_prefix)}, "
                   f"result={result_content!r}, changed_idxs contains {msg_idx}={msg_idx in changed_idxs}",
     }
+
+
+def collect_all_pass(results, all_pass, lines):
+    for r in results:
+        all_pass = all_pass and r['ok']
+        lines.append(f"| {r['label']} | {'PASS' if r['ok'] else 'FAIL'} | {r['detail']} |")
+    return all_pass
+
+
+def run_append(lines, all_pass):
+    lines.append(f"## Overall: {'ALL PASS' if all_pass else 'FAILURES PRESENT'}")
+
+
+def print_results(results):
+    for r in results:
+        print(('PASS' if r['ok'] else 'FAIL'), r['label'], '-', r['detail'])
+
+
+def print_all_pass(all_pass):
+    print('ALL PASS' if all_pass else 'FAILURES PRESENT')
+
+
+def exit_with_status(all_pass):
+    sys.exit(0 if all_pass else 1)
 
 
 if __name__ == '__main__':

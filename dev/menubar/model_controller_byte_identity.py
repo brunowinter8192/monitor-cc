@@ -27,11 +27,7 @@ def main():
     mc = _import_model_controller()
     ms = _import_model_selection()
     print(f'PERSISTENCE_HASH: {_hash_persistence(ms)}')
-    try:
-        print(f'UI_HASH: {_hash_ui(mc)}')
-    except Exception as exc:
-        print(f'UI_HASH: SKIPPED (headless AppKit view creation failed: {exc})')
-        _smoke_import_and_open(mc)
+    guarded_print(mc)
 
 
 # FUNCTIONS
@@ -84,6 +80,14 @@ def _hash_persistence(ms) -> str:
         digest.update(sel_path.read_bytes())
         digest.update(rules_path.read_bytes())
     return digest.hexdigest()
+
+
+def guarded_print(mc):
+    try:
+        print(f'UI_HASH: {_hash_ui(mc)}')
+    except Exception as exc:
+        print(f'UI_HASH: SKIPPED (headless AppKit view creation failed: {exc})')
+        _smoke_import_and_open(mc)
 
 
 def _hash_ui(mc) -> str:

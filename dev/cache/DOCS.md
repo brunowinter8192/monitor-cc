@@ -11,7 +11,7 @@ Streams every original dual-log file of the main checkout, finds Bash tool-use b
 
 ## Modules
 
-### extract_bash_file_mods.py (111 LOC)
+### extract_bash_file_mods.py (115 LOC)
 
 **Purpose:** Extracts and persists every Bash tool call matching a file-content-modification form, verbatim, with enough identity to find it again.
 **Reads:** every `*_original.jsonl` under the main checkout's dual-log directory (this worktree carries no logs).

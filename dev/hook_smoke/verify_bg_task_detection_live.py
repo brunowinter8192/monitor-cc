@@ -21,8 +21,8 @@ _POLL_INTERVAL_SECS = 0.05
 def verify_bg_task_detection_live_workflow() -> None:
     detected, cleared = _run_live_roundtrip()
     print(f"detected_while_open={detected} (want True), cleared_after_close={cleared} (want True)")
-    print("VERDICT: " + ("PASS" if detected and cleared else "FAIL"))
-    sys.exit(0 if detected and cleared else 1)
+    print_verdict(detected, cleared)
+    exit_with_status(detected, cleared)
 
 
 # FUNCTIONS
@@ -72,6 +72,14 @@ def _refreshed_active_bg(encoded_dir: str, session_id: str) -> bool:
     proc_cache._bg_task_last_refresh = 0.0
     proc_cache._refresh_bg_task_cache(time.time())
     return proc_cache._has_active_bg(encoded_dir, session_id)
+
+
+def print_verdict(detected, cleared):
+    print("VERDICT: " + ("PASS" if detected and cleared else "FAIL"))
+
+
+def exit_with_status(detected, cleared):
+    sys.exit(0 if detected and cleared else 1)
 
 
 if __name__ == "__main__":

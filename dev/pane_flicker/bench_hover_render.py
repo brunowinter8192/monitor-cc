@@ -20,17 +20,7 @@ _FULL = 10_000
 def main():
     args = _parse_args()
     sim = Sim(args.root)
-    try:
-        sim.refresh({'forwarded': _FULL, 'response': _FULL, 'stripped': _FULL, 'injected': _FULL, 'original': 2})
-        if args.scale > 1:
-            sim.scale_up(args.scale)
-        result = {'scale': args.scale, 'root': args.root, 'mode': args.mode, 'entries': len(sim.entries), 'turns': len(sim.turns), 'hover_rows': len(_HOVER_ROWS)}
-        result['collapsed'] = _measure(sim, args.mode)
-        for key in _EXPANDED_KEYS:
-            sim.toggle(key)
-        result['expanded'] = _measure(sim, args.mode)
-    finally:
-        sim.cleanup()
+    result = collect_result(sim, args)
     Path(args.out).write_text(json.dumps(result, indent=1), encoding='utf-8')
 
 
@@ -43,6 +33,21 @@ def _parse_args():
     parser.add_argument('--scale', type=int, default=1)
     parser.add_argument('--out', required=True)
     return parser.parse_args()
+
+
+def collect_result(sim, args):
+    try:
+        sim.refresh({'forwarded': _FULL, 'response': _FULL, 'stripped': _FULL, 'injected': _FULL, 'original': 2})
+        if args.scale > 1:
+            sim.scale_up(args.scale)
+        result = {'scale': args.scale, 'root': args.root, 'mode': args.mode, 'entries': len(sim.entries), 'turns': len(sim.turns), 'hover_rows': len(_HOVER_ROWS)}
+        result['collapsed'] = _measure(sim, args.mode)
+        for key in _EXPANDED_KEYS:
+            sim.toggle(key)
+        result['expanded'] = _measure(sim, args.mode)
+    finally:
+        sim.cleanup()
+    return result
 
 
 def _measure(sim, mode: str) -> dict:

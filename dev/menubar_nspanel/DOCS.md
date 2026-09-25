@@ -31,7 +31,7 @@ The probe polls live session data and toggles a real NSPanel through a real glob
 
 ---
 
-### menubar_debug.py (57 LOC)
+### menubar_debug.py (64 LOC)
 
 **Purpose:** Boots out the real menubar launchd service, runs the menubar in the foreground with diagnostics, optionally re-bootstraps the service on exit.
 **Reads:** nothing.

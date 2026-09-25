@@ -51,18 +51,23 @@ def main():
     findings = {}
     raw_dup_counter = defaultdict(int)
     total_requests = 0
-    for fname in CORPUS_FILES:
-        path = LOG_DIR / fname
-        print(f'scanning {fname} ...')
-        total_requests += _scan_file(path, findings, raw_dup_counter)
+    total_requests = collect_total_requests(total_requests, findings, raw_dup_counter)
     report = _build_report(findings, total_requests, raw_dup_counter)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = REPORT_DIR / 'launch_ack_wordings_20260729.md'
+    out_path = compute_out_path()
     out_path.write_text(report, encoding='utf-8')
     print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned')
 
 
 # FUNCTIONS
+
+def collect_total_requests(total_requests, findings, raw_dup_counter):
+    for fname in CORPUS_FILES:
+        path = LOG_DIR / fname
+        print(f'scanning {fname} ...')
+        total_requests += _scan_file(path, findings, raw_dup_counter)
+    return total_requests
+
 
 def _scan_file(path, findings, raw_dup_counter):
     session = path.name
@@ -287,6 +292,10 @@ def _report_additional_wordings_note():
     )
     lines.append('')
     return lines
+
+
+def compute_out_path():
+    return REPORT_DIR / 'launch_ack_wordings_20260729.md'
 
 
 if __name__ == '__main__':

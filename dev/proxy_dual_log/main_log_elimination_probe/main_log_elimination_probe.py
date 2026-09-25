@@ -7,7 +7,28 @@ from main_log_elimination_io import (
 from main_log_elimination_questions import _run_question_a, _run_question_b
 from main_log_elimination_report import _write_report
 
+
 # ORCHESTRATOR
+
+def main():
+    args = _cli()
+    main_log_elimination_probe_workflow(args.session)
+
+
+# FUNCTIONS
+
+def _cli() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Probe: can _forwarded quartet replace the main log?"
+    )
+    parser.add_argument(
+        "session",
+        nargs="?",
+        default="opus_monitor_cc_1780602018",
+        help="Log session suffix, e.g. opus_monitor_cc_1780602018",
+    )
+    return parser.parse_args()
+
 
 def main_log_elimination_probe_workflow(session: str) -> None:
     root = _resolve_root()
@@ -25,21 +46,6 @@ def main_log_elimination_probe_workflow(session: str) -> None:
     report_path = _write_report(session, paths, a_results, b_results)
     print(report_path)
 
-# FUNCTIONS
 
-def _cli() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Probe: can _forwarded quartet replace the main log?"
-    )
-    parser.add_argument(
-        "session",
-        nargs="?",
-        default="opus_monitor_cc_1780602018",
-        help="Log session suffix, e.g. opus_monitor_cc_1780602018",
-    )
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = _cli()
-    main_log_elimination_probe_workflow(args.session)
+if __name__ == '__main__':
+    main()

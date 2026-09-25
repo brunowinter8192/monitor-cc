@@ -9,7 +9,6 @@ from attribution_coverage_report import _build_report
 _AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 
-
 _PROJECT_PARTS = _PROJECT_ROOT.parts
 _MAIN_CHECKOUT_ROOT = Path(*_PROJECT_PARTS[:-3]) if len(_PROJECT_PARTS) >= 3 and _PROJECT_PARTS[-3] == '.claude' and _PROJECT_PARTS[-2] == 'worktrees' else _PROJECT_ROOT
 
@@ -36,9 +35,15 @@ def attribution_coverage_workflow() -> None:
 
     _REPORT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d")
-    report_path = _REPORT_DIR / f"{ts}.md"
+    report_path = compute_report_path(ts)
     report_path.write_text(report, encoding="utf-8")
     print(report_path)
+
+
+# FUNCTIONS
+
+def compute_report_path(ts):
+    return _REPORT_DIR / f"{ts}.md"
 
 
 if __name__ == "__main__":

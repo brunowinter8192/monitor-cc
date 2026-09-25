@@ -28,7 +28,7 @@ _BUFFER_LEN     = _POLL_HZ * _BUFFER_SECONDS
 def probe_workflow() -> None:
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     run_ts = time.strftime('%Y%m%d_%H%M%S')
-    log_path = _REPORTS_DIR / f'space_jump_{run_ts}.log'
+    log_path = compute_log_path(run_ts)
     logf = open(log_path, 'a', encoding='utf-8')
     print(f'Log: {log_path}')
     logf.write(f'=== Space-Jump Probe started {_timestamp()} '
@@ -39,13 +39,38 @@ def probe_workflow() -> None:
     buffer: Deque[Dict] = deque(maxlen=_BUFFER_LEN)
     state = {'running': True}
 
-    def _shutdown(signum, frame):
-        state['running'] = False
+    _shutdown = make_shutdown_handler(state)
 
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
 
     prev_space = _active_space(cid)
+    guarded_write(state, cid, buffer, prev_space, logf)
+
+
+# FUNCTIONS
+
+def compute_log_path(run_ts):
+    return _REPORTS_DIR / f'space_jump_{run_ts}.log'
+
+
+def _timestamp() -> str:
+    t = time.time()
+    ms = int((t - int(t)) * 1000)
+    return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(t)) + f'.{ms:03d}'
+
+
+def make_shutdown_handler(state):
+    def _shutdown(signum, frame):
+        state['running'] = False
+    return _shutdown
+
+
+def _active_space(cid: int) -> int:
+    return _CG.CGSGetActiveSpace(cid)
+
+
+def guarded_write(state, cid, buffer, prev_space, logf):
     try:
         while state['running']:
             loop_start = time.monotonic()
@@ -61,18 +86,6 @@ def probe_workflow() -> None:
         logf.write(f'=== Space-Jump Probe stopped {_timestamp()} ===\n')
         logf.flush()
         logf.close()
-
-
-# FUNCTIONS
-
-def _timestamp() -> str:
-    t = time.time()
-    ms = int((t - int(t)) * 1000)
-    return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(t)) + f'.{ms:03d}'
-
-
-def _active_space(cid: int) -> int:
-    return _CG.CGSGetActiveSpace(cid)
 
 
 def _take_sample(cid: int) -> Dict:

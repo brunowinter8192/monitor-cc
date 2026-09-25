@@ -9,8 +9,8 @@ STRAND_FLAG = '--strand'
 STRAND_TIMEOUT_SECONDS = 300
 STDERR_TAIL_CHARS = 1500
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def strand_workflow(script_globals: dict, script_path: str, strand_names: list, report_path=None, title: str = 'strands') -> int:
     requested = parse_strand_argument(sys.argv)
@@ -20,11 +20,10 @@ def strand_workflow(script_globals: dict, script_path: str, strand_names: list, 
     print_verdicts(results)
     if report_path is not None:
         write_report(Path(report_path), title, results)
-    return 0 if all(r['returncode'] == 0 for r in results) else 1
+    return compute_exit_code(results)
 
 
 # FUNCTIONS
-
 
 def parse_strand_argument(argv: list):
     if STRAND_FLAG not in argv:
@@ -82,6 +81,10 @@ def write_report(report_path: Path, title: str, results: list) -> None:
         lines.extend(r['stdout'].rstrip().split('\n') if r['stdout'].strip() else ['(no output)'])
         lines.append('')
     report_path.write_text('\n'.join(lines), encoding='utf-8')
+
+
+def compute_exit_code(results):
+    return 0 if all(r['returncode'] == 0 for r in results) else 1
 
 
 def check(label: str, condition) -> bool:

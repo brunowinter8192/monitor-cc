@@ -27,7 +27,7 @@ def main() -> None:
     if args.label:
         isolate_home()
         _JSON_DIR.mkdir(parents=True, exist_ok=True)
-        path = _JSON_DIR / f'p2_panel_snapshot_{args.label}.json'
+        path = compute_path(args)
         path.write_text(json.dumps(_take_snapshot(), indent=1, sort_keys=True), encoding='utf-8')
         print(f'snapshot: {path}')
         return
@@ -45,6 +45,10 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument('--label')
     return p.parse_args()
+
+
+def compute_path(args):
+    return _JSON_DIR / f'p2_panel_snapshot_{args.label}.json'
 
 
 def _take_snapshot() -> dict:

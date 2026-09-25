@@ -40,7 +40,7 @@ _MENLO = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
 # ORCHESTRATOR
 
 def main():
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    install_signal_handler()
 
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
@@ -51,8 +51,8 @@ def main():
     screen = NSScreen.mainScreen()
     if screen is not None:
         sf = screen.visibleFrame()
-        px = sf.origin.x + sf.size.width / 2.0 - PANEL_W / 2.0
-        py = sf.origin.y + sf.size.height - PANEL_H - 40
+        px = compute_px(sf)
+        py = compute_py(sf)
         panel.setFrame_display_(NSMakeRect(px, py, PANEL_W, PANEL_H), False)
 
     _print_startup_report()
@@ -62,6 +62,10 @@ def main():
 
 
 # FUNCTIONS
+
+def install_signal_handler():
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+
 
 class _ClickController(NSObject):
     def rowClicked_(self, sender):
@@ -147,6 +151,14 @@ def _cell_btn(text: str, color=None) -> NSButton:
     btn.setButtonType_(7)
     btn.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(text, attrs))
     return btn
+
+
+def compute_px(sf):
+    return sf.origin.x + sf.size.width / 2.0 - PANEL_W / 2.0
+
+
+def compute_py(sf):
+    return sf.origin.y + sf.size.height - PANEL_H - 40
 
 
 def _print_startup_report() -> None:

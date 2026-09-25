@@ -11,7 +11,7 @@ A dual-log quartet plus the flat main proxy log of one session are loaded. Quest
 
 ## Modules
 
-### main_log_elimination_probe.py (45 LOC)
+### main_log_elimination_probe.py (51 LOC)
 
 **Purpose:** CLI entry point of the feasibility probe.
 **Reads:** a dual-log quartet plus the main proxy log of one session.

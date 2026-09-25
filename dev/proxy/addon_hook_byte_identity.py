@@ -25,16 +25,7 @@ _SKIPPED_LINES = 0
 def main():
     orig_path = _source_log()
     payloads = _load_payloads(orig_path)
-    with tempfile.TemporaryDirectory() as tmp_root:
-        os.environ['MONITOR_CC_ROOT'] = tmp_root
-        os.environ['PROXY_LOG_ID'] = _LOG_ID
-        os.environ['PROXY_PROJECT_PATH'] = ''
-        proxy_addon_cls = _import_proxy_addon()
-        stderr_buf = io.StringIO()
-        with redirect_stderr(stderr_buf):
-            _drive_addon(payloads, proxy_addon_cls)
-        stderr_text = stderr_buf.getvalue().replace(tmp_root, '<TMP_ROOT>')
-        digest = _hash_dual_logs(tmp_root, stderr_text)
+    digest = collect_digest(payloads)
     print(f'source: {orig_path.name}')
     print(f'payloads: {len(payloads)}')
     _report_skipped_lines()
@@ -76,6 +67,20 @@ def _load_payloads(orig_path: Path) -> list:
 def _note_skipped_line() -> None:
     global _SKIPPED_LINES
     _SKIPPED_LINES += 1
+
+
+def collect_digest(payloads):
+    with tempfile.TemporaryDirectory() as tmp_root:
+        os.environ['MONITOR_CC_ROOT'] = tmp_root
+        os.environ['PROXY_LOG_ID'] = _LOG_ID
+        os.environ['PROXY_PROJECT_PATH'] = ''
+        proxy_addon_cls = _import_proxy_addon()
+        stderr_buf = io.StringIO()
+        with redirect_stderr(stderr_buf):
+            _drive_addon(payloads, proxy_addon_cls)
+        stderr_text = stderr_buf.getvalue().replace(tmp_root, '<TMP_ROOT>')
+        digest = _hash_dual_logs(tmp_root, stderr_text)
+    return digest
 
 
 def _import_proxy_addon():

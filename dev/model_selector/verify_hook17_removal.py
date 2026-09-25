@@ -27,7 +27,7 @@ def verify_hook17_removal_workflow() -> None:
                 "on a synthetic dict, real regeneration mechanism traced and confirmed active.")
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_report_text(lines)
     print("\n".join(lines))
 
 
@@ -86,6 +86,10 @@ def _append_registration_trace(lines) -> None:
     lines.append("   machine (checked both at the worktree and main-repo level). Once this change")
     lines.append("   reaches a real merge, that post-merge hook fires hook_setup.py automatically —")
     lines.append("   no manual step, no hand-edit of the real settings.json needed.")
+
+
+def write_report_text(lines):
+    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

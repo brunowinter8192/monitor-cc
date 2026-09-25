@@ -26,6 +26,24 @@ def main() -> None:
     lines = ['# Trailing-message shape probe (total_tokens tag)', '']
     overall = Counter()
 
+    print_stems(overall, lines)
+
+    print(f'\nOVERALL distinct shapes across all 3 sessions: {len(overall)}')
+    lines.append('## Overall (union across sessions)')
+    lines.append('')
+    lines.append(f'- distinct shapes across all 3 sessions: {len(overall)}')
+    lines.append('')
+    lines.append('| total count | shape (repr, truncated to 200 chars) |')
+    lines.append('|---|---|')
+    process_most_common(overall, lines)
+
+    REPORT_PATH.write_text('\n'.join(lines))
+    print(f'\nReport written: {REPORT_PATH}')
+
+
+# FUNCTIONS
+
+def print_stems(overall, lines):
     for stem in STEMS:
         path = LOG_DIR / f'{stem}_stripped.jsonl'
         texts = _all_stripped_texts(path)
@@ -53,24 +71,6 @@ def main() -> None:
             lines.append(f'| {count} | `{display}` |')
         lines.append('')
 
-    print(f'\nOVERALL distinct shapes across all 3 sessions: {len(overall)}')
-    lines.append('## Overall (union across sessions)')
-    lines.append('')
-    lines.append(f'- distinct shapes across all 3 sessions: {len(overall)}')
-    lines.append('')
-    lines.append('| total count | shape (repr, truncated to 200 chars) |')
-    lines.append('|---|---|')
-    for shape, count in overall.most_common():
-        display = repr(shape)
-        if len(display) > 200:
-            display = display[:200] + '...'
-        lines.append(f'| {count} | `{display}` |')
-
-    REPORT_PATH.write_text('\n'.join(lines))
-    print(f'\nReport written: {REPORT_PATH}')
-
-
-# FUNCTIONS
 
 def _all_stripped_texts(path: Path) -> list:
     texts = []
@@ -95,6 +95,14 @@ def _all_stripped_texts(path: Path) -> list:
 
 def _normalize(text: str) -> str:
     return _ENDS_WITH_TAG_RE.sub('<total_tokens>N tokens left</total_tokens>', text)
+
+
+def process_most_common(overall, lines):
+    for shape, count in overall.most_common():
+        display = repr(shape)
+        if len(display) > 200:
+            display = display[:200] + '...'
+        lines.append(f'| {count} | `{display}` |')
 
 
 if __name__ == '__main__':

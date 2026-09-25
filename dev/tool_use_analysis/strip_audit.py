@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import argparse
 import os
 import sys
@@ -20,16 +18,10 @@ from strip_audit_report import _build_header, _build_rule_catalog, _build_delta_
 
 # ORCHESTRATOR
 
-def strip_audit_workflow(jsonl_path, output_path):
-    entries, n_haiku, n_skipped = _load_entries(jsonl_path)
-    lines = []
-    lines += _build_header(jsonl_path, len(entries), n_haiku, n_skipped)
-    lines.append(legend_markdown())
-    lines += _build_rule_catalog()
-    lines += _build_delta_log(entries)
-    lines += _build_summary(entries)
-    output_path.write_text('\n'.join(lines))
-    print(output_path)
+def main():
+    jsonl_path, output_path = _parse_args()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    strip_audit_workflow(jsonl_path, output_path)
 
 
 # FUNCTIONS
@@ -65,7 +57,17 @@ def _parse_args():
     return jsonl_path, output_path
 
 
+def strip_audit_workflow(jsonl_path, output_path):
+    entries, n_haiku, n_skipped = _load_entries(jsonl_path)
+    lines = []
+    lines += _build_header(jsonl_path, len(entries), n_haiku, n_skipped)
+    lines.append(legend_markdown())
+    lines += _build_rule_catalog()
+    lines += _build_delta_log(entries)
+    lines += _build_summary(entries)
+    output_path.write_text('\n'.join(lines))
+    print(output_path)
+
+
 if __name__ == '__main__':
-    jsonl_path, output_path = _parse_args()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    strip_audit_workflow(jsonl_path, output_path)
+    main()

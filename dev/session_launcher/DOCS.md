@@ -41,7 +41,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### s1_switch_probe.py (151 LOC)
+### s1_switch_probe.py (159 LOC)
 
 **Purpose:** Measures which techniques switch the active desktop (CGEventPost Ctrl+N variants, System Events, Ctrl+Arrow, synthetic swipe) and how fast.
 **Reads:** active space via `space_lib`.
@@ -51,7 +51,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### s2_ghostty_window_probe.py (193 LOC)
+### s2_ghostty_window_probe.py (200 LOC)
 
 **Purpose:** After switching to a desktop, opens a Ghostty window via AppleScript and records which space it lands on, then closes it and returns home.
 **Reads:** Ghostty window lists (CG and AppleScript), `CGSCopySpacesForWindows`.
@@ -61,7 +61,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t1_autojump_removal.py (143 LOC)
+### t1_autojump_removal.py (151 LOC)
 
 **Purpose:** Regression guard that no Auto-Jump identifier remains in `src/` or `dev/`, an old settings file still loads and save paths carry no remnants.
 **Reads:** all `.py` under `src/` and `dev/`; tempdir settings files.
@@ -71,7 +71,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t2_launch_tab.py (97 LOC)
+### t2_launch_tab.py (106 LOC)
 
 **Purpose:** Runner for eleven parallel subprocess cases (each with its own isolated HOME) that owns the case table and writes the PASS/FAIL report.
 **Reads:** the case functions of the three `t2_*_cases.py` modules.
@@ -121,7 +121,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t3_tab_click.py (315 LOC)
+### t3_tab_click.py (324 LOC)
 
 **Purpose:** Six parallel subprocess cases for the clickable tab header: pieces, structure, pixel equivalence with the old header, wiring, click routing and re-centering.
 **Reads:** real `src/menubar` panel controllers built with a fake app; nothing is shown on screen and no real mouse event is sent.
@@ -131,7 +131,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### p2_panel_snapshot.py (216 LOC)
+### p2_panel_snapshot.py (220 LOC)
 
 **Purpose:** Before/after proof for the shared side-panel refactor — snapshots the constructed Sessions/RAG/Models/Launch panels (style, level, collection behavior, frames, full subview tree) and compares two snapshots.
 **Reads:** real `src/menubar` controllers built with a fake app and fake status items under an isolated HOME; `/tmp/session_launcher_p2_panel_snapshot/p2_panel_snapshot_before.json` and `..._after.json` in compare mode.

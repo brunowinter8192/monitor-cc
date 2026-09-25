@@ -11,7 +11,7 @@ The probe reads live tmux and process state and prints a per-pane table plus a d
 
 ## Modules
 
-### probe_monitor_load.py (128 LOC)
+### probe_monitor_load.py (139 LOC)
 
 **Purpose:** Snapshots every pane of every live monitor tmux session (mode, PID, age, CPU) and saves a dated Markdown report.
 **Reads:** live tmux and process state; no files.

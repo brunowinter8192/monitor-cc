@@ -17,7 +17,7 @@ Markdown report.
 
 ## Modules
 
-### green_overlay_probe.py (214 LOC)
+### green_overlay_probe.py (227 LOC)
 
 **Purpose:** CLI entry point reproducing a green-overlay false-injection bug and validating a
 char-level diff fix against real and synthetic cases.

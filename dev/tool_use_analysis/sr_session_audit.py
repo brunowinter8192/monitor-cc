@@ -31,15 +31,40 @@ _NOISE_CONTAINS = (
 # ORCHESTRATOR
 
 def sr_session_audit_workflow(project_filter, since_date, output_path, top_n):
-    scan = {
-        'n_files': 0, 'n_entries': 0, 'n_parse_errors': 0,
-        'n_total_srs': 0, 'n_code_noise': 0, 'n_data_noise': 0,
-        'since': since_date, 'project_filter': project_filter or 'none', 'top': top_n,
-    }
-    known = {tid: _empty_stat() for tid in _SR_TEMPLATES}
+    scan = compute_scan(since_date, project_filter, top_n)
+    known = compute_known()
     preserved = _empty_stat()
     unknown = {}
 
+    process_iter_sessions(project_filter, scan, since_date, preserved, known, unknown)
+
+    scan['n_classified'] = (
+        compute_value(known, preserved, unknown)
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text('\n'.join(_build_report(known, preserved, unknown, scan)), encoding='utf-8')
+    print(output_path)
+
+
+# FUNCTIONS
+
+def compute_scan(since_date, project_filter, top_n):
+    return ({
+            'n_files': 0, 'n_entries': 0, 'n_parse_errors': 0,
+            'n_total_srs': 0, 'n_code_noise': 0, 'n_data_noise': 0,
+            'since': since_date, 'project_filter': project_filter or 'none', 'top': top_n,
+        })
+
+
+def compute_known():
+    return {tid: _empty_stat() for tid in _SR_TEMPLATES}
+
+
+def _empty_stat():
+    return {'total': 0, 'text': 0, 'tool_result': 0, 'first': None, 'last': None, 'versions': set()}
+
+
+def process_iter_sessions(project_filter, scan, since_date, preserved, known, unknown):
     for proj_name, session_path in _iter_sessions(project_filter):
         scan['n_files'] += 1
         for entry_date, version, content in _iter_user_messages(session_path, since_date, scan):
@@ -63,20 +88,6 @@ def sr_session_audit_workflow(project_filter, since_date, output_path, top_n):
                         unknown[key]['projects'] = set()
                     _add(unknown[key], layer, version, entry_date)
                     unknown[key]['projects'].add(proj_name)
-
-    scan['n_classified'] = (
-        sum(s['total'] for s in known.values()) + preserved['total']
-        + sum(s['total'] for s in unknown.values())
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text('\n'.join(_build_report(known, preserved, unknown, scan)), encoding='utf-8')
-    print(output_path)
-
-
-# FUNCTIONS
-
-def _empty_stat():
-    return {'total': 0, 'text': 0, 'tool_result': 0, 'first': None, 'last': None, 'versions': set()}
 
 
 def _iter_sessions(project_filter):
@@ -187,6 +198,11 @@ def _add(stat, layer, version, entry_date):
     if stat['last'] is None or entry_date > stat['last']:
         stat['last'] = entry_date
     stat['versions'].add(version)
+
+
+def compute_value(known, preserved, unknown):
+    return (sum(s['total'] for s in known.values()) + preserved['total']
+            + sum(s['total'] for s in unknown.values()))
 
 
 def _build_report(known, preserved, unknown, scan):

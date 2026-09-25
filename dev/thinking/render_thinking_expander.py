@@ -26,6 +26,17 @@ WIDTH_CASES = (180, 60)
 
 # ORCHESTRATOR
 
+def main():
+    arg_path = compute_arg_path()
+    render_thinking_expander_workflow(arg_path)
+
+
+# FUNCTIONS
+
+def compute_arg_path():
+    return Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_LOG
+
+
 def render_thinking_expander_workflow(log_path: Path) -> None:
     if not log_path.exists():
         print(f"Log not found: {log_path}")
@@ -35,8 +46,6 @@ def render_thinking_expander_workflow(log_path: Path) -> None:
     identity_rows = check_non_thinking_byte_identical(entries)
     write_report(log_path, collapsed_rows, expanded_rows, identity_rows)
 
-
-# FUNCTIONS
 
 def parse_all_entries(log_path: Path) -> list:
     entries, _pos = mod_fwd_parser._parse_forwarded_log(log_path, 0, {}, keep_last=None)
@@ -237,5 +246,4 @@ def _write_report_file(lines: list) -> Path:
 
 
 if __name__ == '__main__':
-    arg_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_LOG
-    render_thinking_expander_workflow(arg_path)
+    main()

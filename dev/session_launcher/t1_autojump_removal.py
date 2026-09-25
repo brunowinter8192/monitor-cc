@@ -30,11 +30,11 @@ def main() -> None:
         ('FocusController keeps status tracking, has no tick', _check_focus_controller),
         ('PanelSettings has two fields, controller has no toggle action', _check_app_surface),
     ]
-    results = [_run_check(name, fn) for name, fn in checks]
+    results = compute_results(checks)
     path = write_report(__file__, _build_report(results))
     print(_build_report(results))
     print(f'report: {path}')
-    if any(not ok for _, ok, _ in results):
+    if check_condition(results):
         sys.exit(1)
 
 
@@ -119,6 +119,10 @@ def _check_app_surface() -> str:
     return f'PanelSettings fields {fields}'
 
 
+def compute_results(checks):
+    return [_run_check(name, fn) for name, fn in checks]
+
+
 def _run_check(name: str, fn):
     try:
         detail = fn()
@@ -137,6 +141,10 @@ def _build_report(results) -> str:
     lines.append('')
     lines.append(f'RESULT: {"PASS" if all(ok for _, ok, _ in results) else "FAIL"}')
     return '\n'.join(lines)
+
+
+def check_condition(results):
+    return any(not ok for _, ok, _ in results)
 
 
 if __name__ == '__main__':

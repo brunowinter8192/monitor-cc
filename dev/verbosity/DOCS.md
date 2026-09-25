@@ -11,7 +11,7 @@ The extractor reads real session JSONLs, reconstructs Opus turns and writes numb
 
 ## Modules
 
-### extract_turns.py (42 LOC)
+### extract_turns.py (71 LOC)
 
 **Purpose:** Reconstructs Opus turns from session JSONLs, splits them into numbered exchanges and keeps turns with many exchanges.
 **Reads:** session JSONLs under the user's Claude projects directory (hardcoded path).

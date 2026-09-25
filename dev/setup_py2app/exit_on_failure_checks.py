@@ -16,15 +16,18 @@ _WANTED = ('_prune_bundle_bloat', '_find_signing_identity', '_install_bundle')
 # ORCHESTRATOR
 
 def main():
-    results = _prune_checks() + _install_checks()
-    for name, ok in results:
-        print(('PASS: ' if ok else 'FAIL: ') + name)
-    failed = [n for n, ok in results if not ok]
-    print(f'{len(results) - len(failed)}/{len(results)} passed')
-    sys.exit(1 if failed else 0)
+    results = compute_results()
+    ok = collect_ok(results)
+    failed = compute_failed(results, ok)
+    print_passed(results, failed)
+    exit_with_status(failed)
 
 
 # FUNCTIONS
+
+def compute_results():
+    return _prune_checks() + _install_checks()
+
 
 def _prune_checks() -> list:
     ns = _load_functions(lambda *a, **k: None)
@@ -112,6 +115,24 @@ class _PathProxy:
 
     def home(self) -> Path:
         return self._home
+
+
+def collect_ok(results):
+    for name, ok in results:
+        print(('PASS: ' if ok else 'FAIL: ') + name)
+    return ok
+
+
+def compute_failed(results, ok):
+    return [n for n, ok in results if not ok]
+
+
+def print_passed(results, failed):
+    print(f'{len(results) - len(failed)}/{len(results)} passed')
+
+
+def exit_with_status(failed):
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == '__main__':

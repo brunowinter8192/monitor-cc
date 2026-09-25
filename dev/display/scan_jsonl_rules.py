@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+# INFRASTRUCTURE
 import json
 import re
 from pathlib import Path
@@ -10,18 +10,17 @@ TARGET_PROJECT = None
 SYSTEM_REMINDER_PATTERN = re.compile(r'<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 CONTENTS_OF_PATTERN = re.compile(r'Contents of ([^\n]+)')
 
-
 _SKIPPED_LINES = 0
 
 
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
+# ORCHESTRATOR
+
+def main():
+    jsonl_path = find_latest_jsonl(TARGET_PROJECT)
+    scan_jsonl(jsonl_path)
 
 
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
-
+# FUNCTIONS
 
 def find_latest_jsonl(project_name: str = None) -> Path:
     if project_name:
@@ -37,6 +36,18 @@ def find_latest_jsonl(project_name: str = None) -> Path:
     if not jsonl_files:
         raise FileNotFoundError(f"No JSONL files in {project_dir}")
     return jsonl_files[0]
+
+
+def scan_jsonl(filepath: Path) -> None:
+    print(f"Scanning: {filepath.name} ({filepath.stat().st_size} bytes)")
+    print(f"Project: {filepath.parent.name}")
+    print("=" * 80)
+
+    rule_locations = _collect_rule_locations(filepath)
+
+    _print_rule_locations(rule_locations)
+    _print_parseable_names(rule_locations)
+    _report_skipped_lines()
 
 
 def _collect_rule_locations(filepath: Path) -> list:
@@ -71,6 +82,11 @@ def _collect_rule_locations(filepath: Path) -> list:
     return rule_locations
 
 
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
 def _print_rule_locations(rule_locations: list) -> None:
     print(f"\nFound {len(rule_locations)} unique 'Contents of' entries:\n")
 
@@ -97,18 +113,9 @@ def _print_parseable_names(rule_locations: list) -> None:
             print(f"  [?] {raw}")
 
 
-def scan_jsonl(filepath: Path) -> None:
-    print(f"Scanning: {filepath.name} ({filepath.stat().st_size} bytes)")
-    print(f"Project: {filepath.parent.name}")
-    print("=" * 80)
-
-    rule_locations = _collect_rule_locations(filepath)
-
-    _print_rule_locations(rule_locations)
-    _print_parseable_names(rule_locations)
-    _report_skipped_lines()
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 if __name__ == '__main__':
-    jsonl_path = find_latest_jsonl(TARGET_PROJECT)
-    scan_jsonl(jsonl_path)
+    main()

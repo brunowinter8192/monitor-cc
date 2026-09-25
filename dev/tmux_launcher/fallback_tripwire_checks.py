@@ -27,19 +27,11 @@ def main():
     tmux_launcher = importlib.import_module('src.tmux_launcher')
     janitor = importlib.import_module('src.monitor_janitor')
     results = []
-    try:
-        _kill_server()
-        results += _checks_without_server(tmux_launcher, janitor, workdir)
-        _new_session(_SESSION)
-        results += _checks_with_session(tmux_launcher, janitor, workdir)
-    finally:
-        _kill_server()
-        shutil.rmtree(workdir, ignore_errors=True)
-    failed = [name for name, ok in results if not ok]
-    for name, ok in results:
-        print(('PASS: ' if ok else 'FAIL: ') + name)
-    print(f'{len(results) - len(failed)}/{len(results)} passed')
-    sys.exit(1 if failed else 0)
+    results = collect_results(results, tmux_launcher, janitor, workdir)
+    failed = compute_failed(results)
+    print_results(results)
+    print_passed(results, failed)
+    exit_with_status(failed)
 
 
 # FUNCTIONS
@@ -49,6 +41,18 @@ def _install_shim(workdir: Path) -> None:
     shim.write_text(f'#!/bin/sh\nexec {_REAL_TMUX} -L {_SOCKET} "$@"\n')
     shim.chmod(0o755)
     os.environ['PATH'] = f'{workdir}:{os.environ["PATH"]}'
+
+
+def collect_results(results, tmux_launcher, janitor, workdir):
+    try:
+        _kill_server()
+        results += _checks_without_server(tmux_launcher, janitor, workdir)
+        _new_session(_SESSION)
+        results += _checks_with_session(tmux_launcher, janitor, workdir)
+    finally:
+        _kill_server()
+        shutil.rmtree(workdir, ignore_errors=True)
+    return results
 
 
 def _kill_server() -> None:
@@ -104,6 +108,23 @@ def _checks_with_session(tl, janitor, workdir: Path) -> list:
         ('expired real session is killed and reported', entry['killed'] is True),
         ('KILLED line written for the real session', f'{_SESSION} age=' in _sweep_log(workdir) and 'KILLED' in _sweep_log(workdir)),
     ]
+
+
+def compute_failed(results):
+    return [name for name, ok in results if not ok]
+
+
+def print_results(results):
+    for name, ok in results:
+        print(('PASS: ' if ok else 'FAIL: ') + name)
+
+
+def print_passed(results, failed):
+    print(f'{len(results) - len(failed)}/{len(results)} passed')
+
+
+def exit_with_status(failed):
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == '__main__':

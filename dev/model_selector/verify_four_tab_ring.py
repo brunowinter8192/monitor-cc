@@ -29,16 +29,14 @@ def verify_four_tab_ring_workflow() -> None:
 
     app = _FakeApp(panel_manager, rag_controller, model_controller, launch_controller)
 
-    with patch('src.menubar.panel_lifecycle.NSOperationQueue', _SyncOperationQueue):
-        _verify_forward_ring(app, panel_lifecycle, lines)
-        _verify_reverse_ring(app, panel_lifecycle, lines)
+    run_with_patch(app, panel_lifecycle, lines)
 
     lines.append("")
     lines.append("RESULT: PASS — four-tab ring (Sessions/RAG/Models/Launch) correct in both directions, "
                 "against the real _open_*_panel/_close_*_panel/_deferred_close_open functions.")
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_report_text(lines)
     print("\n".join(lines))
 
 
@@ -99,6 +97,12 @@ class _FakeSessions:
     def bg_by_project(self): return {}
 
 
+def run_with_patch(app, panel_lifecycle, lines):
+    with patch('src.menubar.panel_lifecycle.NSOperationQueue', _SyncOperationQueue):
+        _verify_forward_ring(app, panel_lifecycle, lines)
+        _verify_reverse_ring(app, panel_lifecycle, lines)
+
+
 class _SyncOperationQueue:
     @staticmethod
     def mainQueue():
@@ -134,6 +138,10 @@ def _verify_reverse_ring(app, panel_lifecycle, lines) -> None:
         app.hotkey.left()
         assert _only_open(app, dst), f"Cmd+<- from {src} did not land on {dst}"
         lines.append(f"Cmd+<- from {src}: now on {dst}")
+
+
+def write_report_text(lines):
+    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

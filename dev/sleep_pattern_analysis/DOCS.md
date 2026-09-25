@@ -11,7 +11,7 @@ The entry script collects block events from session JSONLs, resolves each to its
 
 ## Modules
 
-### analyze.py (43 LOC)
+### analyze.py (45 LOC)
 
 **Purpose:** Entry script: parses CLI args and orchestrates event collection, sleep parsing and report generation.
 **Reads:** nothing directly; delegates to the event collector.

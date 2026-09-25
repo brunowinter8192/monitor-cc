@@ -7,7 +7,6 @@ from pathlib import Path
 _AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 
-
 _PROJECT_PARTS = _PROJECT_ROOT.parts
 _MAIN_CHECKOUT_ROOT = Path(*_PROJECT_PARTS[:-3]) if len(_PROJECT_PARTS) >= 3 and _PROJECT_PARTS[-3] == '.claude' and _PROJECT_PARTS[-2] == 'worktrees' else _PROJECT_ROOT
 
@@ -31,8 +30,8 @@ REPORT_DIR = Path("dev/proxy_dual_log/span_inline_probe_reports")
 # ORCHESTRATOR
 
 def span_inline_probe_workflow() -> None:
-    orig_path = LOG_DIR / f"{LOG_ID}_original.jsonl"
-    fwd_path = LOG_DIR / f"{LOG_ID}_forwarded.jsonl"
+    orig_path = compute_orig_path()
+    fwd_path = compute_fwd_path()
 
     orig_entries = _load_jsonl(orig_path)
     fwd_entries = _load_jsonl(fwd_path)
@@ -42,14 +41,32 @@ def span_inline_probe_workflow() -> None:
     b1 = _find_sys2_block(matched, _diff_text)
     b2 = _find_sys3_block(matched, _diff_text)
     b3 = _find_msg_wordlevel_block(matched, _diff_text)
-    blocks = [b for b in [b1, b2, b3] if b is not None]
+    blocks = compute_blocks(b1, b2, b3)
 
     lines = _build_report(blocks, LOG_ID)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
-    report_path = REPORT_DIR / f"{now.strftime('%Y%m%d')}.md"
+    report_path = compute_report_path(now)
     report_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"Report: {report_path}")
+
+
+# FUNCTIONS
+
+def compute_orig_path():
+    return LOG_DIR / f"{LOG_ID}_original.jsonl"
+
+
+def compute_fwd_path():
+    return LOG_DIR / f"{LOG_ID}_forwarded.jsonl"
+
+
+def compute_blocks(b1, b2, b3):
+    return [b for b in [b1, b2, b3] if b is not None]
+
+
+def compute_report_path(now):
+    return REPORT_DIR / f"{now.strftime('%Y%m%d')}.md"
 
 
 if __name__ == "__main__":

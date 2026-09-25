@@ -43,15 +43,14 @@ def main() -> None:
         _run_case_in_child(args.case)
         return
     names = sorted(_CASES)
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
-        results = list(pool.map(_spawn_case, names))
+    results = collect_results(names)
     text = _build_report(results)
     _REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    path = _REPORT_DIR / f'{Path(__file__).stem}.md'
+    path = compute_path()
     path.write_text(text, encoding='utf-8')
     print(text)
     print(f'report: {path}')
-    if any(not r['ok'] for r in results):
+    if check_condition(results):
         sys.exit(1)
 
 
@@ -72,6 +71,12 @@ def _run_case_in_child(name: str) -> None:
         print(json.dumps({'ok': False, 'detail': f'ASSERT {exc}'}))
     except Exception as exc:
         print(json.dumps({'ok': False, 'detail': f'ERROR {exc!r}'}))
+
+
+def collect_results(names):
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        results = list(pool.map(_spawn_case, names))
+    return results
 
 
 def _spawn_case(name: str) -> dict:
@@ -95,6 +100,14 @@ def _build_report(results) -> str:
     lines.append('')
     lines.append(f'RESULT: {"PASS" if all(r["ok"] for r in results) else "FAIL"}')
     return '\n'.join(lines)
+
+
+def compute_path():
+    return _REPORT_DIR / f'{Path(__file__).stem}.md'
+
+
+def check_condition(results):
+    return any(not r['ok'] for r in results)
 
 
 if __name__ == '__main__':

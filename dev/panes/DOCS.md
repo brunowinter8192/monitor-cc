@@ -31,7 +31,7 @@ The identity harness renders over a fixed real or synthetic input, hashes the re
 
 ---
 
-### test_display_tripwires.py (121 LOC)
+### test_display_tripwires.py (135 LOC)
 
 **Purpose:** Five parallel strands: janitor partition and atomic write, janitor failure logged, synthetic-user fallback noted once per turn, timestamp states, rate-limit header states.
 **Reads:** temp files only; an env var selects the source tree so the file can run against an older tree.

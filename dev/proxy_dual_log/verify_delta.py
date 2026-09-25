@@ -31,6 +31,37 @@ Or with named flags:
 
 # ORCHESTRATOR
 
+def main():
+    parser = argparse.ArgumentParser(
+        description="Verify forwarded delta log self-consistency against original log.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_MODULE_DOC,
+    )
+    parser.add_argument("original", nargs="?", help="Path to _original.jsonl")
+    parser.add_argument("forwarded", nargs="?", help="Path to _forwarded.jsonl")
+    parser.add_argument("--original", dest="original_flag", help="Path to _original.jsonl (named)")
+    parser.add_argument("--forwarded", dest="forwarded_flag", help="Path to _forwarded.jsonl (named)")
+    args = parser.parse_args()
+
+    orig = compute_orig(args)
+    fwd = compute_fwd(args)
+    if not orig or not fwd:
+        parser.print_help()
+        sys.exit(1)
+
+    sys.exit(verify_delta_workflow(Path(orig), Path(fwd)))
+
+
+# FUNCTIONS
+
+def compute_orig(args):
+    return args.original_flag or args.original
+
+
+def compute_fwd(args):
+    return args.forwarded_flag or args.forwarded
+
+
 def verify_delta_workflow(original_path: Path, forwarded_path: Path) -> int:
     original_entries = _load_jsonl(original_path)
     forwarded_entries = _load_jsonl(forwarded_path)
@@ -42,8 +73,6 @@ def verify_delta_workflow(original_path: Path, forwarded_path: Path) -> int:
     hard_fails = [r for r in results if r["hard_fail"]]
     return 1 if hard_fails else 0
 
-
-# FUNCTIONS
 
 def _load_jsonl(path: Path) -> list:
     entries = []
@@ -260,22 +289,5 @@ def _print_summary(results: list) -> None:
     print()
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Verify forwarded delta log self-consistency against original log.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=_MODULE_DOC,
-    )
-    parser.add_argument("original", nargs="?", help="Path to _original.jsonl")
-    parser.add_argument("forwarded", nargs="?", help="Path to _forwarded.jsonl")
-    parser.add_argument("--original", dest="original_flag", help="Path to _original.jsonl (named)")
-    parser.add_argument("--forwarded", dest="forwarded_flag", help="Path to _forwarded.jsonl (named)")
-    args = parser.parse_args()
-
-    orig = args.original_flag or args.original
-    fwd = args.forwarded_flag or args.forwarded
-    if not orig or not fwd:
-        parser.print_help()
-        sys.exit(1)
-
-    sys.exit(verify_delta_workflow(Path(orig), Path(fwd)))
+if __name__ == '__main__':
+    main()

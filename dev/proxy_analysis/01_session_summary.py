@@ -19,6 +19,15 @@ _SKIPPED_LINES = 0
 
 # ORCHESTRATOR
 
+def main():
+    parser = argparse.ArgumentParser(description="Proxy log session summary")
+    parser.add_argument("session_id", nargs="?", help="Session ID (auto-discovers most recent if omitted)")
+    args = parser.parse_args()
+    session_summary_workflow(args.session_id)
+
+
+# FUNCTIONS
+
 def session_summary_workflow(session_id: str | None) -> None:
     logs_dir = _find_logs_dir()
     log_file = _resolve_log_file(logs_dir, session_id)
@@ -32,8 +41,6 @@ def session_summary_workflow(session_id: str | None) -> None:
     _print_timeline(entries)
     _report_skipped_lines()
 
-
-# FUNCTIONS
 
 def _find_logs_dir() -> Path:
     if root := os.environ.get("MONITOR_CC_ROOT"):
@@ -240,8 +247,5 @@ def _report_skipped_lines() -> None:
     print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Proxy log session summary")
-    parser.add_argument("session_id", nargs="?", help="Session ID (auto-discovers most recent if omitted)")
-    args = parser.parse_args()
-    session_summary_workflow(args.session_id)
+if __name__ == '__main__':
+    main()

@@ -42,13 +42,12 @@ def main() -> None:
         _run_case_in_child(args.case)
         return
     names = sorted(_CASES)
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
-        results = list(pool.map(_spawn_case, names))
+    results = collect_results(names)
     text = _build_report(results)
     path = write_report(__file__, text)
     print(text)
     print(f'report: {path}')
-    if any(not r['ok'] for r in results):
+    if check_condition(results):
         sys.exit(1)
 
 
@@ -71,6 +70,12 @@ def _run_case_in_child(name: str) -> None:
         print(json.dumps({'ok': False, 'detail': f'ERROR {exc!r}'}))
 
 
+def collect_results(names):
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        results = list(pool.map(_spawn_case, names))
+    return results
+
+
 def _spawn_case(name: str) -> dict:
     r = subprocess.run([sys.executable, '-m', 'dev.session_launcher.t2_launch_tab', '--case', name],
                        capture_output=True, text=True, cwd=str(_ROOT), timeout=120)
@@ -91,6 +96,10 @@ def _build_report(results) -> str:
     lines.append('')
     lines.append(f'RESULT: {"PASS" if all(r["ok"] for r in results) else "FAIL"}')
     return '\n'.join(lines)
+
+
+def check_condition(results):
+    return any(not r['ok'] for r in results)
 
 
 if __name__ == '__main__':

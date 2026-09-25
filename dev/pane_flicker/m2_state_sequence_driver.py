@@ -22,15 +22,18 @@ _FAR_FUTURE = 10 ** 10
 # ORCHESTRATOR
 
 def sequence_workflow() -> None:
-    os.get_terminal_size = lambda *a: os.terminal_size((_TERM['cols'], _TERM['lines']))
+    os.get_terminal_size = compute_value()
     pane = make_adapter(PANE)
     records = []
     run_sequence(pane, records)
-    with open(OUT_PATH, 'w', encoding='utf-8') as f:
-        json.dump(records, f)
+    run_with_open(records)
 
 
 # FUNCTIONS
+
+def compute_value():
+    return lambda *a: os.terminal_size((_TERM['cols'], _TERM['lines']))
+
 
 def make_adapter(pane_name: str) -> SimpleNamespace:
     cache_turns = importlib.import_module(f'{_ROOT_PKG}.panes.cache_turns')
@@ -284,6 +287,11 @@ def grow_last_turn(turns: list) -> list:
     calls.append(extra)
     last['api_calls'] = calls
     return turns[:-1] + [last]
+
+
+def run_with_open(records):
+    with open(OUT_PATH, 'w', encoding='utf-8') as f:
+        json.dump(records, f)
 
 
 if __name__ == '__main__':

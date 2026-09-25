@@ -21,7 +21,7 @@ The proof script loads recent real session JSONLs, runs the cache-turn extractio
 
 ---
 
-### test_jsonl_reader.py (109 LOC)
+### test_jsonl_reader.py (123 LOC)
 
 **Purpose:** Five parallel strands proving the shared JSONL reader: partial tail kept, interior corruption raises, downstream readers follow it.
 **Reads:** temp files only; an env var selects the source tree so the file can run against an older tree.

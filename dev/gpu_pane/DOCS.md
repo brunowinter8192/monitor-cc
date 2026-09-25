@@ -11,7 +11,7 @@ Synthetic fixtures are built in-script, the real pane renderer is driven at two 
 
 ## Modules
 
-### render_byte_identity.py (107 LOC)
+### render_byte_identity.py (115 LOC)
 
 **Purpose:** Hashes the rendered pane output and its button regions across many synthetic scenarios so two runs before and after a change can be compared.
 **Reads:** nothing external; synthetic fixtures built in-script.

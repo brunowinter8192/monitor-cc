@@ -27,7 +27,7 @@ _ACC_KEYS = ('system', 'tools', 'messages', 'fields', '_has_content_by_flow_id',
 # ORCHESTRATOR
 
 def main() -> None:
-    stems = sys.argv[1:] or list(DEFAULT_STEMS)
+    stems = compute_stems()
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     lines = ['# No-prepend probe — the expanded body is the request payload delta only', '']
     lines.append('The out-of-window flow-extra prepend was removed on 2026-08-30. These invariants')
@@ -35,6 +35,21 @@ def main() -> None:
     lines.append('counts are reported rather than asserted so log growth cannot break them.')
     lines.append('')
     all_pass = True
+    lines, all_pass = collect_lines(stems, lines, all_pass)
+    run_append(lines, all_pass)
+    write_report_text(lines)
+    print(f'\nReport written: {REPORT_PATH}')
+    print_all_pass(all_pass)
+    exit_with_status(all_pass)
+
+
+# FUNCTIONS
+
+def compute_stems():
+    return sys.argv[1:] or list(DEFAULT_STEMS)
+
+
+def collect_lines(stems, lines, all_pass):
     for stem in stems:
         if not (LOG_DIR / f'{stem}_forwarded.jsonl').exists():
             print(f'SKIP {stem} — no recorded forwarded log')
@@ -50,14 +65,8 @@ def main() -> None:
             lines.append(f'| {label} | {"PASS" if ok else "FAIL"} | {detail} |')
             print(('PASS' if ok else 'FAIL'), label, '-', detail)
         lines.append('')
-    lines.append(f'## Overall: {"ALL PASS" if all_pass else "FAILURES PRESENT"}')
-    REPORT_PATH.write_text('\n'.join(lines) + '\n')
-    print(f'\nReport written: {REPORT_PATH}')
-    print('ALL PASS' if all_pass else 'FAILURES PRESENT')
-    sys.exit(0 if all_pass else 1)
+    return lines, all_pass
 
-
-# FUNCTIONS
 
 def _check_session(stem: str) -> tuple:
     entries = _load_session(stem)
@@ -244,6 +253,22 @@ def _check_lag_correction(entries: list, rendered: dict) -> tuple:
             if DIM_YELLOW_BG not in body or DIM_GREEN_BG not in body:
                 unrendered.append((idx, i))
     return bad_text, unrendered, total
+
+
+def run_append(lines, all_pass):
+    lines.append(f'## Overall: {"ALL PASS" if all_pass else "FAILURES PRESENT"}')
+
+
+def write_report_text(lines):
+    REPORT_PATH.write_text('\n'.join(lines) + '\n')
+
+
+def print_all_pass(all_pass):
+    print('ALL PASS' if all_pass else 'FAILURES PRESENT')
+
+
+def exit_with_status(all_pass):
+    sys.exit(0 if all_pass else 1)
 
 
 if __name__ == '__main__':

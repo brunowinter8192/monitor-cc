@@ -224,7 +224,7 @@ steps that make up the probe's run.
 
 ---
 
-### 05_window_detection_probe.py (41 LOC)
+### 05_window_detection_probe.py (48 LOC)
 
 **Purpose:** Orchestrates the tmux/OSC-2/CotEditor window-detection trials; entry point only.
 **Reads:** —. **Writes:** —.

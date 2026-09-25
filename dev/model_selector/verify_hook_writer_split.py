@@ -16,6 +16,16 @@ REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook_writer_
 
 def verify_hook_writer_split_workflow() -> None:
     lines = ["# hook_writer.py split verification", ""]
+    run_with_temporarydirectory(lines)
+
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    write_report_text(lines)
+    print("\n".join(lines))
+
+
+# FUNCTIONS
+
+def run_with_temporarydirectory(lines):
     with tempfile.TemporaryDirectory() as tmp:
         hook_writer = _load_hook_writer_with_tmp_app_support(Path(tmp))
         session_id = "test-session-model-selector"
@@ -41,12 +51,6 @@ def verify_hook_writer_split_workflow() -> None:
         lines.append("")
         lines.append("RESULT: PASS — hook-state half intact, no queue side effects.")
 
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("\n".join(lines))
-
-
-# FUNCTIONS
 
 def _load_hook_writer_with_tmp_app_support(tmp_dir: Path):
     spec_path = REPO_ROOT / "src" / "menubar" / "hook_writer.py"
@@ -71,6 +75,10 @@ def _run_payload(hook_writer, payload: dict) -> None:
 
 def _without_clock(state: dict) -> dict:
     return {sid: {k: v for k, v in entry.items() if k != 'updated_ts'} for sid, entry in state.items()}
+
+
+def write_report_text(lines):
+    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

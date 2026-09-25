@@ -15,17 +15,28 @@ VALID_CONFIG = '{"main": "opus-cfg"}'
 
 
 # ORCHESTRATOR
+
 def fallback_workflow_case(spec: dict, variants: list) -> dict:
     case_dir = make_case_dir()
+    project = create_project_dir(case_dir)
+    return run_variants_and_cleanup(spec, variants, case_dir, project)
+
+
+# FUNCTIONS
+
+def create_project_dir(case_dir):
     project = case_dir / 'proj'
     project.mkdir()
+    return project
+
+
+def run_variants_and_cleanup(spec, variants, case_dir, project):
     try:
         return {v: run_variant(v, spec, case_dir, project) for v in variants}
     finally:
         shutil.rmtree(case_dir, ignore_errors=True)
 
 
-# FUNCTIONS
 def launcher_lines(result: dict) -> list:
     return [l for l in result['stderr'].splitlines() if l.startswith(LOG_PREFIX)]
 

@@ -18,6 +18,31 @@ MAX_PRECEDING_CHARS = 400
 
 # ORCHESTRATOR
 
+def main():
+    args = parse_args()
+    extract_zeros_workflow(args.session_jsonl, args.output)
+
+
+# FUNCTIONS
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Extract zero-result Grep/Glob/Read calls from Claude Code session JSONL files.'
+    )
+    parser.add_argument(
+        'session_jsonl',
+        nargs='+',
+        help='Path(s) to session JSONL file(s) under ~/.claude/projects/'
+    )
+    parser.add_argument(
+        '--output',
+        default=None,
+        metavar='FILE',
+        help='Output markdown file path (default: stdout)'
+    )
+    return parser.parse_args()
+
+
 def extract_zeros_workflow(session_paths, output_path):
     all_zeros = []
     session_summaries = []
@@ -36,8 +61,6 @@ def extract_zeros_workflow(session_paths, output_path):
     report = build_report(session_paths, session_summaries, all_zeros)
     write_output(report, output_path)
 
-
-# FUNCTIONS
 
 def load_events(path):
     events = []
@@ -319,24 +342,5 @@ def write_output(content, path):
         print(content)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Extract zero-result Grep/Glob/Read calls from Claude Code session JSONL files.'
-    )
-    parser.add_argument(
-        'session_jsonl',
-        nargs='+',
-        help='Path(s) to session JSONL file(s) under ~/.claude/projects/'
-    )
-    parser.add_argument(
-        '--output',
-        default=None,
-        metavar='FILE',
-        help='Output markdown file path (default: stdout)'
-    )
-    return parser.parse_args()
-
-
 if __name__ == '__main__':
-    args = parse_args()
-    extract_zeros_workflow(args.session_jsonl, args.output)
+    main()

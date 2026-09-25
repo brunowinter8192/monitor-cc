@@ -21,7 +21,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m1_frame_e2e_test.py (371 LOC)
+### m1_frame_e2e_test.py (380 LOC)
 
 **Purpose:** Old-versus-new end-to-end check of the frame write path for all four panes, with raw-byte assertions and cursor-hide checks.
 **Reads:** `git archive 0ce370df`; tmux capture output.
@@ -31,7 +31,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m1_strand_abort_test.py (43 LOC)
+### m1_strand_abort_test.py (52 LOC)
 
 **Purpose:** Shows that a strand of the end-to-end test that cannot start is recorded as aborted, its tmux server killed, and the verdict fails.
 **Reads:** nothing; provokes the condition with a nonexistent tree root and a 2 s deadline.
@@ -41,7 +41,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m2_state_sequence_driver.py (290 LOC)
+### m2_state_sequence_driver.py (298 LOC)
 
 **Purpose:** Replays a scripted state sequence on the tokens or worker-tokens pane and dumps output, line map, copy rows and navigation per step.
 **Reads:** argv (root, pane, session JSONL, output path).
@@ -51,7 +51,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### m2_byte_identity_test.py (97 LOC)
+### m2_byte_identity_test.py (114 LOC)
 
 **Purpose:** Runs the sequence driver against old and new trees for two real sessions and both panes; asserts identical output and no turn recomputation on hover.
 **Reads:** `git archive 0ce370df`; the two frozen session excerpts `fixtures/many_calls.jsonl` and `fixtures/many_turns.jsonl` (each cut at a line boundary to about 2 MB from a real session; the excerpt of the many-turns session keeps 7 turns, the many-calls excerpt keeps a 91-call turn).
@@ -81,7 +81,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### scenario_run.py (240 LOC)
+### scenario_run.py (245 LOC)
 
 **Purpose:** Runs one M3 scenario per process and writes per-step hashes as JSON.
 **Reads:** argv (root, scenario, out).
@@ -91,7 +91,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### run_scenarios.py (81 LOC)
+### run_scenarios.py (110 LOC)
 
 **Purpose:** Runs every scenario against the old tree (extracted first) and the working tree in parallel; checks byte identity and render counts.
 **Reads:** the per-process JSON files.
@@ -101,7 +101,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### bench_hover_render.py (83 LOC)
+### bench_hover_render.py (88 LOC)
 
 **Purpose:** Times hover renders in block or pane mode (pane mode needs a tty), with optional entry replication.
 **Reads:** argv; the real log via `scenario_lib.py`.
@@ -111,7 +111,7 @@ M1: the driver runs a real pane loop with seeded state inside a private tmux ser
 
 ---
 
-### observe_timestamp_order.py (80 LOC)
+### observe_timestamp_order.py (90 LOC)
 
 **Purpose:** Reports whether entry timestamps of forwarded logs or turn timestamps of transcripts were ever unsorted.
 **Reads:** all `*_forwarded.jsonl` under the main `src/logs` and all transcripts under `~/.claude/projects`.

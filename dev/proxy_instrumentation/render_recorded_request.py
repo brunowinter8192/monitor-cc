@@ -21,7 +21,7 @@ _MSG_HEADER_RE = __import__('re').compile(r'^ {4}\[(\s*\d+)\]')
 # ORCHESTRATOR
 
 def main() -> None:
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log
+    _parse_forwarded_log = load_imports()
     target_line = _verify_target_line_index()
     entries, _ = _parse_forwarded_log(FWD_PATH, 0, {})
 
@@ -29,26 +29,28 @@ def main() -> None:
     target, prev_same, prev_idx = _build_entries_and_spans(entries, target_line)
     print(f"message_count={target.get('message_count')} prev_same message_count={prev_same.get('message_count')} (prev_idx={prev_idx})")
     lines, keys = _render(target_line, target, prev_same)
-    assert len(lines) == len(keys)
+    verify_assertion(lines, keys)
     print(f"total rendered lines: {len(lines)}")
-    for i, ln in enumerate(lines):
-        print(f"{i:4d}| {ln!r}")
+    print_lines(lines)
     print("\n--- msg 276 slice ---")
-    for ln in _slice_message(lines, 276):
-        print(repr(ln))
+    print_slice_message(lines)
 
-    control_line = target_line - 1
+    control_line = compute_control_line(target_line)
     print(f"\n=== Control: message 274, introduced by request at dual-log line {control_line} ===")
     control, control_prev, control_prev_idx = _build_entries_and_spans(entries, control_line)
     print(f"message_count={control.get('message_count')} prev_same message_count={control_prev.get('message_count')} (prev_idx={control_prev_idx})")
     c_lines, c_keys = _render(control_line, control, control_prev)
-    assert len(c_lines) == len(c_keys)
+    verify_assertion_2(c_lines, c_keys)
     print("--- msg 274 slice ---")
-    for ln in _slice_message(c_lines, 274):
-        print(repr(ln))
+    print_slice_message_2(c_lines)
 
 
 # FUNCTIONS
+
+def load_imports():
+    from src.proxy_display.forwarded_parser import _parse_forwarded_log
+    return _parse_forwarded_log
+
 
 def _verify_target_line_index() -> int:
     with open(STRIPPED_PATH, encoding='utf-8') as f:
@@ -95,6 +97,20 @@ def _render(entry_idx: int, target: dict, prev_same: dict) -> tuple:
     return render_messages(entry_idx, target, prev_same, [], {}, pane_width=200)
 
 
+def verify_assertion(lines, keys):
+    assert len(lines) == len(keys)
+
+
+def print_lines(lines):
+    for i, ln in enumerate(lines):
+        print(f"{i:4d}| {ln!r}")
+
+
+def print_slice_message(lines):
+    for ln in _slice_message(lines, 276):
+        print(repr(ln))
+
+
 def _slice_message(lines: list, msg_idx: int) -> list:
     out = []
     capturing = False
@@ -111,6 +127,19 @@ def _slice_message(lines: list, msg_idx: int) -> list:
         if capturing:
             out.append(ln)
     return out
+
+
+def compute_control_line(target_line):
+    return target_line - 1
+
+
+def verify_assertion_2(c_lines, c_keys):
+    assert len(c_lines) == len(c_keys)
+
+
+def print_slice_message_2(c_lines):
+    for ln in _slice_message(c_lines, 274):
+        print(repr(ln))
 
 
 if __name__ == '__main__':

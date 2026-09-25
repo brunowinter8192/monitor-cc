@@ -17,8 +17,7 @@ def green_overlay_probe_workflow():
     REPORT_DIR.mkdir(exist_ok=True)
     lines = []
 
-    def emit(*parts):
-        lines.append("".join(str(p) for p in parts) + "\n")
+    emit = run_step(lines)
 
     emit("# Green Overlay Probe Report (Level 2)")
     emit()
@@ -30,14 +29,19 @@ def green_overlay_probe_workflow():
     _emit_regression_spotcheck(emit)
     _emit_summary(emit)
 
-    report_path = REPORT_DIR / "green_overlay_probe.md"
-    with open(report_path, "w") as fout:
-        fout.writelines(lines)
+    report_path = compute_report_path()
+    run_with_open(report_path, lines)
 
     print(f"Report written to: {report_path}")
 
 
 # FUNCTIONS
+
+def run_step(lines):
+    def emit(*parts):
+        lines.append("".join(str(p) for p in parts) + "\n")
+    return emit
+
 
 def _emit_gating_soundness(emit) -> None:
     emit()
@@ -208,6 +212,15 @@ def _emit_summary(emit) -> None:
     emit()
     emit("### Whitespace fidelity")
     emit("- Word-level `' '.join(...)` collapses multi-space/tab; char-level/gated preserve exactly.")
+
+
+def compute_report_path():
+    return REPORT_DIR / "green_overlay_probe.md"
+
+
+def run_with_open(report_path, lines):
+    with open(report_path, "w") as fout:
+        fout.writelines(lines)
 
 
 if __name__ == "__main__":

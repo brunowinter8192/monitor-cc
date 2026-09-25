@@ -34,7 +34,7 @@ top/bottom placement) in a temporary session.
 
 ---
 
-### scan_jsonl_rules.py (114 LOC)
+### scan_jsonl_rules.py (121 LOC)
 
 **Purpose:** Scans a Claude Code session JSONL for "Contents of" lines to check whether loaded
 rules data is present, and in what message shape.
@@ -45,7 +45,7 @@ rules data is present, and in what message shape.
 
 ---
 
-### screenshot_panes.py (119 LOC)
+### screenshot_panes.py (128 LOC)
 
 **Purpose:** Captures all tmux panes of a running Monitor_CC session and combines them into one
 PNG for visual review.

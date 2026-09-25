@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import argparse
 import sys
@@ -13,6 +12,23 @@ from extract_patterns_report import _build_report
 
 
 # ORCHESTRATOR
+
+def main():
+    args = _parse_args()
+    run(args.proxy_jsonl, args.output)
+
+
+# FUNCTIONS
+
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        description='Signature-normalized waste pattern report from Proxy JSONL files.'
+    )
+    parser.add_argument('proxy_jsonl', nargs='+', help='Path(s) to Proxy JSONL file(s)')
+    parser.add_argument('--output', default=None, metavar='FILE',
+                        help='Output markdown file path (default: stdout)')
+    return parser.parse_args()
+
 
 def run(jsonl_paths, output_path):
     per_source_events = {}
@@ -41,8 +57,6 @@ def run(jsonl_paths, output_path):
     _write_output(report, output_path)
 
 
-# FUNCTIONS
-
 def _write_output(content, path):
     if path:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -53,16 +67,5 @@ def _write_output(content, path):
         print(content)
 
 
-def _parse_args():
-    parser = argparse.ArgumentParser(
-        description='Signature-normalized waste pattern report from Proxy JSONL files.'
-    )
-    parser.add_argument('proxy_jsonl', nargs='+', help='Path(s) to Proxy JSONL file(s)')
-    parser.add_argument('--output', default=None, metavar='FILE',
-                        help='Output markdown file path (default: stdout)')
-    return parser.parse_args()
-
-
 if __name__ == '__main__':
-    args = _parse_args()
-    run(args.proxy_jsonl, args.output)
+    main()

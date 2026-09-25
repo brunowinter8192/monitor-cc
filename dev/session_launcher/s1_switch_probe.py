@@ -27,11 +27,29 @@ _MAX_DESKTOP = 5
 def main() -> None:
     home_space = active_space()
     ids = space_ids()
-    home_idx = ids.index(home_space) + 1
+    home_idx = compute_home_idx(ids, home_space)
     near_idx, far_idx = _pick_targets(home_idx)
     state: Dict[str, object] = {'reversed': {}, 'preferred': ['a1', 'b']}
     perms = permission_state()
     results = []
+    print_build_variants(home_idx, near_idx, far_idx, ids, state, home_space, results)
+    path = write_report(__file__, _build_report(results, perms, home_idx))
+    print(f'report: {path}')
+
+
+# FUNCTIONS
+
+def compute_home_idx(ids, home_space):
+    return ids.index(home_space) + 1
+
+
+def _pick_targets(home_idx: int) -> Tuple[int, int]:
+    near = home_idx + 1 if home_idx < _MAX_DESKTOP else home_idx - 1
+    far = 1 if abs(home_idx - 1) >= abs(_MAX_DESKTOP - home_idx) else _MAX_DESKTOP
+    return near, far
+
+
+def print_build_variants(home_idx, near_idx, far_idx, ids, state, home_space, results):
     for variant in _build_variants(home_idx, near_idx, far_idx, ids, state):
         result = _run_variant(variant, home_space, ids, state)
         results.append(result)
@@ -39,16 +57,6 @@ def main() -> None:
         if not result['returned']:
             print(f'ABORT: could not return to desktop {home_idx}, active is desktop {space_ids().index(active_space()) + 1}')
             break
-    path = write_report(__file__, _build_report(results, perms, home_idx))
-    print(f'report: {path}')
-
-
-# FUNCTIONS
-
-def _pick_targets(home_idx: int) -> Tuple[int, int]:
-    near = home_idx + 1 if home_idx < _MAX_DESKTOP else home_idx - 1
-    far = 1 if abs(home_idx - 1) >= abs(_MAX_DESKTOP - home_idx) else _MAX_DESKTOP
-    return near, far
 
 
 def _build_variants(home_idx: int, near_idx: int, far_idx: int, ids: List[int], state: Dict[str, object]) -> List[dict]:

@@ -29,13 +29,9 @@ def test_composition_invariant_workflow() -> None:
     blocks_checked, blocks_passed = run_all_cases(entries)
 
     print()
-    check(
-        "blocks_checked > 0",
-        blocks_checked > 0,
-        f"fixture produced 0 modified blocks — fixture may be empty or have no trigger patterns",
-    )
+    run_check(blocks_checked)
 
-    total = len(PASS_LIST) + len(FAIL_LIST)
+    total = compute_total()
     print(f"{len(PASS_LIST)}/{total} checks passed")
     print(f"entries={len(entries)}  blocks_checked={blocks_checked}  blocks_passed={blocks_passed}")
 
@@ -107,6 +103,18 @@ def check(name: str, condition: bool, detail: str = "") -> None:
     else:
         FAIL_LIST.append(name)
         print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
+
+
+def run_check(blocks_checked):
+    check(
+        "blocks_checked > 0",
+        blocks_checked > 0,
+        f"fixture produced 0 modified blocks — fixture may be empty or have no trigger patterns",
+    )
+
+
+def compute_total():
+    return len(PASS_LIST) + len(FAIL_LIST)
 
 
 if __name__ == "__main__":

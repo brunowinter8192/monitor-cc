@@ -13,8 +13,8 @@ from pathlib import Path
 def probe_a_workflow():
     args = _parse_args()
     Path(args.outfile).parent.mkdir(parents=True, exist_ok=True)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    install_signal_handler()
+    install_signal_handler_2()
     _run_probe(args.sessions, args.duration, args.outfile)
     print(f"[probe_a] done → {args.outfile}")
 
@@ -27,6 +27,14 @@ def _parse_args():
     p.add_argument("--duration", type=int, default=120)
     p.add_argument("--outfile", required=True)
     return p.parse_args()
+
+
+def install_signal_handler():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+
+def install_signal_handler_2():
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 
 def _run_probe(sessions, duration, outfile):

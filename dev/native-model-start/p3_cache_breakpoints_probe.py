@@ -32,14 +32,8 @@ def main() -> None:
     lines.append('')
 
     all_analyses = {}
-    import tempfile
-    for tag, stem in SESSIONS:
-        with tempfile.TemporaryDirectory() as tmp_root:
-            records = _replay_session(tag, stem, tmp_root)
-        analysis = _analyze(records)
-        busts_detail = _classify_busts(records, analysis['prefix_busts'])
-        all_analyses[tag] = (records, analysis, busts_detail)
-        lines.extend(_session_report_lines(tag, stem, records, analysis, busts_detail))
+    tempfile = load_imports()
+    process_sessions(tempfile, all_analyses, lines)
 
     stats = _overall_stats(all_analyses)
     lines.extend(_verdict_report_lines(stats))
@@ -52,6 +46,21 @@ def main() -> None:
 
 
 # FUNCTIONS
+
+def load_imports():
+    import tempfile
+    return tempfile
+
+
+def process_sessions(tempfile, all_analyses, lines):
+    for tag, stem in SESSIONS:
+        with tempfile.TemporaryDirectory() as tmp_root:
+            records = _replay_session(tag, stem, tmp_root)
+        analysis = _analyze(records)
+        busts_detail = _classify_busts(records, analysis['prefix_busts'])
+        all_analyses[tag] = (records, analysis, busts_detail)
+        lines.extend(_session_report_lines(tag, stem, records, analysis, busts_detail))
+
 
 def _replay_session(tag: str, stem: str, tmp_root: str) -> list:
     from src.proxy.addon import ProxyAddon, _derive_worker_context

@@ -37,12 +37,7 @@ def main() -> None:
     keys_seen, sys_shapes_seen, block_types_seen = set(), set(), set()
     sample_payload_by_key: dict = {}
 
-    for tag, stem in SESSIONS:
-        session_lines, session_checks, session_failures = _process_session(
-            tag, stem, keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key)
-        lines.extend(session_lines)
-        total_checks += session_checks
-        failures.extend(session_failures)
+    total_checks = collect_total_checks(keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key, lines, total_checks, failures)
 
     part_a_lines, total_fail_inv1, total_fail_inv2 = _part_a_verdict_lines(total_checks, failures)
     lines.extend(part_a_lines)
@@ -59,11 +54,20 @@ def main() -> None:
 
     REPORT_PATH.write_text('\n'.join(lines))
     print(f'Report written: {REPORT_PATH}')
-    print(f'Verdict: {verdict}  (composition_failures={total_fail_inv1 + total_fail_inv2}/{total_checks}, '
-          f'new_keys={sorted(new_keys)}, keys_dropped={keys_dropped}, new_block_types={sorted(new_block_types)})')
+    print_verdict(verdict, total_fail_inv1, total_fail_inv2, total_checks, new_keys, keys_dropped, new_block_types)
 
 
 # FUNCTIONS
+
+def collect_total_checks(keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key, lines, total_checks, failures):
+    for tag, stem in SESSIONS:
+        session_lines, session_checks, session_failures = _process_session(
+            tag, stem, keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key)
+        lines.extend(session_lines)
+        total_checks += session_checks
+        failures.extend(session_failures)
+    return total_checks
+
 
 def _process_session(tag, stem, keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key):
     requests = _load_session_requests(stem)
@@ -237,6 +241,11 @@ def _overall_verdict_lines(total_fail_inv1, total_fail_inv2, total_checks, new_k
                  + (f' — **DROPPED, real finding**: {keys_dropped}' if keys_dropped else ''))
     lines.append(f'- New content-block types: {"CLEAN (none)" if not new_block_types else f"FINDING: {sorted(new_block_types)} not in message_summary.py\'s handled set (falls through to its generic json.dumps summary — display-only gap, not a strip-pipeline correctness issue; composition invariant above already confirms no pass mishandles these blocks)"}')
     return lines, verdict, keys_dropped
+
+
+def print_verdict(verdict, total_fail_inv1, total_fail_inv2, total_checks, new_keys, keys_dropped, new_block_types):
+    print(f'Verdict: {verdict}  (composition_failures={total_fail_inv1 + total_fail_inv2}/{total_checks}, '
+          f'new_keys={sorted(new_keys)}, keys_dropped={keys_dropped}, new_block_types={sorted(new_block_types)})')
 
 
 if __name__ == '__main__':

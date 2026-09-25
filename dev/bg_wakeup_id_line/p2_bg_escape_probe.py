@@ -39,6 +39,13 @@ _WORDING_2 = (
 
 # ORCHESTRATOR
 
+def main():
+    ok = run_probe_workflow()
+    exit_with_status(ok)
+
+
+# FUNCTIONS
+
 def run_probe_workflow():
     print("=" * 70)
     print("bg_escape probe — tmux-Escape-on-launch-ack mechanism")
@@ -61,8 +68,6 @@ def run_probe_workflow():
     _write_report(passed, total)
     return passed == total
 
-
-# FUNCTIONS
 
 def test_dedup_repeated_acks():
     print("\n[Test 1] Dedup across repeated acks (142/169 real shape)")
@@ -300,6 +305,9 @@ def _write_report(passed, total):
     print(f"\nReport written to: {out_path}")
 
 
-if __name__ == "__main__":
-    ok = run_probe_workflow()
+def exit_with_status(ok):
     sys.exit(0 if ok else 1)
+
+
+if __name__ == '__main__':
+    main()

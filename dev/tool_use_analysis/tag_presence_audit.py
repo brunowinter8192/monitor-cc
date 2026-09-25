@@ -15,19 +15,9 @@ _LOGS_DIR = _repo_candidate / 'src' / 'logs' if (_repo_candidate / 'src' / 'logs
 
 # ORCHESTRATOR
 
-def tag_presence_audit_workflow(jsonl_path, output_path):
-    (blocks, tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags, n_non_opus,
-     tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured) = (
-        _stream_and_audit(jsonl_path)
-    )
-    lines = _build_report(
-        jsonl_path, blocks, tag_counts, sr_bypassed, sr_captured,
-        n_opus, n_reqs_with_tags, n_non_opus,
-        tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured,
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text('\n'.join(lines))
-    print(output_path)
+def main():
+    jsonl_path, output_path = _parse_args()
+    tag_presence_audit_workflow(jsonl_path, output_path)
 
 
 # FUNCTIONS
@@ -67,6 +57,20 @@ def _parse_args():
     return jsonl_path, output_path
 
 
+def tag_presence_audit_workflow(jsonl_path, output_path):
+    (blocks, tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags, n_non_opus,
+     tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured) = (
+        _stream_and_audit(jsonl_path)
+    )
+    lines = _build_report(
+        jsonl_path, blocks, tag_counts, sr_bypassed, sr_captured,
+        n_opus, n_reqs_with_tags, n_non_opus,
+        tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured,
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text('\n'.join(lines))
+    print(output_path)
+
+
 if __name__ == '__main__':
-    jsonl_path, output_path = _parse_args()
-    tag_presence_audit_workflow(jsonl_path, output_path)
+    main()

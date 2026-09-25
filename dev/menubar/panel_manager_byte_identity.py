@@ -20,11 +20,7 @@ _BgInfo = namedtuple('_BgInfo', ['min_remaining', 'sleep_pids'])
 def main():
     pm_mod = _import_panel_manager()
     discover_mod = _import_discover()
-    try:
-        print(f'HASH: {_run(pm_mod, discover_mod)}')
-    except Exception as exc:
-        print(f'HASH: SKIPPED (headless AppKit introspection failed: {exc})')
-        _smoke_import(pm_mod, discover_mod)
+    guarded_print(pm_mod, discover_mod)
 
 
 # FUNCTIONS
@@ -35,6 +31,14 @@ def _import_panel_manager():
 
 def _import_discover():
     return importlib.import_module('.'.join(['src', 'menubar', 'discover']))
+
+
+def guarded_print(pm_mod, discover_mod):
+    try:
+        print(f'HASH: {_run(pm_mod, discover_mod)}')
+    except Exception as exc:
+        print(f'HASH: SKIPPED (headless AppKit introspection failed: {exc})')
+        _smoke_import(pm_mod, discover_mod)
 
 
 def _run(pm_mod, discover_mod) -> str:

@@ -8,18 +8,26 @@ _HERE = Path(__file__).resolve().parent
 _STRANDS = ['p5_g1_log.py', 'p5_g2_state.py', 'p5_g3_app.py', 'p5_g4_detection.py',
             'p5_g5_discover.py', 'p5_g6_caches.py', 'p5_g7_model.py', 'p5_g8_system.py']
 
+
 # ORCHESTRATOR
 
 def main() -> None:
-    with ThreadPoolExecutor(max_workers=len(_STRANDS)) as pool:
-        results = list(pool.map(run_strand, _STRANDS))
+    results = collect_results()
     report(results)
 
+
 # FUNCTIONS
+
+def collect_results():
+    with ThreadPoolExecutor(max_workers=len(_STRANDS)) as pool:
+        results = list(pool.map(run_strand, _STRANDS))
+    return results
+
 
 def run_strand(name: str) -> tuple:
     proc = subprocess.run([sys.executable, str(_HERE / name)], capture_output=True, text=True, timeout=300)
     return name, proc.returncode, proc.stdout, proc.stderr
+
 
 def report(results: list) -> None:
     failed = []

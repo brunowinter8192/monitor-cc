@@ -22,8 +22,7 @@ def main():
     orig_path = _newest_original_log()
     payloads = _load_payloads(orig_path)
     digest = hashlib.sha256()
-    for worker_context in _WORKER_CONTEXTS:
-        _hash_pipeline_run(payloads, worker_context, digest)
+    process_worker_contexts(payloads, digest)
     print(f'source: {orig_path.name}')
     print(f'payloads: {len(payloads)}')
     _report_skipped_lines()
@@ -65,6 +64,11 @@ def _load_payloads(orig_path: Path) -> list:
 def _note_skipped_line() -> None:
     global _SKIPPED_LINES
     _SKIPPED_LINES += 1
+
+
+def process_worker_contexts(payloads, digest):
+    for worker_context in _WORKER_CONTEXTS:
+        _hash_pipeline_run(payloads, worker_context, digest)
 
 
 def _hash_pipeline_run(payloads: list, worker_context: str, digest) -> None:

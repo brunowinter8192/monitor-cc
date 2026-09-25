@@ -21,7 +21,7 @@ _PATCHED_NAMES = [
 
 def main():
     discover_mod = _import_discover()
-    results = [_run_scenario(discover_mod, name, factory()) for name, factory in scenarios()]
+    results = compute_results(discover_mod)
     print(f'HASH: {_hash_results(results)}')
 
 
@@ -29,6 +29,10 @@ def main():
 
 def _import_discover():
     return importlib.import_module('.'.join(['src', 'menubar', 'discover']))
+
+
+def compute_results(discover_mod):
+    return [_run_scenario(discover_mod, name, factory()) for name, factory in scenarios()]
 
 
 def _run_scenario(discover_mod, name: str, scenario: dict):

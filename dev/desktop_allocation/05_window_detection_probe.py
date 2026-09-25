@@ -6,6 +6,7 @@ from probe05_detection import _WIN_COT, _WIN_OSC2, _WIN_TMUX, _build_space_map
 from probe05_lifecycle import _ensure_coteditor_running
 from probe05_trial import _REPORTS_DIR, _print_summary, _run_trial
 
+
 # ORCHESTRATOR
 
 def probe_workflow() -> None:
@@ -24,6 +25,14 @@ def probe_workflow() -> None:
     trial_schedule = [(1, True), (2, True), (3, False)]
 
     all_results: List[dict] = []
+    print_win_types(win_types, trial_schedule, cid, space_map, all_results)
+
+    _print_summary(all_results)
+
+
+# FUNCTIONS
+
+def print_win_types(win_types, trial_schedule, cid, space_map, all_results):
     for win_type in win_types:
         if win_type == _WIN_COT:
             print("--- coteditor: warm-launch check ---")
@@ -33,8 +42,6 @@ def probe_workflow() -> None:
             r = _run_trial(cid, space_map, win_type, trial_n, foreground)
             all_results.append(r)
         print()
-
-    _print_summary(all_results)
 
 
 if __name__ == "__main__":

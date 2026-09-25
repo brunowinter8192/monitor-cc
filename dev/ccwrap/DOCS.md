@@ -11,7 +11,7 @@ Runs `python -m src.ccwrap --project` as a subprocess and checks exit code and m
 
 ## Modules
 
-### missing_project_value_check.py (19 LOC)
+### missing_project_value_check.py (33 LOC)
 
 **Purpose:** Proves `--project` without a value exits 2 with a message.
 **Reads:** nothing.

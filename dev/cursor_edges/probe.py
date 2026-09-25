@@ -16,13 +16,13 @@ from cursor_edges_panel import _make_probe_panel
 def main() -> None:
     args = _parse_args()
 
-    cec._LEAF_RECTS_ENABLED = args.fix and args.leaf_rects
+    cec._LEAF_RECTS_ENABLED = compute_value(args)
     cec._TRACKING_ENABLED   = args.tracking
 
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
-    signal.signal(signal.SIGINT, lambda *_: app.terminate_(None))
+    install_signal_handler(app)
 
     panel = _make_probe_panel(fix=args.fix, no_resizable=args.no_resizable)
 
@@ -35,7 +35,7 @@ def main() -> None:
     _dump_hierarchy(panel.contentView())
     _log('')
     _log('Hover slowly over each edge and each widget. Quit: Cmd-Q or Ctrl-C.')
-    _log('=' * 60)
+    run_log()
 
     panel.orderFront_(None)
     app.activateIgnoringOtherApps_(True)
@@ -59,6 +59,14 @@ def _parse_args():
         '--tracking', action='store_true',
         help='use NSTrackingArea + cursorUpdate pattern (Iteration 8) instead of cursor-rect dispatch')
     return parser.parse_args()
+
+
+def compute_value(args):
+    return args.fix and args.leaf_rects
+
+
+def install_signal_handler(app):
+    signal.signal(signal.SIGINT, lambda *_: app.terminate_(None))
 
 
 def _log_startup_banner(args) -> None:
@@ -125,6 +133,10 @@ def _log_signal_guide() -> None:
         _log('  mouseEntered_    — tracking area entry')
         _log('  mouseMoved_      — per-move (tracking area owner)')
         _log('  NSEventMonitor   — pre-dispatch raw event')
+
+
+def run_log():
+    _log('=' * 60)
 
 
 if __name__ == '__main__':

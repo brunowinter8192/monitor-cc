@@ -26,18 +26,13 @@ _OLD_HOOKS = [
 def probe_replay_cli_chained_workflow() -> None:
     log_path = _resolve_main_log_path()
     records = _load_block_records(log_path, _OLD_HOOKS)
-    results = {hook: {"block": [], "pass": []} for hook in _OLD_HOOKS}
-    for hook, command in records:
-        exit_code = _replay(command)
-        bucket = "block" if exit_code == 2 else "pass"
-        results[hook][bucket].append(command)
+    results = compute_results()
+    process_records(records, results)
 
-    total_block = sum(len(r["block"]) for r in results.values())
-    total_pass = sum(len(r["pass"]) for r in results.values())
+    total_block = compute_total_block(results)
+    total_pass = compute_total_pass(results)
     print(f"Replayed {len(records)} historical block fires from {log_path}")
-    for hook in _OLD_HOOKS:
-        r = results[hook]
-        print(f"  {hook}: {len(r['block'])} still block, {len(r['pass'])} now pass")
+    print_old_hooks(results)
     print(f"TOTAL: {total_block} still block, {total_pass} now pass")
 
     _write_report(log_path, results, total_block, total_pass)
@@ -55,6 +50,7 @@ def _resolve_main_log_path() -> str:
         main_root = here[:idx].rstrip("/")
     return os.path.join(main_root, "src", "logs", "hook_firing.jsonl")
 
+
 def _load_block_records(log_path: str, old_hooks: list) -> list:
     records = []
     with open(log_path, encoding="utf-8") as f:
@@ -67,6 +63,18 @@ def _load_block_records(log_path: str, old_hooks: list) -> list:
                 records.append((entry["hook"], entry.get("command", "")))
     return records
 
+
+def compute_results():
+    return {hook: {"block": [], "pass": []} for hook in _OLD_HOOKS}
+
+
+def process_records(records, results):
+    for hook, command in records:
+        exit_code = _replay(command)
+        bucket = "block" if exit_code == 2 else "pass"
+        results[hook][bucket].append(command)
+
+
 def _replay(command: str) -> int:
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
     result = subprocess.run(
@@ -75,6 +83,21 @@ def _replay(command: str) -> int:
         capture_output=True,
     )
     return result.returncode
+
+
+def compute_total_block(results):
+    return sum(len(r["block"]) for r in results.values())
+
+
+def compute_total_pass(results):
+    return sum(len(r["pass"]) for r in results.values())
+
+
+def print_old_hooks(results):
+    for hook in _OLD_HOOKS:
+        r = results[hook]
+        print(f"  {hook}: {len(r['block'])} still block, {len(r['pass'])} now pass")
+
 
 def _write_report(log_path: str, results: dict, total_block: int, total_pass: int) -> None:
     os.makedirs(os.path.dirname(_REPORT_PATH), exist_ok=True)

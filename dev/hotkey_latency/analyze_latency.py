@@ -23,18 +23,22 @@ _FOCUS_RE        = re.compile(r'^focus lookup_ms=([\d.]+) osascript_ms=([\d.]+) 
 # ORCHESTRATOR
 
 def main() -> None:
-    log_path = Path(sys.argv[1]) if len(sys.argv) > 1 else MENUBAR_LOG
+    log_path = compute_log_path()
     ticks, bg_refreshes, hotkeys, focuses = _parse_latency_lines(log_path)
     report = _build_report(log_path, ticks, bg_refreshes, hotkeys, focuses)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    out_path = REPORT_DIR / f'latency_report_{stamp}.md'
+    out_path = compute_out_path(stamp)
     out_path.write_text(report, encoding='utf-8')
     print(f'ticks={len(ticks)} bg_refreshes={len(bg_refreshes)} hotkeys={len(hotkeys)} focuses={len(focuses)}')
     print(f'report written to {out_path}')
 
 
 # FUNCTIONS
+
+def compute_log_path():
+    return Path(sys.argv[1]) if len(sys.argv) > 1 else MENUBAR_LOG
+
 
 def _parse_latency_lines(log_path: Path) -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
     ticks, bg_refreshes, hotkeys, focuses = [], [], [], []
@@ -144,6 +148,10 @@ def _focus_section(focuses: List[dict]) -> str:
         f'- `lookup_ms` (get_ghostty_terminal_id): {_dist_line(lookup)}\n'
         f'- `osascript_ms` (osascript run): {_dist_line(osa)}\n'
     )
+
+
+def compute_out_path(stamp):
+    return REPORT_DIR / f'latency_report_{stamp}.md'
 
 
 if __name__ == '__main__':

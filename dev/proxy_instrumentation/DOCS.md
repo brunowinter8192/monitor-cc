@@ -11,7 +11,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ## Modules
 
-### render_recorded_request.py (117 LOC)
+### render_recorded_request.py (146 LOC)
 
 **Purpose:** Reconstructs the pane render for one recorded request straight from the on-disk dual log to verify a span-render fix.
 **Reads:** a fixed recorded session's forwarded, stripped and injected logs.
@@ -31,7 +31,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p5_mid_turn_user_msg_preserve_probe.py (114 LOC)
+### p5_mid_turn_user_msg_preserve_probe.py (135 LOC)
 
 **Purpose:** Verifies the CC 2.1.223 mid-turn user-message preserve guard against a recorded incident plus a noise-still-strips case.
 **Reads:** two recorded sessions' original logs.
@@ -41,7 +41,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p6_no_flow_extra_prepend_probe.py (250 LOC)
+### p6_no_flow_extra_prepend_probe.py (275 LOC)
 
 **Purpose:** Verifies an expanded request body equals the request's own payload delta after the out-of-window prepend was removed, plus a reintroduction guard.
 **Reads:** two recorded sessions' forwarded, stripped and injected logs (overridable via arguments).
@@ -51,7 +51,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p7_blocklist_258_probe.py (209 LOC)
+### p7_blocklist_258_probe.py (214 LOC)
 
 **Purpose:** Verifies the CC 2.1.258 tool-blocklist extension and the Edit/Write file-mutation blocklist against the full live corpus.
 **Reads:** all original logs present at run time.
@@ -61,7 +61,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### p1_measure_full_replacement_blast_radius.py (41 LOC)
+### p1_measure_full_replacement_blast_radius.py (53 LOC)
 
 **Purpose:** Entry point of the full-replacement blast-radius measurement: owns the corpus list and drives the engine and report.
 **Reads:** four recorded sessions' original logs.

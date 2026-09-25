@@ -29,19 +29,18 @@ def run_all_workflow():
         print("ERROR: no active Opus main session found", file=sys.stderr)
         sys.exit(1)
 
-    sessions = WORKER_SESSIONS + [opus_session]
+    sessions = compute_sessions(opus_session)
     print(f"[run_all] targets: {sessions}")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     atexit.register(_terminate_all)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    install_signal_handler()
+    install_signal_handler_2()
 
     _launch_probes(sessions, args.duration, ts)
     print(f"[run_all] all probes running ({args.duration}s). waiting…")
-    for p in _launched:
-        p.wait()
+    process_launched()
 
     print(f"[run_all] done. reports in {REPORTS_DIR}/")
 
@@ -77,10 +76,22 @@ def _find_opus_session():
     return best_session
 
 
+def compute_sessions(opus_session):
+    return WORKER_SESSIONS + [opus_session]
+
+
 def _terminate_all():
     for p in _launched:
         if p.poll() is None:
             p.terminate()
+
+
+def install_signal_handler():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+
+def install_signal_handler_2():
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
 
 def _launch_probes(sessions, duration, ts):
@@ -100,6 +111,11 @@ def _launch_probes(sessions, duration, ts):
         p = subprocess.Popen(cmd)
         _launched.append(p)
         print(f"[run_all] {probe_script} → {outname} (pid={p.pid})")
+
+
+def process_launched():
+    for p in _launched:
+        p.wait()
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ No data in; layout values are module constants. The probe builds a floating pane
 
 ## Modules
 
-### probe.py (190 LOC)
+### probe.py (202 LOC)
 
 **Purpose:** Builds a five-column, three-row grid in a floating panel and routes cell clicks to a handler printing the clicked row; a manual visual check.
 **Reads:** nothing external.

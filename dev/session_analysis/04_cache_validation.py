@@ -37,13 +37,13 @@ def main():
     print(f"Requests with messages: {len(entries)}")
     print()
     print(f"{'#':>4} {'msgs':>4} {'tools':>3} {'mods':>3} {'CC BPs':>30}  {'mods_before_bp':>20}  {'flag':>10}")
-    print("-" * 100)
+    print_output()
 
     total_at_risk = _print_request_rows(entries, args.limit, args.rebuilds_only)
 
     print()
     print(f"Total requests: {len(entries)}")
-    print(f"At risk (mods before BP): {total_at_risk} ({total_at_risk/len(entries)*100:.1f}%)" if entries else "")
+    print_at_risk_mods(total_at_risk, entries)
 
 
 # FUNCTIONS
@@ -60,6 +60,10 @@ def _load_entries(log_path: Path) -> list:
             if raw.get("messages"):
                 entries.append(entry)
     return entries
+
+
+def print_output():
+    print("-" * 100)
 
 
 def _print_request_rows(entries: list, limit: int, rebuilds_only: bool) -> int:
@@ -159,6 +163,10 @@ def _find_modifiable_indices(messages: list) -> list:
         if "Plan mode is active" in text or "task tools haven" in text or "<task-notification>" in text:
             mod_indices.append(i)
     return mod_indices
+
+
+def print_at_risk_mods(total_at_risk, entries):
+    print(f"At risk (mods before BP): {total_at_risk} ({total_at_risk/len(entries)*100:.1f}%)" if entries else "")
 
 
 if __name__ == "__main__":

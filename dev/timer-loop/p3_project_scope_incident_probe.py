@@ -23,6 +23,13 @@ _RESULTS = []
 
 # ORCHESTRATOR
 
+def main():
+    ok = run_probe_workflow()
+    exit_with_status(ok)
+
+
+# FUNCTIONS
+
 def run_probe_workflow() -> bool:
     print("=" * 70)
     print("P3 — cross-project false-block incident replay (2026-08-07 websearch/posts)")
@@ -41,8 +48,6 @@ def run_probe_workflow() -> bool:
     _write_report(passed, total)
     return passed == total
 
-
-# FUNCTIONS
 
 def test_incident_foreign_project_now_allows():
     print("\n[Test 1] Incident replay — posts-project pending, websearch cwd -> now ALLOWS")
@@ -210,6 +215,9 @@ def _write_report(passed, total):
     print(f'\nReport written to: {REPORT_PATH}')
 
 
-if __name__ == '__main__':
-    ok = run_probe_workflow()
+def exit_with_status(ok):
     sys.exit(0 if ok else 1)
+
+
+if __name__ == '__main__':
+    main()

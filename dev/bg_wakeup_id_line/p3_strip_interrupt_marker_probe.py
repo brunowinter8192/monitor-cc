@@ -24,6 +24,13 @@ _RESULTS = []
 
 # ORCHESTRATOR
 
+def main():
+    ok = run_probe_workflow()
+    exit_with_status(ok)
+
+
+# FUNCTIONS
+
 def run_probe_workflow():
     print("=" * 70)
     print("strip_interrupt_marker probe — [Request interrupted by user] strip")
@@ -45,8 +52,6 @@ def run_probe_workflow():
     _write_report(passed, total)
     return passed == total
 
-
-# FUNCTIONS
 
 def test_real_shape_neighbors_untouched():
     print("\n[Test 1] Real 3-block shape (tool_result / marker / wake-up) — neighbors intact")
@@ -202,6 +207,9 @@ def _write_report(passed, total):
     print(f"\nReport written to: {out_path}")
 
 
-if __name__ == "__main__":
-    ok = run_probe_workflow()
+def exit_with_status(ok):
     sys.exit(0 if ok else 1)
+
+
+if __name__ == '__main__':
+    main()

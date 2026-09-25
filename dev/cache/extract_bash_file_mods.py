@@ -20,8 +20,7 @@ OUTPUT_FILENAME_FORMAT = 'bash_file_mods_%Y%m%dT%H%M%SZ.jsonl'
 def extract_workflow() -> None:
     log_paths = _all_original_logs()
     records = []
-    for log_path in log_paths:
-        records.extend(_extract_session_records(log_path))
+    process_log_paths(log_paths, records)
     _write_records(records, _run_output_path())
 
 
@@ -29,6 +28,11 @@ def extract_workflow() -> None:
 
 def _all_original_logs() -> list:
     return sorted(LOG_DIR.glob('*_original.jsonl'))
+
+
+def process_log_paths(log_paths, records):
+    for log_path in log_paths:
+        records.extend(_extract_session_records(log_path))
 
 
 def _extract_session_records(log_path: Path) -> list:

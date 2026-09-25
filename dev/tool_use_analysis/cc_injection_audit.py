@@ -21,6 +21,43 @@ _MTIME_CAP_SEC = 90 * 60
 
 # ORCHESTRATOR
 
+def main():
+    proxy_log_paths, cc_session_override, output_path = _parse_args()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cc_injection_audit_workflow(proxy_log_paths, cc_session_override, output_path)
+
+
+# FUNCTIONS
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description='CC injection catalog via proxy/session-JSONL cross-reference')
+    parser.add_argument(
+        'proxy_logs', nargs='*',
+        help='Proxy log paths (default: newest 5 src/logs/api_requests_opus_monitor_cc_*.jsonl)',
+    )
+    parser.add_argument('--cc-session', help='CC session JSONL path (overrides auto-discovery)')
+    parser.add_argument('--output', help='Output MD path (auto-generated if omitted)')
+    args = parser.parse_args()
+
+    src_logs = Path(_REPO_ROOT) / 'src/logs'
+    if args.proxy_logs:
+        proxy_log_paths = [Path(p) for p in args.proxy_logs]
+    else:
+        all_logs = sorted(
+            src_logs.glob('api_requests_opus_monitor_cc_*.jsonl'),
+            key=lambda p: p.stat().st_mtime, reverse=True,
+        )
+        proxy_log_paths = all_logs[:5]
+
+    ts = datetime.now().strftime('%Y%m%d%H%M')
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        output_path = Path(f'dev/tool_use_analysis/{ts}_cc_injection_catalog.md')
+
+    return proxy_log_paths, args.cc_session, output_path
+
+
 def cc_injection_audit_workflow(proxy_log_paths, cc_session_override, output_path):
     all_hits = []
     session_cache = {}
@@ -47,8 +84,6 @@ def cc_injection_audit_workflow(proxy_log_paths, cc_session_override, output_pat
     output_path.write_text(report)
     print(output_path)
 
-
-# FUNCTIONS
 
 def _find_matching_cc_session(proxy_log, cc_project_dir):
     if not cc_project_dir.is_dir():
@@ -243,36 +278,5 @@ def _render_classification_detail(by_class):
     return lines
 
 
-def _parse_args():
-    parser = argparse.ArgumentParser(description='CC injection catalog via proxy/session-JSONL cross-reference')
-    parser.add_argument(
-        'proxy_logs', nargs='*',
-        help='Proxy log paths (default: newest 5 src/logs/api_requests_opus_monitor_cc_*.jsonl)',
-    )
-    parser.add_argument('--cc-session', help='CC session JSONL path (overrides auto-discovery)')
-    parser.add_argument('--output', help='Output MD path (auto-generated if omitted)')
-    args = parser.parse_args()
-
-    src_logs = Path(_REPO_ROOT) / 'src/logs'
-    if args.proxy_logs:
-        proxy_log_paths = [Path(p) for p in args.proxy_logs]
-    else:
-        all_logs = sorted(
-            src_logs.glob('api_requests_opus_monitor_cc_*.jsonl'),
-            key=lambda p: p.stat().st_mtime, reverse=True,
-        )
-        proxy_log_paths = all_logs[:5]
-
-    ts = datetime.now().strftime('%Y%m%d%H%M')
-    if args.output:
-        output_path = Path(args.output)
-    else:
-        output_path = Path(f'dev/tool_use_analysis/{ts}_cc_injection_catalog.md')
-
-    return proxy_log_paths, args.cc_session, output_path
-
-
 if __name__ == '__main__':
-    proxy_log_paths, cc_session_override, output_path = _parse_args()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    cc_injection_audit_workflow(proxy_log_paths, cc_session_override, output_path)
+    main()

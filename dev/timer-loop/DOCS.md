@@ -11,7 +11,7 @@ The wording scan reads the dual-log corpus and writes a findings report. The abo
 
 ## Modules
 
-### p1_scan_bg_completion_wordings.py (47 LOC)
+### p1_scan_bg_completion_wordings.py (67 LOC)
 
 **Purpose:** Entry script: resolves the corpus dir, drives the per-file scan loop and writes the report.
 **Reads:** all `*_original.jsonl` files of the dual log (dir overridable by first argument).
@@ -41,7 +41,7 @@ The wording scan reads the dual-log corpus and writes a findings report. The abo
 
 ---
 
-### p3_project_scope_incident_probe.py (215 LOC)
+### p3_project_scope_incident_probe.py (223 LOC)
 
 **Purpose:** Replays a cross-project false-block incident where one project's session was blocked by another's pending background-task entry.
 **Reads:** nothing persistent; seeds its own state file per case in a temp dir.

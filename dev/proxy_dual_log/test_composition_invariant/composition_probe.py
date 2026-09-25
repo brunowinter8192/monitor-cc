@@ -16,17 +16,16 @@ REPORT_DIR = _AREA_ROOT / "01_reports"
 # ORCHESTRATOR
 
 def composition_probe_workflow():
-    from src.proxy.strip_bg_completed import _WAKEUP_TEXT
+    _WAKEUP_TEXT = load_imports()
     wakeup_core = _WAKEUP_TEXT.rstrip('\n')
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     ts       = datetime.now().strftime("%Y%m%d")
     ts_human = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    report_path = REPORT_DIR / f"composition_probe_{ts}.md"
+    report_path = compute_report_path(ts)
 
     lines = []
-    def emit(*parts):
-        lines.append("".join(str(p) for p in parts) + "\n")
+    emit = run_step(lines)
 
     _emit_intro(emit, ts_human)
     _emit_money_shot(emit, wakeup_core)
@@ -34,12 +33,26 @@ def composition_probe_workflow():
     _emit_op_shape_guide(emit)
     _emit_verdict(emit, R)
 
-    with open(report_path, "w") as fout:
-        fout.writelines(lines)
+    run_with_open(report_path, lines)
     print(f"Report: {report_path}")
 
 
 # FUNCTIONS
+
+def load_imports():
+    from src.proxy.strip_bg_completed import _WAKEUP_TEXT
+    return _WAKEUP_TEXT
+
+
+def compute_report_path(ts):
+    return REPORT_DIR / f"composition_probe_{ts}.md"
+
+
+def run_step(lines):
+    def emit(*parts):
+        lines.append("".join(str(p) for p in parts) + "\n")
+    return emit
+
 
 def _emit_intro(emit, ts_human: str) -> None:
     emit("# Multi-Pass Composition Probe — ", ts_human)
@@ -206,6 +219,11 @@ def _emit_verdict(emit, R) -> None:
         emit(f"- Money shot (msg[100] TN+BG): 1 injected wakeup, C0+Cfwd byte-exact ✅")
     except Exception:
         emit("Results unavailable (corpus run failed).")
+
+
+def run_with_open(report_path, lines):
+    with open(report_path, "w") as fout:
+        fout.writelines(lines)
 
 
 if __name__ == "__main__":

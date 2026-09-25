@@ -12,13 +12,10 @@ DEFAULT_DAYS = 30
 
 # ORCHESTRATOR
 
-
 def analyze_sleep_patterns_workflow():
     args = _parse_args()
     since_dt = (
-        datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        if args.since
-        else datetime.now(timezone.utc) - timedelta(days=DEFAULT_DAYS)
+        compute_since_dt(args)
     )
     events = _collect_events(since_dt)
     records = _parse_all_sleeps(events)
@@ -31,12 +28,17 @@ def analyze_sleep_patterns_workflow():
 
 # FUNCTIONS
 
-
 def _parse_args():
     p = argparse.ArgumentParser(description="Analyze block_chained_sleep events")
     p.add_argument("--since", default=None, help="YYYY-MM-DD (default: 30d ago)")
     p.add_argument("--out", default="dev/sleep_pattern_analysis/01_reports/sleep_audit_2026-05-24.md")
     return p.parse_args()
+
+
+def compute_since_dt(args):
+    return (datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            if args.since
+            else datetime.now(timezone.utc) - timedelta(days=DEFAULT_DAYS))
 
 
 if __name__ == "__main__":

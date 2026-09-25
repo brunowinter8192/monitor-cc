@@ -19,7 +19,22 @@ _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')
 def main():
     render_pane, toggle_state, button_regions = _import_gpu()
     orig_time = _time_mod.time
-    _time_mod.time = lambda: _FIXED_TS
+    _time_mod.time = compute_value()
+    guarded_sha256(toggle_state, render_pane, button_regions, orig_time)
+
+
+# FUNCTIONS
+
+def _import_gpu():
+    from src.gpu_pane.pane import _render_pane, _toggle_state, _button_regions
+    return _render_pane, _toggle_state, _button_regions
+
+
+def compute_value():
+    return lambda: _FIXED_TS
+
+
+def guarded_sha256(toggle_state, render_pane, button_regions, orig_time):
     try:
         digest = hashlib.sha256()
         presets, arbitrary, anomalies, today_errors, error_counts, collections = _make_fixtures()
@@ -33,13 +48,6 @@ def main():
     finally:
         _time_mod.time = orig_time
         toggle_state.clear()
-
-
-# FUNCTIONS
-
-def _import_gpu():
-    from src.gpu_pane.pane import _render_pane, _toggle_state, _button_regions
-    return _render_pane, _toggle_state, _button_regions
 
 
 def _make_fixtures() -> tuple:

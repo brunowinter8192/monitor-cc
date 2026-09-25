@@ -17,7 +17,7 @@ timestamped Markdown report.
 
 ## Modules
 
-### groundtruth_message_spans_probe.py (91 LOC)
+### groundtruth_message_spans_probe.py (112 LOC)
 
 **Purpose:** CLI entry point validating the ground-truth span-construction algorithm that replaces
 blind diffing for messages.

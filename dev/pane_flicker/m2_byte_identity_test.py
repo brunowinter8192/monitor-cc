@@ -18,18 +18,25 @@ SESSIONS = {
 }
 PANES = ['tokens', 'worker_tokens']
 
+
 # ORCHESTRATOR
 
 def test_workflow() -> int:
+    old_root, outputs = collect_old_root()
+    verdicts = evaluate(outputs)
+    write_report(verdicts, old_root)
+    return compute_exit_code(verdicts)
+
+
+# FUNCTIONS
+
+def collect_old_root():
     with tempfile.TemporaryDirectory(prefix='flicker_m2_') as tmp:
         work_dir = Path(tmp)
         old_root = extract_old_tree(work_dir)
         outputs = run_all_drivers(old_root, work_dir)
-    verdicts = evaluate(outputs)
-    write_report(verdicts, old_root)
-    return 0 if all(ok for _, ok, _ in verdicts) else 1
+    return old_root, outputs
 
-# FUNCTIONS
 
 def extract_old_tree(work_dir: Path) -> Path:
     old_root = work_dir / 'old_tree'
@@ -38,11 +45,13 @@ def extract_old_tree(work_dir: Path) -> Path:
     subprocess.run(['tar', '-x', '-C', str(old_root)], input=archive, check=True)
     return old_root
 
+
 def run_all_drivers(old_root: Path, work_dir: Path) -> dict:
     jobs = [(pane, session, tree) for pane in PANES for session in SESSIONS for tree in ('old', 'new')]
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = {j: pool.submit(run_driver, j, old_root, work_dir) for j in jobs}
         return {j: f.result() for j, f in futures.items()}
+
 
 def run_driver(job: tuple, old_root: Path, work_dir: Path):
     pane, session, tree = job
@@ -52,6 +61,7 @@ def run_driver(job: tuple, old_root: Path, work_dir: Path):
     if proc.returncode != 0:
         return {'error': proc.stderr[-800:]}
     return json.loads(out_path.read_text(encoding='utf-8'))
+
 
 def evaluate(outputs: dict) -> list:
     verdicts = []
@@ -64,6 +74,7 @@ def evaluate(outputs: dict) -> list:
             verdicts.extend(compare_runs(pane, session, old, new))
     return verdicts
 
+
 def compare_runs(pane: str, session: str, old: list, new: list) -> list:
     verdicts = [(f'{pane}/{session}: same step count ({len(old)})', len(old) == len(new), '')]
     for a, b in zip(old, new):
@@ -73,6 +84,7 @@ def compare_runs(pane: str, session: str, old: list, new: list) -> list:
         if a['name'].startswith('hover_'):
             verdicts.append((f'{label} recomputed 0 turns (old {a["turn_renders"]})', b['turn_renders'] == 0, f'new={b["turn_renders"]}'))
     return verdicts
+
 
 def write_report(verdicts: list, old_root: Path) -> None:
     REPORT_DIR.mkdir(exist_ok=True)
@@ -92,6 +104,11 @@ def write_report(verdicts: list, old_root: Path) -> None:
         if not ok:
             print(f'FAIL {label} {hint}'[:300])
     print(f'{passed}/{len(verdicts)} checks passed')
+
+
+def compute_exit_code(verdicts):
+    return 0 if all(ok for _, ok, _ in verdicts) else 1
+
 
 if __name__ == '__main__':
     sys.exit(test_workflow())

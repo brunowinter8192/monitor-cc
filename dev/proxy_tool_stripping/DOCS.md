@@ -11,7 +11,7 @@ The test drives real render and parser functions against synthetic fixtures as p
 
 ## Modules
 
-### probe_trailing_message_shapes.py (101 LOC)
+### probe_trailing_message_shapes.py (109 LOC)
 
 **Purpose:** Scans stripped-log message deltas for text ending in the token-count tag, normalizes digits and reports distinct shapes per session.
 **Reads:** three fixed corpus stems' stripped logs, currently rotated out, so a run raises.
