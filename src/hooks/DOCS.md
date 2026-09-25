@@ -23,7 +23,7 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 **Purpose:** position-preserving shell-region stripper that blanks heredocs and quoted strings before pattern matching; a library, not a hook.
 **Reads:** n/a.
 **Writes:** n/a.
-**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_cli_chained.py`, `block_dangerous_kill.py`, `block_gh_cli_local_path.py`, `block_manual_worker_cleanup.py`, `block_pipe_scraper_isolated.py`, `block_po_read.py`, `block_rag_cli_document_repeat.py`, `block_rag_cli_index_isolated.py`, `block_rag_corpus_read.py`, `block_rag_docs_layer.py`, `block_search_subreddits_limit.py`, `block_unauthorized_background.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_send_while_working.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_worker_wait.py`.
+**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_cli_chained.py`, `block_dangerous_kill.py`, `block_gh_cli_local_path.py`, `block_git_add_deps.py`, `block_manual_worker_cleanup.py`, `block_pipe_scraper_isolated.py`, `block_po_read.py`, `block_rag_cli_document_repeat.py`, `block_rag_cli_index_isolated.py`, `block_rag_corpus_read.py`, `block_rag_docs_layer.py`, `block_search_subreddits_limit.py`, `block_unauthorized_background.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_send_while_working.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_worker_wait.py`.
 **Calls out:** none.
 
 ---
@@ -218,9 +218,9 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 ---
 
-### block_git_add_deps.py (59 LOC)
+### block_git_add_deps.py (44 LOC)
 
-**Purpose:** PreToolUse Bash hook blocking git add of dependency directories that are symlinks inside worktrees.
+**Purpose:** PreToolUse Bash hook blocking a git add that targets a dependency directory, judged per command segment after shell-inactive regions are blanked.
 **Reads:** stdin (PreToolUse JSON payload).
 **Writes:** stderr block message; exit 2.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.

@@ -26,7 +26,7 @@ def test_hook_trace_lines_workflow() -> None:
 def _collect_cases() -> list:
     return [
         case_parse_error_all_hooks, case_log_dir_created, case_log_write_failure_stderr,
-        case_strip_raw_fallback, case_unterminated_quote, case_shlex_exempt,
+        case_strip_raw_fallback, case_shlex_exempt,
         case_po_read_unknown_size, case_rag_state_corrupt_line, case_rag_state_unreadable,
         case_worker_cli_missing, case_worker_cli_rc, case_worker_cli_timeout,
         case_status_fn_raises, case_getcwd_failed, case_sweep_prints, case_null_byte_read_path,
@@ -97,11 +97,6 @@ def case_strip_raw_fallback():
 
 def _bash(command: str) -> bytes:
     return json.dumps({"tool_name": "Bash", "session_id": "s", "cwd": "/tmp", "tool_input": {"command": command}}).encode()
-
-
-def case_unterminated_quote():
-    proc, lines, _ = _run_hook("block_git_add_deps.py", _bash("echo 'unclosed"))
-    return _expect(proc.returncode == 0 and _traces(lines, "block_git_add_deps", "unterminated quote"), f"exit {proc.returncode} lines {lines}")
 
 
 def case_shlex_exempt():
