@@ -106,3 +106,7 @@ Everything is in `dev/system_load/` for now. Recommendation given to the orchest
 - Claude main sessions are always doubtful. If the user wants idle-burning `claude.exe` sessions surfaced more sharply, add the hook state (`hooks.json` in the menubar app support directory) as a fact; not done to keep the tool Mac-wide and independent of the menubar.
 - `D_named_heavy` lists every OrbStack process, including tiny idle ones. Cosmetic.
 - The skill is a draft: it has never been executed by an agent in a real session.
+
+## Recap check (2026-09-25)
+
+Inventory against `integration`: only `dev/system_load/` (tool, tests, skill draft, DOCS.md files, reports in `md/`), the two `dev/hotkey_latency/md/` latency reports and this file changed. `dev/hotkey_latency/DOCS.md` needed no edit because no code there changed. LOC values in `dev/system_load/DOCS.md` and `dev/system_load/tests/DOCS.md` were re-checked against `wc -l` and match. No `src/` file was touched.
