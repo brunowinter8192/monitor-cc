@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import argparse
 import json
@@ -71,20 +70,6 @@ def _count_tool_use(msgs):
     return n
 
 
-def _result_to_text(content):
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for blk in content:
-            if isinstance(blk, dict):
-                parts.append(blk.get('text', '') or json.dumps(blk, ensure_ascii=False))
-            else:
-                parts.append(str(blk))
-        return '\n'.join(parts)
-    return str(content)
-
-
 def _render_transcript(msgs, max_input, max_result, with_text):
     lines = []
     for i, msg in enumerate(msgs):
@@ -126,6 +111,20 @@ def _render_transcript(msgs, max_input, max_result, with_text):
                     lines.append(t[:300])
                     lines.append('')
     return lines
+
+
+def _result_to_text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for blk in content:
+            if isinstance(blk, dict):
+                parts.append(blk.get('text', '') or json.dumps(blk, ensure_ascii=False))
+            else:
+                parts.append(str(blk))
+        return '\n'.join(parts)
+    return str(content)
 
 
 def _build_header(sources, total_tool_use):

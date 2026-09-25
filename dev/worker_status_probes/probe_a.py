@@ -7,8 +7,8 @@ import sys
 import time
 from pathlib import Path
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def probe_a_workflow():
     args = _parse_args()
@@ -21,23 +21,12 @@ def probe_a_workflow():
 
 # FUNCTIONS
 
-
 def _parse_args():
     p = argparse.ArgumentParser(description="Probe A: window_activity polling")
     p.add_argument("--sessions", nargs="+", required=True)
     p.add_argument("--duration", type=int, default=120)
     p.add_argument("--outfile", required=True)
     return p.parse_args()
-
-
-def _get_window_activity(session):
-    r = subprocess.run(
-        ["tmux", "display-message", "-t", f"{session}:0", "-p", "#{window_activity}"],
-        capture_output=True,
-        text=True,
-    )
-    val = r.stdout.strip()
-    return int(val) if val.isdigit() else 0
 
 
 def _run_probe(sessions, duration, outfile):
@@ -61,6 +50,16 @@ def _run_probe(sessions, duration, outfile):
             remaining = 1.0 - elapsed
             if remaining > 0:
                 time.sleep(remaining)
+
+
+def _get_window_activity(session):
+    r = subprocess.run(
+        ["tmux", "display-message", "-t", f"{session}:0", "-p", "#{window_activity}"],
+        capture_output=True,
+        text=True,
+    )
+    val = r.stdout.strip()
+    return int(val) if val.isdigit() else 0
 
 
 if __name__ == "__main__":

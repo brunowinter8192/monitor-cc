@@ -11,7 +11,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ## Modules
 
-### pipeline_byte_identity.py (137 LOC)
+### pipeline_byte_identity.py (138 LOC)
 
 **Purpose:** Verification aid: hashes the full modification pipeline over a bounded prefix of a real original log for both worker contexts.
 **Reads:** the newest original log, or a pinned path via an env var.
@@ -41,7 +41,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### replay_sn_notice_strip.py (206 LOC)
+### replay_sn_notice_strip.py (202 LOC)
 
 **Purpose:** Replay proof of the SN-notice strip over every captured dual log: byte-exact untouched versus reconstructable-changed, plus counts.
 **Reads:** all original logs of the main checkout's dual log (hardcoded path).
@@ -141,7 +141,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix_cases_launch_ack_interrupt.py (248 LOC)
+### test_strip_fix_cases_launch_ack_interrupt.py (246 LOC)
 
 **Purpose:** Background-launch-ack id and path line recovery across the three recognized wordings, and the interrupt-marker strip's two wordings.
 **Reads:** nothing external.
@@ -151,7 +151,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix_cases_wrapped_tn.py (82 LOC)
+### test_strip_fix_cases_wrapped_tn.py (81 LOC)
 
 **Purpose:** The system-reminder-wrapped task-notification full-chain regression plus two byte-identical control cases.
 **Reads:** nothing external.
@@ -171,7 +171,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix_cases_badge.py (210 LOC)
+### test_strip_fix_cases_badge.py (209 LOC)
 
 **Purpose:** The token-count badge-suppression read-side fix: writer spans unchanged, badge quiet only for the exact bare-tag class.
 **Reads:** nothing external.
@@ -191,7 +191,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### replay_env_context_strip.py (206 LOC)
+### replay_env_context_strip.py (198 LOC)
 
 **Purpose:** Before and after replay for env-context strip fixes, bucketed by outcome and by date and git-status form.
 **Reads:** all original logs of the main checkout's dual log (hardcoded path).
@@ -281,7 +281,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### verify_proxy_start_equivalence.py (68 LOC)
+### verify_proxy_start_equivalence.py (72 LOC)
 
 **Purpose:** Verification that the launcher behaves identically to the base ref across argument, model-config, port, marker and janitor cases; one parallel strand per case.
 **Reads:** the sandbox module.
@@ -291,7 +291,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_proxy_start_fallbacks.py (92 LOC)
+### test_proxy_start_fallbacks.py (93 LOC)
 
 **Purpose:** Cases proving the logged model-config fall-throughs (jq missing, unreadable, malformed) and the abort after a failed mitmdump start; one parallel strand per case.
 **Reads:** the sandbox module.

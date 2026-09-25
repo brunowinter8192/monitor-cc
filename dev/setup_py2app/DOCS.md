@@ -11,7 +11,7 @@ Parses the build script, executes only its function definitions with fake subpro
 
 ## Modules
 
-### exit_on_failure_checks.py (119 LOC)
+### exit_on_failure_checks.py (118 LOC)
 
 **Purpose:** Proves a missing bundle lib, a failing codesign and a failing bootstrap exit 1, and a successful bootstrap retry does not.
 **Reads:** the build script's source text.

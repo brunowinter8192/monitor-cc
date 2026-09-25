@@ -14,11 +14,8 @@ _MAX_SESSIONS = 10
 _TEST_HEIGHTS = [30, 50]
 _TEST_WIDTHS = [60, 80, 100]
 
-# ORCHESTRATOR
 
-def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
-    return new_turn_cache()
+# ORCHESTRATOR
 
 def main():
     args = _parse_args()
@@ -31,6 +28,7 @@ def main():
     else:
         sys.exit(_run_verify(sessions, args.baseline))
 
+
 # FUNCTIONS
 
 def _parse_args():
@@ -40,27 +38,13 @@ def _parse_args():
     p.add_argument('--baseline', default=None)
     return p.parse_args()
 
+
 def _find_sessions():
     if not _SESSIONS_DIR.exists():
         return []
     files = sorted(_SESSIONS_DIR.glob('*.jsonl'), key=lambda f: f.stat().st_mtime, reverse=True)
     return files[:_MAX_SESSIONS]
 
-def _load_turns(jsonl_path):
-    from src.jsonl.jsonl_cache_turns import extract_cache_turns
-    messages = []
-    with open(jsonl_path, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            messages.append(json.loads(line))
-    return extract_cache_turns(messages)
-
-def _run_one_case(turns, pane_height, pane_width):
-    from src.format.token_format import format_cache_tracker
-    result = format_cache_tracker(turns, pane_height=pane_height, pane_width=pane_width, turn_cache=_token_turn_cache())
-    return json.dumps(result, sort_keys=True, default=str)
 
 def _run_capture(sessions, output_path):
     _REPORTS.mkdir(exist_ok=True)
@@ -78,6 +62,30 @@ def _run_capture(sessions, output_path):
         json.dump(results, f, indent=2)
     total = len(_TEST_HEIGHTS) * len(_TEST_WIDTHS) * len(sessions)
     print(f'Baseline written: {out_path} ({total} cases)')
+
+
+def _load_turns(jsonl_path):
+    from src.jsonl.jsonl_cache_turns import extract_cache_turns
+    messages = []
+    with open(jsonl_path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            messages.append(json.loads(line))
+    return extract_cache_turns(messages)
+
+
+def _run_one_case(turns, pane_height, pane_width):
+    from src.format.token_format import format_cache_tracker
+    result = format_cache_tracker(turns, pane_height=pane_height, pane_width=pane_width, turn_cache=_token_turn_cache())
+    return json.dumps(result, sort_keys=True, default=str)
+
+
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
+
 
 def _run_verify(sessions, baseline_path):
     if baseline_path is None:
@@ -109,6 +117,7 @@ def _run_verify(sessions, baseline_path):
             print(f'  PASS: {s.stem} (all {len(_TEST_HEIGHTS)*len(_TEST_WIDTHS)} cases)')
     print(f'\n{passed} passed, {failed} failed (baseline: {baseline_path})')
     return 0 if failed == 0 else 1
+
 
 if __name__ == '__main__':
     main()

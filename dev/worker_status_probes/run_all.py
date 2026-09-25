@@ -17,8 +17,8 @@ WORKER_SESSIONS = [
 
 _launched: list = []
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def run_all_workflow():
     args = _parse_args()
@@ -47,7 +47,6 @@ def run_all_workflow():
 
 
 # FUNCTIONS
-
 
 def _parse_args():
     p = argparse.ArgumentParser(description="Run all three sensor probes concurrently")
@@ -78,6 +77,12 @@ def _find_opus_session():
     return best_session
 
 
+def _terminate_all():
+    for p in _launched:
+        if p.poll() is None:
+            p.terminate()
+
+
 def _launch_probes(sessions, duration, ts):
     for probe_script, outname in [
         ("probe_a.py", f"raw_probe_a_{ts}.csv"),
@@ -95,12 +100,6 @@ def _launch_probes(sessions, duration, ts):
         p = subprocess.Popen(cmd)
         _launched.append(p)
         print(f"[run_all] {probe_script} → {outname} (pid={p.pid})")
-
-
-def _terminate_all():
-    for p in _launched:
-        if p.poll() is None:
-            p.terminate()
 
 
 if __name__ == "__main__":

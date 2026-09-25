@@ -11,7 +11,7 @@ No `__init__.py`. Entry point is direct invocation: `python3 dev/hook_error_corr
 
 ## Modules
 
-### analyze.py (175 LOC)
+### analyze.py (166 LOC)
 
 **Purpose:** Resolves each logged error's triggering command, replays the active hook against it and classifies reachability.
 **Reads:** `src/logs/tool_errors.jsonl`, `src/logs/hook_firing.jsonl`, proxy JSONL logs.

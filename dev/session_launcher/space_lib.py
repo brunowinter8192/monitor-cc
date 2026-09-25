@@ -278,15 +278,16 @@ def method_a3(desktop: int) -> None:
 def method_b(desktop: int) -> None:
     sysevents_desktop_hotkey(desktop)
 
-DESKTOP_METHODS = {'a1': method_a1, 'a2': method_a2, 'a3': method_a3, 'b': method_b}
+def desktop_methods():
+    return {'a1': method_a1, 'a2': method_a2, 'a3': method_a3, 'b': method_b}
 
 def return_home(home_space: int, preferred: List[str]) -> bool:
     if active_space() == home_space:
         return True
     home_desktop = space_ids().index(home_space) + 1
-    order = preferred + [m for m in DESKTOP_METHODS if m not in preferred]
+    order = preferred + [m for m in desktop_methods() if m not in preferred]
     for name in order:
-        DESKTOP_METHODS[name](home_desktop)
+        desktop_methods()[name](home_desktop)
         if wait_active(home_space, 2.0) is not None:
             return True
     for flavor in ('joshuarli', 'jurplel'):

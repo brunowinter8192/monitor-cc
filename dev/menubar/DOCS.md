@@ -51,7 +51,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g1_log.py (51 LOC)
+### p5_g1_log.py (57 LOC)
 
 **Purpose:** Strand for the menubar log module: append and retention unchanged, write and cleanup failures reach stderr.
 **Reads:** a temp directory it creates.
@@ -71,7 +71,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g3_app.py (137 LOC)
+### p5_g3_app.py (145 LOC)
 
 **Purpose:** Strand for app wiring, restart route, panel cycle errors and Carbon hotkey failures, driven by fake objects.
 **Reads:** nothing external.
@@ -81,7 +81,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g4_detection.py (91 LOC)
+### p5_g4_detection.py (100 LOC)
 
 **Purpose:** Strand for desktop detection: key handling, route logging on change, removed last-known-good state, digest-compared normal results.
 **Reads:** nothing external; fake CoreGraphics dicts.
@@ -91,7 +91,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g5_discover.py (133 LOC)
+### p5_g5_discover.py (143 LOC)
 
 **Purpose:** Strand for session discovery, the discovery worker and a panel guard: skipped projects logged once, worker loop error handling.
 **Reads:** temp JSONL files.
@@ -101,7 +101,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g6_caches.py (287 LOC)
+### p5_g6_caches.py (304 LOC)
 
 **Purpose:** Strand for the process cache, ghostty, background timer and orphan modules: subprocess failures logged, unknown activity is None.
 **Reads:** temp directories; fake subprocess results.
@@ -111,7 +111,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### p5_g7_model.py (69 LOC)
+### p5_g7_model.py (74 LOC)
 
 **Purpose:** Strand for the model controller: every cycle handler dispatches and refreshes as before, failures land in the menubar log.
 **Reads:** nothing external; fake selection and buttons.

@@ -41,7 +41,7 @@ The wording scan reads the dual-log corpus and writes a findings report. The abo
 
 ---
 
-### p3_project_scope_incident_probe.py (214 LOC)
+### p3_project_scope_incident_probe.py (215 LOC)
 
 **Purpose:** Replays a cross-project false-block incident where one project's session was blocked by another's pending background-task entry.
 **Reads:** nothing persistent; seeds its own state file per case in a temp dir.

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import argparse
 import signal
@@ -10,6 +9,7 @@ import cursor_edges_constants as cec
 from cursor_edges_constants import EDGE, PANEL_HEIGHT, PANEL_WIDTH
 from cursor_edges_logging import _dump_hierarchy, _install_global_mouse_monitor, _log
 from cursor_edges_panel import _make_probe_panel
+
 
 # ORCHESTRATOR
 
@@ -127,4 +127,5 @@ def _log_signal_guide() -> None:
         _log('  NSEventMonitor   — pre-dispatch raw event')
 
 
-main()
+if __name__ == '__main__':
+    main()

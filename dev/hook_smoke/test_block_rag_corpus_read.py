@@ -77,14 +77,25 @@ def _all_runners() -> dict:
     return runners
 
 
+def _run_hook(command: str) -> int:
+    return _run_hook_raw(_payload(command))
+
+
+def _run_hook_raw(stdin_bytes: bytes) -> int:
+    result = run_hook(HOOK, stdin_bytes)
+    return result.returncode
+
+
+def _payload(command: str) -> bytes:
+    return json.dumps({
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+    }).encode()
+
+
 def _message_runners() -> dict:
     labels = [label for label, _ in _message_checks("")]
     return {strand_name(98, label): partial(_check_message, label) for label in labels}
-
-
-def _check_message(label: str) -> None:
-    _, stderr = _run_hook_with_stderr("cat /Users/x/cli/rag-cli/data/documents/z.md")
-    report_case(f"block message: {label}", dict(_message_checks(stderr))[label])
 
 
 def _message_checks(stderr: str) -> list:
@@ -95,25 +106,14 @@ def _message_checks(stderr: str) -> list:
     ]
 
 
-def _run_hook(command: str) -> int:
-    return _run_hook_raw(_payload(command))
+def _check_message(label: str) -> None:
+    _, stderr = _run_hook_with_stderr("cat /Users/x/cli/rag-cli/data/documents/z.md")
+    report_case(f"block message: {label}", dict(_message_checks(stderr))[label])
 
 
 def _run_hook_with_stderr(command: str) -> tuple:
     result = run_hook(HOOK, _payload(command))
     return result.returncode, result.stderr.decode()
-
-
-def _payload(command: str) -> bytes:
-    return json.dumps({
-        "tool_name": "Bash",
-        "tool_input": {"command": command},
-    }).encode()
-
-
-def _run_hook_raw(stdin_bytes: bytes) -> int:
-    result = run_hook(HOOK, stdin_bytes)
-    return result.returncode
 
 
 if __name__ == "__main__":

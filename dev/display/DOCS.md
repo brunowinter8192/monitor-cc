@@ -56,7 +56,7 @@ PNG for visual review.
 
 ---
 
-### A_format_cache_tracker_proof.py (114 LOC)
+### A_format_cache_tracker_proof.py (123 LOC)
 
 **Purpose:** Verification, not a test: differential proof the cache tracker's serialized return is byte-identical to a captured baseline. Reads live JSONLs.
 **Reads:** real session JSONLs under `~/.claude/projects/`.

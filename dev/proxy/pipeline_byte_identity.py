@@ -15,6 +15,7 @@ _WORKER_CONTEXTS = ('main', 'worker:x')
 
 _SKIPPED_LINES = 0
 
+
 # ORCHESTRATOR
 
 def main():
@@ -30,15 +31,6 @@ def main():
 
 
 # FUNCTIONS
-
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
-
-
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
-
 
 def _newest_original_log() -> Path:
     override = os.environ.get('PROXY_PIPELINE_BYTE_IDENTITY_LOG')
@@ -70,21 +62,9 @@ def _load_payloads(orig_path: Path) -> list:
     return payloads
 
 
-def _normalize_for_hash(obj):
-    if isinstance(obj, dict):
-        return {k: ('<TS>' if k in _TIMESTAMP_KEYS else _normalize_for_hash(v)) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_normalize_for_hash(v) for v in obj]
-    return obj
-
-
-def _infer_model_family(model: str) -> str:
-    m = (model or '').lower()
-    if 'haiku' in m:
-        return 'haiku'
-    if 'sonnet' in m:
-        return 'sonnet'
-    return 'opus'
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
 
 
 def _hash_pipeline_run(payloads: list, worker_context: str, digest) -> None:
@@ -131,6 +111,27 @@ def _hash_pipeline_run(payloads: list, worker_context: str, digest) -> None:
         digest.update(json.dumps(_normalize_for_hash(stripped_entry), default=str).encode())
         digest.update(json.dumps(_normalize_for_hash(injected_entry), default=str).encode())
         digest.update(json.dumps(_normalize_for_hash(err_entries), default=str).encode())
+
+
+def _infer_model_family(model: str) -> str:
+    m = (model or '').lower()
+    if 'haiku' in m:
+        return 'haiku'
+    if 'sonnet' in m:
+        return 'sonnet'
+    return 'opus'
+
+
+def _normalize_for_hash(obj):
+    if isinstance(obj, dict):
+        return {k: ('<TS>' if k in _TIMESTAMP_KEYS else _normalize_for_hash(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_normalize_for_hash(v) for v in obj]
+    return obj
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 if __name__ == '__main__':

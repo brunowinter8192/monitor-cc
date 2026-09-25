@@ -11,11 +11,9 @@ from src.panes.log_janitor import cleanup_old_jsonl
 
 _now = datetime.now(timezone.utc)
 
-def _ts(dt):
-    return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-
-_OLD    = json.dumps({'ts': _ts(_now - timedelta(days=8)),  'hook': 'x', 'decision': 'block'})
-_RECENT = json.dumps({'ts': _ts(_now - timedelta(days=1)),  'hook': 'x', 'decision': 'rewrite'})
+_TS_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
+_OLD    = json.dumps({'ts': (_now - timedelta(days=8)).strftime(_TS_FORMAT),  'hook': 'x', 'decision': 'block'})
+_RECENT = json.dumps({'ts': (_now - timedelta(days=1)).strftime(_TS_FORMAT),  'hook': 'x', 'decision': 'rewrite'})
 _EMPTY  = json.dumps({'ts': '',                             'hook': 'x', 'decision': 'block'})
 _NAIVE  = json.dumps({'ts': (_now - timedelta(days=9)).strftime('%Y-%m-%dT%H:%M:%S'), 'hook': 'x', 'decision': 'block'})
 

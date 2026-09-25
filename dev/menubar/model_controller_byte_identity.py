@@ -20,8 +20,8 @@ _SYNTHETIC_RULES = '''{
 }
 '''
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     mc = _import_model_controller()
@@ -86,33 +86,6 @@ def _hash_persistence(ms) -> str:
     return digest.hexdigest()
 
 
-def _safe_call(obj, method_name: str):
-    if not hasattr(obj, method_name):
-        return None
-    try:
-        return getattr(obj, method_name)()
-    except Exception:
-        return None
-
-
-def _dump_subviews(sv) -> bytes:
-    entries = []
-    for v in sv.arrangedSubviews():
-        frame = v.frame()
-        attr = _safe_call(v, 'attributedTitle')
-        action = _safe_call(v, 'action')
-        entries.append({
-            'class': type(v).__name__,
-            'frame': [round(frame.origin.x, 3), round(frame.origin.y, 3),
-                      round(frame.size.width, 3), round(frame.size.height, 3)],
-            'title': _safe_call(v, 'title'),
-            'attributedTitle': str(attr.string()) if attr is not None else None,
-            'tag': _safe_call(v, 'tag'),
-            'action': str(action) if action else None,
-        })
-    return json.dumps(entries, sort_keys=True).encode()
-
-
 def _hash_ui(mc) -> str:
     from Foundation import NSObject
 
@@ -140,6 +113,33 @@ def _hash_ui(mc) -> str:
         digest.update(_dump_subviews(controller._models_sv))
 
     return digest.hexdigest()
+
+
+def _dump_subviews(sv) -> bytes:
+    entries = []
+    for v in sv.arrangedSubviews():
+        frame = v.frame()
+        attr = _safe_call(v, 'attributedTitle')
+        action = _safe_call(v, 'action')
+        entries.append({
+            'class': type(v).__name__,
+            'frame': [round(frame.origin.x, 3), round(frame.origin.y, 3),
+                      round(frame.size.width, 3), round(frame.size.height, 3)],
+            'title': _safe_call(v, 'title'),
+            'attributedTitle': str(attr.string()) if attr is not None else None,
+            'tag': _safe_call(v, 'tag'),
+            'action': str(action) if action else None,
+        })
+    return json.dumps(entries, sort_keys=True).encode()
+
+
+def _safe_call(obj, method_name: str):
+    if not hasattr(obj, method_name):
+        return None
+    try:
+        return getattr(obj, method_name)()
+    except Exception:
+        return None
 
 
 def _smoke_import_and_open(mc) -> None:

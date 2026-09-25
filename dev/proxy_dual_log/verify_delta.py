@@ -28,6 +28,7 @@ Or with named flags:
         --forwarded src/logs/dual_log/api_requests_<id>_forwarded.jsonl
 """
 
+
 # ORCHESTRATOR
 
 def verify_delta_workflow(original_path: Path, forwarded_path: Path) -> int:
@@ -40,6 +41,7 @@ def verify_delta_workflow(original_path: Path, forwarded_path: Path) -> int:
 
     hard_fails = [r for r in results if r["hard_fail"]]
     return 1 if hard_fails else 0
+
 
 # FUNCTIONS
 
@@ -72,54 +74,13 @@ def _build_original_index(entries: list) -> dict:
     return {"by_reqid": by_reqid, "by_family_order": by_family_order, "_family_cursors": {}}
 
 
-def _advance_chain(entry: dict, chain_states: dict) -> tuple:
-    model = entry.get("model", "")
-    family = _infer_family(model)
-    is_first = entry.get("is_first", False)
-    counts = entry.get("counts", {})
-
-    if is_first:
-        curr_state = {
-            "system": _dict_to_list(entry.get("system_delta", {}), counts.get("system", 0)),
-            "tools": _dict_to_list(entry.get("tools_delta", {}), counts.get("tools", 0)),
-            "messages": _dict_to_list(entry.get("messages_delta", {}), counts.get("messages", 0)),
-        }
-    else:
-        prev_state = chain_states.get(family, {"system": [], "tools": [], "messages": []})
-        curr_state = {}
-        for cat in ("system", "tools", "messages"):
-            prev_list = list(prev_state[cat])
-            for idx_str, elem in entry.get(f"{cat}_delta", {}).items():
-                i = int(idx_str)
-                while len(prev_list) <= i:
-                    prev_list.append(None)
-                prev_list[i] = elem
-            curr_state[cat] = prev_list[:counts.get(cat, len(prev_list))]
-
-    chain_states[family] = curr_state
-    return family, curr_state, model, is_first, counts
-
-
-def _hard_fail_check(curr_state: dict, counts: dict) -> tuple:
-    hard_fail = False
-    hard_fail_details = []
-    for cat in ("system", "tools", "messages"):
-        reconstructed = len(curr_state[cat])
-        declared = counts.get(cat, -1)
-        if reconstructed != declared:
-            hard_fail = True
-            hard_fail_details.append(f"{cat}: reconstructed={reconstructed} declared={declared}")
-    return hard_fail, hard_fail_details
-
-
-def _soft_mismatch_check(request_id: str, family: str, counts: dict, original_index: dict, family_cursors: dict):
-    orig_msg_count = _lookup_original_msg_count(request_id, family, original_index, family_cursors)
-    if orig_msg_count is None:
-        return None
-    fwd_msg_count = counts.get("messages", 0)
-    if fwd_msg_count == orig_msg_count:
-        return None
-    return f"forwarded={fwd_msg_count} original={orig_msg_count} diff={fwd_msg_count - orig_msg_count:+d}"
+def _infer_family(model: str) -> str:
+    m = model.lower()
+    if "haiku" in m:
+        return "haiku"
+    if "sonnet" in m:
+        return "sonnet"
+    return "opus"
 
 
 def _reconstruct_and_check(forwarded_entries: list, original_index: dict) -> list:
@@ -160,15 +121,32 @@ def _reconstruct_and_check(forwarded_entries: list, original_index: dict) -> lis
     return results
 
 
-def _lookup_original_msg_count(request_id: str, family: str, index: dict, cursors: dict):
-    if request_id and request_id in index["by_reqid"]:
-        return index["by_reqid"][request_id]
-    order_list = index["by_family_order"].get(family, [])
-    cursor = cursors.get(family, 0)
-    if cursor < len(order_list):
-        cursors[family] = cursor + 1
-        return order_list[cursor]
-    return None
+def _advance_chain(entry: dict, chain_states: dict) -> tuple:
+    model = entry.get("model", "")
+    family = _infer_family(model)
+    is_first = entry.get("is_first", False)
+    counts = entry.get("counts", {})
+
+    if is_first:
+        curr_state = {
+            "system": _dict_to_list(entry.get("system_delta", {}), counts.get("system", 0)),
+            "tools": _dict_to_list(entry.get("tools_delta", {}), counts.get("tools", 0)),
+            "messages": _dict_to_list(entry.get("messages_delta", {}), counts.get("messages", 0)),
+        }
+    else:
+        prev_state = chain_states.get(family, {"system": [], "tools": [], "messages": []})
+        curr_state = {}
+        for cat in ("system", "tools", "messages"):
+            prev_list = list(prev_state[cat])
+            for idx_str, elem in entry.get(f"{cat}_delta", {}).items():
+                i = int(idx_str)
+                while len(prev_list) <= i:
+                    prev_list.append(None)
+                prev_list[i] = elem
+            curr_state[cat] = prev_list[:counts.get(cat, len(prev_list))]
+
+    chain_states[family] = curr_state
+    return family, curr_state, model, is_first, counts
 
 
 def _dict_to_list(delta_dict: dict, declared_count: int) -> list:
@@ -180,6 +158,39 @@ def _dict_to_list(delta_dict: dict, declared_count: int) -> list:
     return result
 
 
+def _hard_fail_check(curr_state: dict, counts: dict) -> tuple:
+    hard_fail = False
+    hard_fail_details = []
+    for cat in ("system", "tools", "messages"):
+        reconstructed = len(curr_state[cat])
+        declared = counts.get(cat, -1)
+        if reconstructed != declared:
+            hard_fail = True
+            hard_fail_details.append(f"{cat}: reconstructed={reconstructed} declared={declared}")
+    return hard_fail, hard_fail_details
+
+
+def _soft_mismatch_check(request_id: str, family: str, counts: dict, original_index: dict, family_cursors: dict):
+    orig_msg_count = _lookup_original_msg_count(request_id, family, original_index, family_cursors)
+    if orig_msg_count is None:
+        return None
+    fwd_msg_count = counts.get("messages", 0)
+    if fwd_msg_count == orig_msg_count:
+        return None
+    return f"forwarded={fwd_msg_count} original={orig_msg_count} diff={fwd_msg_count - orig_msg_count:+d}"
+
+
+def _lookup_original_msg_count(request_id: str, family: str, index: dict, cursors: dict):
+    if request_id and request_id in index["by_reqid"]:
+        return index["by_reqid"][request_id]
+    order_list = index["by_family_order"].get(family, [])
+    cursor = cursors.get(family, 0)
+    if cursor < len(order_list):
+        cursors[family] = cursor + 1
+        return order_list[cursor]
+    return None
+
+
 def _delta_bytes(entry: dict) -> int:
     return sum(
         len(json.dumps(entry.get(f"{cat}_delta", {})).encode("utf-8"))
@@ -187,13 +198,20 @@ def _delta_bytes(entry: dict) -> int:
     )
 
 
-def _infer_family(model: str) -> str:
-    m = model.lower()
-    if "haiku" in m:
-        return "haiku"
-    if "sonnet" in m:
-        return "sonnet"
-    return "opus"
+def _print_report(results: list, original_path: Path, forwarded_path: Path) -> None:
+    print(f"\nverify_delta — {forwarded_path.name}")
+    print(f"  original:  {original_path}")
+    print(f"  forwarded: {forwarded_path}")
+    print(f"  entries:   {len(results)}\n")
+
+    col = "{:<4} {:<18} {:<7} {:<8} {:>6} {:>5} {:>5} {:>5} {:>9} {}"
+    print(col.format("line", "request_id", "family", "is_first", "sys", "tools", "msgs", "dKB", "status", "delta_indices / notes"))
+    print("-" * 110)
+
+    for r in results:
+        print(_format_row(r, col))
+
+    _print_summary(results)
 
 
 def _format_row(r: dict, col: str) -> str:
@@ -240,22 +258,6 @@ def _print_summary(results: list) -> None:
         print(f"FAIL — {len(hard_fails)} hard-fail, {len(soft_warns)} soft-mismatch, {ok_count} ok")
         print("Delta self-consistency: BROKEN — see HARD FAIL rows above")
     print()
-
-
-def _print_report(results: list, original_path: Path, forwarded_path: Path) -> None:
-    print(f"\nverify_delta — {forwarded_path.name}")
-    print(f"  original:  {original_path}")
-    print(f"  forwarded: {forwarded_path}")
-    print(f"  entries:   {len(results)}\n")
-
-    col = "{:<4} {:<18} {:<7} {:<8} {:>6} {:>5} {:>5} {:>5} {:>9} {}"
-    print(col.format("line", "request_id", "family", "is_first", "sys", "tools", "msgs", "dKB", "status", "delta_indices / notes"))
-    print("-" * 110)
-
-    for r in results:
-        print(_format_row(r, col))
-
-    _print_summary(results)
 
 
 if __name__ == "__main__":

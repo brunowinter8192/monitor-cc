@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-
 import glob
 import hashlib
 import json
@@ -16,16 +15,35 @@ _HAIKU_RE = re.compile(r"haiku", re.IGNORECASE)
 
 _SKIPPED_LINES = 0
 
+
+# ORCHESTRATOR
+
+def probe_sys_tool_original_chars_workflow() -> None:
+    dual_log_dir = _resolve_dual_log_dir()
+    stems = sorted(set(p[:-len("_original.jsonl")] for p in glob.glob(str(dual_log_dir / "*_original.jsonl"))))
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    report_path = REPORT_DIR / f"probe_sys_tool_original_chars_{date.today().isoformat()}.md"
+    if not stems:
+        report_path.write_text("# probe_sys_tool_original_chars\n\nno sessions found\n", encoding="utf-8")
+        print(f"no sessions found; report written to {report_path}")
+        return
+    lines = [
+        "# probe_sys_tool_original_chars",
+        "",
+        f"Run {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')} against {len(stems)} sessions "
+        f"under `{dual_log_dir}`.",
+        "",
+    ]
+    lines += _measure_whole_tool_coverage(stems)
+    lines += _measure_tool_content_stability(stems)
+    lines += _measure_system_stability(stems)
+    lines += _measure_recording_pattern(stems)
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"report written to {report_path}")
+    _report_skipped_lines()
+
+
 # FUNCTIONS
-
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
-
-
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
-
 
 def _resolve_dual_log_dir() -> Path:
     env_root = os.environ.get("MONITOR_CC_ROOT")
@@ -41,52 +59,6 @@ def _resolve_dual_log_dir() -> Path:
             return from_worktree
     return direct
 
-def _infer_family(model: str) -> str:
-    if _HAIKU_RE.search(model or ""):
-        return "haiku"
-    if "sonnet" in (model or "").lower():
-        return "sonnet"
-    return "opus"
-
-def _delta_hash(element) -> str:
-    if isinstance(element, dict):
-        element = {k: v for k, v in element.items() if k != "cache_control"}
-    return hashlib.md5(json.dumps(element, sort_keys=True).encode("utf-8")).hexdigest()[:10]
-
-def _tool_chars(tool) -> int:
-    return len(json.dumps(tool))
-
-def _last_non_haiku_entry(original_path: Path):
-    last = None
-    for line in open(original_path, encoding="utf-8"):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            _note_skipped_line()
-            continue
-        if _infer_family(entry.get("model", "")) == "haiku":
-            continue
-        last = entry
-    return last
-
-def _whole_stripped_names(stripped_path: Path) -> set:
-    names = set()
-    for line in open(stripped_path, encoding="utf-8"):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            _note_skipped_line()
-            continue
-        for name, val in (entry.get("tools_delta") or {}).items():
-            if isinstance(val, dict) and val.get("whole") is True:
-                names.add(name)
-    return names
 
 def _measure_whole_tool_coverage(stems: list) -> list:
     lines = ["## 1. Whole-stripped tool coverage", ""]
@@ -115,6 +87,54 @@ def _measure_whole_tool_coverage(stems: list) -> list:
     )
     lines.append("")
     return lines
+
+
+def _whole_stripped_names(stripped_path: Path) -> set:
+    names = set()
+    for line in open(stripped_path, encoding="utf-8"):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            _note_skipped_line()
+            continue
+        for name, val in (entry.get("tools_delta") or {}).items():
+            if isinstance(val, dict) and val.get("whole") is True:
+                names.add(name)
+    return names
+
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _last_non_haiku_entry(original_path: Path):
+    last = None
+    for line in open(original_path, encoding="utf-8"):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            _note_skipped_line()
+            continue
+        if _infer_family(entry.get("model", "")) == "haiku":
+            continue
+        last = entry
+    return last
+
+
+def _infer_family(model: str) -> str:
+    if _HAIKU_RE.search(model or ""):
+        return "haiku"
+    if "sonnet" in (model or "").lower():
+        return "sonnet"
+    return "opus"
+
 
 def _measure_tool_content_stability(stems: list) -> list:
     lines = ["## 2. Tool content stability across a session", ""]
@@ -145,6 +165,13 @@ def _measure_tool_content_stability(stems: list) -> list:
                  f"comparing any earlier request's own tool-by-name content against the last request's.")
     lines.append("")
     return lines
+
+
+def _delta_hash(element) -> str:
+    if isinstance(element, dict):
+        element = {k: v for k, v in element.items() if k != "cache_control"}
+    return hashlib.md5(json.dumps(element, sort_keys=True).encode("utf-8")).hexdigest()[:10]
+
 
 def _measure_system_stability(stems: list) -> list:
     lines = ["## 3. System block stability (indices 1-3, family-first vs. family-last)", ""]
@@ -179,6 +206,7 @@ def _measure_system_stability(stems: list) -> list:
                  f"content mismatch** at indices 1-3 between the family's first and last request.")
     lines.append("")
     return lines
+
 
 def _measure_recording_pattern(stems: list) -> list:
     lines = ["## 4. Recording pattern (whole-tool strip / system_delta, rendered family only)", ""]
@@ -219,29 +247,14 @@ def _measure_recording_pattern(stems: list) -> list:
     lines.append("")
     return lines
 
-def probe_sys_tool_original_chars_workflow() -> None:
-    dual_log_dir = _resolve_dual_log_dir()
-    stems = sorted(set(p[:-len("_original.jsonl")] for p in glob.glob(str(dual_log_dir / "*_original.jsonl"))))
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    report_path = REPORT_DIR / f"probe_sys_tool_original_chars_{date.today().isoformat()}.md"
-    if not stems:
-        report_path.write_text("# probe_sys_tool_original_chars\n\nno sessions found\n", encoding="utf-8")
-        print(f"no sessions found; report written to {report_path}")
-        return
-    lines = [
-        "# probe_sys_tool_original_chars",
-        "",
-        f"Run {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')} against {len(stems)} sessions "
-        f"under `{dual_log_dir}`.",
-        "",
-    ]
-    lines += _measure_whole_tool_coverage(stems)
-    lines += _measure_tool_content_stability(stems)
-    lines += _measure_system_stability(stems)
-    lines += _measure_recording_pattern(stems)
-    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"report written to {report_path}")
-    _report_skipped_lines()
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
+
+def _tool_chars(tool) -> int:
+    return len(json.dumps(tool))
+
 
 if __name__ == "__main__":
     probe_sys_tool_original_chars_workflow()

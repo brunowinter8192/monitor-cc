@@ -11,6 +11,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook_writer_split.md"
 
+
 # ORCHESTRATOR
 
 def verify_hook_writer_split_workflow() -> None:
@@ -44,10 +45,8 @@ def verify_hook_writer_split_workflow() -> None:
     REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
 
-# FUNCTIONS
 
-def _without_clock(state: dict) -> dict:
-    return {sid: {k: v for k, v in entry.items() if k != 'updated_ts'} for sid, entry in state.items()}
+# FUNCTIONS
 
 def _load_hook_writer_with_tmp_app_support(tmp_dir: Path):
     spec_path = REPO_ROOT / "src" / "menubar" / "hook_writer.py"
@@ -60,6 +59,7 @@ def _load_hook_writer_with_tmp_app_support(tmp_dir: Path):
     module._HOOK_LOCK_FILE  = tmp_dir / "hooks.lock"
     return module
 
+
 def _run_payload(hook_writer, payload: dict) -> None:
     real_stdin = sys.stdin
     sys.stdin = io.StringIO(json.dumps(payload))
@@ -67,6 +67,10 @@ def _run_payload(hook_writer, payload: dict) -> None:
         hook_writer.hook_writer_workflow()
     finally:
         sys.stdin = real_stdin
+
+
+def _without_clock(state: dict) -> dict:
+    return {sid: {k: v for k, v in entry.items() if k != 'updated_ts'} for sid, entry in state.items()}
 
 
 if __name__ == "__main__":

@@ -13,8 +13,8 @@ _FIXED_TS = 1800000000.0
 _PANE_WIDTHS = (100, 40)
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     render_pane, toggle_state, button_regions = _import_gpu()
@@ -74,14 +74,6 @@ def _make_fixtures() -> tuple:
     return presets, arbitrary, anomalies, today_errors, error_counts, collections
 
 
-def _strip_ansi_for_match(line: str) -> str:
-    return _ANSI_RE.sub('', line)
-
-
-def _regions_for_hash(regions: dict) -> list:
-    return sorted([list(k) + list(v) for k, v in regions.items()])
-
-
 def _hash_one_width(digest, render_pane, button_regions, pane_width: int, presets: list,
                      arbitrary: list, anomalies: list, today_errors: list, error_counts: dict,
                      collections: list) -> None:
@@ -101,6 +93,14 @@ def _hash_one_width(digest, render_pane, button_regions, pane_width: int, preset
     digest.update(f'width={pane_width}|search={query}|'.encode())
     digest.update(searched.encode())
     digest.update(json.dumps(_regions_for_hash(dict(button_regions)), sort_keys=True).encode())
+
+
+def _regions_for_hash(regions: dict) -> list:
+    return sorted([list(k) + list(v) for k, v in regions.items()])
+
+
+def _strip_ansi_for_match(line: str) -> str:
+    return _ANSI_RE.sub('', line)
 
 
 if __name__ == '__main__':

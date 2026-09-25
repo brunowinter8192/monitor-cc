@@ -11,7 +11,7 @@ Every stripped and injected log pair of the dual log is loaded, each modificatio
 
 ## Modules
 
-### attribution_coverage.py (51 LOC)
+### attribution_coverage.py (45 LOC)
 
 **Purpose:** CLI entry point for the coverage analysis.
 **Reads:** all stripped and injected log pairs of the dual log, resolved against the main checkout from a worktree.
@@ -41,7 +41,7 @@ Every stripped and injected log pair of the dual log is loaded, each modificatio
 
 ---
 
-### attribution_coverage_report.py (248 LOC)
+### attribution_coverage_report.py (247 LOC)
 
 **Purpose:** Builds the Markdown report: attribution tables, residual analysis, false-positive evidence and gap status.
 **Reads:** the aggregated stats from the analyser.

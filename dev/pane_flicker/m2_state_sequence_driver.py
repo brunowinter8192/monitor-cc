@@ -18,6 +18,7 @@ _ROOT_PKG = 'src'
 _TERM = {'cols': 120, 'lines': 45}
 _FAR_FUTURE = 10 ** 10
 
+
 # ORCHESTRATOR
 
 def sequence_workflow() -> None:
@@ -27,6 +28,7 @@ def sequence_workflow() -> None:
     run_sequence(pane, records)
     with open(OUT_PATH, 'w', encoding='utf-8') as f:
         json.dump(records, f)
+
 
 # FUNCTIONS
 
@@ -43,6 +45,7 @@ def make_adapter(pane_name: str) -> SimpleNamespace:
     if pane_name == 'tokens':
         return tokens_adapter(turns, counter)
     return worker_tokens_adapter(turns, counter)
+
 
 def tokens_adapter(turns: list, counter: dict) -> SimpleNamespace:
     mod = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
@@ -66,6 +69,7 @@ def tokens_adapter(turns: list, counter: dict) -> SimpleNamespace:
         rid_map=lambda: mod._response_rid_map, set_scroll=set_scroll, scroll_of=scroll_of,
         clear_nav=lambda: mod._tokens_nav.clear(),
     )
+
 
 def worker_tokens_adapter(turns: list, counter: dict) -> SimpleNamespace:
     mod = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tokens_pane')
@@ -93,63 +97,6 @@ def worker_tokens_adapter(turns: list, counter: dict) -> SimpleNamespace:
         clear_nav=lambda: mod._worker_tokens_nav.clear(),
     )
 
-def snapshot(pane: SimpleNamespace, name: str, records: list) -> None:
-    pane.counter['renders'] = 0
-    exc = None
-    output = None
-    try:
-        output = pane.build()
-    except Exception as e:
-        exc = type(e).__name__
-    records.append({
-        'name': name, 'output': output, 'exc': exc, 'turn_renders': pane.counter['renders'],
-        'line_map': sorted((r, repr(k)) for r, k in pane.line_map().items()),
-        'copy_rows': sorted(pane.copy_rows()),
-        'nav': sorted((repr(k), v) for k, v in pane.nav().items()),
-        'scroll': pane.scroll_of(), 'width': pane.width(),
-    })
-
-def key_rows(pane: SimpleNamespace) -> list:
-    return sorted(pane.line_map())
-
-def hover(pane: SimpleNamespace, row: int) -> None:
-    pane.mouse(35, 10, row)
-
-def type_query(pane: SimpleNamespace, query: str) -> None:
-    pane.search.focused = True
-    for ch in query:
-        pane.search_input(ch)
-    pane.search_input('\r')
-
-def expand_call_with_request_id(pane: SimpleNamespace) -> tuple:
-    for row in reversed(key_rows(pane)[:-1]):
-        key = pane.line_map()[row]
-        if key[0] != 'turn' and pane.turns()[key[0]]['api_calls'][key[1]].get('request_id'):
-            pane.mouse(0, 10, row)
-            return key
-    raise RuntimeError('no visible call with a request_id')
-
-def first_call_word(turns: list) -> str:
-    for turn in turns:
-        for call in turn.get('api_calls', []):
-            for block in call.get('content_blocks', []):
-                if block.get('type') == 'tool_use' and block.get('tool_name'):
-                    return block['tool_name'].lower()
-    return 'text'
-
-def make_new_turn(turns: list) -> dict:
-    last = turns[-1]
-    return {'prompt': 'appended turn prompt', 'timestamp': last.get('timestamp', ''), 'api_calls': [dict(c) for c in last.get('api_calls', [])[:2]]}
-
-def grow_last_turn(turns: list) -> list:
-    last = dict(turns[-1])
-    calls = list(last.get('api_calls', []))
-    extra = dict(calls[-1]) if calls else {'cache_read': 1, 'cache_creation': 1, 'direct': 1, 'output_tokens': 1, 'content_blocks': []}
-    extra['request_id'] = extra.get('request_id', 'x') + '_grown'
-    extra['cache_creation'] = extra.get('cache_read', 0) + 5
-    calls.append(extra)
-    last['api_calls'] = calls
-    return turns[:-1] + [last]
 
 def run_sequence(pane: SimpleNamespace, records: list) -> None:
     hover_scroll_and_expand(pane, records)
@@ -158,6 +105,7 @@ def run_sequence(pane: SimpleNamespace, records: list) -> None:
     search_phase(pane, records)
     width_phase(pane, records)
     growth_and_reset_phase(pane, records)
+
 
 def hover_scroll_and_expand(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'initial', records)
@@ -187,6 +135,32 @@ def hover_scroll_and_expand(pane: SimpleNamespace, records: list) -> None:
     pane.mouse(0, 10, key_rows(pane)[0])
     snapshot(pane, 'collapse_call_in_oldest_turn', records)
 
+
+def snapshot(pane: SimpleNamespace, name: str, records: list) -> None:
+    pane.counter['renders'] = 0
+    exc = None
+    output = None
+    try:
+        output = pane.build()
+    except Exception as e:
+        exc = type(e).__name__
+    records.append({
+        'name': name, 'output': output, 'exc': exc, 'turn_renders': pane.counter['renders'],
+        'line_map': sorted((r, repr(k)) for r, k in pane.line_map().items()),
+        'copy_rows': sorted(pane.copy_rows()),
+        'nav': sorted((repr(k), v) for k, v in pane.nav().items()),
+        'scroll': pane.scroll_of(), 'width': pane.width(),
+    })
+
+
+def hover(pane: SimpleNamespace, row: int) -> None:
+    pane.mouse(35, 10, row)
+
+
+def key_rows(pane: SimpleNamespace) -> list:
+    return sorted(pane.line_map())
+
+
 def copy_feedback_phase(pane: SimpleNamespace, records: list) -> None:
     copy_rows = sorted(pane.copy_rows())
     pane.mouse(0, pane.width() - 1, copy_rows[0])
@@ -199,6 +173,7 @@ def copy_feedback_phase(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'copy_feedback_expired', records)
     pane.set_scroll(0)
     snapshot(pane, 'scroll_bottom', records)
+
 
 def response_entry_phase(pane: SimpleNamespace, records: list) -> None:
     expanded_key = expand_call_with_request_id(pane)
@@ -218,6 +193,16 @@ def response_entry_phase(pane: SimpleNamespace, records: list) -> None:
         pane.rid_map()[rid] = dict(entry, answering_model='model-c')
         snapshot(pane, 'response_entry_replaced', records)
 
+
+def expand_call_with_request_id(pane: SimpleNamespace) -> tuple:
+    for row in reversed(key_rows(pane)[:-1]):
+        key = pane.line_map()[row]
+        if key[0] != 'turn' and pane.turns()[key[0]]['api_calls'][key[1]].get('request_id'):
+            pane.mouse(0, 10, row)
+            return key
+    raise RuntimeError('no visible call with a request_id')
+
+
 def search_phase(pane: SimpleNamespace, records: list) -> None:
     query = first_call_word(pane.turns())
     type_query(pane, query)
@@ -236,6 +221,23 @@ def search_phase(pane: SimpleNamespace, records: list) -> None:
     pane.search_cancel()
     snapshot(pane, 'search_cancelled_again', records)
 
+
+def first_call_word(turns: list) -> str:
+    for turn in turns:
+        for call in turn.get('api_calls', []):
+            for block in call.get('content_blocks', []):
+                if block.get('type') == 'tool_use' and block.get('tool_name'):
+                    return block['tool_name'].lower()
+    return 'text'
+
+
+def type_query(pane: SimpleNamespace, query: str) -> None:
+    pane.search.focused = True
+    for ch in query:
+        pane.search_input(ch)
+    pane.search_input('\r')
+
+
 def width_phase(pane: SimpleNamespace, records: list) -> None:
     _TERM['cols'] = 50
     snapshot(pane, 'width_50', records)
@@ -245,6 +247,7 @@ def width_phase(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'width_120_again', records)
     hover(pane, 6)
     snapshot(pane, 'hover_width_120', records)
+
 
 def growth_and_reset_phase(pane: SimpleNamespace, records: list) -> None:
     pane.set_scroll(0)
@@ -265,6 +268,23 @@ def growth_and_reset_phase(pane: SimpleNamespace, records: list) -> None:
     snapshot(pane, 'session_restored_new_list', records)
     hover(pane, 5)
     snapshot(pane, 'hover_final', records)
+
+
+def make_new_turn(turns: list) -> dict:
+    last = turns[-1]
+    return {'prompt': 'appended turn prompt', 'timestamp': last.get('timestamp', ''), 'api_calls': [dict(c) for c in last.get('api_calls', [])[:2]]}
+
+
+def grow_last_turn(turns: list) -> list:
+    last = dict(turns[-1])
+    calls = list(last.get('api_calls', []))
+    extra = dict(calls[-1]) if calls else {'cache_read': 1, 'cache_creation': 1, 'direct': 1, 'output_tokens': 1, 'content_blocks': []}
+    extra['request_id'] = extra.get('request_id', 'x') + '_grown'
+    extra['cache_creation'] = extra.get('cache_read', 0) + 5
+    calls.append(extra)
+    last['api_calls'] = calls
+    return turns[:-1] + [last]
+
 
 if __name__ == '__main__':
     sequence_workflow()

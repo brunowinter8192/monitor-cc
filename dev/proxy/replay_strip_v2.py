@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import importlib
 import json
@@ -23,6 +22,7 @@ _strip_system_reminders = _sr_mod._strip_system_reminders
 
 _SKIPPED_LINES = 0
 
+
 # ORCHESTRATOR
 
 def main():
@@ -45,91 +45,6 @@ def main():
 
 
 # FUNCTIONS
-
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
-
-
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
-
-
-def _chunk_template(chunk):
-    if not isinstance(chunk, str) or not chunk.startswith('<system-reminder>'):
-        return None
-    inner_m = _INNER_SR_RE.search(chunk)
-    if not inner_m:
-        return None
-    inner = inner_m.group(1).strip()
-    tid, _ = _match_template(inner, _ALL_TEMPLATES)
-    return tid
-
-
-def _has_standalone_sr(content):
-    def _check(text):
-        return isinstance(text, str) and '<system-reminder>' in text and bool(_STANDALONE_SR_RE.search(text))
-
-    if isinstance(content, str):
-        return _check(content)
-    if isinstance(content, list):
-        for blk in content:
-            if not isinstance(blk, dict):
-                continue
-            if blk.get('type') == 'text' and _check(blk.get('text', '')):
-                return True
-            if blk.get('type') == 'tool_result':
-                inner = blk.get('content', '')
-                if isinstance(inner, str) and _check(inner):
-                    return True
-                if isinstance(inner, list):
-                    for sub in inner:
-                        if isinstance(sub, dict) and _check(sub.get('text', '')):
-                            return True
-    return False
-
-
-def _process_part_a(chunk, counters, fp_new_examples, real_drop_examples):
-    if not isinstance(chunk, str):
-        return
-    if chunk.startswith('<task-notification>'):
-        return
-    if not chunk.startswith('<system-reminder>'):
-        return
-    tid = _chunk_template(chunk)
-    new_result = _apply_sr_strip(chunk, _ALL_TEMPLATES)
-    if tid is None:
-        counters['fps_old'] += 1
-        outer_m = _INNER_SR_RE.search(chunk)
-        if outer_m:
-            first_line = outer_m.group(1).strip().split('\n')[0]
-            if first_line and first_line not in new_result:
-                counters['fps_new'] += 1
-                if len(fp_new_examples) < 5:
-                    fp_new_examples.append(repr(chunk[:120]))
-    else:
-        counters['real_old'] += 1
-        if new_result == chunk:
-            counters['real_new_drops'] += 1
-            if len(real_drop_examples) < 3:
-                real_drop_examples.append({'tid': tid, 'chunk': repr(chunk[:80])})
-
-
-def _process_part_b(rp, old_removed, counters):
-    stripped_idxs = set(int(k) for k in old_removed.keys())
-    for msg_idx, msg in enumerate(rp.get('messages', [])):
-        if msg_idx in stripped_idxs:
-            continue
-        content = msg.get('content', '')
-        if not _has_standalone_sr(content):
-            continue
-        counters['missed_old'] += 1
-        new_content = _strip_system_reminders(content)
-        if _has_standalone_sr(new_content):
-            counters['still_missed'] += 1
-        else:
-            counters['now_stripped'] += 1
-
 
 def scan_all():
     logs = sorted(LOGS_DIR.glob('api_requests_*.jsonl'))
@@ -171,6 +86,91 @@ def scan_all():
         'fp_new_examples': fp_new_examples,
         'real_drop_examples': real_drop_examples,
     }
+
+
+def _process_part_a(chunk, counters, fp_new_examples, real_drop_examples):
+    if not isinstance(chunk, str):
+        return
+    if chunk.startswith('<task-notification>'):
+        return
+    if not chunk.startswith('<system-reminder>'):
+        return
+    tid = _chunk_template(chunk)
+    new_result = _apply_sr_strip(chunk, _ALL_TEMPLATES)
+    if tid is None:
+        counters['fps_old'] += 1
+        outer_m = _INNER_SR_RE.search(chunk)
+        if outer_m:
+            first_line = outer_m.group(1).strip().split('\n')[0]
+            if first_line and first_line not in new_result:
+                counters['fps_new'] += 1
+                if len(fp_new_examples) < 5:
+                    fp_new_examples.append(repr(chunk[:120]))
+    else:
+        counters['real_old'] += 1
+        if new_result == chunk:
+            counters['real_new_drops'] += 1
+            if len(real_drop_examples) < 3:
+                real_drop_examples.append({'tid': tid, 'chunk': repr(chunk[:80])})
+
+
+def _chunk_template(chunk):
+    if not isinstance(chunk, str) or not chunk.startswith('<system-reminder>'):
+        return None
+    inner_m = _INNER_SR_RE.search(chunk)
+    if not inner_m:
+        return None
+    inner = inner_m.group(1).strip()
+    tid, _ = _match_template(inner, _ALL_TEMPLATES)
+    return tid
+
+
+def _process_part_b(rp, old_removed, counters):
+    stripped_idxs = set(int(k) for k in old_removed.keys())
+    for msg_idx, msg in enumerate(rp.get('messages', [])):
+        if msg_idx in stripped_idxs:
+            continue
+        content = msg.get('content', '')
+        if not _has_standalone_sr(content):
+            continue
+        counters['missed_old'] += 1
+        new_content = _strip_system_reminders(content)
+        if _has_standalone_sr(new_content):
+            counters['still_missed'] += 1
+        else:
+            counters['now_stripped'] += 1
+
+
+def _has_standalone_sr(content):
+    def _check(text):
+        return isinstance(text, str) and '<system-reminder>' in text and bool(_STANDALONE_SR_RE.search(text))
+
+    if isinstance(content, str):
+        return _check(content)
+    if isinstance(content, list):
+        for blk in content:
+            if not isinstance(blk, dict):
+                continue
+            if blk.get('type') == 'text' and _check(blk.get('text', '')):
+                return True
+            if blk.get('type') == 'tool_result':
+                inner = blk.get('content', '')
+                if isinstance(inner, str) and _check(inner):
+                    return True
+                if isinstance(inner, list):
+                    for sub in inner:
+                        if isinstance(sub, dict) and _check(sub.get('text', '')):
+                            return True
+    return False
+
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 def write_report(r):

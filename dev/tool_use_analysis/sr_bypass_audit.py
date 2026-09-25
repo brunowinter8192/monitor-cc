@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import argparse
 import json
 import re
@@ -27,11 +25,7 @@ _STANDALONE_SR_RE = re.compile(r'(?m)^<system-reminder>(.*?)</system-reminder>',
 
 _script_dir = Path(__file__).resolve().parent
 _repo_candidate = _script_dir.parent.parent
-if (_repo_candidate / 'src' / 'logs').is_dir():
-    _LOGS_DIR = _repo_candidate / 'src' / 'logs'
-else:
-    _main_repo = _repo_candidate.parent.parent.parent
-    _LOGS_DIR = _main_repo / 'src' / 'logs'
+_LOGS_DIR = _repo_candidate / 'src' / 'logs' if (_repo_candidate / 'src' / 'logs').is_dir() else _repo_candidate.parent.parent.parent / 'src' / 'logs'
 
 
 # ORCHESTRATOR

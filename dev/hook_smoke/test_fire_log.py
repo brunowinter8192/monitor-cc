@@ -29,20 +29,6 @@ def _strand_functions() -> list:
     return [_test_block_fire, _test_rewrite_fire, _test_env_var_override]
 
 
-def _last_record(log_path: Path):
-    if not log_path.exists():
-        return None
-    lines = [l for l in log_path.read_text().splitlines() if l.strip()]
-    if not lines:
-        return None
-    return json.loads(lines[-1])
-
-
-def _run_hook(hook: str, payload: dict, log_path: Path) -> tuple:
-    result = run_hook(hook, json.dumps(payload).encode(), extra_env={FIRING_LOG_ENV: str(log_path)})
-    return result.returncode, _last_record(log_path)
-
-
 def _test_block_fire() -> None:
     failures = []
     with tempfile.TemporaryDirectory(prefix="fire_log_block_") as tmp:
@@ -85,6 +71,20 @@ def _test_block_fire() -> None:
         print(f"  [{status}] block fire: decision=block, hook=block_noop_edit, tool=Edit")
 
 
+def _run_hook(hook: str, payload: dict, log_path: Path) -> tuple:
+    result = run_hook(hook, json.dumps(payload).encode(), extra_env={FIRING_LOG_ENV: str(log_path)})
+    return result.returncode, _last_record(log_path)
+
+
+def _last_record(log_path: Path):
+    if not log_path.exists():
+        return None
+    lines = [l for l in log_path.read_text().splitlines() if l.strip()]
+    if not lines:
+        return None
+    return json.loads(lines[-1])
+
+
 def _test_rewrite_fire() -> None:
     failures = []
     with tempfile.TemporaryDirectory(prefix="fire_log_rewrite_") as tmp:
@@ -119,15 +119,6 @@ def _test_rewrite_fire() -> None:
         print(f"  [{status}] rewrite fire: decision=rewrite, command+rewritten both present")
 
 
-def _run_in_scratch_tree(tree_hooks: Path, log_env) -> int:
-    result = run_hook(
-        str(tree_hooks / "rewrite_chained_sleep.py"),
-        json.dumps(REWRITE_PAYLOAD).encode(),
-        extra_env={FIRING_LOG_ENV: log_env},
-    )
-    return result.returncode
-
-
 def _test_env_var_override() -> None:
     failures = []
     with tempfile.TemporaryDirectory(prefix="fire_log_override_") as tmp:
@@ -156,6 +147,15 @@ def _test_env_var_override() -> None:
         abort_if_failed(failures)
     status = "OK  " if not [x for x in failures if "env-var override" in x] else "FAIL"
     print(f"  [{status}] env-var override: log written to custom path, canonical untouched, control run reaches canonical")
+
+
+def _run_in_scratch_tree(tree_hooks: Path, log_env) -> int:
+    result = run_hook(
+        str(tree_hooks / "rewrite_chained_sleep.py"),
+        json.dumps(REWRITE_PAYLOAD).encode(),
+        extra_env={FIRING_LOG_ENV: log_env},
+    )
+    return result.returncode
 
 
 if __name__ == "__main__":

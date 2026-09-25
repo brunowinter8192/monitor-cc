@@ -13,8 +13,8 @@ sys.path.insert(0, str(_ROOT))
 
 _PANE_NAME = 'byteidentity'
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     instrument = _import_instrument()
@@ -27,10 +27,6 @@ def main():
 
 def _import_instrument():
     return importlib.import_module('src.ram_audit.instrument')
-
-
-def _fake_provider() -> list:
-    return [('fake_list', [1, 2, 3]), ('fake_counter', 42)]
 
 
 def _trigger_dump(instrument) -> str:
@@ -52,6 +48,10 @@ def _trigger_dump(instrument) -> str:
     dump_path.unlink(missing_ok=True)
     pid_file.unlink(missing_ok=True)
     return text
+
+
+def _fake_provider() -> list:
+    return [('fake_list', [1, 2, 3]), ('fake_counter', 42)]
 
 
 def _normalize(text: str) -> str:

@@ -23,29 +23,40 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
-def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
-    return new_turn_cache()
+# ORCHESTRATOR
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
+def run_probe_workflow():
+    print("=" * 70)
+    print("copy-by-click parity probe -- tokens, warnings, workers")
+    print("=" * 70)
+    test_append_copy_symbol_width_guard()
+    test_tokens_pane_copy_click()
+    test_warnings_pane_copy_click()
+    test_worker_tokens_copy_click()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+
+    _write_report(passed, total)
+    return passed == total
 
 
 # FUNCTIONS
-
-def _patch_clipboard(mod):
-    captured = []
-    mod.copy_to_clipboard = lambda text: captured.append(text)
-    return captured
-
 
 def test_append_copy_symbol_width_guard():
     wide = mod_utils.append_copy_symbol("short line", '⎘', 50)
     check("append_copy_symbol: appends ⎘ when the pane is wide enough", '⎘' in wide and wide != "short line")
     narrow = mod_utils.append_copy_symbol("x" * 60, '⎘', 50)
     check("append_copy_symbol: leaves line unchanged when too narrow (no invisible hit zone)", narrow == "x" * 60)
+
+
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
 
 
 def test_tokens_pane_copy_click():
@@ -85,6 +96,17 @@ def test_tokens_pane_copy_click():
     )
     check("tokens: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
           not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
+
+
+def _patch_clipboard(mod):
+    captured = []
+    mod.copy_to_clipboard = lambda text: captured.append(text)
+    return captured
+
+
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
 
 
 def test_warnings_pane_copy_click():
@@ -177,27 +199,6 @@ def test_worker_tokens_copy_click():
     )
     check("worker-tokens: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
           not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
-
-
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("copy-by-click parity probe -- tokens, warnings, workers")
-    print("=" * 70)
-    test_append_copy_symbol_width_guard()
-    test_tokens_pane_copy_click()
-    test_warnings_pane_copy_click()
-    test_worker_tokens_copy_click()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-
-    _write_report(passed, total)
-    return passed == total
 
 
 def _write_report(passed, total):

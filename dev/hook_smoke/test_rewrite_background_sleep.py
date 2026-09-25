@@ -129,14 +129,6 @@ def _check_case(case: tuple) -> None:
     report_case(desc, ok, '' if ok else f'\n           want: {want}\n           got:  {got} (exit={exit_code})')
 
 
-def _cwd_for_kind(cwd_kind: str, outer: str) -> str:
-    if cwd_kind == "orchestrator":
-        return outer
-    worktree_cwd = Path(outer) / ".claude" / "worktrees" / "fake-worker"
-    worktree_cwd.mkdir(parents=True)
-    return str(worktree_cwd)
-
-
 def _run_hook(command: str, run_in_background: bool, cwd: str):
     payload = json.dumps({
         "tool_name": "Bash",
@@ -151,6 +143,14 @@ def _run_hook(command: str, run_in_background: bool, cwd: str):
         except (KeyError, json.JSONDecodeError):
             rewrite = None
     return result.returncode, rewrite
+
+
+def _cwd_for_kind(cwd_kind: str, outer: str) -> str:
+    if cwd_kind == "orchestrator":
+        return outer
+    worktree_cwd = Path(outer) / ".claude" / "worktrees" / "fake-worker"
+    worktree_cwd.mkdir(parents=True)
+    return str(worktree_cwd)
 
 
 if __name__ == "__main__":

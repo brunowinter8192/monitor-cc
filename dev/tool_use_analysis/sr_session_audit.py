@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import argparse
 import json
 import os
@@ -77,6 +75,10 @@ def sr_session_audit_workflow(project_filter, since_date, output_path, top_n):
 
 # FUNCTIONS
 
+def _empty_stat():
+    return {'total': 0, 'text': 0, 'tool_result': 0, 'first': None, 'last': None, 'versions': set()}
+
+
 def _iter_sessions(project_filter):
     if not _CC_PROJECTS_DIR.is_dir():
         return
@@ -109,6 +111,15 @@ def _iter_user_messages(session_path, since_date, scan):
                 yield entry_date, ev.get('version', 'unknown'), ev.get('message', {}).get('content', '')
     except OSError:
         pass
+
+
+def _parse_date(ts_raw):
+    if not ts_raw:
+        return None
+    try:
+        return datetime.fromisoformat(ts_raw.replace('Z', '+00:00')).date()
+    except (ValueError, AttributeError):
+        return None
 
 
 def _extract_sr_hits(content):
@@ -178,25 +189,14 @@ def _add(stat, layer, version, entry_date):
     stat['versions'].add(version)
 
 
-def _empty_stat():
-    return {'total': 0, 'text': 0, 'tool_result': 0, 'first': None, 'last': None, 'versions': set()}
-
-
-def _parse_date(ts_raw):
-    if not ts_raw:
-        return None
-    try:
-        return datetime.fromisoformat(ts_raw.replace('Z', '+00:00')).date()
-    except (ValueError, AttributeError):
-        return None
-
-
-def _row(label, s):
-    return (
-        f"| {label} | {s['total']} | {s['text']} | {s['tool_result']} "
-        f"| {s['first'] or '—'} | {s['last'] or '—'} "
-        f"| {', '.join(sorted(s['versions']))[:40]} |"
-    )
+def _build_report(known, preserved, unknown, scan):
+    top_n = scan['top']
+    L = _render_scan_header(scan)
+    L += _render_known_and_preserved(known, preserved)
+    unknown_lines, sorted_unknown = _render_unknown_table(unknown, top_n)
+    L += unknown_lines
+    L += _render_unknown_samples(sorted_unknown, top_n)
+    return L
 
 
 def _render_scan_header(scan):
@@ -246,6 +246,14 @@ def _render_known_and_preserved(known, preserved):
     return L
 
 
+def _row(label, s):
+    return (
+        f"| {label} | {s['total']} | {s['text']} | {s['tool_result']} "
+        f"| {s['first'] or '—'} | {s['last'] or '—'} "
+        f"| {', '.join(sorted(s['versions']))[:40]} |"
+    )
+
+
 def _render_unknown_table(unknown, top_n):
     sorted_unknown = sorted(unknown.items(), key=lambda x: -x[1]['total'])[:top_n]
     L = [
@@ -283,16 +291,6 @@ def _render_unknown_samples(sorted_unknown, top_n):
             '```',
         ]
     L.append('')
-    return L
-
-
-def _build_report(known, preserved, unknown, scan):
-    top_n = scan['top']
-    L = _render_scan_header(scan)
-    L += _render_known_and_preserved(known, preserved)
-    unknown_lines, sorted_unknown = _render_unknown_table(unknown, top_n)
-    L += unknown_lines
-    L += _render_unknown_samples(sorted_unknown, top_n)
     return L
 
 

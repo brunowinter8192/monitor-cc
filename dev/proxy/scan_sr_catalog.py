@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import json
 import re
@@ -39,6 +38,7 @@ CODE_INDICATORS = [
 
 _SKIPPED_LINES = 0
 
+
 # ORCHESTRATOR
 
 def scan_sr_catalog_workflow():
@@ -59,62 +59,33 @@ def scan_sr_catalog_workflow():
 
 # FUNCTIONS
 
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
+def scan_all_logs():
+    stripped_sr = defaultdict(lambda: {'count': 0, 'examples': [], 'locations': defaultdict(int)})
+    stripped_tn = {'count': 0, 'examples': []}
+    false_positives = defaultdict(lambda: {'count': 0, 'examples': []})
+    missed_sr = defaultdict(lambda: {'count': 0, 'examples': [], 'locations': defaultdict(int)})
 
+    SR_RE = re.compile(r'<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+    logs = sorted(LOGS_DIR.glob('api_requests_*.jsonl'))
+    total_entries = 0
 
+    for log in logs:
+        with open(log, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                    total_entries += 1
+                    rp = d.get('raw_payload', {})
+                    msgs = rp.get('messages', [])
+                    removed = d.get('stripped_msg_removed', {})
+                    _process_stripped_chunks(removed, msgs, stripped_sr, stripped_tn, false_positives)
+                    _process_missed_srs(msgs, SR_RE, missed_sr)
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    _note_skipped_line()
+                    continue
 
-def is_code_false_positive(chunk: str) -> bool:
-    inner = chunk
-    if chunk.startswith('<system-reminder>'):
-        inner = chunk[len('<system-reminder>'):].strip()
-    elif chunk.startswith('<task-notification>'):
-        return False
-    for indicator in CODE_INDICATORS:
-        if indicator in inner[:300]:
-            return True
-    return False
-
-
-def first_sentence(inner: str) -> str:
-    inner = inner.strip()
-    if inner.startswith('<new-diagnostics>'):
-        return inner[:80]
-    if inner.startswith('<task-id>'):
-        return '<structured-task-notification>'
-    for line in inner.split('\n'):
-        line = line.strip()
-        if line:
-            return line[:120]
-    return inner[:80]
-
-
-def classify_chunk(chunk: str):
-    if chunk.startswith('<system-reminder>'):
-        if is_code_false_positive(chunk):
-            return 'false-positive'
-        return 'real-sr'
-    if chunk.startswith('<task-notification>'):
-        return 'real-tn'
-    return 'other'
-
-
-def location_context(msgs: list, idx: int) -> tuple:
-    if idx >= len(msgs):
-        return ('?', 'unknown')
-    msg = msgs[idx]
-    role = msg.get('role', '?')
-    c = msg.get('content', '')
-    if isinstance(c, str):
-        return (role, 'string')
-    elif isinstance(c, list):
-        block_types = sorted(set(b.get('type', '?') for b in c))
-        return (role, 'list[' + '+'.join(block_types) + ']')
-    return (role, 'other')
+    return total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr
 
 
 def _process_stripped_chunks(removed: dict, msgs: list, stripped_sr: dict, stripped_tn: dict,
@@ -156,6 +127,55 @@ def _process_stripped_chunks(removed: dict, msgs: list, stripped_sr: dict, strip
                     false_positives[key]['examples'].append(chunk[:400])
 
 
+def location_context(msgs: list, idx: int) -> tuple:
+    if idx >= len(msgs):
+        return ('?', 'unknown')
+    msg = msgs[idx]
+    role = msg.get('role', '?')
+    c = msg.get('content', '')
+    if isinstance(c, str):
+        return (role, 'string')
+    elif isinstance(c, list):
+        block_types = sorted(set(b.get('type', '?') for b in c))
+        return (role, 'list[' + '+'.join(block_types) + ']')
+    return (role, 'other')
+
+
+def classify_chunk(chunk: str):
+    if chunk.startswith('<system-reminder>'):
+        if is_code_false_positive(chunk):
+            return 'false-positive'
+        return 'real-sr'
+    if chunk.startswith('<task-notification>'):
+        return 'real-tn'
+    return 'other'
+
+
+def is_code_false_positive(chunk: str) -> bool:
+    inner = chunk
+    if chunk.startswith('<system-reminder>'):
+        inner = chunk[len('<system-reminder>'):].strip()
+    elif chunk.startswith('<task-notification>'):
+        return False
+    for indicator in CODE_INDICATORS:
+        if indicator in inner[:300]:
+            return True
+    return False
+
+
+def first_sentence(inner: str) -> str:
+    inner = inner.strip()
+    if inner.startswith('<new-diagnostics>'):
+        return inner[:80]
+    if inner.startswith('<task-id>'):
+        return '<structured-task-notification>'
+    for line in inner.split('\n'):
+        line = line.strip()
+        if line:
+            return line[:120]
+    return inner[:80]
+
+
 def _process_missed_srs(msgs: list, sr_re, missed_sr: dict) -> None:
     for mi, msg in enumerate(msgs):
         role = msg.get('role', '?')
@@ -193,40 +213,24 @@ def _process_missed_srs(msgs: list, sr_re, missed_sr: dict) -> None:
                     missed_sr[key]['examples'].append(('<system-reminder>' + inner + '</system-reminder>')[:300])
 
 
-def scan_all_logs():
-    stripped_sr = defaultdict(lambda: {'count': 0, 'examples': [], 'locations': defaultdict(int)})
-    stripped_tn = {'count': 0, 'examples': []}
-    false_positives = defaultdict(lambda: {'count': 0, 'examples': []})
-    missed_sr = defaultdict(lambda: {'count': 0, 'examples': [], 'locations': defaultdict(int)})
-
-    SR_RE = re.compile(r'<system-reminder>(.*?)</system-reminder>', re.DOTALL)
-
-    logs = sorted(LOGS_DIR.glob('api_requests_*.jsonl'))
-    total_entries = 0
-
-    for log in logs:
-        with open(log, 'r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    d = json.loads(line)
-                    total_entries += 1
-                    rp = d.get('raw_payload', {})
-                    msgs = rp.get('messages', [])
-                    removed = d.get('stripped_msg_removed', {})
-                    _process_stripped_chunks(removed, msgs, stripped_sr, stripped_tn, false_positives)
-                    _process_missed_srs(msgs, SR_RE, missed_sr)
-                except (json.JSONDecodeError, KeyError, TypeError):
-                    _note_skipped_line()
-                    continue
-
-    return total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
 
 
-def fmt_locations(loc_dict: dict) -> str:
-    parts = []
-    for k, v in sorted(loc_dict.items(), key=lambda x: -x[1]):
-        parts.append(f'{k} ({v}x)')
-    return '; '.join(parts[:3])
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
+
+
+def write_report(total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr):
+    lines = ['# SR Catalog — Monitor_CC Proxy Logs\n', f'Scanned {len(logs)} log files, {total_entries} entries total.\n']
+    lines += _render_stripped_sr_lines(stripped_sr)
+    fp_lines, total_fp = _render_false_positives_lines(false_positives)
+    lines += fp_lines
+    missed_lines, total_missed = _render_missed_sr_lines(missed_sr)
+    lines += missed_lines
+    lines += _render_tn_and_summary_lines(stripped_tn, stripped_sr, total_fp, total_missed)
+    return ''.join(lines)
 
 
 def _render_stripped_sr_lines(stripped_sr: dict) -> list:
@@ -245,6 +249,13 @@ def _render_stripped_sr_lines(stripped_sr: dict) -> list:
         for ex in data['examples'][:1]:
             lines.append(f'```\n{ex}\n```\n')
     return lines
+
+
+def fmt_locations(loc_dict: dict) -> str:
+    parts = []
+    for k, v in sorted(loc_dict.items(), key=lambda x: -x[1]):
+        parts.append(f'{k} ({v}x)')
+    return '; '.join(parts[:3])
 
 
 def _render_false_positives_lines(false_positives: dict) -> tuple:
@@ -302,17 +313,6 @@ def _render_tn_and_summary_lines(stripped_tn: dict, stripped_sr: dict, total_fp:
     lines.append(f'| Missed SRs (reached Claude) | {total_missed} |\n')
     lines.append(f'| TN blocks stripped | {stripped_tn["count"]} |\n')
     return lines
-
-
-def write_report(total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr):
-    lines = ['# SR Catalog — Monitor_CC Proxy Logs\n', f'Scanned {len(logs)} log files, {total_entries} entries total.\n']
-    lines += _render_stripped_sr_lines(stripped_sr)
-    fp_lines, total_fp = _render_false_positives_lines(false_positives)
-    lines += fp_lines
-    missed_lines, total_missed = _render_missed_sr_lines(missed_sr)
-    lines += missed_lines
-    lines += _render_tn_and_summary_lines(stripped_tn, stripped_sr, total_fp, total_missed)
-    return ''.join(lines)
 
 
 if __name__ == '__main__':

@@ -20,26 +20,26 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
+# ORCHESTRATOR
+
+def run_probe_workflow():
+    print("=" * 70)
+    print("pane-chrome button click probe -- proxy undo, warnings refresh")
+    print("=" * 70)
+    test_warnings_refresh_button()
+    test_proxy_pane_permanent_search_bar_header()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+
+    _write_report(passed, total)
+    return passed == total
 
 
 # FUNCTIONS
-
-def _make_proxy_entry(idx, model='claude-sonnet', msg_count=3, bp=2):
-    return {
-        'model': model, 'message_count': msg_count, 'cache_breakpoints': [{}] * bp,
-        'system_total_chars': 10000 if bp > 0 else 0, 'tools_total_chars': 5000 if bp > 0 else 0,
-        'messages_total_chars': 3000, 'tools_count': 10 if bp > 0 else 0, 'tools_hash': f'hash{idx}',
-        'tools_names': [f'tool_{j}' for j in range(10)] if bp > 0 else [], 'tools_defs': [],
-        'system_blocks': [{'idx': 0, 'chars': 10000, 'preview': 'sys content'}] if bp > 0 else [],
-        'messages': [{'role': 'user', 'type': 'text', 'chars': 500, 'blocks': []} for _ in range(msg_count)],
-        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [], '_stripped_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}, '_injected_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}},
-        'timestamp': f'2026-04-21T10:0{idx}:00Z',
-    }
-
 
 def test_warnings_refresh_button():
     mod_warnings.tool_errors.clear()
@@ -76,6 +76,12 @@ def test_warnings_refresh_button():
           len(narrow_regions) == 0 and '[refresh]' not in narrow_header)
 
 
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
+
+
 def test_proxy_pane_permanent_search_bar_header():
     output = _reset_and_render_proxy_pane()
     key_row2 = _check_proxy_header_shift_contract(output)
@@ -100,6 +106,19 @@ def _reset_and_render_proxy_pane():
     mod_proxy._proxy_search.match_set = set()
     mod_proxy.proxy_entries.extend(_make_proxy_entry(i) for i in range(3))
     return mod_proxy._build_proxy_output()
+
+
+def _make_proxy_entry(idx, model='claude-sonnet', msg_count=3, bp=2):
+    return {
+        'model': model, 'message_count': msg_count, 'cache_breakpoints': [{}] * bp,
+        'system_total_chars': 10000 if bp > 0 else 0, 'tools_total_chars': 5000 if bp > 0 else 0,
+        'messages_total_chars': 3000, 'tools_count': 10 if bp > 0 else 0, 'tools_hash': f'hash{idx}',
+        'tools_names': [f'tool_{j}' for j in range(10)] if bp > 0 else [], 'tools_defs': [],
+        'system_blocks': [{'idx': 0, 'chars': 10000, 'preview': 'sys content'}] if bp > 0 else [],
+        'messages': [{'role': 'user', 'type': 'text', 'chars': 500, 'blocks': []} for _ in range(msg_count)],
+        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [], '_stripped_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}, '_injected_spans': {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}},
+        'timestamp': f'2026-04-21T10:0{idx}:00Z',
+    }
 
 
 def _check_proxy_header_shift_contract(output):
@@ -175,25 +194,6 @@ def _check_proxy_auto_scroll_after_expand():
     mod_proxy._build_proxy_output()
     check("proxy: just-expanded entry stays visible in the next render (auto-scroll intact)",
           target_key in mod_proxy.proxy_line_map.values())
-
-
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("pane-chrome button click probe -- proxy undo, warnings refresh")
-    print("=" * 70)
-    test_warnings_refresh_button()
-    test_proxy_pane_permanent_search_bar_header()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-
-    _write_report(passed, total)
-    return passed == total
 
 
 def _write_report(passed, total):

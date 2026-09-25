@@ -14,6 +14,7 @@ _HOVER_ROWS = tuple(range(2, 32))
 _EXPANDED_KEYS = (('req', 20), ('sys', 20), ('req', 60), ('req', 100), ('tools', 100), ('req', 140), ('req', 180), ('req', 220), ('req', 260))
 _FULL = 10_000
 
+
 # ORCHESTRATOR
 
 def main():
@@ -44,26 +45,6 @@ def _parse_args():
     return parser.parse_args()
 
 
-def _render_once(sim, mode: str, row: int) -> None:
-    if mode == 'block':
-        sim.render_timed(row)
-        return
-    from src.proxy_display import pane
-    pane.proxy_hover_row = row
-    pane._proxy_session_start_ts = '2000-01-01T00:00:00Z'
-    pane._build_proxy_output()
-
-
-def _prepare_pane(sim) -> None:
-    from src.proxy_display import pane
-    pane.proxy_entries[:] = sim.entries
-    pane._proxy_cache_turns = sim.turns
-    pane._proxy_request_id_by_flow.clear()
-    pane._proxy_request_id_by_flow.update(sim.rid_by_flow)
-    pane.proxy_expand_states.clear()
-    pane.proxy_expand_states.update(sim.expand)
-
-
 def _measure(sim, mode: str) -> dict:
     if mode == 'pane':
         _prepare_pane(sim)
@@ -76,6 +57,26 @@ def _measure(sim, mode: str) -> dict:
         _render_once(sim, mode, row)
         samples.append((time.perf_counter() - started) * 1000)
     return {'first_ms': round(first_ms, 2), 'median_ms': round(statistics.median(samples), 2), 'min_ms': round(min(samples), 2), 'max_ms': round(max(samples), 2)}
+
+
+def _prepare_pane(sim) -> None:
+    from src.proxy_display import pane
+    pane.proxy_entries[:] = sim.entries
+    pane._proxy_cache_turns = sim.turns
+    pane._proxy_request_id_by_flow.clear()
+    pane._proxy_request_id_by_flow.update(sim.rid_by_flow)
+    pane.proxy_expand_states.clear()
+    pane.proxy_expand_states.update(sim.expand)
+
+
+def _render_once(sim, mode: str, row: int) -> None:
+    if mode == 'block':
+        sim.render_timed(row)
+        return
+    from src.proxy_display import pane
+    pane.proxy_hover_row = row
+    pane._proxy_session_start_ts = '2000-01-01T00:00:00Z'
+    pane._build_proxy_output()
 
 
 if __name__ == '__main__':

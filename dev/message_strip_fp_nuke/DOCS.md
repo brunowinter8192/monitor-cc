@@ -21,7 +21,7 @@ Streams every recorded request payload from the dual log, threads it through the
 
 ---
 
-### audit_scan.py (275 LOC)
+### audit_scan.py (255 LOC)
 
 **Purpose:** Loads the real proxy strip passes and registries, threads every request through them in order and records removals from tool-result blocks.
 **Reads:** all `*_original.jsonl` files under the main checkout's dual log (gitignored runtime data).

@@ -4,9 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
@@ -60,13 +58,6 @@ def _load_jsonl(path: Path) -> list:
     return entries
 
 
-def _infer_family(model: str) -> str:
-    m = model.lower()
-    if "haiku" in m: return "haiku"
-    if "sonnet" in m: return "sonnet"
-    return "opus"
-
-
 def _reconstruct_chains(fwd_entries: list) -> list:
     chain_states = {}
     result = []
@@ -101,6 +92,13 @@ def _reconstruct_chains(fwd_entries: list) -> list:
     return result
 
 
+def _infer_family(model: str) -> str:
+    m = model.lower()
+    if "haiku" in m: return "haiku"
+    if "sonnet" in m: return "sonnet"
+    return "opus"
+
+
 def _match_requests(orig_entries: list, fwd_entries: list, fwd_states: list) -> list:
     orig_by_reqid = {}
     orig_queues = {}
@@ -129,9 +127,34 @@ def _match_requests(orig_entries: list, fwd_entries: list, fwd_states: list) -> 
     return result
 
 
-def _preview(text: str, n: int = PREVIEW_CHARS) -> str:
-    s = text.replace("\n", "\\n")
-    return repr(s[:n]) + (f"…({len(s)}c)" if len(s) > n else "")
+def _print_report(matched: list, filename: str) -> None:
+    from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages
+    print(f"\ndiff_strip_inject — {filename}")
+    print(f"  {len(matched)} matched request pairs\n")
+
+    for req_num, (orig_entry, fwd_entry, fwd_state) in enumerate(matched, 1):
+        family = _infer_family(fwd_entry.get("model", ""))
+        is_first = fwd_entry.get("is_first", False)
+        o_model = orig_entry.get("model", "")
+        f_model = fwd_entry.get("model", "")
+        print(f"=== REQ#{req_num} [{family}]{'  (is_first)' if is_first else ''} ===")
+        if o_model != f_model:
+            print(f"  model: {o_model!r} → {f_model!r}  [OVERRIDE]")
+
+        o_payload = orig_entry.get("payload", {})
+        o_sys   = [b for b in (o_payload.get("system", []) or []) if isinstance(b, dict)]
+        o_tools = o_payload.get("tools", []) or []
+        o_msgs  = o_payload.get("messages", []) or []
+        f_sys   = [b for b in (fwd_state.get("system", []) or []) if isinstance(b, dict)]
+        f_tools = [t for t in (fwd_state.get("tools", []) or []) if isinstance(t, dict)]
+        f_msgs  = fwd_state.get("messages", []) or []
+
+        sys_s, sys_i = _print_system_diff(o_sys, f_sys, _diff_system)
+        t_s, t_i = _print_tools_diff(o_tools, f_tools, _diff_tools)
+        msgs_s, msgs_i = _print_messages_diff(o_msgs, f_msgs, _diff_messages)
+
+        print(f"  SPANS: sys -{sys_s}/+{sys_i}  tools -{t_s}/+{t_i}  msgs -{msgs_s}/+{msgs_i}")
+        print()
 
 
 def _print_system_diff(o_sys: list, f_sys: list, diff_system) -> tuple:
@@ -152,6 +175,11 @@ def _print_system_diff(o_sys: list, f_sys: list, diff_system) -> tuple:
                 if t in ("stripped", "injected"):
                     print(f"               {t}: {_preview(text)}")
     return sys_s, sys_i
+
+
+def _preview(text: str, n: int = PREVIEW_CHARS) -> str:
+    s = text.replace("\n", "\\n")
+    return repr(s[:n]) + (f"…({len(s)}c)" if len(s) > n else "")
 
 
 def _print_tools_diff(o_tools: list, f_tools: list, diff_tools) -> tuple:
@@ -204,36 +232,6 @@ def _print_messages_diff(o_msgs: list, f_msgs: list, diff_messages) -> tuple:
                         if t in ("stripped", "injected"):
                             print(f"               {t}: {_preview(text)}")
     return msgs_s, msgs_i
-
-
-def _print_report(matched: list, filename: str) -> None:
-    from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages
-    print(f"\ndiff_strip_inject — {filename}")
-    print(f"  {len(matched)} matched request pairs\n")
-
-    for req_num, (orig_entry, fwd_entry, fwd_state) in enumerate(matched, 1):
-        family = _infer_family(fwd_entry.get("model", ""))
-        is_first = fwd_entry.get("is_first", False)
-        o_model = orig_entry.get("model", "")
-        f_model = fwd_entry.get("model", "")
-        print(f"=== REQ#{req_num} [{family}]{'  (is_first)' if is_first else ''} ===")
-        if o_model != f_model:
-            print(f"  model: {o_model!r} → {f_model!r}  [OVERRIDE]")
-
-        o_payload = orig_entry.get("payload", {})
-        o_sys   = [b for b in (o_payload.get("system", []) or []) if isinstance(b, dict)]
-        o_tools = o_payload.get("tools", []) or []
-        o_msgs  = o_payload.get("messages", []) or []
-        f_sys   = [b for b in (fwd_state.get("system", []) or []) if isinstance(b, dict)]
-        f_tools = [t for t in (fwd_state.get("tools", []) or []) if isinstance(t, dict)]
-        f_msgs  = fwd_state.get("messages", []) or []
-
-        sys_s, sys_i = _print_system_diff(o_sys, f_sys, _diff_system)
-        t_s, t_i = _print_tools_diff(o_tools, f_tools, _diff_tools)
-        msgs_s, msgs_i = _print_messages_diff(o_msgs, f_msgs, _diff_messages)
-
-        print(f"  SPANS: sys -{sys_s}/+{sys_i}  tools -{t_s}/+{t_i}  msgs -{msgs_s}/+{msgs_i}")
-        print()
 
 
 if __name__ == "__main__":

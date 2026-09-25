@@ -9,6 +9,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook17_removal.md"
 
+
 # ORCHESTRATOR
 
 def verify_hook17_removal_workflow() -> None:
@@ -29,17 +30,22 @@ def verify_hook17_removal_workflow() -> None:
     REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
 
+
+# FUNCTIONS
+
 def _check_file_deleted(lines) -> None:
     hook_path = REPO_ROOT / "src" / "hooks" / "block_worker_spawn_opus.py"
     file_gone = not hook_path.exists()
     lines.append(f"1. File deleted: {file_gone} ({hook_path})")
     assert file_gone
 
+
 def _check_no_longer_registered(hook_setup, lines) -> None:
     scripts = [s for s, _matcher in hook_setup._HOOK_SCRIPTS]
     no_longer_listed = "block_worker_spawn_opus.py" not in scripts
     lines.append(f"2. No longer in hook_setup.py's _HOOK_SCRIPTS: {no_longer_listed} ({len(scripts)} scripts total)")
     assert no_longer_listed
+
 
 def _check_sweep_stale_hooks(hook_setup, lines) -> None:
     lines.append("")
@@ -69,6 +75,7 @@ def _check_sweep_stale_hooks(hook_setup, lines) -> None:
         assert len(remaining_commands) == 1
         assert alive_path in remaining_commands[0]
         assert dead_path not in " ".join(remaining_commands)
+
 
 def _append_registration_trace(lines) -> None:
     lines.append("")

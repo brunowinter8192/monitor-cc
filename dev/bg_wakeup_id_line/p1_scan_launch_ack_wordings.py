@@ -46,6 +46,7 @@ _PATH_NORM_RE = re.compile(r'Output is being written to:\s*\S+')
 
 
 # ORCHESTRATOR
+
 def main():
     findings = {}
     raw_dup_counter = defaultdict(int)
@@ -62,44 +63,6 @@ def main():
 
 
 # FUNCTIONS
-
-def _iter_candidate_blocks(content):
-    if isinstance(content, str):
-        yield ('top_level_str', content)
-        return
-    if isinstance(content, list):
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            btype = block.get('type')
-            if btype == 'text':
-                yield ('text_block', block.get('text', ''))
-            elif btype == 'tool_result':
-                inner = block.get('content', '')
-                if isinstance(inner, str):
-                    yield ('tool_result_str', inner)
-                elif isinstance(inner, list):
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get('type') == 'text':
-                            yield ('tool_result_list_text', sub.get('text', ''))
-
-
-def _looks_like_launch_ack_candidate(text):
-    if not isinstance(text, str):
-        return False
-    stripped = text.lstrip()
-    return (
-        stripped.startswith('Command')
-        and 'with ID:' in text
-        and 'Output is being written to:' in text
-    )
-
-
-def _normalize_wording(text):
-    t = _ID_NORM_RE.sub('with ID: <ID>', text)
-    t = _PATH_NORM_RE.sub('Output is being written to: <PATH>', t)
-    return t
-
 
 def _scan_file(path, findings, raw_dup_counter):
     session = path.name
@@ -138,22 +101,41 @@ def _scan_file(path, findings, raw_dup_counter):
     return requests
 
 
-def _mechanism_verdict(text):
-    marker_fires = _BG_LAUNCH_ACK_MARKER in text
-    prefix_fires = text.lstrip().startswith(_BG_LAUNCH_ACK_PREFIX)
-    id_match = _ACK_ID_RE.search(text)
-    path_match = _ACK_PATH_RE.search(text)
-    return {
-        'marker_fires': marker_fires,
-        'prefix_fires': prefix_fires,
-        'id_extract': id_match.group(1).strip() if id_match else None,
-        'path_extract': path_match.group(1).strip() if path_match else None,
-    }
+def _iter_candidate_blocks(content):
+    if isinstance(content, str):
+        yield ('top_level_str', content)
+        return
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get('type')
+            if btype == 'text':
+                yield ('text_block', block.get('text', ''))
+            elif btype == 'tool_result':
+                inner = block.get('content', '')
+                if isinstance(inner, str):
+                    yield ('tool_result_str', inner)
+                elif isinstance(inner, list):
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get('type') == 'text':
+                            yield ('tool_result_list_text', sub.get('text', ''))
 
 
-def _mark_volatile(text):
-    t = _ID_NORM_RE.sub('with ID: **<ID>**', text)
-    t = _PATH_NORM_RE.sub('Output is being written to: **<PATH>**', t)
+def _looks_like_launch_ack_candidate(text):
+    if not isinstance(text, str):
+        return False
+    stripped = text.lstrip()
+    return (
+        stripped.startswith('Command')
+        and 'with ID:' in text
+        and 'Output is being written to:' in text
+    )
+
+
+def _normalize_wording(text):
+    t = _ID_NORM_RE.sub('with ID: <ID>', text)
+    t = _PATH_NORM_RE.sub('Output is being written to: <PATH>', t)
     return t
 
 
@@ -272,6 +254,25 @@ def _report_distinct_wordings(findings):
         lines.append(f'| `_ACK_PATH_RE` | {"extracts: " + verdict["path_extract"] if verdict["path_extract"] else "FAILS to extract"} |')
         lines.append('')
     return lines
+
+
+def _mechanism_verdict(text):
+    marker_fires = _BG_LAUNCH_ACK_MARKER in text
+    prefix_fires = text.lstrip().startswith(_BG_LAUNCH_ACK_PREFIX)
+    id_match = _ACK_ID_RE.search(text)
+    path_match = _ACK_PATH_RE.search(text)
+    return {
+        'marker_fires': marker_fires,
+        'prefix_fires': prefix_fires,
+        'id_extract': id_match.group(1).strip() if id_match else None,
+        'path_extract': path_match.group(1).strip() if path_match else None,
+    }
+
+
+def _mark_volatile(text):
+    t = _ID_NORM_RE.sub('with ID: **<ID>**', text)
+    t = _PATH_NORM_RE.sub('Output is being written to: **<PATH>**', t)
+    return t
 
 
 def _report_additional_wordings_note():

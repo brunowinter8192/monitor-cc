@@ -48,7 +48,7 @@ per-call detail sections, and the two top-level assemblers.
 
 ---
 
-### extract_zeros.py (343 LOC)
+### extract_zeros.py (342 LOC)
 
 **Purpose:** Detects every Grep/Glob/Read call that returned a zero result, reporting each call's
 input, result, and preceding assistant text.
@@ -72,7 +72,7 @@ through unchanged, other system noise still reduces to `"."`.
 
 ---
 
-### extract_transcript.py (161 LOC)
+### extract_transcript.py (160 LOC)
 
 **Purpose:** Chronological tool_use/tool_result transcript from a proxy-log snapshot, marking
 `(ERROR)` on failed results, no waste/ratio scoring.
@@ -122,7 +122,7 @@ Bash/other-tool patterns, failed calls, wrapper candidates) plus the assembler.
 
 ---
 
-### waste_repetition.py (287 LOC)
+### waste_repetition.py (286 LOC)
 
 **Purpose:** Extracts deduplicated Bash tool_use blocks from one JSONL snapshot and analyzes waste
 by repetition signature and known-shortcut path fragments.
@@ -133,7 +133,7 @@ by repetition signature and known-shortcut path fragments.
 
 ---
 
-### cc_injection_audit.py (294 LOC)
+### cc_injection_audit.py (278 LOC)
 
 **Purpose:** For each user-role delta message in an opus REQ, checks whether it appears as a real
 event in the matching CC session, classifying unmatched ones.
@@ -145,7 +145,7 @@ mtime or `--cc-session`.
 
 ---
 
-### rag_query_audit.py (343 LOC)
+### rag_query_audit.py (342 LOC)
 
 **Purpose:** Extracts and Jaccard-clusters rag-cli search calls from opus proxy logs for a
 helpfulness evaluation.
@@ -185,7 +185,7 @@ conclusion) plus the assembler.
 
 ---
 
-### tag_presence_audit.py (78 LOC)
+### tag_presence_audit.py (72 LOC)
 
 **Purpose:** CLI entry point — per-REQ delta-scoped audit for leftover SR/TN/ND/PO tags, pairing
 each with its `stripped_msg_removed` entries.
@@ -214,7 +214,7 @@ table, and the top-level assembler.
 
 ---
 
-### sr_bypass_audit.py (224 LOC)
+### sr_bypass_audit.py (218 LOC)
 
 **Purpose:** Per-template count of bypassed vs. captured system-reminder blocks, reporting bypass
 rate per template per log plus an aggregate.
@@ -254,7 +254,7 @@ summary.
 
 ---
 
-### sr_session_audit.py (323 LOC)
+### sr_session_audit.py (321 LOC)
 
 **Purpose:** Longitudinal system-reminder audit across all Claude Code sessions, classifying blocks
 against the live strip catalog into known/preserved/unknown buckets.

@@ -6,18 +6,12 @@ from pathlib import Path
 from attribution_coverage_analyse import _find_pairs, _analyse_all_pairs
 from attribution_coverage_report import _build_report
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 
 
-def _main_checkout_root(project_root: Path) -> Path:
-    parts = project_root.parts
-    if len(parts) >= 3 and parts[-3] == '.claude' and parts[-2] == 'worktrees':
-        return Path(*parts[:-3])
-    return project_root
-
+_PROJECT_PARTS = _PROJECT_ROOT.parts
+_MAIN_CHECKOUT_ROOT = Path(*_PROJECT_PARTS[:-3]) if len(_PROJECT_PARTS) >= 3 and _PROJECT_PARTS[-3] == '.claude' and _PROJECT_PARTS[-2] == 'worktrees' else _PROJECT_ROOT
 
 _sv_path = _PROJECT_ROOT / "src" / "proxy" / "strip_vocab.py"
 _sv_spec = importlib.util.spec_from_file_location("strip_vocab_local", _sv_path)
@@ -26,7 +20,7 @@ _sv_spec.loader.exec_module(_sv_mod)
 attribute_chunk = _sv_mod.attribute_chunk
 
 _dual_log_direct = _PROJECT_ROOT / "src" / "logs" / "dual_log"
-_DUAL_LOG_DIR = _dual_log_direct if _dual_log_direct.exists() else _main_checkout_root(_PROJECT_ROOT) / "src" / "logs" / "dual_log"
+_DUAL_LOG_DIR = _dual_log_direct if _dual_log_direct.exists() else _MAIN_CHECKOUT_ROOT / "src" / "logs" / "dual_log"
 _REPORT_DIR = _AREA_ROOT / "attribution_coverage_reports"
 
 

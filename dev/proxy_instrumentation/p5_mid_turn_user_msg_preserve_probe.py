@@ -16,62 +16,9 @@ REPORT_PATH = REPORT_DIR / 'mid_turn_user_msg_preserve_probe_report.md'
 POSTS_STEM = 'api_requests_opus_posts_1786051932'
 WEBSEARCH_STEM = 'api_requests_opus_websearch_1786052022'
 
-# FUNCTIONS
-
-def _load_messages_for_flow(stem: str, flow_id: str) -> list:
-    path = LOG_DIR / f'{stem}_original.jsonl'
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            e = json.loads(line)
-            if e.get('flow_id', '') == flow_id:
-                return e['payload']['messages']
-    raise AssertionError(f'flow_id {flow_id} not found in {path}')
-
-
-def _check_preserve_case() -> dict:
-    from src.proxy.message_passes import _apply_role_system_strip
-    flow_id = '4b4d396b-a26e-4b44-ac32-144763cc786b'
-    msg_idx = 274
-    messages = _load_messages_for_flow(POSTS_STEM, flow_id)
-    original_content = messages[msg_idx]['content']
-    new_messages, mods, removed, changed_idxs, _injected, ops = _apply_role_system_strip(messages)
-    result_content = new_messages[msg_idx]['content']
-    ok = (
-        result_content == original_content
-        and 'jetzt' in result_content
-        and result_content.startswith('The user sent a new message while you were working:')
-        and msg_idx not in changed_idxs
-        and msg_idx not in removed
-        and msg_idx not in ops
-    )
-    return {
-        'label': 'msg274_mid_turn_user_msg_preserved', 'ok': ok,
-        'detail': f"role={new_messages[msg_idx].get('role')!r}, content_len={len(result_content)}, "
-                  f"'jetzt' present={'jetzt' in result_content}, untouched={result_content == original_content}, "
-                  f"changed_idxs contains 274={msg_idx in changed_idxs}",
-    }
-
-
-def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected_prefix: str) -> dict:
-    from src.proxy.message_passes import _apply_role_system_strip
-    messages = _load_messages_for_flow(WEBSEARCH_STEM, flow_id)
-    original_content = messages[msg_idx]['content']
-    new_messages, mods, _removed, changed_idxs, _injected, _ops = _apply_role_system_strip(messages)
-    result_content = new_messages[msg_idx]['content']
-    ok = (
-        original_content.startswith(expected_prefix)
-        and result_content == '.'
-        and msg_idx in changed_idxs
-        and 'stripped_role_system_msg' in mods
-    )
-    return {
-        'label': label, 'ok': ok,
-        'detail': f"orig_prefix_match={original_content.startswith(expected_prefix)}, "
-                  f"result={result_content!r}, changed_idxs contains {msg_idx}={msg_idx in changed_idxs}",
-    }
-
 
 # ORCHESTRATOR
+
 def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     results = [
@@ -106,6 +53,61 @@ def main() -> None:
         print(('PASS' if r['ok'] else 'FAIL'), r['label'], '-', r['detail'])
     print('ALL PASS' if all_pass else 'FAILURES PRESENT')
     sys.exit(0 if all_pass else 1)
+
+
+# FUNCTIONS
+
+def _check_preserve_case() -> dict:
+    from src.proxy.message_passes import _apply_role_system_strip
+    flow_id = '4b4d396b-a26e-4b44-ac32-144763cc786b'
+    msg_idx = 274
+    messages = _load_messages_for_flow(POSTS_STEM, flow_id)
+    original_content = messages[msg_idx]['content']
+    new_messages, mods, removed, changed_idxs, _injected, ops = _apply_role_system_strip(messages)
+    result_content = new_messages[msg_idx]['content']
+    ok = (
+        result_content == original_content
+        and 'jetzt' in result_content
+        and result_content.startswith('The user sent a new message while you were working:')
+        and msg_idx not in changed_idxs
+        and msg_idx not in removed
+        and msg_idx not in ops
+    )
+    return {
+        'label': 'msg274_mid_turn_user_msg_preserved', 'ok': ok,
+        'detail': f"role={new_messages[msg_idx].get('role')!r}, content_len={len(result_content)}, "
+                  f"'jetzt' present={'jetzt' in result_content}, untouched={result_content == original_content}, "
+                  f"changed_idxs contains 274={msg_idx in changed_idxs}",
+    }
+
+
+def _load_messages_for_flow(stem: str, flow_id: str) -> list:
+    path = LOG_DIR / f'{stem}_original.jsonl'
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            e = json.loads(line)
+            if e.get('flow_id', '') == flow_id:
+                return e['payload']['messages']
+    raise AssertionError(f'flow_id {flow_id} not found in {path}')
+
+
+def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected_prefix: str) -> dict:
+    from src.proxy.message_passes import _apply_role_system_strip
+    messages = _load_messages_for_flow(WEBSEARCH_STEM, flow_id)
+    original_content = messages[msg_idx]['content']
+    new_messages, mods, _removed, changed_idxs, _injected, _ops = _apply_role_system_strip(messages)
+    result_content = new_messages[msg_idx]['content']
+    ok = (
+        original_content.startswith(expected_prefix)
+        and result_content == '.'
+        and msg_idx in changed_idxs
+        and 'stripped_role_system_msg' in mods
+    )
+    return {
+        'label': label, 'ok': ok,
+        'detail': f"orig_prefix_match={original_content.startswith(expected_prefix)}, "
+                  f"result={result_content!r}, changed_idxs contains {msg_idx}={msg_idx in changed_idxs}",
+    }
 
 
 if __name__ == '__main__':

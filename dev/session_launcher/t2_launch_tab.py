@@ -33,6 +33,7 @@ _CASES = {
     'space_switch_units': _case_space_switch_units,
 }
 
+
 # ORCHESTRATOR
 
 def main() -> None:
@@ -50,6 +51,7 @@ def main() -> None:
     if any(not r['ok'] for r in results):
         sys.exit(1)
 
+
 # FUNCTIONS
 
 def _parse_args() -> argparse.Namespace:
@@ -57,15 +59,6 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument('--case')
     return p.parse_args()
 
-def _spawn_case(name: str) -> dict:
-    r = subprocess.run([sys.executable, '-m', 'dev.session_launcher.t2_launch_tab', '--case', name],
-                       capture_output=True, text=True, cwd=str(_ROOT), timeout=120)
-    lines = [l for l in r.stdout.splitlines() if l.startswith('{')]
-    if r.returncode != 0 or not lines:
-        return {'name': name, 'ok': False, 'detail': f'rc={r.returncode} stderr={r.stderr.strip()[-400:]}'}
-    out = json.loads(lines[-1])
-    out['name'] = name
-    return out
 
 def _run_case_in_child(name: str) -> None:
     try:
@@ -77,6 +70,18 @@ def _run_case_in_child(name: str) -> None:
     except Exception as exc:
         print(json.dumps({'ok': False, 'detail': f'ERROR {exc!r}'}))
 
+
+def _spawn_case(name: str) -> dict:
+    r = subprocess.run([sys.executable, '-m', 'dev.session_launcher.t2_launch_tab', '--case', name],
+                       capture_output=True, text=True, cwd=str(_ROOT), timeout=120)
+    lines = [l for l in r.stdout.splitlines() if l.startswith('{')]
+    if r.returncode != 0 or not lines:
+        return {'name': name, 'ok': False, 'detail': f'rc={r.returncode} stderr={r.stderr.strip()[-400:]}'}
+    out = json.loads(lines[-1])
+    out['name'] = name
+    return out
+
+
 def _build_report(results) -> str:
     lines = ['# t2_launch_tab report', '',
              '- every case ran in its own subprocess, all cases in parallel', '',
@@ -86,6 +91,7 @@ def _build_report(results) -> str:
     lines.append('')
     lines.append(f'RESULT: {"PASS" if all(r["ok"] for r in results) else "FAIL"}')
     return '\n'.join(lines)
+
 
 if __name__ == '__main__':
     main()

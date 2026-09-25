@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TREE = os.environ.get('MCFIX_TREE') or str(REPO_ROOT)
 CASES = ('partial_tail_kept_for_next_read', 'interior_corruption_raises', 'build_cache_turns_partial_tail', 'gpu_errors_read_all', 'message_content_shape')
 
+
 # ORCHESTRATOR
 
 def main() -> int:
@@ -22,17 +23,20 @@ def main() -> int:
         print(f"{'PASS' if code == 0 else 'FAIL'} {case}" + ('' if code == 0 else f' :: {tail}'))
     return 0 if all(code == 0 for _, code, _ in results) else 1
 
+
 # FUNCTIONS
+
+def run_case(case: str) -> int:
+    sys.path.insert(0, TREE)
+    globals()['case_' + case]()
+    return 0
+
 
 def run_strand(case: str) -> tuple:
     proc = subprocess.run([sys.executable, __file__, '--case', case], capture_output=True, text=True, env={**os.environ, 'MCFIX_TREE': TREE})
     tail = (proc.stderr.strip().splitlines() or [''])[-1]
     return case, proc.returncode, tail
 
-def run_case(case: str) -> int:
-    sys.path.insert(0, TREE)
-    globals()['case_' + case]()
-    return 0
 
 def case_partial_tail_kept_for_next_read() -> None:
     from src.jsonl.jsonl_reader import read_json_records
@@ -47,6 +51,7 @@ def case_partial_tail_kept_for_next_read() -> None:
         records, pos = read_json_records(path, pos)
         assert records == [{'n': 2}] and pos == len((first + second).encode()), (records, pos)
 
+
 def case_interior_corruption_raises() -> None:
     from src.jsonl.jsonl_reader import read_json_records, JsonlCorruptError
     with tempfile.TemporaryDirectory() as d:
@@ -58,6 +63,7 @@ def case_interior_corruption_raises() -> None:
             assert 'byte 9' in str(e), str(e)
             return
         raise AssertionError('no JsonlCorruptError')
+
 
 def case_build_cache_turns_partial_tail() -> None:
     from src.panes.cache_turns import build_cache_turns
@@ -75,6 +81,7 @@ def case_build_cache_turns_partial_tail() -> None:
         turns, pos = build_cache_turns(path, pos, turns)
         assert len(turns[0]['api_calls']) == 1, turns
 
+
 def case_gpu_errors_read_all() -> None:
     from src.gpu_pane import errors
     with tempfile.TemporaryDirectory() as d:
@@ -89,12 +96,14 @@ def case_gpu_errors_read_all() -> None:
             return
         raise AssertionError('no ValueError on interior corruption')
 
+
 def case_message_content_shape() -> None:
     from src.jsonl.jsonl_parser import get_message_content
     block = {'type': 'tool_use', 'name': 'Bash'}
     assert get_message_content({'message': {'content': [block]}}) == [block]
     assert get_message_content({'type': 'attachment'}) == []
     assert get_message_content({'content': [block]}) == []
+
 
 if __name__ == '__main__':
     sys.exit(main())

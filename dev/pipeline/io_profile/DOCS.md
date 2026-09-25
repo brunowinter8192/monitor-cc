@@ -11,7 +11,7 @@ The script scans real session JSONL files under the user's Claude Code projects 
 
 ## Modules
 
-### 01_poll_cycle_cost.py (156 LOC)
+### 01_poll_cycle_cost.py (158 LOC)
 
 **Purpose:** Counts filesystem calls per poll cycle by patching path methods around the session finder, averaged over repeated cycles.
 **Reads:** live filesystem state under the Claude projects directory.

@@ -85,8 +85,9 @@ def case_mitmdump_start_failure_aborts():
     assert new['tmp_marker_left'] is False
 
 
-STRANDS = [n for n in list(globals()) if n.startswith('case_')]
+def collect_strands():
+    return [n for n in list(globals()) if n.startswith('case_')]
 
 
 if __name__ == '__main__':
-    sys.exit(strand_workflow(globals(), __file__, STRANDS, REPORT_PATH, 'test_proxy_start_fallbacks'))
+    sys.exit(strand_workflow(globals(), __file__, collect_strands(), REPORT_PATH, 'test_proxy_start_fallbacks'))

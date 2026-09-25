@@ -20,22 +20,8 @@ _orig_glob = Path.glob
 _counters = {'stat': 0, 'iterdir': 0, 'glob': 0}
 
 
-def _counting_stat(self, *, follow_symlinks=True):
-    _counters['stat'] += 1
-    return _orig_stat(self, follow_symlinks=follow_symlinks)
-
-
-def _counting_iterdir(self):
-    _counters['iterdir'] += 1
-    return _orig_iterdir(self)
-
-
-def _counting_glob(self, pattern, **kwargs):
-    _counters['glob'] += 1
-    return _orig_glob(self, pattern, **kwargs)
-
-
 # ORCHESTRATOR
+
 def main():
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -50,6 +36,7 @@ def main():
 
 
 # FUNCTIONS
+
 def count_projects():
     claude_dir = Path.home() / '.claude' / 'projects'
     if not claude_dir.exists():
@@ -100,6 +87,21 @@ def run_cycles(project_filter, n_cycles):
     }
 
 
+def _counting_stat(self, *, follow_symlinks=True):
+    _counters['stat'] += 1
+    return _orig_stat(self, follow_symlinks=follow_symlinks)
+
+
+def _counting_iterdir(self):
+    _counters['iterdir'] += 1
+    return _orig_iterdir(self)
+
+
+def _counting_glob(self, pattern, **kwargs):
+    _counters['glob'] += 1
+    return _orig_glob(self, pattern, **kwargs)
+
+
 def summarize(values):
     return {
         'mean': statistics.mean(values),
@@ -107,14 +109,6 @@ def summarize(values):
         'min': min(values),
         'max': max(values),
     }
-
-
-def fmt_row(label, stats, unit=''):
-    mean = f'{stats["mean"]:.2f}{unit}'
-    stdev = f'{stats["stdev"]:.2f}{unit}'
-    mn = f'{stats["min"]:.2f}{unit}'
-    mx = f'{stats["max"]:.2f}{unit}'
-    return f'| {label} | {mean} | {stdev} | {mn} | {mx} |'
 
 
 def write_report(total_projects, total_jsonl, unfiltered, filtered):
@@ -150,6 +144,14 @@ def write_report(total_projects, total_jsonl, unfiltered, filtered):
 
     report_path.write_text('\n'.join(out) + '\n')
     return report_path
+
+
+def fmt_row(label, stats, unit=''):
+    mean = f'{stats["mean"]:.2f}{unit}'
+    stdev = f'{stats["stdev"]:.2f}{unit}'
+    mn = f'{stats["min"]:.2f}{unit}'
+    mx = f'{stats["max"]:.2f}{unit}'
+    return f'| {label} | {mean} | {stdev} | {mn} | {mx} |'
 
 
 if __name__ == '__main__':

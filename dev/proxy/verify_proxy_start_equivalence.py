@@ -27,6 +27,7 @@ CASES = {
 
 
 # ORCHESTRATOR
+
 def equivalence_workflow_case(name: str) -> None:
     case_dir = make_case_dir()
     project = case_dir / 'proj'
@@ -41,6 +42,7 @@ def equivalence_workflow_case(name: str) -> None:
 
 
 # FUNCTIONS
+
 def resolve_spec(spec: dict, project: Path) -> dict:
     resolved = dict(spec)
     if 'args' in resolved:
@@ -60,9 +62,11 @@ def make_strand(name: str):
     return lambda: equivalence_workflow_case(name)
 
 
-for _name in CASES:
-    globals()[f'case_{_name}'] = make_strand(_name)
+def register_case_strands(namespace: dict) -> list:
+    for name in CASES:
+        namespace[f'case_{name}'] = make_strand(name)
+    return [f'case_{n}' for n in CASES]
 
 
 if __name__ == '__main__':
-    sys.exit(strand_workflow(globals(), __file__, [f'case_{n}' for n in CASES], REPORT_PATH, 'verify_proxy_start_equivalence'))
+    sys.exit(strand_workflow(globals(), __file__, register_case_strands(globals()), REPORT_PATH, 'verify_proxy_start_equivalence'))

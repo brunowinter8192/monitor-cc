@@ -16,7 +16,7 @@ Every numbered script over budget splits into the numbered entry file plus sibli
 
 ## Modules
 
-### 01_extract.py (266 LOC)
+### 01_extract.py (286 LOC)
 
 **Purpose:** Multi-level tool-call extraction and summary from session JSONL files — all
 projects, one project, one session, or one session filtered by tool name.
@@ -27,7 +27,7 @@ projects, one project, one session, or one session filtered by tool name.
 
 ---
 
-### 02_cache_timeline.py (66 LOC)
+### 02_cache_timeline.py (71 LOC)
 
 **Purpose:** Entry point — visualizes cache/token behavior turn-by-turn or minute-by-minute
 across a session or project, flagging anomalies.
@@ -71,7 +71,7 @@ bar chart, and per-project session summary.
 
 ---
 
-### 03_cache_rebuild_context.py (75 LOC)
+### 03_cache_rebuild_context.py (79 LOC)
 
 **Purpose:** Entry point — detects cache rebuilds (CR drops with disproportionate CC spikes) and
 shows surrounding message context for root-cause analysis.
@@ -116,7 +116,7 @@ detected rebuild.
 
 ---
 
-### 04_cache_validation.py (159 LOC)
+### 04_cache_validation.py (165 LOC)
 
 **Purpose:** Validates proxy-side cache breakpoint placement and stability — per request, shows
 breakpoint positions, modified messages, and stability between requests.

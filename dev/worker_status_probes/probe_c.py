@@ -11,8 +11,8 @@ from pathlib import Path
 
 _procs: dict = {}
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def probe_c_workflow():
     args = _parse_args()
@@ -26,7 +26,6 @@ def probe_c_workflow():
 
 # FUNCTIONS
 
-
 def _parse_args():
     p = argparse.ArgumentParser(description="Probe C: tmux control-mode event stream")
     p.add_argument("--sessions", nargs="+", required=True)
@@ -35,24 +34,11 @@ def _parse_args():
     return p.parse_args()
 
 
-def _get_window0_pane_ids(session):
-    r = subprocess.run(
-        ["tmux", "list-panes", "-t", f"{session}:0", "-F", "#{pane_id}"],
-        capture_output=True,
-        text=True,
-    )
-    return set(r.stdout.split())
-
-
-def _start_control_client(session):
-    proc = subprocess.Popen(
-        ["tmux", "-C", "attach-session", "-t", session],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    _procs[session] = proc
-    return proc
+def _cleanup_all():
+    for session in list(_procs):
+        _stop_control_client(session)
+    _procs.clear()
+    print("[probe_c] cleanup done")
 
 
 def _stop_control_client(session):
@@ -67,45 +53,6 @@ def _stop_control_client(session):
     if proc.poll() is None:
         proc.kill()
         proc.wait()
-
-
-def _cleanup_all():
-    for session in list(_procs):
-        _stop_control_client(session)
-    _procs.clear()
-    print("[probe_c] cleanup done")
-
-
-def _reader_thread(proc, pane_ids, session, counters, lock, stop_event):
-    for raw in proc.stdout:
-        if stop_event.is_set():
-            break
-        line = raw.decode("utf-8", errors="replace").rstrip("\n")
-        pane_id, payload = _parse_output_event(line)
-        if pane_id is None:
-            continue
-        if pane_ids and pane_id not in pane_ids:
-            continue
-        with lock:
-            counters[session]["events"] += 1
-            counters[session]["bytes"] += len(payload)
-
-
-def _parse_output_event(line):
-    if line.startswith("%output "):
-        rest = line[len("%output "):]
-        parts = rest.split(" ", 1)
-        if len(parts) == 2:
-            return parts[0], parts[1]
-    elif line.startswith("%extended-output "):
-        rest = line[len("%extended-output "):]
-        parts = rest.split(" ", 2)
-        if len(parts) == 3:
-            payload = parts[2]
-            if payload.startswith(": "):
-                payload = payload[2:]
-            return parts[0], payload
-    return None, None
 
 
 def _run_probe(sessions, duration, outfile):
@@ -143,6 +90,58 @@ def _run_probe(sessions, duration, outfile):
 
     stop_event.set()
     _cleanup_all()
+
+
+def _get_window0_pane_ids(session):
+    r = subprocess.run(
+        ["tmux", "list-panes", "-t", f"{session}:0", "-F", "#{pane_id}"],
+        capture_output=True,
+        text=True,
+    )
+    return set(r.stdout.split())
+
+
+def _start_control_client(session):
+    proc = subprocess.Popen(
+        ["tmux", "-C", "attach-session", "-t", session],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    _procs[session] = proc
+    return proc
+
+
+def _reader_thread(proc, pane_ids, session, counters, lock, stop_event):
+    for raw in proc.stdout:
+        if stop_event.is_set():
+            break
+        line = raw.decode("utf-8", errors="replace").rstrip("\n")
+        pane_id, payload = _parse_output_event(line)
+        if pane_id is None:
+            continue
+        if pane_ids and pane_id not in pane_ids:
+            continue
+        with lock:
+            counters[session]["events"] += 1
+            counters[session]["bytes"] += len(payload)
+
+
+def _parse_output_event(line):
+    if line.startswith("%output "):
+        rest = line[len("%output "):]
+        parts = rest.split(" ", 1)
+        if len(parts) == 2:
+            return parts[0], parts[1]
+    elif line.startswith("%extended-output "):
+        rest = line[len("%extended-output "):]
+        parts = rest.split(" ", 2)
+        if len(parts) == 3:
+            payload = parts[2]
+            if payload.startswith(": "):
+                payload = payload[2:]
+            return parts[0], payload
+    return None, None
 
 
 if __name__ == "__main__":

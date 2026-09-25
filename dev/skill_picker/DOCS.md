@@ -11,7 +11,7 @@ Fixture `.claude` directories and projects are built in a temp directory, the re
 
 ## Modules
 
-### t1_skill_picker.py (95 LOC)
+### t1_skill_picker.py (101 LOC)
 
 **Purpose:** Runner for twelve parallel subprocess cases (one isolated HOME each) that owns the case table and writes the PASS/FAIL report.
 **Reads:** the case functions of the three `t1_*_cases.py` modules.

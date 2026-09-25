@@ -8,38 +8,15 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__), '..', '..'))
 
-import importlib as _il
-_mp = _il.import_module('src.proxy.message_passes')
-_mp2 = _il.import_module('src.proxy.message_passes_simple')
-_apply_role_system_strip = _mp._apply_role_system_strip
-_apply_sn_notice_strip = _mp2._apply_sn_notice_strip
-_apply_first_pass = _mp._apply_first_pass
-_apply_cumulative_sr_strips = _mp._apply_cumulative_sr_strips
-_apply_final_sr_pass = _mp._apply_final_sr_pass
-_apply_po_preview_strip = _mp2._apply_po_preview_strip
-_apply_bg_exit_strip = _mp2._apply_bg_exit_strip
-_apply_bg_launch_ack_strip = _mp2._apply_bg_launch_ack_strip
-_apply_hook_prefix_strip = _mp2._apply_hook_prefix_strip
-_apply_git_lock_strip = _mp2._apply_git_lock_strip
-_apply_bd_noise_strip = _mp2._apply_bd_noise_strip
-
-_sr_mod = _il.import_module('src.proxy.strip_sr')
-_INNER_SR_RE = _sr_mod._INNER_SR_RE
-_match_template = _sr_mod._match_template
-_ALL_TEMPLATES = _sr_mod._ALL_TEMPLATES
-_ENV_CONTEXT_RE = _sr_mod._ENV_CONTEXT_RE
-_IMP_LINE_RE = _sr_mod._IMP_LINE_RE
-
-_cs_mod = _il.import_module('src.proxy.content_strip')
-_REJECTION_MARKER = _cs_mod._REJECTION_MARKER
-
-_ro_mod = _il.import_module('src.proxy.rule_ops')
-_block_inner_text = _ro_mod._block_inner_text
-
-_gl_mod = _il.import_module('src.proxy.strip_git_lock')
-_GIT_LOCK_MARKER = _gl_mod._GIT_LOCK_MARKER
-_GIT_LOCK_ADVICE = _gl_mod._GIT_LOCK_ADVICE
-del _il, _mp, _mp2, _sr_mod, _cs_mod, _ro_mod, _gl_mod
+from src.proxy.message_passes import _apply_role_system_strip, _apply_first_pass, _apply_cumulative_sr_strips, _apply_final_sr_pass
+from src.proxy.message_passes_simple import (
+    _apply_sn_notice_strip, _apply_po_preview_strip, _apply_bg_exit_strip, _apply_bg_launch_ack_strip,
+    _apply_hook_prefix_strip, _apply_git_lock_strip, _apply_bd_noise_strip,
+)
+from src.proxy.strip_sr import _INNER_SR_RE, _match_template, _ALL_TEMPLATES, _ENV_CONTEXT_RE, _IMP_LINE_RE
+from src.proxy.content_strip import _REJECTION_MARKER
+from src.proxy.rule_ops import _block_inner_text
+from src.proxy.strip_git_lock import _GIT_LOCK_MARKER, _GIT_LOCK_ADVICE
 
 LOGS_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 
@@ -58,7 +35,6 @@ PASSES = [
     ('_apply_git_lock_strip', _apply_git_lock_strip),
     ('_apply_bd_noise_strip', _apply_bd_noise_strip),
 ]
-
 
 _ASSERT_NO_DESCEND = {'_apply_role_system_strip', '_apply_sn_notice_strip', '_apply_bg_exit_strip'}
 
@@ -125,6 +101,7 @@ def _build_tool_id_map(messages):
                 }
     return m
 
+
 def _classify_removed_text(pass_name, removed_text):
     stripped = removed_text.strip()
     if stripped.startswith('<system-reminder>'):
@@ -141,13 +118,16 @@ def _classify_removed_text(pass_name, removed_text):
         return 'user-interrupt-important-line'
     return _FIXED_MOD_MAP.get(pass_name, f'unclassified:{pass_name}')
 
+
 def _odd_fence_count(text_before):
     return text_before.count('```') % 2 == 1
+
 
 def _context_window(flat_text, offset, removed_len, before=400, after=200):
     start = max(0, offset - before)
     end = min(len(flat_text), offset + removed_len + after)
     return flat_text[start:offset], flat_text[offset + removed_len:end]
+
 
 def _process_block_ops(fp, line_idx, entry, pass_name, msg_idx, blk_idx, block, tool_id_map, op_list, occurrences, assertion_hits):
     hit_this_request = False

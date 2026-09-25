@@ -28,14 +28,6 @@ def snapshot_workflow(encoded_dir: str, session_id: str, task_id: str) -> None:
     print(json.dumps({'size_bytes': size, 'old': old, 'new': new}))
 
 
-def probe_bg_task_detection_workflow(encoded_dir: str, session_id: str, task_id: str, poll_secs: float, max_polls: int) -> None:
-    real_run_rows = _poll_real_task(encoded_dir, session_id, task_id, poll_secs, max_polls)
-    no_bg_row = _probe_no_bg_session(encoded_dir, session_id)
-    synthetic_rows = _probe_synthetic_writer()
-    cost = _bench_per_tick_cost()
-    _write_report(real_run_rows, no_bg_row, synthetic_rows, cost)
-
-
 # FUNCTIONS
 
 def _old_predicate(tasks_dir: Path) -> bool:
@@ -51,6 +43,14 @@ def _new_predicate(encoded_dir: str, session_id: str) -> bool:
     proc_cache._bg_task_last_refresh = 0.0
     proc_cache._refresh_bg_task_cache(time.time())
     return proc_cache._has_active_bg(encoded_dir, session_id)
+
+
+def probe_bg_task_detection_workflow(encoded_dir: str, session_id: str, task_id: str, poll_secs: float, max_polls: int) -> None:
+    real_run_rows = _poll_real_task(encoded_dir, session_id, task_id, poll_secs, max_polls)
+    no_bg_row = _probe_no_bg_session(encoded_dir, session_id)
+    synthetic_rows = _probe_synthetic_writer()
+    cost = _bench_per_tick_cost()
+    _write_report(real_run_rows, no_bg_row, synthetic_rows, cost)
 
 
 def _poll_real_task(encoded_dir: str, session_id: str, task_id: str, poll_secs: float, max_polls: int) -> list:

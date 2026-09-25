@@ -18,6 +18,7 @@ HARD_STMT = (ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith,
 
 
 # ORCHESTRATOR
+
 def scan_workflow(argv: list) -> int:
     files = list_python_files(SCAN_ROOT)
     findings = collect_findings(files)
@@ -27,6 +28,7 @@ def scan_workflow(argv: list) -> int:
 
 
 # FUNCTIONS
+
 def list_python_files(root: Path) -> list:
     return sorted(p for p in root.rglob('*.py') if '__pycache__' not in p.parts)
 
@@ -85,29 +87,6 @@ def check_marker_order(markers: list) -> list:
     return found
 
 
-def node_start(node) -> int:
-    decorators = getattr(node, 'decorator_list', [])
-    return min([node.lineno] + [d.lineno for d in decorators])
-
-
-def is_main_guard(node) -> bool:
-    if not isinstance(node, ast.If):
-        return False
-    test = node.test
-    return isinstance(test, ast.Compare) and isinstance(test.left, ast.Name) and test.left.id == '__name__'
-
-
-def section_of(line: int, spans: dict):
-    for name, (start, end) in spans.items():
-        if start <= line <= end:
-            return name
-    return None
-
-
-def section_nodes(tree, spans: dict, name: str) -> list:
-    return [n for n in tree.body if section_of(node_start(n), spans) == name and not is_main_guard(n)]
-
-
 def check_section_content(tree, spans: dict) -> list:
     found = []
     for node in tree.body:
@@ -120,6 +99,29 @@ def check_section_content(tree, spans: dict) -> list:
         if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
             found.append(('L3-functions-content', node.lineno, type(node).__name__))
     return found
+
+
+def node_start(node) -> int:
+    decorators = getattr(node, 'decorator_list', [])
+    return min([node.lineno] + [d.lineno for d in decorators])
+
+
+def section_nodes(tree, spans: dict, name: str) -> list:
+    return [n for n in tree.body if section_of(node_start(n), spans) == name and not is_main_guard(n)]
+
+
+def section_of(line: int, spans: dict):
+    for name, (start, end) in spans.items():
+        if start <= line <= end:
+            return name
+    return None
+
+
+def is_main_guard(node) -> bool:
+    if not isinstance(node, ast.If):
+        return False
+    test = node.test
+    return isinstance(test, ast.Compare) and isinstance(test.left, ast.Name) and test.left.id == '__name__'
 
 
 def is_path_setup(node) -> bool:
@@ -164,19 +166,6 @@ def expression_logic(node, allow_top_test: bool) -> list:
     return found[:1]
 
 
-def guard_node(tree):
-    guards = [n for n in tree.body if is_main_guard(n)]
-    return guards[0] if guards else None
-
-
-def module_functions(tree) -> list:
-    return [n for n in tree.body if isinstance(n, ast.FunctionDef)]
-
-
-def guard_is_strand(guard) -> bool:
-    return STRAND_ENTRY in ast.unparse(guard)
-
-
 def check_entry(tree, spans: dict, path: Path) -> list:
     found = []
     guard = guard_node(tree)
@@ -189,35 +178,25 @@ def check_entry(tree, spans: dict, path: Path) -> list:
     return found
 
 
+def guard_node(tree):
+    guards = [n for n in tree.body if is_main_guard(n)]
+    return guards[0] if guards else None
+
+
+def guard_is_strand(guard) -> bool:
+    return STRAND_ENTRY in ast.unparse(guard)
+
+
+def module_functions(tree) -> list:
+    return [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+
+
 def module_level_calls(tree, spans: dict) -> list:
     found = []
     for node in tree.body:
         if isinstance(node, ast.Expr) and not is_path_setup(node) and section_of(node_start(node), spans) != 'INFRASTRUCTURE':
             found.append(('L6-module-level-call', node.lineno, ast.unparse(node)[:60]))
     return found
-
-
-def ordered_callees(func, known: dict) -> list:
-    seen = []
-    references = sorted((s for s in ast.walk(func) if isinstance(s, ast.Name) and isinstance(s.ctx, ast.Load) and s.id in known and s.id != func.name), key=lambda s: (s.lineno, s.col_offset))
-    for ref in references:
-        if ref.id not in seen:
-            seen.append(ref.id)
-    return seen
-
-
-def expected_order(entry: str, known: dict) -> list:
-    order = []
-    visit(entry, known, order)
-    return order
-
-
-def visit(name: str, known: dict, order: list) -> None:
-    if name in order:
-        return
-    order.append(name)
-    for callee in ordered_callees(known[name], known):
-        visit(callee, known, order)
 
 
 def check_stepdown(tree, spans: dict) -> list:
@@ -235,12 +214,81 @@ def check_stepdown(tree, spans: dict) -> list:
     return found
 
 
-def src_top_level_names() -> set:
-    return {p.stem for p in (PROJECT_ROOT / 'src').iterdir() if (p.suffix == '.py' or p.is_dir()) and p.stem != '__pycache__'}
+def expected_order(entry: str, known: dict) -> list:
+    order = []
+    visit(entry, known, order)
+    return apply_eager_dependencies(order, known)
 
 
-def is_local_sibling(name: str, path: Path) -> bool:
-    return (path.parent / f'{name}.py').exists() or (path.parent / name).is_dir()
+def visit(name: str, known: dict, order: list) -> None:
+    if name in order:
+        return
+    order.append(name)
+    for callee in ordered_callees(known[name], known):
+        visit(callee, known, order)
+
+
+def ordered_callees(func, known: dict) -> list:
+    seen = []
+    references = sorted((s for s in ast.walk(func) if isinstance(s, ast.Name) and isinstance(s.ctx, ast.Load) and s.id in known and s.id != func.name), key=lambda s: (s.lineno, s.col_offset))
+    for ref in references:
+        if ref.id not in seen:
+            seen.append(ref.id)
+    return seen
+
+
+def apply_eager_dependencies(order: list, known: dict) -> list:
+    placed = []
+    for name in order:
+        place_with_dependencies(name, order, known, placed, ())
+    return placed
+
+
+def place_with_dependencies(name: str, order: list, known: dict, placed: list, stack: tuple) -> None:
+    if name in placed or name in stack:
+        return
+    for dep in sorted(eager_references(known[name], known), key=lambda d: order.index(d) if d in order else len(order)):
+        place_with_dependencies(dep, order, known, placed, stack + (name,))
+    placed.append(name)
+
+
+def eager_references(node, known: dict) -> set:
+    names = set()
+    for expr in eager_expressions(node):
+        for sub in ast.walk(expr):
+            if isinstance(sub, ast.Name) and sub.id in known and sub.id != node.name:
+                names.add(sub.id)
+    return names
+
+
+def eager_expressions(node) -> list:
+    exprs = list(node.decorator_list)
+    if isinstance(node, ast.ClassDef):
+        exprs += node.bases + [k.value for k in node.keywords]
+        for stmt in node.body:
+            exprs += [stmt] if not isinstance(stmt, ast.FunctionDef) else signature_expressions(stmt)
+        return exprs
+    return exprs + signature_expressions(node, include_decorators=False)
+
+
+def signature_expressions(func, include_decorators: bool = True) -> list:
+    args = func.args
+    exprs = list(func.decorator_list) if include_decorators else []
+    exprs += args.defaults + [d for d in args.kw_defaults if d is not None]
+    exprs += [a.annotation for a in args.args + args.kwonlyargs if a.annotation is not None]
+    if func.returns is not None:
+        exprs.append(func.returns)
+    return exprs
+
+
+def check_imports(tree) -> list:
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level > 0:
+            found.append(('L8-relative-import', node.lineno, ast.unparse(node)))
+        elif isinstance(node, ast.Import) and any(a.name == 'src' or a.name.startswith('src.') for a in node.names):
+            found.append(('L8-import-src-module', node.lineno, ast.unparse(node)))
+    return found
 
 
 def check_bare_src_imports(tree, path: Path) -> list:
@@ -255,25 +303,12 @@ def check_bare_src_imports(tree, path: Path) -> list:
     return found
 
 
-def check_imports(tree) -> list:
-    found = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.level > 0:
-            found.append(('L8-relative-import', node.lineno, ast.unparse(node)))
-        elif isinstance(node, ast.Import) and any(a.name == 'src' or a.name.startswith('src.') for a in node.names):
-            found.append(('L8-import-src-module', node.lineno, ast.unparse(node)))
-    return found
+def src_top_level_names() -> set:
+    return {p.stem for p in (PROJECT_ROOT / 'src').iterdir() if (p.suffix == '.py' or p.is_dir()) and p.stem != '__pycache__'}
 
 
-def exit_code(findings: list) -> int:
-    return 0 if not findings else 1
-
-
-def rule_counts(findings: list) -> dict:
-    counts = {}
-    for _, rule, _, _ in findings:
-        counts[rule] = counts.get(rule, 0) + 1
-    return counts
+def is_local_sibling(name: str, path: Path) -> bool:
+    return (path.parent / f'{name}.py').exists() or (path.parent / name).is_dir()
 
 
 def write_report(report_dir: Path, files: list, findings: list) -> Path:
@@ -288,12 +323,23 @@ def write_report(report_dir: Path, files: list, findings: list) -> Path:
     return path
 
 
+def rule_counts(findings: list) -> dict:
+    counts = {}
+    for _, rule, _, _ in findings:
+        counts[rule] = counts.get(rule, 0) + 1
+    return counts
+
+
 def print_summary(files: list, findings: list, report_path: Path) -> None:
     print(f'files scanned: {len(files)}')
     print(f'violations: {len(findings)} in {len({f[0] for f in findings})} files')
     for rule, count in sorted(rule_counts(findings).items()):
         print(f'  {rule}: {count}')
     print(f'report: {report_path}')
+
+
+def exit_code(findings: list) -> int:
+    return 0 if not findings else 1
 
 
 if __name__ == '__main__':

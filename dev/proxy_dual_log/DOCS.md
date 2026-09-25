@@ -13,7 +13,7 @@ Converted suites run as parallel strands through the strand runner in `dev/refac
 
 ## Modules
 
-### verify_delta.py (279 LOC)
+### verify_delta.py (281 LOC)
 
 **Purpose:** Reconstructs the full forwarded payload from a forwarded delta stream and verifies element counts match the declared counts.
 **Reads:** an original and forwarded log pair.
@@ -23,7 +23,7 @@ Converted suites run as parallel strands through the strand runner in `dev/refac
 
 ---
 
-### tt_delta_skip_replay.py (279 LOC)
+### tt_delta_skip_replay.py (278 LOC)
 
 **Purpose:** Replays an original log through the real modification, delta-build and accumulator pipeline to prove the token-badge suppression fix.
 **Reads:** one stem's original, stripped and injected logs under the main checkout's dual log.
@@ -33,7 +33,7 @@ Converted suites run as parallel strands through the strand runner in `dev/refac
 
 ---
 
-### diff_strip_inject.py (255 LOC)
+### diff_strip_inject.py (253 LOC)
 
 **Purpose:** Span-level strip/inject diff of an original versus forwarded log pair, classifying spans as equal, stripped or injected.
 **Reads:** an original and forwarded log pair.

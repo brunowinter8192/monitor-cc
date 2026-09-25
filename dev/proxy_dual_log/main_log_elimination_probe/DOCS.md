@@ -51,7 +51,7 @@ A dual-log quartet plus the flat main proxy log of one session are loaded. Quest
 
 ---
 
-### main_log_elimination_report.py (217 LOC)
+### main_log_elimination_report.py (216 LOC)
 
 **Purpose:** Builds the Markdown report: match, divergence and field-classification sections and the migration verdict.
 **Reads:** the result dicts of both questions.

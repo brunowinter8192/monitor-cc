@@ -21,17 +21,51 @@ _TARGET = "sleep 3300 && echo done"
 _RESULTS = []
 
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {'PASS' if condition else 'FAIL'}  {label}")
-    return condition
+# ORCHESTRATOR
+
+def run_probe_workflow() -> bool:
+    print("=" * 70)
+    print("P3 — cross-project false-block incident replay (2026-08-07 websearch/posts)")
+    print("=" * 70)
+    test_incident_foreign_project_now_allows()
+    test_same_project_still_blocks()
+    test_legacy_entry_blocks_everyone()
+    test_expired_entry_allows_regardless_of_project()
+    test_writer_stamps_project_e2e()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+    _write_report(passed, total)
+    return passed == total
+
+
+# FUNCTIONS
+
+def test_incident_foreign_project_now_allows():
+    print("\n[Test 1] Incident replay — posts-project pending, websearch cwd -> now ALLOWS")
+    now = datetime.now(timezone.utc)
+    fresh_ts = _iso(now - timedelta(minutes=5))
+    with tempfile.TemporaryDirectory() as tmp_root, tempfile.TemporaryDirectory() as outer:
+        ws_cwd = Path(outer) / "Websearch"
+        ws_cwd.mkdir()
+        _seed_state(tmp_root, {"b4z5fzzao": {"status": "pending", "armed_at": fresh_ts, "project": "posts"}})
+        code, stderr = _run_hook(_TARGET, True, tmp_root, str(ws_cwd))
+        check("posts pending entry + websearch cwd -> exit 0 (allow)", code == 0)
+        check("no stderr on allow", stderr == "")
 
 
 def _iso(dt):
     return dt.strftime('%Y-%m-%dT%H:%M:%S.') + f'{dt.microsecond // 1000:03d}Z'
 
 
-# FUNCTIONS
+def _seed_state(tmp_root, state):
+    state_path = Path(tmp_root) / "src" / "logs" / "pending_bg_tasks.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
 
 def _run_hook(command, run_in_background, tmp_root, cwd):
     payload = json.dumps({
@@ -46,23 +80,10 @@ def _run_hook(command, run_in_background, tmp_root, cwd):
     return result.returncode, result.stderr.decode()
 
 
-def _seed_state(tmp_root, state):
-    state_path = Path(tmp_root) / "src" / "logs" / "pending_bg_tasks.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state), encoding="utf-8")
-
-
-def test_incident_foreign_project_now_allows():
-    print("\n[Test 1] Incident replay — posts-project pending, websearch cwd -> now ALLOWS")
-    now = datetime.now(timezone.utc)
-    fresh_ts = _iso(now - timedelta(minutes=5))
-    with tempfile.TemporaryDirectory() as tmp_root, tempfile.TemporaryDirectory() as outer:
-        ws_cwd = Path(outer) / "Websearch"
-        ws_cwd.mkdir()
-        _seed_state(tmp_root, {"b4z5fzzao": {"status": "pending", "armed_at": fresh_ts, "project": "posts"}})
-        code, stderr = _run_hook(_TARGET, True, tmp_root, str(ws_cwd))
-        check("posts pending entry + websearch cwd -> exit 0 (allow)", code == 0)
-        check("no stderr on allow", stderr == "")
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {'PASS' if condition else 'FAIL'}  {label}")
+    return condition
 
 
 def test_same_project_still_blocks():
@@ -108,49 +129,6 @@ def test_expired_entry_allows_regardless_of_project():
         check("expired same-project entry -> exit 0 (allow)", code == 0 and stderr == "")
 
 
-class _FakeHeaders(dict):
-    def get(self, k, default=None):
-        return super().get(k.lower(), default) if isinstance(k, str) else default
-
-    def pop(self, k, default=None):
-        return dict.pop(self, k.lower(), default)
-
-
-class _FakeRequest:
-    def __init__(self, payload):
-        self.method = "POST"
-        self.pretty_host = "api.anthropic.com"
-        self.path = "/v1/messages"
-        self.headers = _FakeHeaders()
-        self.content = json.dumps(payload).encode("utf-8")
-
-
-class _FakeFlow:
-    def __init__(self, payload):
-        self.request = _FakeRequest(payload)
-        self.metadata = {}
-        self.id = "fake-flow-id"
-
-
-def _ack_text(task_id):
-    return (
-        f"Command running in background with ID: {task_id}. "
-        f"Output is being written to: /tmp/output_{task_id}.txt. "
-        "You will be notified when it completes. "
-        "To check interim output, use Read on that file path."
-    )
-
-
-def _payload_with_user_text(text):
-    return {
-        "model": "claude-opus-4-6", "max_tokens": 8000,
-        "system": [{"type": "text", "text": "sys0"},
-                   {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
-                   {"type": "text", "text": "sys2"}],
-        "messages": [{"role": "user", "content": text}], "tools": [],
-    }
-
-
 def test_writer_stamps_project_e2e():
     print("\n[Test 5] Writer side — real ProxyAddon.request() stamps project")
     from src.proxy.pending_bg_state import _read_state_file, _resolve_pending_bg_state_file
@@ -168,24 +146,47 @@ def test_writer_stamps_project_e2e():
               state.get("incident_e2e", {}).get("project") == "websearch")
 
 
-# ORCHESTRATOR
-def run_probe_workflow() -> bool:
-    print("=" * 70)
-    print("P3 — cross-project false-block incident replay (2026-08-07 websearch/posts)")
-    print("=" * 70)
-    test_incident_foreign_project_now_allows()
-    test_same_project_still_blocks()
-    test_legacy_entry_blocks_everyone()
-    test_expired_entry_allows_regardless_of_project()
-    test_writer_stamps_project_e2e()
+class _FakeFlow:
+    def __init__(self, payload):
+        self.request = _FakeRequest(payload)
+        self.metadata = {}
+        self.id = "fake-flow-id"
 
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-    _write_report(passed, total)
-    return passed == total
+
+class _FakeRequest:
+    def __init__(self, payload):
+        self.method = "POST"
+        self.pretty_host = "api.anthropic.com"
+        self.path = "/v1/messages"
+        self.headers = _FakeHeaders()
+        self.content = json.dumps(payload).encode("utf-8")
+
+
+class _FakeHeaders(dict):
+    def get(self, k, default=None):
+        return super().get(k.lower(), default) if isinstance(k, str) else default
+
+    def pop(self, k, default=None):
+        return dict.pop(self, k.lower(), default)
+
+
+def _payload_with_user_text(text):
+    return {
+        "model": "claude-opus-4-6", "max_tokens": 8000,
+        "system": [{"type": "text", "text": "sys0"},
+                   {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
+                   {"type": "text", "text": "sys2"}],
+        "messages": [{"role": "user", "content": text}], "tools": [],
+    }
+
+
+def _ack_text(task_id):
+    return (
+        f"Command running in background with ID: {task_id}. "
+        f"Output is being written to: /tmp/output_{task_id}.txt. "
+        "You will be notified when it completes. "
+        "To check interim output, use Read on that file path."
+    )
 
 
 def _write_report(passed, total):

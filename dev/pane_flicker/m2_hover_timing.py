@@ -24,6 +24,7 @@ SESSIONS = {
 SCALES = [1, 10]
 PANES = ['tokens', 'worker_tokens']
 
+
 # ORCHESTRATOR
 
 def timing_workflow() -> int:
@@ -35,26 +36,8 @@ def timing_workflow() -> int:
     write_report(rows)
     return 0
 
+
 # FUNCTIONS
-
-def extract_old_tree(work_dir: Path) -> Path:
-    old_root = work_dir / 'old_tree'
-    old_root.mkdir()
-    archive = subprocess.run(['git', '-C', str(WORKTREE_ROOT), 'archive', OLD_REF], capture_output=True, check=True).stdout
-    subprocess.run(['tar', '-x', '-C', str(old_root)], input=archive, check=True)
-    return old_root
-
-def collect_rows(old_root: Path) -> list:
-    rows = []
-    for pane in PANES:
-        for label, path in SESSIONS.items():
-            for scale in SCALES:
-                result = {'pane': pane, 'session': label, 'scale': scale}
-                for tree, root in (('old', old_root), ('new', WORKTREE_ROOT)):
-                    proc = subprocess.run([sys.executable, str(Path(__file__)), '--child', str(root), pane, str(path), str(scale)], capture_output=True, text=True)
-                    result[tree] = json.loads(proc.stdout.strip().splitlines()[-1]) if proc.returncode == 0 else {'error': proc.stderr[-300:]}
-                rows.append(result)
-    return rows
 
 def child_measure(root: str, pane: str, jsonl_path: str, scale: int) -> int:
     sys.path.insert(0, root)
@@ -78,6 +61,7 @@ def child_measure(root: str, pane: str, jsonl_path: str, scale: int) -> int:
     print(json.dumps({'turns': len(turns), 'calls': calls, 'cold_ms': cold_ms, 'median_ms': statistics.median(samples), 'min_ms': min(samples), 'max_ms': max(samples)}))
     return 0
 
+
 def make_handle(pane: str, turns: list) -> SimpleNamespace:
     if pane == 'tokens':
         mod = importlib.import_module('src.panes.token_pane')
@@ -89,6 +73,28 @@ def make_handle(pane: str, turns: list) -> SimpleNamespace:
     mod._worker_tokens_turns = turns
     monitor = SimpleNamespace(active_project_filter='/tmp/flk_m2_timing_proj')
     return SimpleNamespace(build=lambda: mod._build_worker_tokens_output(monitor), hover=lambda row: mod._handle_worker_tokens_mouse(35, 10, row, monitor))
+
+
+def extract_old_tree(work_dir: Path) -> Path:
+    old_root = work_dir / 'old_tree'
+    old_root.mkdir()
+    archive = subprocess.run(['git', '-C', str(WORKTREE_ROOT), 'archive', OLD_REF], capture_output=True, check=True).stdout
+    subprocess.run(['tar', '-x', '-C', str(old_root)], input=archive, check=True)
+    return old_root
+
+
+def collect_rows(old_root: Path) -> list:
+    rows = []
+    for pane in PANES:
+        for label, path in SESSIONS.items():
+            for scale in SCALES:
+                result = {'pane': pane, 'session': label, 'scale': scale}
+                for tree, root in (('old', old_root), ('new', WORKTREE_ROOT)):
+                    proc = subprocess.run([sys.executable, str(Path(__file__)), '--child', str(root), pane, str(path), str(scale)], capture_output=True, text=True)
+                    result[tree] = json.loads(proc.stdout.strip().splitlines()[-1]) if proc.returncode == 0 else {'error': proc.stderr[-300:]}
+                rows.append(result)
+    return rows
+
 
 def write_report(rows: list) -> None:
     REPORT_DIR.mkdir(exist_ok=True)
@@ -107,6 +113,7 @@ def write_report(rows: list) -> None:
         lines.append(f"| {r['pane']} | {r['session']} | {r['scale']} | {o['turns']} | {o['calls']} | {o['cold_ms']:.1f} | {o['median_ms']:.2f} | {n['cold_ms']:.1f} | {n['median_ms']:.2f} | {o['median_ms'] / n['median_ms']:.1f}x |")
     (REPORT_DIR / 'm2_hover_timing.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     print('\n'.join(lines[7:]))
+
 
 if __name__ == '__main__':
     sys.exit(timing_workflow())

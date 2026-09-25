@@ -7,10 +7,35 @@ from green_overlay_probe_diff import (
 )
 from green_overlay_probe_cases import scan_gating_soundness, get_bug_case, get_regression_cases
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 REPORT_DIR = _AREA_ROOT / "green_overlay_probe_reports"
+
+
+# ORCHESTRATOR
+
+def green_overlay_probe_workflow():
+    REPORT_DIR.mkdir(exist_ok=True)
+    lines = []
+
+    def emit(*parts):
+        lines.append("".join(str(p) for p in parts) + "\n")
+
+    emit("# Green Overlay Probe Report (Level 2)")
+    emit()
+    emit("Three diff variants: `diff_text_word` (current/buggy) · `diff_text_char` (char-level)")
+    emit("· `diff_text_char_gated` (char-level + attribution gate for phantom injected spans).")
+
+    _emit_gating_soundness(emit)
+    _emit_primary_bug_case(emit)
+    _emit_regression_spotcheck(emit)
+    _emit_summary(emit)
+
+    report_path = REPORT_DIR / "green_overlay_probe.md"
+    with open(report_path, "w") as fout:
+        fout.writelines(lines)
+
+    print(f"Report written to: {report_path}")
+
 
 # FUNCTIONS
 
@@ -61,6 +86,30 @@ def _emit_gating_soundness(emit) -> None:
         import traceback; traceback.print_exc()
 
 
+def _emit_primary_bug_case(emit) -> None:
+    emit()
+    emit("## Primary Bug Case — Three Variants Side By Side")
+    try:
+        o_text, f_text, stem, flow_id = get_bug_case()
+
+        cp_len = 0
+        while cp_len < len(o_text) and cp_len < len(f_text) and o_text[cp_len] == f_text[cp_len]:
+            cp_len += 1
+
+        emit()
+        emit(f"**Source:** `{stem}`")
+        emit(f"**Flow ID:** `{flow_id}`")
+        emit(f"**Location:** `messages[18]` block 0 (tool_result, role=user)")
+        emit(f"**o_text len:** {len(o_text)} | **f_text len:** {len(f_text)} | **common prefix:** {cp_len} chars (ends at `set()))\\\\n\\\\n`)")
+
+        r = compare_pair("bug_case", o_text, f_text)
+        _emit_bug_case_variants(emit, r, cp_len)
+
+    except Exception as ex:
+        emit(f"ERROR in primary bug case: {ex}")
+        import traceback; traceback.print_exc()
+
+
 def _emit_bug_case_variants(emit, r: dict, cp_len: int) -> None:
     emit()
     emit(f"### Variant 1: `diff_text_word` — CURRENT PRODUCTION (buggy) — {r['word_count']} spans")
@@ -92,30 +141,6 @@ def _emit_bug_case_variants(emit, r: dict, cp_len: int) -> None:
     emit(f"**Green spans remaining:** {len(remaining_inj)} {'(none — phantom gone ✅)' if not remaining_inj else repr(remaining_inj[0][:60])}")
     emit(f"**Stripped contains `<system-reminder>`:** {has_sysrem_g} {'✅' if has_sysrem_g else '❌'}")
     emit(f"**Fidelity (char):** {r['fid_detail']} | **Fidelity (gated):** gated_ok={r['gated_fid_ok']} {'✅' if r['gated_fid_ok'] else '❌'}")
-
-
-def _emit_primary_bug_case(emit) -> None:
-    emit()
-    emit("## Primary Bug Case — Three Variants Side By Side")
-    try:
-        o_text, f_text, stem, flow_id = get_bug_case()
-
-        cp_len = 0
-        while cp_len < len(o_text) and cp_len < len(f_text) and o_text[cp_len] == f_text[cp_len]:
-            cp_len += 1
-
-        emit()
-        emit(f"**Source:** `{stem}`")
-        emit(f"**Flow ID:** `{flow_id}`")
-        emit(f"**Location:** `messages[18]` block 0 (tool_result, role=user)")
-        emit(f"**o_text len:** {len(o_text)} | **f_text len:** {len(f_text)} | **common prefix:** {cp_len} chars (ends at `set()))\\\\n\\\\n`)")
-
-        r = compare_pair("bug_case", o_text, f_text)
-        _emit_bug_case_variants(emit, r, cp_len)
-
-    except Exception as ex:
-        emit(f"ERROR in primary bug case: {ex}")
-        import traceback; traceback.print_exc()
 
 
 def _emit_regression_spotcheck(emit) -> None:
@@ -185,30 +210,5 @@ def _emit_summary(emit) -> None:
     emit("- Word-level `' '.join(...)` collapses multi-space/tab; char-level/gated preserve exactly.")
 
 
-def green_overlay_probe_workflow():
-    REPORT_DIR.mkdir(exist_ok=True)
-    lines = []
-
-    def emit(*parts):
-        lines.append("".join(str(p) for p in parts) + "\n")
-
-    emit("# Green Overlay Probe Report (Level 2)")
-    emit()
-    emit("Three diff variants: `diff_text_word` (current/buggy) · `diff_text_char` (char-level)")
-    emit("· `diff_text_char_gated` (char-level + attribution gate for phantom injected spans).")
-
-    _emit_gating_soundness(emit)
-    _emit_primary_bug_case(emit)
-    _emit_regression_spotcheck(emit)
-    _emit_summary(emit)
-
-    report_path = REPORT_DIR / "green_overlay_probe.md"
-    with open(report_path, "w") as fout:
-        fout.writelines(lines)
-
-    print(f"Report written to: {report_path}")
-
-
-# ORCHESTRATOR
 if __name__ == "__main__":
     green_overlay_probe_workflow()

@@ -2,9 +2,7 @@
 import sys
 from pathlib import Path
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / 'src'))
 sys.path.insert(0, str(_PROJECT_ROOT))
@@ -68,10 +66,12 @@ _STRANDS = [
     'test_wording_main_vs_worker',
 ]
 
+
 # ORCHESTRATOR
 
 def proxy_176_bg_launch_ack_tests_workflow() -> int:
     return strand_workflow(globals(), __file__, _STRANDS, title='proxy_176_bg_launch_ack_tests')
+
 
 if __name__ == '__main__':
     sys.exit(proxy_176_bg_launch_ack_tests_workflow())

@@ -23,7 +23,85 @@ DIM_YELLOW_BG = '\033[48;2;94;81;47m'
 DIM_GREEN_BG = '\033[48;2;38;74;46m'
 _ACC_KEYS = ('system', 'tools', 'messages', 'fields', '_has_content_by_flow_id', '_msg_idx_by_flow_id')
 
+
+# ORCHESTRATOR
+
+def main() -> None:
+    stems = sys.argv[1:] or list(DEFAULT_STEMS)
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    lines = ['# No-prepend probe — the expanded body is the request payload delta only', '']
+    lines.append('The out-of-window flow-extra prepend was removed on 2026-08-30. These invariants')
+    lines.append('are self-contained: there is no pre-change rendering left to diff against, and')
+    lines.append('counts are reported rather than asserted so log growth cannot break them.')
+    lines.append('')
+    all_pass = True
+    for stem in stems:
+        if not (LOG_DIR / f'{stem}_forwarded.jsonl').exists():
+            print(f'SKIP {stem} — no recorded forwarded log')
+            lines += [f'## `{stem}` — SKIPPED (log not on disk)', '']
+            continue
+        rows, stats = _check_session(stem)
+        lines += [f'## `{stem}`', '', '| metric | value |', '|---|---|']
+        lines += [f'| {k} | {v} |' for k, v in stats.items()]
+        lines += ['', '| check | pass | detail |', '|---|---|---|']
+        print(f'\n== {stem}  ' + '  '.join(f'{k}={v}' for k, v in stats.items()))
+        for label, ok, detail in rows:
+            all_pass = all_pass and ok
+            lines.append(f'| {label} | {"PASS" if ok else "FAIL"} | {detail} |')
+            print(('PASS' if ok else 'FAIL'), label, '-', detail)
+        lines.append('')
+    lines.append(f'## Overall: {"ALL PASS" if all_pass else "FAILURES PRESENT"}')
+    REPORT_PATH.write_text('\n'.join(lines) + '\n')
+    print(f'\nReport written: {REPORT_PATH}')
+    print('ALL PASS' if all_pass else 'FAILURES PRESENT')
+    sys.exit(0 if all_pass else 1)
+
+
 # FUNCTIONS
+
+def _check_session(stem: str) -> tuple:
+    entries = _load_session(stem)
+    rendered = _render_all(entries)
+
+    below = _below_window_indices(rendered)
+
+    gone, acc_key = _removed_symbols_absent()
+    sub_attached = [idx for idx, e in enumerate(entries)
+                    if '_strip_msgs_sub_lookup' in e or '_inject_msgs_sub_lookup' in e]
+
+    with_outside, with_real_outside, silent = _badge_silence_stats(entries, rendered, stem)
+
+    spans_seen = sum(1 for body, _s, _o in rendered.values()
+                     if DIM_YELLOW_BG in body or DIM_GREEN_BG in body)
+
+    lag_bad_text, lag_unrendered, lag_total = _check_lag_correction(entries, rendered)
+
+    rows = [
+        ('no_msg_below_delta_window', not below,
+         f'{len(rendered)} entries rendered; bodies starting below their own delta window: '
+         f'{len(below)} {below[:3]}'),
+        ('removed_symbols_stay_removed', not gone and not acc_key and not sub_attached,
+         f'render_messages still exporting {gone or "none"}; parser mentions '
+         f'_msg_idx_sub_by_flow_id: {acc_key}; entries carrying a sub-lookup: {len(sub_attached)}'),
+        ('substantial_out_of_window_strips_still_badge', not silent,
+         f'{len(with_outside)} entries have an out-of-window touched index, {len(with_real_outside)} '
+         f'of them SUBSTANTIAL; of those {len(silent)} show NO badge word (want 0) {silent[:3]}'),
+        ('in_window_spans_still_render', spans_seen > 0,
+         f'{spans_seen} of {len(rendered)} entries render an olive/green span in-window'),
+        ('lag_correction_sound_and_effective', not lag_bad_text and not lag_unrendered,
+         f'{lag_total} coordinates re-attributed to the flow that stripped them; '
+         f'{len(lag_bad_text)} carry non-marker text (want 0) {lag_bad_text[:2]}; '
+         f'{len(lag_unrendered)} sit in-window without olive+green (want 0) {lag_unrendered[:2]}'),
+    ]
+    stats = {
+        'entries_rendered': len(rendered),
+        'entries_with_out_of_window_touch': len(with_outside),
+        'entries_whose_out_of_window_touch_is_substantial': len(with_real_outside),
+        'out_of_window_indices_now_invisible': sum(len(o) for _b, _s, o in rendered.values()),
+        'entries_showing_in_window_spans': spans_seen,
+        'lag_corrected_coordinates': lag_total,
+    }
+    return rows, stats
 
 
 def _load_session(stem: str) -> list:
@@ -48,28 +126,6 @@ def _load_session(stem: str) -> list:
     return entries
 
 
-def _delta_window_start(entry: dict, prev_entry) -> int:
-    messages = entry.get('messages', []) or []
-    prev_msg_count = prev_entry.get('message_count', 0) if prev_entry is not None else 0
-    if prev_msg_count < len(messages):
-        return prev_msg_count
-    prev_messages = prev_entry.get('messages', []) if prev_entry is not None else []
-    diff_start = len(messages)
-    for j in range(1, min(len(messages), len(prev_messages)) + 1):
-        curr_msg = messages[-j]
-        prev_msg = prev_messages[-j]
-        if curr_msg.get('chars', 0) != prev_msg.get('chars', 0) or curr_msg.get('type', '') != prev_msg.get('type', ''):
-            diff_start = len(messages) - j
-        else:
-            break
-    return diff_start
-
-
-def _header_indices(body: str) -> list:
-    return [int(m.group(1)) for m in
-            (_MSG_HEADER_RE.match(line) for line in _ANSI_RE.sub('', body).splitlines()) if m]
-
-
 def _render_all(entries: list) -> dict:
     from src.proxy_display.render_messages import render_messages
     from src.proxy_display.render_turn import _resolve_prev_same_family
@@ -87,6 +143,59 @@ def _render_all(entries: list) -> dict:
                          if int(m) < start and int(m) < len(entry.get('messages', [])))
         out[idx] = ('\n'.join(lines), start, outside)
     return out
+
+
+def _delta_window_start(entry: dict, prev_entry) -> int:
+    messages = entry.get('messages', []) or []
+    prev_msg_count = prev_entry.get('message_count', 0) if prev_entry is not None else 0
+    if prev_msg_count < len(messages):
+        return prev_msg_count
+    prev_messages = prev_entry.get('messages', []) if prev_entry is not None else []
+    diff_start = len(messages)
+    for j in range(1, min(len(messages), len(prev_messages)) + 1):
+        curr_msg = messages[-j]
+        prev_msg = prev_messages[-j]
+        if curr_msg.get('chars', 0) != prev_msg.get('chars', 0) or curr_msg.get('type', '') != prev_msg.get('type', ''):
+            diff_start = len(messages) - j
+        else:
+            break
+    return diff_start
+
+
+def _below_window_indices(rendered: dict) -> list:
+    below = []
+    for idx, (body, start, _outside) in rendered.items():
+        low = [h for h in _header_indices(body) if h < start]
+        if low:
+            below.append((idx, start, low[:4]))
+    return below
+
+
+def _header_indices(body: str) -> list:
+    return [int(m.group(1)) for m in
+            (_MSG_HEADER_RE.match(line) for line in _ANSI_RE.sub('', body).splitlines()) if m]
+
+
+def _removed_symbols_absent() -> tuple:
+    from src.proxy_display import render_messages as rm
+    gone = [name for name in ('_render_flow_extra_messages', '_own_msgs') if hasattr(rm, name)]
+    src = (WORKTREE_ROOT / 'src' / 'proxy_display' / 'parser.py').read_text()
+    acc_key = '_msg_idx_sub_by_flow_id' in src
+    return gone, acc_key
+
+
+def _badge_silence_stats(entries: list, rendered: dict, stem: str) -> tuple:
+    from src.proxy_display.proxy_badge import badge_flags
+    badges = {idx: badge_flags(entries[idx]) for idx in rendered}
+    verdicts = _substantial_touches(stem)
+    with_outside = [idx for idx, (_b, _s, outside) in rendered.items() if outside]
+    with_real_outside = [
+        idx for idx in with_outside
+        if any(verdicts.get((entries[idx].get('flow_id', ''), m), False)
+               for m in rendered[idx][2])
+    ]
+    silent = [idx for idx in with_real_outside if not any(badges[idx])]
+    return with_outside, with_real_outside, silent
 
 
 def _substantial_touches(stem: str) -> dict:
@@ -135,114 +244,6 @@ def _check_lag_correction(entries: list, rendered: dict) -> tuple:
             if DIM_YELLOW_BG not in body or DIM_GREEN_BG not in body:
                 unrendered.append((idx, i))
     return bad_text, unrendered, total
-
-
-def _removed_symbols_absent() -> tuple:
-    from src.proxy_display import render_messages as rm
-    gone = [name for name in ('_render_flow_extra_messages', '_own_msgs') if hasattr(rm, name)]
-    src = (WORKTREE_ROOT / 'src' / 'proxy_display' / 'parser.py').read_text()
-    acc_key = '_msg_idx_sub_by_flow_id' in src
-    return gone, acc_key
-
-
-def _below_window_indices(rendered: dict) -> list:
-    below = []
-    for idx, (body, start, _outside) in rendered.items():
-        low = [h for h in _header_indices(body) if h < start]
-        if low:
-            below.append((idx, start, low[:4]))
-    return below
-
-
-def _badge_silence_stats(entries: list, rendered: dict, stem: str) -> tuple:
-    from src.proxy_display.proxy_badge import badge_flags
-    badges = {idx: badge_flags(entries[idx]) for idx in rendered}
-    verdicts = _substantial_touches(stem)
-    with_outside = [idx for idx, (_b, _s, outside) in rendered.items() if outside]
-    with_real_outside = [
-        idx for idx in with_outside
-        if any(verdicts.get((entries[idx].get('flow_id', ''), m), False)
-               for m in rendered[idx][2])
-    ]
-    silent = [idx for idx in with_real_outside if not any(badges[idx])]
-    return with_outside, with_real_outside, silent
-
-
-def _check_session(stem: str) -> tuple:
-    entries = _load_session(stem)
-    rendered = _render_all(entries)
-
-    below = _below_window_indices(rendered)
-
-    gone, acc_key = _removed_symbols_absent()
-    sub_attached = [idx for idx, e in enumerate(entries)
-                    if '_strip_msgs_sub_lookup' in e or '_inject_msgs_sub_lookup' in e]
-
-    with_outside, with_real_outside, silent = _badge_silence_stats(entries, rendered, stem)
-
-    spans_seen = sum(1 for body, _s, _o in rendered.values()
-                     if DIM_YELLOW_BG in body or DIM_GREEN_BG in body)
-
-    lag_bad_text, lag_unrendered, lag_total = _check_lag_correction(entries, rendered)
-
-    rows = [
-        ('no_msg_below_delta_window', not below,
-         f'{len(rendered)} entries rendered; bodies starting below their own delta window: '
-         f'{len(below)} {below[:3]}'),
-        ('removed_symbols_stay_removed', not gone and not acc_key and not sub_attached,
-         f'render_messages still exporting {gone or "none"}; parser mentions '
-         f'_msg_idx_sub_by_flow_id: {acc_key}; entries carrying a sub-lookup: {len(sub_attached)}'),
-        ('substantial_out_of_window_strips_still_badge', not silent,
-         f'{len(with_outside)} entries have an out-of-window touched index, {len(with_real_outside)} '
-         f'of them SUBSTANTIAL; of those {len(silent)} show NO badge word (want 0) {silent[:3]}'),
-        ('in_window_spans_still_render', spans_seen > 0,
-         f'{spans_seen} of {len(rendered)} entries render an olive/green span in-window'),
-        ('lag_correction_sound_and_effective', not lag_bad_text and not lag_unrendered,
-         f'{lag_total} coordinates re-attributed to the flow that stripped them; '
-         f'{len(lag_bad_text)} carry non-marker text (want 0) {lag_bad_text[:2]}; '
-         f'{len(lag_unrendered)} sit in-window without olive+green (want 0) {lag_unrendered[:2]}'),
-    ]
-    stats = {
-        'entries_rendered': len(rendered),
-        'entries_with_out_of_window_touch': len(with_outside),
-        'entries_whose_out_of_window_touch_is_substantial': len(with_real_outside),
-        'out_of_window_indices_now_invisible': sum(len(o) for _b, _s, o in rendered.values()),
-        'entries_showing_in_window_spans': spans_seen,
-        'lag_corrected_coordinates': lag_total,
-    }
-    return rows, stats
-
-
-# ORCHESTRATOR
-def main() -> None:
-    stems = sys.argv[1:] or list(DEFAULT_STEMS)
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# No-prepend probe — the expanded body is the request payload delta only', '']
-    lines.append('The out-of-window flow-extra prepend was removed on 2026-08-30. These invariants')
-    lines.append('are self-contained: there is no pre-change rendering left to diff against, and')
-    lines.append('counts are reported rather than asserted so log growth cannot break them.')
-    lines.append('')
-    all_pass = True
-    for stem in stems:
-        if not (LOG_DIR / f'{stem}_forwarded.jsonl').exists():
-            print(f'SKIP {stem} — no recorded forwarded log')
-            lines += [f'## `{stem}` — SKIPPED (log not on disk)', '']
-            continue
-        rows, stats = _check_session(stem)
-        lines += [f'## `{stem}`', '', '| metric | value |', '|---|---|']
-        lines += [f'| {k} | {v} |' for k, v in stats.items()]
-        lines += ['', '| check | pass | detail |', '|---|---|---|']
-        print(f'\n== {stem}  ' + '  '.join(f'{k}={v}' for k, v in stats.items()))
-        for label, ok, detail in rows:
-            all_pass = all_pass and ok
-            lines.append(f'| {label} | {"PASS" if ok else "FAIL"} | {detail} |')
-            print(('PASS' if ok else 'FAIL'), label, '-', detail)
-        lines.append('')
-    lines.append(f'## Overall: {"ALL PASS" if all_pass else "FAILURES PRESENT"}')
-    REPORT_PATH.write_text('\n'.join(lines) + '\n')
-    print(f'\nReport written: {REPORT_PATH}')
-    print('ALL PASS' if all_pass else 'FAILURES PRESENT')
-    sys.exit(0 if all_pass else 1)
 
 
 if __name__ == '__main__':

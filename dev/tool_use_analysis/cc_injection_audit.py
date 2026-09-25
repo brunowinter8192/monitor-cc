@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
-
 import argparse
 import hashlib
 import json
@@ -11,30 +9,15 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-def _resolve_repo_root():
-    if 'MONITOR_CC_ROOT' in os.environ:
-        return Path(os.environ['MONITOR_CC_ROOT'])
-    candidate = Path(__file__).parent.parent.parent
-    if (candidate / 'src' / 'logs').is_dir():
-        return candidate
-    try:
-        import subprocess
-        git_common = subprocess.run(
-            ['git', 'rev-parse', '--git-common-dir'],
-            capture_output=True, text=True, cwd=str(candidate),
-        ).stdout.strip()
-        if git_common:
-            main_root = Path(git_common).resolve().parent
-            if (main_root / 'src' / 'logs').is_dir():
-                return main_root
-    except Exception:
-        pass
-    return candidate
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-_REPO_ROOT = _resolve_repo_root()
+from dev.refactoring.repo_roots import resolve_repo_root
+
+_REPO_ROOT = resolve_repo_root(__file__)
 _CC_PROJECT_DIR = Path.home() / '.claude/projects/-Users-brunowinter2000-Documents-ai-Monitor-CC'
 _MIN_TEXT_LEN = 20
 _MTIME_CAP_SEC = 90 * 60
+
 
 # ORCHESTRATOR
 
@@ -63,6 +46,7 @@ def cc_injection_audit_workflow(proxy_log_paths, cc_session_override, output_pat
     report = _build_report(all_hits, proxy_log_paths, session_cache)
     output_path.write_text(report)
     print(output_path)
+
 
 # FUNCTIONS
 
@@ -106,36 +90,6 @@ def _build_cc_user_index(cc_session_path):
     return heads
 
 
-def _normalize_msg_content(content):
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = [
-            blk.get('text', '')
-            for blk in content
-            if isinstance(blk, dict) and blk.get('type') == 'text'
-        ]
-        return '\n'.join(parts)
-    return ''
-
-
-def _classify_injection(normalized_text, payload):
-    if normalized_text.startswith('The user stepped away and is coming back.'):
-        return 'IDLE_RECAP'
-    if normalized_text.startswith('[SIDECAR_STRIPPED_'):
-        return 'SIDECAR_STRIPPED'
-    msgs = payload.get('messages', [])
-    system = payload.get('system', '')
-    sys_text = system if isinstance(system, str) else ''.join(
-        b.get('text', '') if isinstance(b, dict) else ''
-        for b in (system if isinstance(system, list) else [])
-    )
-    if len(msgs) == 1 and len(sys_text.strip()) <= 10:
-        return 'SIDECAR'
-    slug = hashlib.sha1(normalized_text[:80].encode()).hexdigest()[:8]
-    return f'UNKNOWN_{slug}'
-
-
 def _scan_proxy_log(proxy_log, cc_heads):
     hits = []
     lines = [l for l in proxy_log.read_text().splitlines() if l.strip()]
@@ -174,6 +128,53 @@ def _scan_proxy_log(proxy_log, cc_heads):
                 'length': len(normalized),
             })
     return hits
+
+
+def _normalize_msg_content(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [
+            blk.get('text', '')
+            for blk in content
+            if isinstance(blk, dict) and blk.get('type') == 'text'
+        ]
+        return '\n'.join(parts)
+    return ''
+
+
+def _classify_injection(normalized_text, payload):
+    if normalized_text.startswith('The user stepped away and is coming back.'):
+        return 'IDLE_RECAP'
+    if normalized_text.startswith('[SIDECAR_STRIPPED_'):
+        return 'SIDECAR_STRIPPED'
+    msgs = payload.get('messages', [])
+    system = payload.get('system', '')
+    sys_text = system if isinstance(system, str) else ''.join(
+        b.get('text', '') if isinstance(b, dict) else ''
+        for b in (system if isinstance(system, list) else [])
+    )
+    if len(msgs) == 1 and len(sys_text.strip()) <= 10:
+        return 'SIDECAR'
+    slug = hashlib.sha1(normalized_text[:80].encode()).hexdigest()[:8]
+    return f'UNKNOWN_{slug}'
+
+
+def _build_report(all_hits, proxy_log_paths, session_cache):
+    lines = _render_scanned_logs(proxy_log_paths, session_cache)
+
+    if not all_hits:
+        lines.append('*No CC injections detected.*')
+        return '\n'.join(lines)
+
+    by_class = defaultdict(list)
+    for h in all_hits:
+        by_class[h['classification']].append(h)
+
+    lines += _render_summary_table(by_class)
+    lines += _render_classification_detail(by_class)
+
+    return '\n'.join(lines)
 
 
 def _render_scanned_logs(proxy_log_paths, session_cache):
@@ -240,23 +241,6 @@ def _render_classification_detail(by_class):
                 )
         lines.append('')
     return lines
-
-
-def _build_report(all_hits, proxy_log_paths, session_cache):
-    lines = _render_scanned_logs(proxy_log_paths, session_cache)
-
-    if not all_hits:
-        lines.append('*No CC injections detected.*')
-        return '\n'.join(lines)
-
-    by_class = defaultdict(list)
-    for h in all_hits:
-        by_class[h['classification']].append(h)
-
-    lines += _render_summary_table(by_class)
-    lines += _render_classification_detail(by_class)
-
-    return '\n'.join(lines)
 
 
 def _parse_args():

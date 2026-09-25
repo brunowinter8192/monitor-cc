@@ -30,7 +30,7 @@ gitignored runtime data, absent from a fresh worktree).
 
 ---
 
-### render_thinking_expander.py (231 LOC)
+### render_thinking_expander.py (241 LOC)
 
 **Purpose:** Verifies thinking-block drill-down + wrapping through the real render path:
 collapsed/expanded correctness, and non-thinking-block output byte-identical to pre-change.

@@ -20,12 +20,12 @@ _FAR_FUTURE = 4_000_000_000.0
 _PAST = 1.0
 
 
+# FUNCTIONS
+
 def _read_lines(kind: str) -> list:
     with open(_LOG_DIR / f'{_STEM}_{kind}.jsonl', 'r', encoding='utf-8') as f:
         return f.readlines()
 
-
-# FUNCTIONS
 
 def load_root(root: str) -> None:
     sys.path.insert(0, root)

@@ -17,11 +17,18 @@ EXPECTED_KEPT = {'Bash', 'Read', 'Skill'}
 NEWLY_BLOCKED = {'SendFeedback', 'ListAgents'}
 RW_BLOCKED = {'Edit', 'Write'}
 
+
+# ORCHESTRATOR
+
+def main() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    newest_log = _newest_main_session_log()
+    results, n_scanned, modified, removed_names = _check_newly_blocked_extension(newest_log)
+    results += _check_rw_extension(modified, removed_names)
+    _write_report(newest_log, n_scanned, results)
+
+
 # FUNCTIONS
-
-def _all_original_logs() -> list:
-    return sorted(LOG_DIR.glob('*_original.jsonl'))
-
 
 def _newest_main_session_log() -> Path:
     candidates = [p for p in _all_original_logs() if not p.name.startswith('api_requests_worker_')]
@@ -30,48 +37,8 @@ def _newest_main_session_log() -> Path:
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
-def _load_original_payload(path: Path) -> dict:
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            e = json.loads(line)
-            if e.get('payload', {}).get('tools'):
-                return e['payload']
-    raise AssertionError(f'no line with non-empty tools in {path}')
-
-
-def _scan_corpus_for_live_tool_use(paths: list, target_names: set = NEWLY_BLOCKED) -> tuple:
-    hits = []
-    for path in paths:
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                e = json.loads(line)
-                for msg in e.get('payload', {}).get('messages', []):
-                    content = msg.get('content', '')
-                    if not isinstance(content, list):
-                        continue
-                    for blk in content:
-                        if isinstance(blk, dict) and blk.get('type') == 'tool_use':
-                            name = blk.get('name', '')
-                            if name in target_names:
-                                hits.append((path.name, name))
-    return len(paths), hits
-
-
-def _payload_with_historic_blocked_tool_use(tool_name: str) -> dict:
-    return {
-        'model': 'claude-sonnet-5',
-        'tools': [{'name': 'Bash', 'description': 'run bash'}],
-        'messages': [
-            {'role': 'user', 'content': [{'type': 'text', 'text': 'read the file'}]},
-            {'role': 'assistant', 'content': [
-                {'type': 'tool_use', 'id': 'toolu_hist1', 'name': tool_name,
-                 'input': {'file_path': '/tmp/x.txt'}},
-            ]},
-            {'role': 'user', 'content': [
-                {'type': 'tool_result', 'tool_use_id': 'toolu_hist1', 'content': 'file contents'},
-            ]},
-        ],
-    }
+def _all_original_logs() -> list:
+    return sorted(LOG_DIR.glob('*_original.jsonl'))
 
 
 def _check_newly_blocked_extension(newest_log: Path) -> tuple:
@@ -115,21 +82,31 @@ def _check_newly_blocked_extension(newest_log: Path) -> tuple:
     return results, n_scanned, modified, removed_names
 
 
-def _rw_historic_tool_use_result_details() -> list:
-    from src.proxy.tools import _strip_unused_tools
-    from src.proxy.payload_helpers import _strip_blocked_tool_references
+def _load_original_payload(path: Path) -> dict:
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            e = json.loads(line)
+            if e.get('payload', {}).get('tools'):
+                return e['payload']
+    raise AssertionError(f'no line with non-empty tools in {path}')
 
-    r8_details = []
-    for tool_name in sorted(RW_BLOCKED):
-        historic_payload = _payload_with_historic_blocked_tool_use(tool_name)
-        stripped_payload, _, _ = _strip_unused_tools(historic_payload)
-        stripped_payload = _strip_blocked_tool_references(stripped_payload)
-        assistant_msg = stripped_payload['messages'][1]
-        result_msg = stripped_payload['messages'][2]
-        tool_use_intact = assistant_msg['content'][0] == historic_payload['messages'][1]['content'][0]
-        tool_result_intact = result_msg['content'][0] == historic_payload['messages'][2]['content'][0]
-        r8_details.append((tool_name, tool_use_intact, tool_result_intact))
-    return r8_details
+
+def _scan_corpus_for_live_tool_use(paths: list, target_names: set = NEWLY_BLOCKED) -> tuple:
+    hits = []
+    for path in paths:
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                e = json.loads(line)
+                for msg in e.get('payload', {}).get('messages', []):
+                    content = msg.get('content', '')
+                    if not isinstance(content, list):
+                        continue
+                    for blk in content:
+                        if isinstance(blk, dict) and blk.get('type') == 'tool_use':
+                            name = blk.get('name', '')
+                            if name in target_names:
+                                hits.append((path.name, name))
+    return len(paths), hits
 
 
 def _check_rw_extension(modified: dict, removed_names: list) -> list:
@@ -173,6 +150,40 @@ def _check_rw_extension(modified: dict, removed_names: list) -> list:
     return results
 
 
+def _rw_historic_tool_use_result_details() -> list:
+    from src.proxy.tools import _strip_unused_tools
+    from src.proxy.payload_helpers import _strip_blocked_tool_references
+
+    r8_details = []
+    for tool_name in sorted(RW_BLOCKED):
+        historic_payload = _payload_with_historic_blocked_tool_use(tool_name)
+        stripped_payload, _, _ = _strip_unused_tools(historic_payload)
+        stripped_payload = _strip_blocked_tool_references(stripped_payload)
+        assistant_msg = stripped_payload['messages'][1]
+        result_msg = stripped_payload['messages'][2]
+        tool_use_intact = assistant_msg['content'][0] == historic_payload['messages'][1]['content'][0]
+        tool_result_intact = result_msg['content'][0] == historic_payload['messages'][2]['content'][0]
+        r8_details.append((tool_name, tool_use_intact, tool_result_intact))
+    return r8_details
+
+
+def _payload_with_historic_blocked_tool_use(tool_name: str) -> dict:
+    return {
+        'model': 'claude-sonnet-5',
+        'tools': [{'name': 'Bash', 'description': 'run bash'}],
+        'messages': [
+            {'role': 'user', 'content': [{'type': 'text', 'text': 'read the file'}]},
+            {'role': 'assistant', 'content': [
+                {'type': 'tool_use', 'id': 'toolu_hist1', 'name': tool_name,
+                 'input': {'file_path': '/tmp/x.txt'}},
+            ]},
+            {'role': 'user', 'content': [
+                {'type': 'tool_result', 'tool_use_id': 'toolu_hist1', 'content': 'file contents'},
+            ]},
+        ],
+    }
+
+
 def _write_report(newest_log: Path, n_scanned: int, results: list) -> None:
     lines = ['# CC 2.1.258 + Edit/Write TOOL_BLOCKLIST extension probe', '']
     lines.append(f'Newest main-session log: `{newest_log.name}`')
@@ -192,15 +203,6 @@ def _write_report(newest_log: Path, n_scanned: int, results: list) -> None:
         print(('PASS' if ok else 'FAIL'), label, '-', detail)
     print('ALL PASS' if all_pass else 'FAILURES PRESENT')
     sys.exit(0 if all_pass else 1)
-
-
-# ORCHESTRATOR
-def main() -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    newest_log = _newest_main_session_log()
-    results, n_scanned, modified, removed_names = _check_newly_blocked_extension(newest_log)
-    results += _check_rw_extension(modified, removed_names)
-    _write_report(newest_log, n_scanned, results)
 
 
 if __name__ == '__main__':

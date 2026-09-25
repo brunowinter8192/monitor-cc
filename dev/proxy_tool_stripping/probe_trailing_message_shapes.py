@@ -18,34 +18,9 @@ _ENDS_WITH_TAG_RE = re.compile(r'<total_tokens>(\d+) tokens left</total_tokens>\
 REPORT_DIR = Path(__file__).parent / 'md'
 REPORT_PATH = REPORT_DIR / 'trailing_message_shapes_report.md'
 
-# FUNCTIONS
-
-def _all_stripped_texts(path: Path) -> list:
-    texts = []
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            entry = json.loads(line)
-            msgs_delta = entry.get('messages_delta') or {}
-            for blks in msgs_delta.values():
-                if not isinstance(blks, dict):
-                    continue
-                for blk in blks.values():
-                    if not isinstance(blk, list):
-                        continue
-                    for t in blk:
-                        if isinstance(t, str):
-                            texts.append(t)
-    return texts
-
-
-def _normalize(text: str) -> str:
-    return _ENDS_WITH_TAG_RE.sub('<total_tokens>N tokens left</total_tokens>', text)
-
 
 # ORCHESTRATOR
+
 def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     lines = ['# Trailing-message shape probe (total_tokens tag)', '']
@@ -93,6 +68,33 @@ def main() -> None:
 
     REPORT_PATH.write_text('\n'.join(lines))
     print(f'\nReport written: {REPORT_PATH}')
+
+
+# FUNCTIONS
+
+def _all_stripped_texts(path: Path) -> list:
+    texts = []
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            msgs_delta = entry.get('messages_delta') or {}
+            for blks in msgs_delta.values():
+                if not isinstance(blks, dict):
+                    continue
+                for blk in blks.values():
+                    if not isinstance(blk, list):
+                        continue
+                    for t in blk:
+                        if isinstance(t, str):
+                            texts.append(t)
+    return texts
+
+
+def _normalize(text: str) -> str:
+    return _ENDS_WITH_TAG_RE.sub('<total_tokens>N tokens left</total_tokens>', text)
 
 
 if __name__ == '__main__':

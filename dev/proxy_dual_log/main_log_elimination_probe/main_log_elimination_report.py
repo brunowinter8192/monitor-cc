@@ -4,9 +4,8 @@ from pathlib import Path
 
 from main_log_elimination_reconstruct import _DELTA_COVERED
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
+
 
 # FUNCTIONS
 

@@ -11,7 +11,7 @@ Reads a proxy JSONL line by line, checks stripped indices against removal record
 
 ## Modules
 
-### strip_tracking_audit.py (53 LOC)
+### strip_tracking_audit.py (65 LOC)
 
 **Purpose:** Verifies that each stripped message index has a non-empty removal record and reports violations.
 **Reads:** the proxy JSONL file given as first argument.

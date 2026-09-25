@@ -12,8 +12,8 @@ from pathlib import Path
 _SETUP = Path(__file__).resolve().parents[2] / 'setup_py2app.py'
 _WANTED = ('_prune_bundle_bloat', '_find_signing_identity', '_install_bundle')
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     results = _prune_checks() + _install_checks()
@@ -25,6 +25,19 @@ def main():
 
 
 # FUNCTIONS
+
+def _prune_checks() -> list:
+    ns = _load_functions(lambda *a, **k: None)
+    cwd = Path.cwd()
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        import os
+        os.chdir(tmp)
+        code, out = _exit_code(ns['_prune_bundle_bloat'])
+    finally:
+        os.chdir(cwd)
+        shutil.rmtree(tmp, ignore_errors=True)
+    return [('missing bundle src lib exits 1 with a message', code == 1 and 'bundle src lib missing' in out)]
 
 
 def _load_functions(fake_run) -> dict:
@@ -49,20 +62,6 @@ def _exit_code(fn) -> tuple:
     except SystemExit as exc:
         return exc.code, out.getvalue()
     return None, out.getvalue()
-
-
-def _prune_checks() -> list:
-    ns = _load_functions(lambda *a, **k: None)
-    cwd = Path.cwd()
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        import os
-        os.chdir(tmp)
-        code, out = _exit_code(ns['_prune_bundle_bloat'])
-    finally:
-        os.chdir(cwd)
-        shutil.rmtree(tmp, ignore_errors=True)
-    return [('missing bundle src lib exits 1 with a message', code == 1 and 'bundle src lib missing' in out)]
 
 
 def _install_checks() -> list:

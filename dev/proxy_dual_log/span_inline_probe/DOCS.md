@@ -16,7 +16,7 @@ located and rendered both ways into one dated Markdown report.
 
 ## Modules
 
-### span_inline_probe.py (62 LOC)
+### span_inline_probe.py (56 LOC)
 
 **Purpose:** CLI entry point for the Form A vs Form B inline-render data model probe, comparing
 them on one fixed recorded session's blocks.

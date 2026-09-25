@@ -16,7 +16,7 @@ raw CSV, then a comparison report is produced from all three.
 
 ## Modules
 
-### run_all.py (107 LOC)
+### run_all.py (106 LOC)
 
 **Purpose:** Orchestrator — discovers the Opus main session (most recently active non-worker window)
 and launches `probe_a.py`/`probe_b.py`/`probe_c.py` as concurrent subprocesses with a shared
@@ -29,7 +29,7 @@ timestamp.
 
 ---
 
-### probe_a.py (67 LOC)
+### probe_a.py (66 LOC)
 
 **Purpose:** Polls `#{window_activity}` (a Unix timestamp) for each target session every second,
 logging a delta flag when the window received bytes since the last sample.
@@ -40,7 +40,7 @@ logging a delta flag when the window received bytes since the last sample.
 
 ---
 
-### probe_b.py (121 LOC)
+### probe_b.py (120 LOC)
 
 **Purpose:** Activates tmux pipe-pane per target session, routing output through the byte-touch helper, and samples the activity file and byte count every second.
 **Reads:** an activity file's mtime and a byte-count file, both under the system temp directory.
@@ -61,7 +61,7 @@ file's mtime and overwrites the byte-count file with the cumulative total.
 
 ---
 
-### probe_c.py (149 LOC)
+### probe_c.py (148 LOC)
 
 **Purpose:** Spawns a tmux control-mode client per target session; reader threads count output events and bytes for window 0 panes, sampled each second.
 **Reads:** the control-mode subprocess's stdout, line by line, per session.

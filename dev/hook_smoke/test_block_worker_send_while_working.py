@@ -85,14 +85,6 @@ def test_block_worker_send_while_working_workflow() -> None:
 
 # FUNCTIONS
 
-def make_stub(name_to_status: dict):
-    def stub(name: str) -> str:
-        if name == 'raises':
-            raise RuntimeError("simulated status_fn error")
-        return name_to_status.get(name, '')
-    return stub
-
-
 def _all_runners() -> dict:
     runners = case_runners(CASES, _check_case)
     runners.update(function_runners([_check_malformed_fails_open, _check_no_resolvable_worker]))
@@ -105,17 +97,18 @@ def _check_case(case: tuple) -> None:
     report_case(label, block == expect, f" (blocking: {name})" if block else "")
 
 
+def make_stub(name_to_status: dict):
+    def stub(name: str) -> str:
+        if name == 'raises':
+            raise RuntimeError("simulated status_fn error")
+        return name_to_status.get(name, '')
+    return stub
+
+
 def _check_malformed_fails_open() -> None:
     with tempfile.TemporaryDirectory(prefix="worker_send_fake_") as tmp:
         malformed = run_hook(HOOK, b"not valid json at all", extra_env=_fake_worker_cli_env(Path(tmp)))
     report_case("malformed stdin payload fails open", malformed.returncode == 0, f": exit={malformed.returncode} (expected 0)")
-
-
-def _check_no_resolvable_worker() -> None:
-    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "worker-cli send foo hi"}}).encode()
-    with tempfile.TemporaryDirectory(prefix="worker_send_fake_") as tmp:
-        no_worker = run_hook(HOOK, payload, extra_env=_fake_worker_cli_env(Path(tmp)))
-    report_case("real entrypoint, no resolvable worker status", no_worker.returncode == 0, f": exit={no_worker.returncode} (expected 0)")
 
 
 def _fake_worker_cli_env(tmp: Path) -> dict:
@@ -125,6 +118,13 @@ def _fake_worker_cli_env(tmp: Path) -> dict:
     fake.write_text("#!/bin/sh\nexit 1\n")
     fake.chmod(0o755)
     return {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "HOME": str(tmp)}
+
+
+def _check_no_resolvable_worker() -> None:
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "worker-cli send foo hi"}}).encode()
+    with tempfile.TemporaryDirectory(prefix="worker_send_fake_") as tmp:
+        no_worker = run_hook(HOOK, payload, extra_env=_fake_worker_cli_env(Path(tmp)))
+    report_case("real entrypoint, no resolvable worker status", no_worker.returncode == 0, f": exit={no_worker.returncode} (expected 0)")
 
 
 if __name__ == "__main__":

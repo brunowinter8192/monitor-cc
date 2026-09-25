@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-
 import argparse
 import io
 import json
@@ -24,7 +23,26 @@ from src.dual_log_cli.usage import _find_transcript, _transcript_usage, resolve_
 PASS_LIST = []
 FAIL_LIST = []
 
+
+# ORCHESTRATOR
+
+def test_skip_reporting_workflow() -> None:
+    sys.exit(strand_workflow(_strand_globals(), __file__, sorted(_strand_cases()), title='test_skip_reporting'))
+
+
 # FUNCTIONS
+
+def _strand_globals() -> dict:
+    runners = {name: partial(_run_case, fn) for name, fn in _strand_cases().items()}
+    return {**globals(), **runners}
+
+
+def _run_case(fn) -> None:
+    fn()
+    print(f"{len(PASS_LIST)}/{len(PASS_LIST) + len(FAIL_LIST)} checks passed")
+    if FAIL_LIST:
+        raise AssertionError("failed checks: " + "; ".join(FAIL_LIST))
+
 
 def _strand_cases() -> dict:
     return {fn.__name__: fn for fn in (
@@ -34,15 +52,19 @@ def _strand_cases() -> dict:
         test_command_skip_paths,
     )}
 
-def _strand_globals() -> dict:
-    runners = {name: partial(_run_case, fn) for name, fn in _strand_cases().items()}
-    return {**globals(), **runners}
 
-def _run_case(fn) -> None:
-    fn()
-    print(f"{len(PASS_LIST)}/{len(PASS_LIST) + len(FAIL_LIST)} checks passed")
-    if FAIL_LIST:
-        raise AssertionError("failed checks: " + "; ".join(FAIL_LIST))
+def test_report_skip_dedup() -> None:
+    diagnostics._reported.clear()
+    _, text = _stderr_of(lambda: (diagnostics.report_skip("s", "t", "r"), diagnostics.report_skip("s", "t", "r")))
+    check("report_skip prints one identical line once", text == "s: t: r\n", text)
+
+
+def _stderr_of(fn, *args) -> tuple:
+    buffer = io.StringIO()
+    with redirect_stderr(buffer):
+        result = fn(*args)
+    return result, buffer.getvalue()
+
 
 def check(name: str, condition: bool, detail: str = "") -> None:
     if condition:
@@ -51,23 +73,6 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         FAIL_LIST.append(name)
         print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
 
-def _stderr_of(fn, *args) -> tuple:
-    buffer = io.StringIO()
-    with redirect_stderr(buffer):
-        result = fn(*args)
-    return result, buffer.getvalue()
-
-def _raises(exc_type, fn, *args) -> bool:
-    try:
-        fn(*args)
-    except exc_type:
-        return True
-    return False
-
-def test_report_skip_dedup() -> None:
-    diagnostics._reported.clear()
-    _, text = _stderr_of(lambda: (diagnostics.report_skip("s", "t", "r"), diagnostics.report_skip("s", "t", "r")))
-    check("report_skip prints one identical line once", text == "s: t: r\n", text)
 
 def test_project_map_reports() -> None:
     diagnostics._reported.clear()
@@ -83,6 +88,7 @@ def test_project_map_reports() -> None:
         _, missing = _stderr_of(build_project_index, root / "absent")
         check("a missing projects root is reported", "absent" in missing and "FileNotFoundError" in missing, missing)
 
+
 def test_load_last_request_reports_malformed_line() -> None:
     diagnostics._reported.clear()
     entry = {"model": "claude-sonnet-5", "payload": {"tools": [{"name": "Bash"}], "messages": []}}
@@ -92,6 +98,7 @@ def test_load_last_request_reports_malformed_line() -> None:
         result, text = _stderr_of(load_last_request, path)
     check("a malformed last line is reported and the earlier request is returned",
           result[0] == entry and result[2] == 1 and "malformed line skipped" in text, text)
+
 
 def test_resolve_transcript_reasons() -> None:
     boundaries = [{"flow_id": "f1", "timestamp": "2026-09-04T10:00:00Z"}]
@@ -107,6 +114,7 @@ def test_resolve_transcript_reasons() -> None:
     for expected, actual in reasons.items():
         check(f"resolve_transcript names the reason: {expected}", actual is not None and actual.startswith(expected), actual)
 
+
 def test_find_transcript_reports_unstatable_candidate() -> None:
     diagnostics._reported.clear()
     with tempfile.TemporaryDirectory() as tmp:
@@ -115,6 +123,7 @@ def test_find_transcript_reports_unstatable_candidate() -> None:
         result, text = _stderr_of(_find_transcript, "req_1", [directory], 1.0)
     check("an unstatable candidate is reported and the search returns None",
           result is None and "dangling.jsonl" in text and "FileNotFoundError" in text, text)
+
 
 def test_transcript_usage_reports_malformed_line() -> None:
     diagnostics._reported.clear()
@@ -126,9 +135,11 @@ def test_transcript_usage_reports_malformed_line() -> None:
     check("malformed transcript lines are reported once and the valid line is kept",
           result == {"req_1": (5, 7)} and text.count("t.jsonl") == 1 and "malformed line skipped" in text, text)
 
+
 def test_numbering_line_carries_reason() -> None:
     _, text = _stderr_of(_report_numbering_paths, {"a": {"path": "transcript"}, "b": {"path": "boundaries", "reason": "no _response stream"}})
     check("the numbering line names the fallback stem with its reason", "b (no _response stream)" in text, text)
+
 
 def test_timestamps() -> None:
     check("local_datetime of an empty timestamp is None", local_datetime("") is None)
@@ -136,6 +147,15 @@ def test_timestamps() -> None:
     marker = {"timestamp": "", "clock_timestamp": ""}
     check("a REQ marker without a timestamp raises instead of vanishing",
           _raises(ValueError, _entries_for_session, {0: marker}, {}, {}, "stem"))
+
+
+def _raises(exc_type, fn, *args) -> bool:
+    try:
+        fn(*args)
+    except exc_type:
+        return True
+    return False
+
 
 def test_command_skip_paths() -> None:
     diagnostics._reported.clear()
@@ -164,11 +184,6 @@ def test_command_skip_paths() -> None:
         check("search lets an unexpected exception propagate", _raises(TypeError, commands._run_search, Path("."), args))
     finally:
         commands.load_timeline, commands.list_sessions = original_load, original_list
-
-# ORCHESTRATOR
-
-def test_skip_reporting_workflow() -> None:
-    sys.exit(strand_workflow(_strand_globals(), __file__, sorted(_strand_cases()), title='test_skip_reporting'))
 
 
 if __name__ == "__main__":

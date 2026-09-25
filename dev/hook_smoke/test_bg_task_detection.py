@@ -16,15 +16,28 @@ _FIXED_NOW = 1000.0
 # ORCHESTRATOR
 
 def test_bg_task_detection_workflow() -> None:
-    sys.exit(run_case_strands(globals(), __file__, case_runners(CASES, _check_case)))
+    sys.exit(run_case_strands(globals(), __file__, case_runners(cases(), _check_case)))
 
 
 # FUNCTIONS
 
-def _check_case(case: tuple) -> None:
-    desc, fn = case
-    ok, detail = fn()
-    report_case(desc, ok, '' if ok else f'\n           {detail}')
+def cases():
+    return [
+        ('open path under session tasks dir -> True',            _case_match_true),
+        ('no open path for session -> False',                     _case_no_match_false),
+        ('session-id prefix collision does not false-positive',   _case_prefix_boundary),
+        ('lsof failure fails open, keeps prior snapshot',         _case_fail_open),
+        ('TTL gate: second call inside window is a no-op',        _case_ttl_gate),
+    ]
+
+
+def _case_match_true() -> tuple:
+    with _scratch_tasks_base():
+        proc_cache._bg_task_open_paths = {
+            f'{proc_cache._TASKS_BASE_REAL}/enc1/sess1/tasks/abc.output'
+        }
+        got = proc_cache._has_active_bg('enc1', 'sess1')
+    return got is True, f'want True, got {got}'
 
 
 @contextmanager
@@ -37,15 +50,6 @@ def _scratch_tasks_base():
                 patch.object(proc_cache, '_bg_task_holder_pids', {}), \
                 patch.object(proc_cache, '_bg_task_last_refresh', 0.0):
             yield base
-
-
-def _case_match_true() -> tuple:
-    with _scratch_tasks_base():
-        proc_cache._bg_task_open_paths = {
-            f'{proc_cache._TASKS_BASE_REAL}/enc1/sess1/tasks/abc.output'
-        }
-        got = proc_cache._has_active_bg('enc1', 'sess1')
-    return got is True, f'want True, got {got}'
 
 
 def _case_no_match_false() -> tuple:
@@ -93,13 +97,10 @@ def _case_ttl_gate() -> tuple:
     return len(calls) == 1, f'lsof invocations={len(calls)} (want 1)'
 
 
-CASES = [
-    ('open path under session tasks dir -> True',            _case_match_true),
-    ('no open path for session -> False',                     _case_no_match_false),
-    ('session-id prefix collision does not false-positive',   _case_prefix_boundary),
-    ('lsof failure fails open, keeps prior snapshot',         _case_fail_open),
-    ('TTL gate: second call inside window is a no-op',        _case_ttl_gate),
-]
+def _check_case(case: tuple) -> None:
+    desc, fn = case
+    ok, detail = fn()
+    report_case(desc, ok, '' if ok else f'\n           {detail}')
 
 
 if __name__ == "__main__":

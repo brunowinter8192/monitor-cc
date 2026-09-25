@@ -11,7 +11,7 @@ Loads the tool-errors log, clusters entries by error shape, classifies each buck
 
 ## Modules
 
-### A_error_cluster_audit.py (48 LOC)
+### A_error_cluster_audit.py (37 LOC)
 
 **Purpose:** Entry script: resolves worktree-aware log paths and drives load, cluster, cross-check and report.
 **Reads:** nothing directly; resolves the log and report paths.

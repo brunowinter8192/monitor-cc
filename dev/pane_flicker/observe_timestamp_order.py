@@ -12,6 +12,7 @@ _REPORT = Path(__file__).resolve().parent / 'md' / 'observe_timestamp_order.md'
 
 _SKIPPED_LINES = 0
 
+
 # ORCHESTRATOR
 
 def main():
@@ -24,22 +25,6 @@ def main():
 
 # FUNCTIONS
 
-def _note_skipped_line() -> None:
-    global _SKIPPED_LINES
-    _SKIPPED_LINES += 1
-
-
-def _report_skipped_lines() -> None:
-    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
-
-
-def _first_disorder(stamps: list):
-    for i in range(1, len(stamps)):
-        if stamps[i] < stamps[i - 1]:
-            return i
-    return None
-
-
 def _check_forwarded(path: Path) -> tuple:
     stamps = []
     for raw in path.open(encoding='utf-8'):
@@ -51,6 +36,18 @@ def _check_forwarded(path: Path) -> tuple:
         if e.get('type') == 'forwarded_delta':
             stamps.append(e.get('timestamp', ''))
     return ('forwarded', str(path), len(stamps), _first_disorder(stamps))
+
+
+def _note_skipped_line() -> None:
+    global _SKIPPED_LINES
+    _SKIPPED_LINES += 1
+
+
+def _first_disorder(stamps: list):
+    for i in range(1, len(stamps)):
+        if stamps[i] < stamps[i - 1]:
+            return i
+    return None
 
 
 def _check_transcript(path: Path) -> tuple:
@@ -73,6 +70,10 @@ def _write_report(rows: list) -> None:
     lines += [f'- {r}' for r in rows if r[3] is not None]
     _REPORT.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     print('\n'.join(lines))
+
+
+def _report_skipped_lines() -> None:
+    print(f'skipped undecodable lines: {_SKIPPED_LINES}')
 
 
 if __name__ == '__main__':

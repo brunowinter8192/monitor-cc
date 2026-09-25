@@ -22,10 +22,28 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
+# ORCHESTRATOR
+
+def run_probe_workflow():
+    print("=" * 70)
+    print("strip_interrupt_marker probe — [Request interrupted by user] strip")
+    print("=" * 70)
+    test_real_shape_neighbors_untouched()
+    test_four_content_shapes()
+    test_tool_use_wording()
+    test_marker_embedded_in_longer_text_untouched()
+    test_message_pass_wiring()
+    test_attribution_vocab()
+    test_full_pipeline_attribution()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+
+    _write_report(passed, total)
+    return passed == total
 
 
 # FUNCTIONS
@@ -42,6 +60,12 @@ def test_real_shape_neighbors_untouched():
     check("marker block emptied to '.'", new_content[1] == {"type": "text", "text": "."})
     check("preceding tool_result block byte-identical", new_content[0] == tool_result_block)
     check("following wake-up block byte-identical", new_content[2] == wakeup_block)
+
+
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
 
 
 def test_four_content_shapes():
@@ -157,30 +181,6 @@ def test_full_pipeline_attribution():
     check(f"fn_map[{lk!r}] present", lk in fn_map)
     check(f"fn_map[{lk!r}] == '_apply_interrupt_marker_strip' (not 'unknown')", fn_map.get(lk) == "_apply_interrupt_marker_strip")
     check("messages_delta carries the stripped marker text", stripped_entry["messages_delta"].get("0", {}).get("1") == [_INTERRUPT_MARKER])
-
-
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("strip_interrupt_marker probe — [Request interrupted by user] strip")
-    print("=" * 70)
-    test_real_shape_neighbors_untouched()
-    test_four_content_shapes()
-    test_tool_use_wording()
-    test_marker_embedded_in_longer_text_untouched()
-    test_message_pass_wiring()
-    test_attribution_vocab()
-    test_full_pipeline_attribution()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-
-    _write_report(passed, total)
-    return passed == total
 
 
 def _write_report(passed, total):

@@ -5,9 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 WORKTREE_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(WORKTREE_ROOT))
 
@@ -45,39 +43,19 @@ Usage (from project root):
 `--compare` runs both modes in one process and diffs every entry byte-wise (json, sort_keys).
 """
 
-def _shape_classifier():
-    from src.proxy_display.proxy_badge import _is_total_tokens_nuke_text
-    return _is_total_tokens_nuke_text
+
+# ORCHESTRATOR
+
+def single_workflow(stem: str) -> int:
+    rows = replay(stem)
+    md = sum(1 for r in rows if r[1].get('messages_delta'))
+    show_strip, show_inject = badge_maps(rows)
+    print(f'{stem}: {len(rows)} requests, {md} with stripped messages_delta, '
+          f'{sum(show_strip.values())} showing `strip`, {sum(show_inject.values())} showing `inject`')
+    return 0
 
 
 # FUNCTIONS
-
-def _load_jsonl(path: Path) -> list:
-    entries = []
-    for line in path.read_text(encoding='utf-8').splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entries.append(json.loads(line))
-        except json.JSONDecodeError:
-            pass
-    return entries
-
-
-def _is_tt_msg(msg: dict) -> bool:
-    if msg.get('role') != 'system':
-        return False
-    is_nuke_text = _shape_classifier()
-    content = msg.get('content', '')
-    if isinstance(content, str):
-        return is_nuke_text(content)
-    if isinstance(content, list):
-        return (len(content) == 1 and isinstance(content[0], dict)
-                and content[0].get('type') == 'text'
-                and is_nuke_text(str(content[0].get('text', ''))))
-    return False
-
 
 def replay(stem: str) -> list:
     from src.proxy import strip_inject_delta as sid
@@ -106,6 +84,37 @@ def replay(stem: str) -> list:
             i_entry['flow_id'] = rid
             out.append((rid, s_entry, i_entry, orig_payload))
         return out
+
+
+def _load_jsonl(path: Path) -> list:
+    entries = []
+    for line in path.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return entries
+
+
+def badge_maps(entries: list) -> tuple:
+    from src.proxy_display.proxy_badge import badge_flags
+    hc_s = has_content_map(entries, 1)
+    hc_i = has_content_map(entries, 2)
+    mi_s = msg_idx_map(entries, 1)
+    mi_i = msg_idx_map(entries, 2)
+    strip_by_fid: dict = {}
+    inject_by_fid: dict = {}
+    for rid, _s, _i, _o in entries:
+        entry = {
+            'flow_id': rid,
+            '_strip_fns_lookup': hc_s, '_inject_fns_lookup': hc_i,
+            '_strip_msgs_lookup': mi_s, '_inject_msgs_lookup': mi_i,
+        }
+        strip_by_fid[rid], inject_by_fid[rid] = badge_flags(entry)
+    return strip_by_fid, inject_by_fid
 
 
 def has_content_map(entries: list, which: int, baseline: bool = False) -> dict:
@@ -147,22 +156,23 @@ def msg_idx_map(entries: list, which: int) -> dict:
     return merged
 
 
-def badge_maps(entries: list) -> tuple:
-    from src.proxy_display.proxy_badge import badge_flags
-    hc_s = has_content_map(entries, 1)
-    hc_i = has_content_map(entries, 2)
-    mi_s = msg_idx_map(entries, 1)
-    mi_i = msg_idx_map(entries, 2)
-    strip_by_fid: dict = {}
-    inject_by_fid: dict = {}
-    for rid, _s, _i, _o in entries:
-        entry = {
-            'flow_id': rid,
-            '_strip_fns_lookup': hc_s, '_inject_fns_lookup': hc_i,
-            '_strip_msgs_lookup': mi_s, '_inject_msgs_lookup': mi_i,
-        }
-        strip_by_fid[rid], inject_by_fid[rid] = badge_flags(entry)
-    return strip_by_fid, inject_by_fid
+def _shape_classifier():
+    from src.proxy_display.proxy_badge import _is_total_tokens_nuke_text
+    return _is_total_tokens_nuke_text
+
+
+def _is_tt_msg(msg: dict) -> bool:
+    if msg.get('role') != 'system':
+        return False
+    is_nuke_text = _shape_classifier()
+    content = msg.get('content', '')
+    if isinstance(content, str):
+        return is_nuke_text(content)
+    if isinstance(content, list):
+        return (len(content) == 1 and isinstance(content[0], dict)
+                and content[0].get('type') == 'text'
+                and is_nuke_text(str(content[0].get('text', ''))))
+    return False
 
 
 def classify(base_s: dict, orig_payload: dict) -> str:
@@ -185,8 +195,6 @@ def classify(base_s: dict, orig_payload: dict) -> str:
 def _canon(entry: dict) -> str:
     return json.dumps({k: v for k, v in entry.items() if k != 'timestamp'}, sort_keys=True)
 
-
-# ORCHESTRATOR
 
 def _build_buckets(rows: list) -> dict:
     buckets: dict = {}
@@ -257,15 +265,6 @@ def compare_workflow(stem: str) -> int:
 
 def _flows_with_injected_msgs(rows: list) -> set:
     return {rid for rid, _s, i_e, _o in rows if i_e.get('messages_delta')}
-
-
-def single_workflow(stem: str) -> int:
-    rows = replay(stem)
-    md = sum(1 for r in rows if r[1].get('messages_delta'))
-    show_strip, show_inject = badge_maps(rows)
-    print(f'{stem}: {len(rows)} requests, {md} with stripped messages_delta, '
-          f'{sum(show_strip.values())} showing `strip`, {sum(show_inject.values())} showing `inject`')
-    return 0
 
 
 if __name__ == '__main__':

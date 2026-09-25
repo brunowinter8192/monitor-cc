@@ -5,13 +5,13 @@ from test_strip_fix_cases_badge import (
     _ops_from_content_change,
 )
 
-# FUNCTIONS
-
 _NUDGE_A = ("First privately list what you need next; then request every item that doesn't "
             "depend on another's result in this one response.")
 _NUDGE_B = ("Only you see that command's output — the user's terminal shows at most a few lines "
             "of it. If the user needs to read any of it, put it in your reply.")
 
+
+# FUNCTIONS
 
 def tt10_nudge_prefixed_tag_badges_neither_word():
     cases = [

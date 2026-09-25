@@ -13,6 +13,7 @@ _REPORT = _HERE / 'md' / 'run_scenarios.md'
 _SCENARIOS = ('hover', 'grow_and_new_turn', 'late_response', 'late_overlay', 'expand_collapse', 'search', 'width', 'copy_feedback', 'reparse', 'unsorted_turns')
 _MAX_GROUPS_ON_GROW = 2
 
+
 # ORCHESTRATOR
 
 def main():
@@ -41,10 +42,6 @@ def _run_job(job: tuple, out_dir: Path) -> tuple:
     return (name, side, out, proc.returncode)
 
 
-def _load(path: Path) -> list:
-    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
-
-
 def _evaluate(name: str, out_dir: Path) -> dict:
     new = _load(out_dir / f'new_{name}.json')
     if name == 'tripwire':
@@ -60,6 +57,10 @@ def _evaluate(name: str, out_dir: Path) -> dict:
     warm = [s[3] for s in new if s[1] == 'warm']
     notes.append(f'warm groups rendered: {warm}')
     return {'name': name, 'steps': len(new), 'ok': ok, 'mismatches': mismatches, 'notes': notes}
+
+
+def _load(path: Path) -> list:
+    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
 
 
 def _write_report(results: list, failures: list) -> None:

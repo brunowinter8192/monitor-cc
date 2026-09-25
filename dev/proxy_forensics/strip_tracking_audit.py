@@ -2,21 +2,21 @@
 import json
 import sys
 
+
+# ORCHESTRATOR
+
+def audit_workflow(argv: list) -> int:
+    path = require_path_argument(argv)
+    return audit(path)
+
+
 # FUNCTIONS
 
-def _check_entry(line_no, entry):
-    indices = entry.get("stripped_msg_indices") or []
-    if not indices:
-        return []
-    removed = entry.get("stripped_msg_removed") or {}
-    mods_list = entry.get("modifications") or []
-    ts = entry.get("timestamp", "?")
-    violations = []
-    for idx in indices:
-        key = str(idx)
-        if key not in removed or not removed[key]:
-            violations.append(f"LINE {line_no} TS {ts}\n  idx={idx} mods={mods_list} → missing from stripped_msg_removed")
-    return violations
+def require_path_argument(argv: list) -> str:
+    if len(argv) != 2:
+        print(f"Usage: {argv[0]} <jsonl_path>", file=sys.stderr)
+        sys.exit(1)
+    return argv[1]
 
 
 def audit(path: str) -> int:
@@ -46,8 +46,20 @@ def audit(path: str) -> int:
     return 1 if all_violations else 0
 
 
+def _check_entry(line_no, entry):
+    indices = entry.get("stripped_msg_indices") or []
+    if not indices:
+        return []
+    removed = entry.get("stripped_msg_removed") or {}
+    mods_list = entry.get("modifications") or []
+    ts = entry.get("timestamp", "?")
+    violations = []
+    for idx in indices:
+        key = str(idx)
+        if key not in removed or not removed[key]:
+            violations.append(f"LINE {line_no} TS {ts}\n  idx={idx} mods={mods_list} → missing from stripped_msg_removed")
+    return violations
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <jsonl_path>", file=sys.stderr)
-        sys.exit(1)
-    sys.exit(audit(sys.argv[1]))
+    sys.exit(audit_workflow(sys.argv))

@@ -24,26 +24,28 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
+# ORCHESTRATOR
+
+def run_probe_workflow():
+    print("=" * 70)
+    print("worker-selection click probe -- worker-proxy header + workers-pane row")
+    print("=" * 70)
+    test_worker_proxy_header_click()
+    test_worker_proxy_header_wrap_straddle()
+    test_worker_tokens_header_click()
+    test_worker_tokens_header_wrap_at_narrow_pane_width()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+
+    _write_report(passed, total)
+    return passed == total
 
 
 # FUNCTIONS
-
-def _clear_selection(get_path_fn, project_filter):
-    path = get_path_fn(project_filter)
-    if os.path.exists(path):
-        os.remove(path)
-
-
-def _read_selection(get_path_fn, project_filter):
-    path = get_path_fn(project_filter)
-    if not os.path.exists(path):
-        return ''
-    return open(path, 'r', encoding='utf-8').read().strip()
-
 
 def test_worker_proxy_header_click():
     monitor = SimpleNamespace(active_project_filter=_FAKE_PROXY_PROJECT)
@@ -88,6 +90,25 @@ def test_worker_proxy_header_click():
         check(f"worker-proxy: click/key parity for '{name}'", key_selection == mouse_selection)
 
     _clear_selection(wp.get_selection_file_path, _FAKE_PROXY_PROJECT)
+
+
+def _clear_selection(get_path_fn, project_filter):
+    path = get_path_fn(project_filter)
+    if os.path.exists(path):
+        os.remove(path)
+
+
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
+
+
+def _read_selection(get_path_fn, project_filter):
+    path = get_path_fn(project_filter)
+    if not os.path.exists(path):
+        return ''
+    return open(path, 'r', encoding='utf-8').read().strip()
 
 
 def test_worker_proxy_header_wrap_straddle():
@@ -215,27 +236,6 @@ def test_worker_tokens_header_wrap_at_narrow_pane_width():
     check("worker-tokens wrap: the narrow sweep actually forced >=1 straddling marker", straddle_found)
     check("worker-tokens wrap: pane_width=34 (the pane's real 34% window share) was swept", True)
     _clear_selection(wpane.get_selection_file_path, project_filter)
-
-
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("worker-selection click probe -- worker-proxy header + workers-pane row")
-    print("=" * 70)
-    test_worker_proxy_header_click()
-    test_worker_proxy_header_wrap_straddle()
-    test_worker_tokens_header_click()
-    test_worker_tokens_header_wrap_at_narrow_pane_width()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-
-    _write_report(passed, total)
-    return passed == total
 
 
 def _write_report(passed, total):

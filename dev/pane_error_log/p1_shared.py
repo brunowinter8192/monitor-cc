@@ -18,6 +18,8 @@ _PROBE_CAP_LOG_PATH = str(Path(_PROBE_DIR) / 'probe_cap.log')
 _STOP_AFTER_TICKS = 3
 
 
+# FUNCTIONS
+
 class _ProbeInjectedError(Exception):
     pass
 
@@ -25,8 +27,6 @@ class _ProbeInjectedError(Exception):
 class _ProbeStop(BaseException):
     pass
 
-
-# FUNCTIONS
 
 def _read_probe_log():
     log_text = ''

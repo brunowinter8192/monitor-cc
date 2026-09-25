@@ -43,11 +43,11 @@ _MODEL_PARAMS_CONFIG = {
 }
 
 
+# FUNCTIONS
+
 def _base_payload(model):
     return {"model": model, "max_tokens": 8000, "messages": [{"role": "user", "content": "hi"}]}
 
-
-# FUNCTIONS
 
 def test_legacy_only_is_ignored():
     print("\n[Test 1] Legacy-only config (no model_params) -> ignored, payload untouched")

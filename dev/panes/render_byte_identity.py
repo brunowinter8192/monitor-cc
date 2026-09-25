@@ -13,12 +13,8 @@ _FIXTURE_JSONL = Path(__file__).resolve().parent / 'fixtures' / 'session_prefix_
 _PREFIX_LINES = 300
 _CHUNK_SIZE = 40
 
+
 # ORCHESTRATOR
-
-
-def _token_turn_cache():
-    from src.format.turn_cache import new_turn_cache
-    return new_turn_cache()
 
 def main():
     build_cache_turns, format_warnings_pane, format_cache_tracker = _import_panes()
@@ -36,27 +32,6 @@ def _import_panes():
     from src.panes.warnings_render import _format_warnings_pane
     from src.format import format_cache_tracker
     return build_cache_turns, _format_warnings_pane, format_cache_tracker
-
-
-def _session_jsonl() -> Path:
-    override = os.environ.get('PANES_BYTE_IDENTITY_JSONL')
-    if override:
-        return Path(override)
-    return _FIXTURE_JSONL
-
-
-def _frozen_prefix_lines(source: Path) -> list:
-    lines = []
-    with open(source, 'r', encoding='utf-8') as f:
-        for i, line in enumerate(f):
-            if i >= _PREFIX_LINES:
-                break
-            lines.append(line)
-    return lines
-
-
-def _normalize_turns_for_hash(turns: list):
-    return json.dumps(turns, default=str, sort_keys=True)
 
 
 def _hash_cache_turns(digest, build_cache_turns) -> None:
@@ -81,18 +56,25 @@ def _hash_cache_turns(digest, build_cache_turns) -> None:
         tmp_path.unlink(missing_ok=True)
 
 
-def _make_tool_errors() -> list:
-    return [
-        {'timestamp': '10:00:00', 'tool_name': 'Bash', 'summary': 'boom one', 'full_text': 'boom one',
-         'tool_call_input': {'command': 'ls -la'}, 'worker_name': ''},
-        {'timestamp': '10:01:00', 'tool_name': 'Grep', 'summary': 'boom two', 'full_text': 'line1\nline2\nline3',
-         'tool_call_input': {'pattern': 'x'}, 'worker_name': 'w1',
-         '_pre_strip_text': 'line1\n[STRIPPED]\nline3', '_stripped_chunks': ['line2']},
-        {'timestamp': '10:02:00', 'tool_name': 'Read', 'summary': 'unique_marker_q one', 'full_text': 'unique_marker_q one',
-         'tool_call_input': {'file_path': '/tmp/unique_marker_q.txt'}, 'worker_name': ''},
-        {'timestamp': '10:03:00', 'tool_name': 'Edit', 'summary': 'has unique_marker_q too', 'full_text': 'has unique_marker_q too',
-         'tool_call_input': {'old_string': 'unique_marker_q'}, 'worker_name': 'w2'},
-    ]
+def _session_jsonl() -> Path:
+    override = os.environ.get('PANES_BYTE_IDENTITY_JSONL')
+    if override:
+        return Path(override)
+    return _FIXTURE_JSONL
+
+
+def _frozen_prefix_lines(source: Path) -> list:
+    lines = []
+    with open(source, 'r', encoding='utf-8') as f:
+        for i, line in enumerate(f):
+            if i >= _PREFIX_LINES:
+                break
+            lines.append(line)
+    return lines
+
+
+def _normalize_turns_for_hash(turns: list):
+    return json.dumps(turns, default=str, sort_keys=True)
 
 
 def _hash_warnings_pane(digest, format_warnings_pane) -> None:
@@ -110,6 +92,38 @@ def _hash_warnings_pane(digest, format_warnings_pane) -> None:
         digest.update(f'warnings|{pane_width}|'.encode())
         digest.update(output.encode())
         digest.update(json.dumps(line_map, sort_keys=True, default=str).encode())
+
+
+def _make_tool_errors() -> list:
+    return [
+        {'timestamp': '10:00:00', 'tool_name': 'Bash', 'summary': 'boom one', 'full_text': 'boom one',
+         'tool_call_input': {'command': 'ls -la'}, 'worker_name': ''},
+        {'timestamp': '10:01:00', 'tool_name': 'Grep', 'summary': 'boom two', 'full_text': 'line1\nline2\nline3',
+         'tool_call_input': {'pattern': 'x'}, 'worker_name': 'w1',
+         '_pre_strip_text': 'line1\n[STRIPPED]\nline3', '_stripped_chunks': ['line2']},
+        {'timestamp': '10:02:00', 'tool_name': 'Read', 'summary': 'unique_marker_q one', 'full_text': 'unique_marker_q one',
+         'tool_call_input': {'file_path': '/tmp/unique_marker_q.txt'}, 'worker_name': ''},
+        {'timestamp': '10:03:00', 'tool_name': 'Edit', 'summary': 'has unique_marker_q too', 'full_text': 'has unique_marker_q too',
+         'tool_call_input': {'old_string': 'unique_marker_q'}, 'worker_name': 'w2'},
+    ]
+
+
+def _hash_format_cache_tracker(digest, format_cache_tracker) -> None:
+    turns, response_rid_map = _make_rate_limit_turns()
+    expand_states = {(0, 0): True, (0, 1): True}
+    copy_feedback = {(0, 0): 9999999999.0}
+    nav_out = {}
+    for pane_width in (40, 100):
+        result = format_cache_tracker(
+            turns, expand_states=expand_states, pane_height=30, pane_width=pane_width,
+            scroll_offset=0, response_rid_map=response_rid_map, copy_feedback=copy_feedback,
+            search_match_set={(0, 0), ('turn', 0)}, search_current_key=(0, 0),
+            search_query='rate limit', nav_out=nav_out, turn_cache=_token_turn_cache()
+        )
+        digest.update(f'cache_tracker|{pane_width}|'.encode())
+        digest.update(json.dumps(result, default=str, sort_keys=True).encode())
+        nav_out_str_keys = {str(k): v for k, v in nav_out.items()}
+        digest.update(json.dumps(nav_out_str_keys, default=str, sort_keys=True).encode())
 
 
 def _make_rate_limit_turns() -> tuple:
@@ -153,22 +167,9 @@ def _make_rate_limit_turns() -> tuple:
     return [turn], response_rid_map
 
 
-def _hash_format_cache_tracker(digest, format_cache_tracker) -> None:
-    turns, response_rid_map = _make_rate_limit_turns()
-    expand_states = {(0, 0): True, (0, 1): True}
-    copy_feedback = {(0, 0): 9999999999.0}
-    nav_out = {}
-    for pane_width in (40, 100):
-        result = format_cache_tracker(
-            turns, expand_states=expand_states, pane_height=30, pane_width=pane_width,
-            scroll_offset=0, response_rid_map=response_rid_map, copy_feedback=copy_feedback,
-            search_match_set={(0, 0), ('turn', 0)}, search_current_key=(0, 0),
-            search_query='rate limit', nav_out=nav_out, turn_cache=_token_turn_cache()
-        )
-        digest.update(f'cache_tracker|{pane_width}|'.encode())
-        digest.update(json.dumps(result, default=str, sort_keys=True).encode())
-        nav_out_str_keys = {str(k): v for k, v in nav_out.items()}
-        digest.update(json.dumps(nav_out_str_keys, default=str, sort_keys=True).encode())
+def _token_turn_cache():
+    from src.format.turn_cache import new_turn_cache
+    return new_turn_cache()
 
 
 if __name__ == '__main__':

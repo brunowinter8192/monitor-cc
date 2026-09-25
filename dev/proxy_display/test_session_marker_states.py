@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TREE = os.environ.get('MCFIX_TREE') or str(REPO_ROOT)
 CASES = ('marker_absent_is_none', 'scan_scope_and_logging', 'proxy_pane_no_session_start', 'warnings_refresh_without_marker')
 
+
 # ORCHESTRATOR
 
 def main() -> int:
@@ -21,23 +22,27 @@ def main() -> int:
         print(f"{'PASS' if code == 0 else 'FAIL'} {case}" + ('' if code == 0 else f' :: {tail}'))
     return 0 if all(code == 0 for _, code, _ in results) else 1
 
-# FUNCTIONS
 
-def run_strand(case: str) -> tuple:
-    proc = subprocess.run([sys.executable, __file__, '--case', case], capture_output=True, text=True, env={**os.environ, 'MCFIX_TREE': TREE})
-    tail = (proc.stderr.strip().splitlines() or [''])[-1]
-    return case, proc.returncode, tail
+# FUNCTIONS
 
 def run_case(case: str) -> int:
     sys.path.insert(0, TREE)
     globals()['case_' + case]()
     return 0
 
+
+def run_strand(case: str) -> tuple:
+    proc = subprocess.run([sys.executable, __file__, '--case', case], capture_output=True, text=True, env={**os.environ, 'MCFIX_TREE': TREE})
+    tail = (proc.stderr.strip().splitlines() or [''])[-1]
+    return case, proc.returncode, tail
+
+
 def make_root(td: str) -> Path:
     root = Path(td)
     (root / 'src' / 'logs' / 'dual_log').mkdir(parents=True)
     os.environ['MONITOR_CC_ROOT'] = str(root)
     return root
+
 
 def case_marker_absent_is_none() -> None:
     from src.proxy_display.parser import get_proxy_session_start_ts
@@ -48,6 +53,7 @@ def case_marker_absent_is_none() -> None:
         marker = root / 'src' / 'logs' / f".proxy_session_{_proxy_session_id_for_project('/tmp/some/project')}"
         marker.write_text('logid\n123\n')
         assert get_proxy_session_start_ts('/tmp/some/project') == marker.stat().st_mtime
+
 
 def case_scan_scope_and_logging() -> None:
     from src.proxy_display import side_logs
@@ -68,6 +74,7 @@ def case_scan_scope_and_logging() -> None:
             return
         raise AssertionError('project scope and min_mtime are optional')
 
+
 def case_proxy_pane_no_session_start() -> None:
     from src.proxy_display import pane
 
@@ -81,6 +88,7 @@ def case_proxy_pane_no_session_start() -> None:
     assert changed is True and pane.proxy_entries == []
     pane._terminal_size = lambda: (30, 100)
     assert 'Session start unknown' in pane._build_proxy_output()
+
 
 def case_warnings_refresh_without_marker() -> None:
     from src.panes import warnings_pane
@@ -97,6 +105,7 @@ def case_warnings_refresh_without_marker() -> None:
         assert 'no proxy session marker' in warnings_pane._worker_errors_notice()
         from src.panes.warnings_render import _format_warnings_header
         assert 'no proxy session marker' in _format_warnings_header(1.0, 120, {}, warnings_pane._worker_errors_notice())
+
 
 if __name__ == '__main__':
     sys.exit(main())

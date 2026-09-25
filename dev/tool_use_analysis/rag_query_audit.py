@@ -25,28 +25,6 @@ STOPWORDS = frozenset({
 PLACEHOLDER = '_'
 
 
-class RagCall(NamedTuple):
-    tool_use_id: str
-    verb:        str
-    query:       str
-    collection:  str
-    top_k:       Optional[int]
-    timestamp:   str
-    source:      str
-
-
-class ResultInfo(NamedTuple):
-    chars:     int
-    chunks:    int
-    truncated: bool
-
-
-class Topic(NamedTuple):
-    topic_id:  str
-    source:    str
-    calls:     List[RagCall]
-
-
 # ORCHESTRATOR
 
 def run(jsonl_paths, output_path, jaccard_threshold):
@@ -69,6 +47,13 @@ def run(jsonl_paths, output_path, jaccard_threshold):
 
 # FUNCTIONS
 
+def _source_label(path):
+    base = os.path.basename(path)
+    if base.startswith('api_requests_'):
+        base = base[len('api_requests_'):]
+    return base[:-len('.jsonl')] if base.endswith('.jsonl') else base
+
+
 def _load_proxy(path):
     events = []
     label  = _source_label(path)
@@ -88,11 +73,14 @@ def _load_proxy(path):
     return events
 
 
-def _source_label(path):
-    base = os.path.basename(path)
-    if base.startswith('api_requests_'):
-        base = base[len('api_requests_'):]
-    return base[:-len('.jsonl')] if base.endswith('.jsonl') else base
+class RagCall(NamedTuple):
+    tool_use_id: str
+    verb:        str
+    query:       str
+    collection:  str
+    top_k:       Optional[int]
+    timestamp:   str
+    source:      str
 
 
 def _collect_rag_calls(events) -> Dict[str, RagCall]:
@@ -118,6 +106,12 @@ def _collect_rag_calls(events) -> Dict[str, RagCall]:
                     uid = f"{bid}:{m.start()}"
                     out[uid] = RagCall(uid, verb, query, coll, top_k, ts, src)
     return out
+
+
+class ResultInfo(NamedTuple):
+    chars:     int
+    chunks:    int
+    truncated: bool
 
 
 def _collect_results(events, rag_ids) -> Dict[str, ResultInfo]:
@@ -154,12 +148,10 @@ def _collect_results(events, rag_ids) -> Dict[str, ResultInfo]:
     return out
 
 
-def _jaccard(q1: str, q2: str) -> float:
-    t1 = set(q1.lower().split()) - STOPWORDS
-    t2 = set(q2.lower().split()) - STOPWORDS
-    if not t1 or not t2:
-        return 0.0
-    return len(t1 & t2) / len(t1 | t2)
+class Topic(NamedTuple):
+    topic_id:  str
+    source:    str
+    calls:     List[RagCall]
 
 
 def _cluster_topics(rag_calls: Dict[str, RagCall], threshold: float) -> List[Topic]:
@@ -192,6 +184,26 @@ def _cluster_topics(rag_calls: Dict[str, RagCall], threshold: float) -> List[Top
             counter += 1
 
     return topics
+
+
+def _jaccard(q1: str, q2: str) -> float:
+    t1 = set(q1.lower().split()) - STOPWORDS
+    t2 = set(q2.lower().split()) - STOPWORDS
+    if not t1 or not t2:
+        return 0.0
+    return len(t1 & t2) / len(t1 | t2)
+
+
+def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, threshold) -> str:
+    ts = datetime.now().strftime('%Y-%m-%dT%H:%M')
+    lines = [f'# RAG Query Audit — {ts}', '']
+
+    lines += _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold)
+    lines += _render_summary(rag_calls, results, topics)
+    lines += _render_topic_overview(topics, threshold)
+    lines += _render_topic_detail(topics, results)
+
+    return '\n'.join(lines) + '\n'
 
 
 def _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold):
@@ -286,18 +298,6 @@ def _render_topic_detail(topics, results):
     return lines
 
 
-def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, threshold) -> str:
-    ts = datetime.now().strftime('%Y-%m-%dT%H:%M')
-    lines = [f'# RAG Query Audit — {ts}', '']
-
-    lines += _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold)
-    lines += _render_summary(rag_calls, results, topics)
-    lines += _render_topic_overview(topics, threshold)
-    lines += _render_topic_detail(topics, results)
-
-    return '\n'.join(lines) + '\n'
-
-
 def _write_output(report, path):
     if path:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -306,7 +306,6 @@ def _write_output(report, path):
         print(path)
     else:
         sys.stdout.write(report)
-
 
 
 if __name__ == '__main__':

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # INFRASTRUCTURE
 import json
 import sys
@@ -9,15 +8,12 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__), '..', '..'))
 
-import importlib as _il
-_apply_sn_notice_strip = _il.import_module('src.proxy.message_passes_simple')._apply_sn_notice_strip
-_sn_mod = _il.import_module('src.proxy.strip_sn_notice')
-_SN_NOTICE_PARAGRAPH = _sn_mod._SN_NOTICE_PARAGRAPH
-_SN_NOTICE_BLOCK = _sn_mod._SN_NOTICE_BLOCK
-del _il, _sn_mod
+from src.proxy.message_passes_simple import _apply_sn_notice_strip
+from src.proxy.strip_sn_notice import _SN_NOTICE_PARAGRAPH, _SN_NOTICE_BLOCK
 
 LOGS_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 OUT_FILE = Path(os.path.join(os.path.dirname(__file__), 'md', 'replay_sn_notice_strip.md'))
+
 
 # ORCHESTRATOR
 
@@ -33,6 +29,68 @@ def replay_sn_notice_strip_workflow():
 
 
 # FUNCTIONS
+
+def scan_all():
+    files = sorted(LOGS_DIR.glob('*_original.jsonl'))
+    counts = {'total_entries': 0, 'total_requests_with_fire': 0, 'genuine_events_raw': 0,
+              'untouched_data_events_raw': 0}
+    genuine_unique = set()
+    untouched_data_unique = set()
+    tool_result_unique = set()
+    mid_content_unique = set()
+    byte_exact_failures = []
+
+    for fp in files:
+        for line in open(fp):
+            line = line.strip()
+            if not line:
+                continue
+            counts['total_entries'] += 1
+            _process_entry(line, fp, counts, genuine_unique, untouched_data_unique,
+                            tool_result_unique, mid_content_unique, byte_exact_failures)
+
+    return {
+        'files': len(files),
+        'total_entries': counts['total_entries'],
+        'total_requests_with_fire': counts['total_requests_with_fire'],
+        'genuine_events_raw': counts['genuine_events_raw'],
+        'genuine_unique': len(genuine_unique),
+        'untouched_data_events_raw': counts['untouched_data_events_raw'],
+        'untouched_data_unique': len(untouched_data_unique),
+        'tool_result_unique': len(tool_result_unique),
+        'mid_content_unique': len(mid_content_unique),
+        'byte_exact_failures': byte_exact_failures,
+    }
+
+
+def _process_entry(line, fp, counts, genuine_unique, untouched_data_unique, tool_result_unique,
+                    mid_content_unique, byte_exact_failures):
+    entry = json.loads(line)
+    payload = entry.get('payload') or {}
+    messages = payload.get('messages') or []
+
+    new_messages, mods, removed_by_idx, changed, _inj, _ops = _apply_sn_notice_strip(messages)
+
+    if changed:
+        counts['total_requests_with_fire'] += 1
+    for idx in changed:
+        counts['genuine_events_raw'] += 1
+        old_text = messages[idx].get('content')
+        new_text = new_messages[idx].get('content')
+        key = (fp.name, old_text if isinstance(old_text, str) else json.dumps(old_text, sort_keys=True))
+        genuine_unique.add(key)
+        if not _reconstruct_matches(old_text, new_text, removed_by_idx.get(idx, [])):
+            byte_exact_failures.append((fp.name, idx, 'reconstruct-mismatch'))
+
+    changed_set = set(changed)
+    for idx, msg in enumerate(messages):
+        if idx in changed_set:
+            continue
+        if new_messages[idx] != msg:
+            byte_exact_failures.append((fp.name, idx, 'unexpected-change'))
+        _scan_untouched(msg.get('content'), msg.get('role'), fp, counts,
+                        untouched_data_unique, tool_result_unique, mid_content_unique)
+
 
 def _reconstruct_matches(old_content, new_content, removed):
     if isinstance(old_content, str):
@@ -90,68 +148,6 @@ def _scan_untouched(content, role, fp, counts, untouched_data_unique, tool_resul
             tool_result_unique.add(key)
         else:
             mid_content_unique.add(key)
-
-
-def _process_entry(line, fp, counts, genuine_unique, untouched_data_unique, tool_result_unique,
-                    mid_content_unique, byte_exact_failures):
-    entry = json.loads(line)
-    payload = entry.get('payload') or {}
-    messages = payload.get('messages') or []
-
-    new_messages, mods, removed_by_idx, changed, _inj, _ops = _apply_sn_notice_strip(messages)
-
-    if changed:
-        counts['total_requests_with_fire'] += 1
-    for idx in changed:
-        counts['genuine_events_raw'] += 1
-        old_text = messages[idx].get('content')
-        new_text = new_messages[idx].get('content')
-        key = (fp.name, old_text if isinstance(old_text, str) else json.dumps(old_text, sort_keys=True))
-        genuine_unique.add(key)
-        if not _reconstruct_matches(old_text, new_text, removed_by_idx.get(idx, [])):
-            byte_exact_failures.append((fp.name, idx, 'reconstruct-mismatch'))
-
-    changed_set = set(changed)
-    for idx, msg in enumerate(messages):
-        if idx in changed_set:
-            continue
-        if new_messages[idx] != msg:
-            byte_exact_failures.append((fp.name, idx, 'unexpected-change'))
-        _scan_untouched(msg.get('content'), msg.get('role'), fp, counts,
-                        untouched_data_unique, tool_result_unique, mid_content_unique)
-
-
-def scan_all():
-    files = sorted(LOGS_DIR.glob('*_original.jsonl'))
-    counts = {'total_entries': 0, 'total_requests_with_fire': 0, 'genuine_events_raw': 0,
-              'untouched_data_events_raw': 0}
-    genuine_unique = set()
-    untouched_data_unique = set()
-    tool_result_unique = set()
-    mid_content_unique = set()
-    byte_exact_failures = []
-
-    for fp in files:
-        for line in open(fp):
-            line = line.strip()
-            if not line:
-                continue
-            counts['total_entries'] += 1
-            _process_entry(line, fp, counts, genuine_unique, untouched_data_unique,
-                            tool_result_unique, mid_content_unique, byte_exact_failures)
-
-    return {
-        'files': len(files),
-        'total_entries': counts['total_entries'],
-        'total_requests_with_fire': counts['total_requests_with_fire'],
-        'genuine_events_raw': counts['genuine_events_raw'],
-        'genuine_unique': len(genuine_unique),
-        'untouched_data_events_raw': counts['untouched_data_events_raw'],
-        'untouched_data_unique': len(untouched_data_unique),
-        'tool_result_unique': len(tool_result_unique),
-        'mid_content_unique': len(mid_content_unique),
-        'byte_exact_failures': byte_exact_failures,
-    }
 
 
 def render_report(stats):

@@ -15,6 +15,7 @@ from src.menubar import proc_cache
 _POLL_DEADLINE_SECS = 10.0
 _POLL_INTERVAL_SECS = 0.05
 
+
 # ORCHESTRATOR
 
 def verify_bg_task_detection_live_workflow() -> None:
@@ -23,7 +24,28 @@ def verify_bg_task_detection_live_workflow() -> None:
     print("VERDICT: " + ("PASS" if detected and cleared else "FAIL"))
     sys.exit(0 if detected and cleared else 1)
 
+
 # FUNCTIONS
+
+def _run_live_roundtrip() -> tuple:
+    with _scratch_tasks_base() as base:
+        tasks_dir = base / 'enc_probe' / 'sess_probe' / 'tasks'
+        tasks_dir.mkdir(parents=True)
+        out_file = tasks_dir / 'probe.output'
+        proc = subprocess.Popen(
+            ['bash', '-c', f'exec > "{out_file}" 2>&1; for i in $(seq 1 100); do echo progress; sleep 0.5; done'],
+            start_new_session=True)
+        try:
+            during = _wait_until(lambda: _refreshed_active_bg('enc_probe', 'sess_probe'), _POLL_DEADLINE_SECS)
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            proc.wait(timeout=5)
+            after = _wait_until(lambda: not _refreshed_active_bg('enc_probe', 'sess_probe'), _POLL_DEADLINE_SECS)
+        finally:
+            if proc.poll() is None:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                proc.wait(timeout=5)
+    return during, after
+
 
 @contextmanager
 def _scratch_tasks_base():
@@ -50,26 +72,6 @@ def _refreshed_active_bg(encoded_dir: str, session_id: str) -> bool:
     proc_cache._bg_task_last_refresh = 0.0
     proc_cache._refresh_bg_task_cache(time.time())
     return proc_cache._has_active_bg(encoded_dir, session_id)
-
-
-def _run_live_roundtrip() -> tuple:
-    with _scratch_tasks_base() as base:
-        tasks_dir = base / 'enc_probe' / 'sess_probe' / 'tasks'
-        tasks_dir.mkdir(parents=True)
-        out_file = tasks_dir / 'probe.output'
-        proc = subprocess.Popen(
-            ['bash', '-c', f'exec > "{out_file}" 2>&1; for i in $(seq 1 100); do echo progress; sleep 0.5; done'],
-            start_new_session=True)
-        try:
-            during = _wait_until(lambda: _refreshed_active_bg('enc_probe', 'sess_probe'), _POLL_DEADLINE_SECS)
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            proc.wait(timeout=5)
-            after = _wait_until(lambda: not _refreshed_active_bg('enc_probe', 'sess_probe'), _POLL_DEADLINE_SECS)
-        finally:
-            if proc.poll() is None:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                proc.wait(timeout=5)
-    return during, after
 
 
 if __name__ == "__main__":

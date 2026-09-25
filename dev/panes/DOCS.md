@@ -11,7 +11,7 @@ The identity harness renders over a fixed real or synthetic input, hashes the re
 
 ## Modules
 
-### render_byte_identity.py (175 LOC)
+### render_byte_identity.py (176 LOC)
 
 **Purpose:** Verification aid, not a self-checking test: hashes the output of the panes-split module boundaries into one value for before/after comparison.
 **Reads:** a frozen session-prefix fixture by default, or a path from an env var; other checks are synthetic.
@@ -31,7 +31,7 @@ The identity harness renders over a fixed real or synthetic input, hashes the re
 
 ---
 
-### test_display_tripwires.py (112 LOC)
+### test_display_tripwires.py (121 LOC)
 
 **Purpose:** Five parallel strands: janitor partition and atomic write, janitor failure logged, synthetic-user fallback noted once per turn, timestamp states, rate-limit header states.
 **Reads:** temp files only; an env var selects the source tree so the file can run against an older tree.

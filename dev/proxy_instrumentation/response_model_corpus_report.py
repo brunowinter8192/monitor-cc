@@ -9,6 +9,7 @@ LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 REPORT_DIR = Path(__file__).parent / 'md'
 REPORT_PATH = REPORT_DIR / 'response_model_corpus_report.md'
 
+
 # ORCHESTRATOR
 
 def build_response_model_report_workflow() -> None:
@@ -18,8 +19,8 @@ def build_response_model_report_workflow() -> None:
     _write_report(log_files, stats)
     print(f"[response_model_corpus_report] {stats['total']} entries across {len(log_files)} files -> {REPORT_PATH}")
 
-# FUNCTIONS
 
+# FUNCTIONS
 
 def _all_response_logs() -> list:
     return sorted(LOG_DIR.glob('*_response.jsonl'))
@@ -35,6 +36,14 @@ def _load_entries(log_files: list) -> list:
                     continue
                 entries.append(json.loads(line))
     return entries
+
+
+def _compute_stats(entries: list) -> dict:
+    acc = _init_stats_acc()
+    acc['total'] = len(entries)
+    for e in entries:
+        _accumulate_entry(e, acc)
+    return acc
 
 
 def _init_stats_acc() -> dict:
@@ -89,12 +98,19 @@ def _accumulate_entry(e: dict, acc: dict) -> None:
             acc['both_present_mismatch'] += 1
 
 
-def _compute_stats(entries: list) -> dict:
-    acc = _init_stats_acc()
-    acc['total'] = len(entries)
-    for e in entries:
-        _accumulate_entry(e, acc)
-    return acc
+def _write_report(log_files: list, stats: dict) -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    lines = []
+    lines.append('# Response Model Corpus Report')
+    lines.append('')
+    lines.append(f'Generated: {datetime.now(timezone.utc).isoformat()}Z')
+    lines.append(f'Source: `{LOG_DIR}` ({len(log_files)} `*_response.jsonl` files)')
+    lines.append('')
+    lines += _report_headline_lines(stats)
+    lines += _report_status_lines(stats)
+    lines += _report_content_header_lines(stats)
+    lines += _report_model_comparison_lines(stats)
+    REPORT_PATH.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 def _report_headline_lines(stats: dict) -> list:
@@ -174,21 +190,6 @@ def _report_model_comparison_lines(stats: dict) -> list:
         )
     lines.append('')
     return lines
-
-
-def _write_report(log_files: list, stats: dict) -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = []
-    lines.append('# Response Model Corpus Report')
-    lines.append('')
-    lines.append(f'Generated: {datetime.now(timezone.utc).isoformat()}Z')
-    lines.append(f'Source: `{LOG_DIR}` ({len(log_files)} `*_response.jsonl` files)')
-    lines.append('')
-    lines += _report_headline_lines(stats)
-    lines += _report_status_lines(stats)
-    lines += _report_content_header_lines(stats)
-    lines += _report_model_comparison_lines(stats)
-    REPORT_PATH.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 if __name__ == '__main__':

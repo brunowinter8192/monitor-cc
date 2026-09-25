@@ -37,8 +37,8 @@ _NEW_LOCATIONS.update({n: 'src.colors' for n in _COLOR_NAMES})
 _NEW_LOCATIONS.update({n: 'src.core.modes' for n in _MODE_NAMES})
 _NEW_LOCATIONS.update({n: 'src.pane_error_log' for n in _PANE_ERROR_LOG_NAMES})
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     dump = _dump_values(_NAMES)
@@ -47,10 +47,9 @@ def main():
 
 # FUNCTIONS
 
-def _resolve(name: str):
-    module_path = _NEW_LOCATIONS.get(name, 'src.constants')
-    module = importlib.import_module(module_path)
-    return getattr(module, name)
+def _dump_values(names: list) -> str:
+    values = {name: _stable_repr(_resolve(name)) for name in names}
+    return json.dumps(values, sort_keys=True)
 
 
 def _stable_repr(value) -> str:
@@ -59,9 +58,10 @@ def _stable_repr(value) -> str:
     return repr(value)
 
 
-def _dump_values(names: list) -> str:
-    values = {name: _stable_repr(_resolve(name)) for name in names}
-    return json.dumps(values, sort_keys=True)
+def _resolve(name: str):
+    module_path = _NEW_LOCATIONS.get(name, 'src.constants')
+    module = importlib.import_module(module_path)
+    return getattr(module, name)
 
 
 if __name__ == '__main__':

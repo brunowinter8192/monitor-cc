@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TREE = os.environ.get('MCFIX_TREE') or str(REPO_ROOT)
 CASES = ('janitor_partition_and_atomic_write', 'janitor_failure_logged', 'synthetic_user_noted_once', 'format_timestamp_states', 'rate_limit_header_states')
 
+
 # ORCHESTRATOR
 
 def main() -> int:
@@ -22,17 +23,20 @@ def main() -> int:
         print(f"{'PASS' if code == 0 else 'FAIL'} {case}" + ('' if code == 0 else f' :: {tail}'))
     return 0 if all(code == 0 for _, code, _ in results) else 1
 
+
 # FUNCTIONS
+
+def run_case(case: str) -> int:
+    sys.path.insert(0, TREE)
+    globals()['case_' + case]()
+    return 0
+
 
 def run_strand(case: str) -> tuple:
     proc = subprocess.run([sys.executable, __file__, '--case', case], capture_output=True, text=True, env={**os.environ, 'MCFIX_TREE': TREE})
     tail = (proc.stderr.strip().splitlines() or [''])[-1]
     return case, proc.returncode, tail
 
-def run_case(case: str) -> int:
-    sys.path.insert(0, TREE)
-    globals()['case_' + case]()
-    return 0
 
 def case_janitor_partition_and_atomic_write() -> None:
     from src.panes import log_janitor
@@ -51,6 +55,7 @@ def case_janitor_partition_and_atomic_write() -> None:
         assert not (Path(td) / 'x.jsonl.tmp').exists()
         assert len(notes) == 1 and 'kept 3 lines' in notes[0][1], notes
 
+
 def case_janitor_failure_logged() -> None:
     from src.panes import log_janitor
     errors = []
@@ -58,6 +63,7 @@ def case_janitor_failure_logged() -> None:
     with tempfile.TemporaryDirectory() as td:
         log_janitor.cleanup_old_jsonl(Path(td))
     assert errors == ['log_janitor'], errors
+
 
 def case_synthetic_user_noted_once() -> None:
     import json
@@ -81,6 +87,7 @@ def case_synthetic_user_noted_once() -> None:
         assert len(turns[0]['api_calls']) == 3, turns
         assert len(notes) == 1, notes
 
+
 def case_format_timestamp_states() -> None:
     from src.utils import format_timestamp
     from src.constants import NO_TIME_PLACEHOLDER
@@ -91,6 +98,7 @@ def case_format_timestamp_states() -> None:
     except ValueError:
         return
     raise AssertionError('malformed timestamp accepted')
+
 
 def case_rate_limit_header_states() -> None:
     from src.format.token_format import _fmt_rl_reset_time, _render_rate_limit_lines
@@ -107,6 +115,7 @@ def case_rate_limit_header_states() -> None:
     except ValueError:
         return
     raise AssertionError('malformed reset header accepted')
+
 
 if __name__ == '__main__':
     sys.exit(main())

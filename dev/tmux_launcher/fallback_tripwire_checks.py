@@ -16,8 +16,8 @@ _SOCKET = 'mcfixprobe'
 _REAL_TMUX = shutil.which('tmux')
 _SESSION = 'monitor_cc_probe'
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main():
     workdir = Path(tempfile.mkdtemp(prefix='mcfix_tmux_'))
@@ -44,7 +44,6 @@ def main():
 
 # FUNCTIONS
 
-
 def _install_shim(workdir: Path) -> None:
     shim = workdir / 'tmux'
     shim.write_text(f'#!/bin/sh\nexec {_REAL_TMUX} -L {_SOCKET} "$@"\n')
@@ -54,23 +53,6 @@ def _install_shim(workdir: Path) -> None:
 
 def _kill_server() -> None:
     subprocess.run([_REAL_TMUX, '-L', _SOCKET, 'kill-server'], capture_output=True)
-
-
-def _new_session(name: str) -> None:
-    subprocess.run([_REAL_TMUX, '-L', _SOCKET, 'new-session', '-d', '-s', name, 'sleep 300'], check=True)
-
-
-def _raises(exc_type, fn, *args) -> bool:
-    try:
-        fn(*args)
-    except exc_type:
-        return True
-    return False
-
-
-def _sweep_log(workdir: Path) -> str:
-    path = workdir / 'src' / 'logs' / 'monitor_sweep.log'
-    return path.read_text() if path.exists() else ''
 
 
 def _checks_without_server(tl, janitor, workdir: Path) -> list:
@@ -89,6 +71,23 @@ def _checks_without_server(tl, janitor, workdir: Path) -> list:
         ('failed kill is logged KILL_FAILED', 'monitor_cc_ghost age=' in log and 'KILL_FAILED' in log),
         ('failed kill reports killed False', entry['killed'] is False),
     ]
+
+
+def _sweep_log(workdir: Path) -> str:
+    path = workdir / 'src' / 'logs' / 'monitor_sweep.log'
+    return path.read_text() if path.exists() else ''
+
+
+def _raises(exc_type, fn, *args) -> bool:
+    try:
+        fn(*args)
+    except exc_type:
+        return True
+    return False
+
+
+def _new_session(name: str) -> None:
+    subprocess.run([_REAL_TMUX, '-L', _SOCKET, 'new-session', '-d', '-s', name, 'sleep 300'], check=True)
 
 
 def _checks_with_session(tl, janitor, workdir: Path) -> list:

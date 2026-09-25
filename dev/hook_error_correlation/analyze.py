@@ -1,11 +1,16 @@
 # INFRASTRUCTURE
 import json
 import os
+import sys
+from pathlib import Path
 import re
 import subprocess
 from collections import defaultdict
 from datetime import datetime, timezone
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from dev.refactoring.repo_roots import resolve_main_project
 from analyze_report import format_report
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -15,23 +20,7 @@ REPORT_DATE  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 _HOOK_PATH_RE   = re.compile(r"src/hooks/(\w+)\.py")
 _HOOK_SIGNAL_RE = re.compile(r"PreToolUse:\w+ hook error:")
 
-
-def _resolve_main_project() -> str:
-    p = SCRIPT_DIR
-    while p != os.path.dirname(p):
-        git = os.path.join(p, ".git")
-        if os.path.isfile(git):
-            content = open(git).read().strip()
-            if content.startswith("gitdir:"):
-                gitdir = content[len("gitdir:"):].strip()
-                return os.path.dirname(os.path.dirname(os.path.dirname(gitdir)))
-        elif os.path.isdir(git):
-            return p
-        p = os.path.dirname(p)
-    raise RuntimeError("Cannot find main project root")
-
-
-MAIN_PROJECT = _resolve_main_project()
+MAIN_PROJECT = resolve_main_project(SCRIPT_DIR)
 HOOKS_DIR    = os.path.join(MAIN_PROJECT, "src", "hooks")
 LOGS_DIR     = os.path.join(MAIN_PROJECT, "src", "logs")
 REPORTS_DIR  = os.path.join(SCRIPT_DIR, "reports")
@@ -40,6 +29,7 @@ LOG_ERRORS   = os.path.join(LOGS_DIR, "tool_errors.jsonl")
 
 
 # ORCHESTRATOR
+
 def analyze_workflow() -> None:
     raw_counts = load_raw_counts(LOG_ERRORS)
     errors     = load_hook_errors(LOG_ERRORS)
@@ -52,6 +42,7 @@ def analyze_workflow() -> None:
 
 
 # FUNCTIONS
+
 def load_raw_counts(path: str) -> dict:
     counts = defaultdict(int)
     with open(path) as f:
@@ -81,11 +72,6 @@ def load_hook_errors(path: str) -> list:
     return errors
 
 
-def load_fires(path: str) -> list:
-    with open(path) as f:
-        return [json.loads(l) for l in f]
-
-
 def classify_hook_status(hook_name: str) -> dict:
     py       = os.path.join(HOOKS_DIR, f"{hook_name}.py")
     disabled = os.path.join(HOOKS_DIR, f"{hook_name}.py.disabled")
@@ -94,6 +80,11 @@ def classify_hook_status(hook_name: str) -> dict:
     if os.path.exists(disabled):
         return {"status": "disabled", "stale_reason": "block→disabled (.py.disabled exists; replaced by rewrite)"}
     return {"status": "removed", "stale_reason": "removed (file gone; errors show can't-open-file)"}
+
+
+def load_fires(path: str) -> list:
+    with open(path) as f:
+        return [json.loads(l) for l in f]
 
 
 def build_stufe1(errors: list) -> list:

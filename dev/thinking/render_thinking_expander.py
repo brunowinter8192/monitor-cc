@@ -23,7 +23,9 @@ BEFORE_COMMIT_SHA = '1f0eb6ec79b2af663569e6fa9696d1fccf57a429'
 
 WIDTH_CASES = (180, 60)
 
+
 # ORCHESTRATOR
+
 def render_thinking_expander_workflow(log_path: Path) -> None:
     if not log_path.exists():
         print(f"Log not found: {log_path}")
@@ -33,24 +35,13 @@ def render_thinking_expander_workflow(log_path: Path) -> None:
     identity_rows = check_non_thinking_byte_identical(entries)
     write_report(log_path, collapsed_rows, expanded_rows, identity_rows)
 
+
 # FUNCTIONS
 
 def parse_all_entries(log_path: Path) -> list:
     entries, _pos = mod_fwd_parser._parse_forwarded_log(log_path, 0, {}, keep_last=None)
     return entries
 
-def _owning_entry_thinking_blocks(entries: list) -> list:
-    owned = []
-    for eidx, entry in enumerate(entries):
-        is_standalone = mod_format._is_standalone_entry(entry)
-        prev_same = mod_render_turn._resolve_prev_same_family(entries, eidx)
-        lines_c, keys_c = mod_render_turn._render_req_expanded(eidx, entry, entries, is_standalone, prev_same, {}, 180)
-        key_set = set(keys_c)
-        for midx, msg in enumerate(entry.get('messages') or []):
-            for bidx, blk in enumerate(msg.get('blocks', [])):
-                if blk.get('type') == 'thinking' and ('think', eidx, midx, bidx) in key_set:
-                    owned.append((eidx, midx, bidx))
-    return owned
 
 def check_thinking_toggle(entries: list) -> tuple:
     owned = _owning_entry_thinking_blocks(entries)
@@ -94,6 +85,21 @@ def check_thinking_toggle(entries: list) -> tuple:
             })
     return collapsed_rows, expanded_rows
 
+
+def _owning_entry_thinking_blocks(entries: list) -> list:
+    owned = []
+    for eidx, entry in enumerate(entries):
+        is_standalone = mod_format._is_standalone_entry(entry)
+        prev_same = mod_render_turn._resolve_prev_same_family(entries, eidx)
+        lines_c, keys_c = mod_render_turn._render_req_expanded(eidx, entry, entries, is_standalone, prev_same, {}, 180)
+        key_set = set(keys_c)
+        for midx, msg in enumerate(entry.get('messages') or []):
+            for bidx, blk in enumerate(msg.get('blocks', [])):
+                if blk.get('type') == 'thinking' and ('think', eidx, midx, bidx) in key_set:
+                    owned.append((eidx, midx, bidx))
+    return owned
+
+
 def check_non_thinking_byte_identical(entries: list) -> list:
     old_rm = _load_old_render_messages(BEFORE_COMMIT_SHA)
     samples = _find_non_thinking_samples(entries)
@@ -110,23 +116,6 @@ def check_non_thinking_byte_identical(entries: list) -> list:
         })
     return rows
 
-def _find_non_thinking_samples(entries: list) -> dict:
-    samples = {}
-    wanted = {'text', 'tool_use', 'tool_result', 'image'}
-    for eidx, entry in enumerate(entries):
-        for midx, msg in enumerate(entry.get('messages') or []):
-            for bidx, blk in enumerate(msg.get('blocks', [])):
-                btype = blk.get('type')
-                if btype in wanted and btype not in samples and blk.get('chars', 0) > 20:
-                    samples[btype] = (eidx, midx, bidx)
-        if len(samples) == len(wanted):
-            break
-    return samples
-
-def _git_show(commit_sha: str, rel_path: str) -> str:
-    return subprocess.check_output(
-        ['git', '-C', str(WORKTREE_ROOT), 'show', f'{commit_sha}:{rel_path}'], text=True
-    )
 
 def _load_old_render_messages(commit_sha: str):
     tmp_root = Path(tempfile.mkdtemp(prefix='thinking_old_snapshot_'))
@@ -142,6 +131,27 @@ def _load_old_render_messages(commit_sha: str):
     (pd_dir / 'render_messages.py').write_text(_git_show(commit_sha, 'src/proxy_display/render_messages.py'))
     sys.path.insert(0, str(tmp_root))
     return importlib.import_module('old_snapshot.src.proxy_display.render_messages')
+
+
+def _git_show(commit_sha: str, rel_path: str) -> str:
+    return subprocess.check_output(
+        ['git', '-C', str(WORKTREE_ROOT), 'show', f'{commit_sha}:{rel_path}'], text=True
+    )
+
+
+def _find_non_thinking_samples(entries: list) -> dict:
+    samples = {}
+    wanted = {'text', 'tool_use', 'tool_result', 'image'}
+    for eidx, entry in enumerate(entries):
+        for midx, msg in enumerate(entry.get('messages') or []):
+            for bidx, blk in enumerate(msg.get('blocks', [])):
+                btype = blk.get('type')
+                if btype in wanted and btype not in samples and blk.get('chars', 0) > 20:
+                    samples[btype] = (eidx, midx, bidx)
+        if len(samples) == len(wanted):
+            break
+    return samples
+
 
 def write_report(log_path: Path, collapsed_rows: list, expanded_rows: list, identity_rows: list) -> None:
     n_collapsed_ok = sum(1 for r in collapsed_rows if r['exactly_one_line'] and r['no_leak'])

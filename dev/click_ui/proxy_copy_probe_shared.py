@@ -12,17 +12,18 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
+# FUNCTIONS
+
 def _turn_cache():
     from src.proxy_display.turn_cache import TurnCache
     return TurnCache()
+
 
 def check(label, condition):
     _RESULTS.append((label, bool(condition)))
     print(f"  {_PASS if condition else _FAIL}  {label}")
     return condition
 
-
-# FUNCTIONS
 
 def _patch_clipboard(mod):
     captured = []

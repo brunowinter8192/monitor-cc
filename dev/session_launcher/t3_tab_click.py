@@ -25,6 +25,7 @@ _EXPECTED_TEXT = {
 }
 _PIXEL_DIFF_LIMIT = 0.08
 
+
 # ORCHESTRATOR
 
 def main() -> None:
@@ -32,7 +33,7 @@ def main() -> None:
     if args.case:
         _run_case_in_child(args.case)
         return
-    names = sorted(_CASES)
+    names = sorted(cases())
     with ThreadPoolExecutor(max_workers=len(names)) as pool:
         results = list(pool.map(_spawn_case, names))
     text = _build_report(results)
@@ -42,6 +43,7 @@ def main() -> None:
     if any(not r['ok'] for r in results):
         sys.exit(1)
 
+
 # FUNCTIONS
 
 def _parse_args() -> argparse.Namespace:
@@ -49,58 +51,28 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument('--case')
     return p.parse_args()
 
-def _spawn_case(name: str) -> dict:
-    r = subprocess.run([sys.executable, '-m', 'dev.session_launcher.t3_tab_click', '--case', name],
-                       capture_output=True, text=True, cwd=str(_ROOT), timeout=180)
-    lines = [l for l in r.stdout.splitlines() if l.startswith('{')]
-    if r.returncode != 0 or not lines:
-        return {'name': name, 'ok': False, 'detail': f'rc={r.returncode} stderr={r.stderr.strip()[-400:]}'}
-    out = json.loads(lines[-1])
-    out['name'] = name
-    return out
 
 def _run_case_in_child(name: str) -> None:
     try:
         isolate_home()
-        detail = _CASES[name]()
+        detail = cases()[name]()
         print(json.dumps({'ok': True, 'detail': detail}))
     except AssertionError as exc:
         print(json.dumps({'ok': False, 'detail': f'ASSERT {exc}'}))
     except Exception as exc:
         print(json.dumps({'ok': False, 'detail': f'ERROR {exc!r}'}))
 
-def _imp(name: str):
-    return importlib.import_module(f'src.menubar.{name}')
 
-class _FakeSessions:
-    def refresh(self):
-        return []
+def cases():
+    return {
+        'pieces_and_keys': _case_pieces_and_keys,
+        'header_structure': _case_header_structure,
+        'visual_equivalence': _case_visual_equivalence,
+        'wiring': _case_wiring,
+        'click_routing': _case_click_routing,
+        'header_recentering': _case_header_recentering,
+    }
 
-    @property
-    def bg_by_project(self):
-        return {}
-
-class _FakeApp:
-    def __init__(self):
-        self.settings = SimpleNamespace(panel_width=422, panel_min_height=460)
-        self._panel_controller = None
-        self.sessions = _FakeSessions()
-
-def _build_headers():
-    app = _FakeApp()
-    pm = _imp('panel_manager').PanelManager(app)
-    rag = _imp('rag_controller').RagController(app)
-    models = _imp('model_controller').ModelController(app)
-    launch = _imp('launch_controller').LaunchController(app)
-    headers = [pm._widgets.header_view, rag._rag_header, models._models_header, launch._launch_header]
-    return app, pm, rag, models, launch, headers
-
-def _parts(strip):
-    header = strip.subviews()[0]
-    return sorted(header.subviews(), key=lambda v: v.frame().origin.x)
-
-def _text_of(view) -> str:
-    return str(view.attributedTitle().string() if hasattr(view, 'attributedTitle') else view.attributedStringValue().string())
 
 def _case_pieces_and_keys() -> str:
     pt = _imp('panel_tabs')
@@ -112,6 +84,11 @@ def _case_pieces_and_keys() -> str:
         assert pt.TAB_SEPARATOR.join(pieces) == _EXPECTED_TEXT[label]
     assert tuple(_imp('panel_lifecycle')._RING) == _KEYS, 'ring is not derived from TAB_KEYS'
     return f'header text exact for all 4 active tabs, TAB_KEYS {pt.TAB_KEYS}, ring == TAB_KEYS'
+
+
+def _imp(name: str):
+    return importlib.import_module(f'src.menubar.{name}')
+
 
 def _case_header_structure() -> str:
     app, pm, rag, models, launch, headers = _build_headers()
@@ -131,6 +108,52 @@ def _case_header_structure() -> str:
         assert all(b.isBordered() is False for b in buttons)
         out.append(f'{label}: 4 buttons tags 0-3 + 3 separators, text {_text_of(parts[0])}...')
     return ' | '.join(out)
+
+
+def _build_headers():
+    app = _FakeApp()
+    pm = _imp('panel_manager').PanelManager(app)
+    rag = _imp('rag_controller').RagController(app)
+    models = _imp('model_controller').ModelController(app)
+    launch = _imp('launch_controller').LaunchController(app)
+    headers = [pm._widgets.header_view, rag._rag_header, models._models_header, launch._launch_header]
+    return app, pm, rag, models, launch, headers
+
+
+class _FakeApp:
+    def __init__(self):
+        self.settings = SimpleNamespace(panel_width=422, panel_min_height=460)
+        self._panel_controller = None
+        self.sessions = _FakeSessions()
+
+
+class _FakeSessions:
+    def refresh(self):
+        return []
+
+    @property
+    def bg_by_project(self):
+        return {}
+
+
+def _parts(strip):
+    header = strip.subviews()[0]
+    return sorted(header.subviews(), key=lambda v: v.frame().origin.x)
+
+
+def _text_of(view) -> str:
+    return str(view.attributedTitle().string() if hasattr(view, 'attributedTitle') else view.attributedStringValue().string())
+
+
+def _case_visual_equivalence() -> str:
+    out = []
+    for label in _LABELS:
+        (o0, o1), (n0, n1), ratio, size = _pixel_stats(label)
+        assert abs(o0 - n0) <= 1 and abs(o1 - n1) <= 1, f'{label}: ink old {(o0, o1)} new {(n0, n1)}'
+        assert ratio < _PIXEL_DIFF_LIMIT, f'{label}: {ratio:.3f} of pixels differ'
+        out.append(f'{label}: ink px old {o0}-{o1} new {n0}-{n1} of {size[0]}, {ratio * 100:.1f}% pixels differ')
+    return ' | '.join(out)
+
 
 def _pixel_stats(active: str):
     from AppKit import NSAttributedString, NSFontAttributeName, NSPanel
@@ -164,14 +187,6 @@ def _pixel_stats(active: str):
                 diff += 1
     return ink(a), ink(b), diff / float(w * h), (w, h)
 
-def _case_visual_equivalence() -> str:
-    out = []
-    for label in _LABELS:
-        (o0, o1), (n0, n1), ratio, size = _pixel_stats(label)
-        assert abs(o0 - n0) <= 1 and abs(o1 - n1) <= 1, f'{label}: ink old {(o0, o1)} new {(n0, n1)}'
-        assert ratio < _PIXEL_DIFF_LIMIT, f'{label}: {ratio:.3f} of pixels differ'
-        out.append(f'{label}: ink px old {o0}-{o1} new {n0}-{n1} of {size[0]}, {ratio * 100:.1f}% pixels differ')
-    return ' | '.join(out)
 
 def _case_wiring() -> str:
     app_mod = _imp('app')
@@ -199,33 +214,11 @@ def _case_wiring() -> str:
             assert str(b.action()).strip("b'") == 'selectTab:', b.action()
     return '_ensure_wired left all 16 header buttons (4 headers x 4) with the panel controller as target and action selectTab:'
 
-def _case_header_recentering() -> str:
-    from Foundation import NSMakeSize
-    panel = _imp('panel')
-    out = []
-    for label in _LABELS:
-        strip = panel._make_tab_header(label, 422)
-        header = strip.subviews()[0]
-        fixed_width = header.frame().size.width
-        for new_width in (422 - 22, 522 - 22, 322 - 22):
-            strip.setFrameSize_(NSMakeSize(new_width, strip.frame().size.height))
-            center = header.frame().origin.x + header.frame().size.width / 2.0
-            assert abs(center - new_width / 2.0) <= 0.75, f'{label}: width {new_width} header center {center}'
-            assert abs(header.frame().size.width - fixed_width) < 1.0, f'{label}: header width changed to {header.frame().size.width}'
-        out.append(label)
-    return f'header stays centered in the top-bar strip when the panel width changes (422, 522, 322): {out}'
 
 class _AnyAttr:
     def __getattr__(self, name):
         return lambda *a, **k: _AnyAttr()
 
-class _SyncQueue:
-    @staticmethod
-    def mainQueue():
-        return _SyncQueue()
-
-    def addOperationWithBlock_(self, block):
-        block()
 
 def _case_click_routing() -> str:
     app_mod = _imp('app')
@@ -268,14 +261,43 @@ def _case_click_routing() -> str:
         assert calls == [], f'click with no open tab routed: {calls}'
     return f'{checked} clicks (4 open tabs x 4 buttons): 12 switch to (current, target) exactly once, 4 active-tab clicks do nothing; no open tab -> nothing'
 
-_CASES = {
-    'pieces_and_keys': _case_pieces_and_keys,
-    'header_structure': _case_header_structure,
-    'visual_equivalence': _case_visual_equivalence,
-    'wiring': _case_wiring,
-    'click_routing': _case_click_routing,
-    'header_recentering': _case_header_recentering,
-}
+
+class _SyncQueue:
+    @staticmethod
+    def mainQueue():
+        return _SyncQueue()
+
+    def addOperationWithBlock_(self, block):
+        block()
+
+
+def _case_header_recentering() -> str:
+    from Foundation import NSMakeSize
+    panel = _imp('panel')
+    out = []
+    for label in _LABELS:
+        strip = panel._make_tab_header(label, 422)
+        header = strip.subviews()[0]
+        fixed_width = header.frame().size.width
+        for new_width in (422 - 22, 522 - 22, 322 - 22):
+            strip.setFrameSize_(NSMakeSize(new_width, strip.frame().size.height))
+            center = header.frame().origin.x + header.frame().size.width / 2.0
+            assert abs(center - new_width / 2.0) <= 0.75, f'{label}: width {new_width} header center {center}'
+            assert abs(header.frame().size.width - fixed_width) < 1.0, f'{label}: header width changed to {header.frame().size.width}'
+        out.append(label)
+    return f'header stays centered in the top-bar strip when the panel width changes (422, 522, 322): {out}'
+
+
+def _spawn_case(name: str) -> dict:
+    r = subprocess.run([sys.executable, '-m', 'dev.session_launcher.t3_tab_click', '--case', name],
+                       capture_output=True, text=True, cwd=str(_ROOT), timeout=180)
+    lines = [l for l in r.stdout.splitlines() if l.startswith('{')]
+    if r.returncode != 0 or not lines:
+        return {'name': name, 'ok': False, 'detail': f'rc={r.returncode} stderr={r.stderr.strip()[-400:]}'}
+    out = json.loads(lines[-1])
+    out['name'] = name
+    return out
+
 
 def _build_report(results) -> str:
     lines = ['# t3_tab_click report', '',
@@ -287,6 +309,7 @@ def _build_report(results) -> str:
     lines.append('')
     lines.append(f'RESULT: {"PASS" if all(r["ok"] for r in results) else "FAIL"}')
     return '\n'.join(lines)
+
 
 if __name__ == '__main__':
     main()

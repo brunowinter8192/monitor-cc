@@ -5,21 +5,15 @@ from pathlib import Path
 
 from green_overlay_probe_diff import _get_text, _strip_cache_control, _normalize_msg_shape, _fn_for_inject
 
-_AREA_ROOT = Path(__file__).resolve().parent
-while _AREA_ROOT.name != 'proxy_dual_log':
-    _AREA_ROOT = _AREA_ROOT.parent
+_AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 
 
-def _main_checkout_root(project_root: Path) -> Path:
-    parts = project_root.parts
-    if len(parts) >= 3 and parts[-3] == '.claude' and parts[-2] == 'worktrees':
-        return Path(*parts[:-3])
-    return project_root
-
+_PROJECT_PARTS = _PROJECT_ROOT.parts
+_MAIN_CHECKOUT_ROOT = Path(*_PROJECT_PARTS[:-3]) if len(_PROJECT_PARTS) >= 3 and _PROJECT_PARTS[-3] == '.claude' and _PROJECT_PARTS[-2] == 'worktrees' else _PROJECT_ROOT
 
 _log_from_main = (_PROJECT_ROOT / "src" / "logs" / "dual_log").resolve()
-_log_from_wt   = (_main_checkout_root(_PROJECT_ROOT) / "src" / "logs" / "dual_log").resolve()
+_log_from_wt   = (_MAIN_CHECKOUT_ROOT / "src" / "logs" / "dual_log").resolve()
 LOG_DIR  = _log_from_main if _log_from_main.exists() else _log_from_wt
 
 # FUNCTIONS

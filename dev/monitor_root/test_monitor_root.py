@@ -15,8 +15,8 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
-# ORCHESTRATOR
 
+# ORCHESTRATOR
 
 def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == '--case':
@@ -30,14 +30,13 @@ def main() -> None:
 
 # FUNCTIONS
 
-
-def collect_cases() -> list:
-    return sorted(n[len('case_'):] for n in globals() if n.startswith('case_'))
-
-
 def run_case(name: str) -> None:
     globals()['case_' + name]()
     print('PASS')
+
+
+def collect_cases() -> list:
+    return sorted(n[len('case_'):] for n in globals() if n.startswith('case_'))
 
 
 def spawn_case(name: str) -> tuple:

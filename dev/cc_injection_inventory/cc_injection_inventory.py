@@ -71,6 +71,17 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _resolve_log_files(logs_glob: str | None) -> tuple:
+    if logs_glob:
+        return sorted(Path(p) for p in globmod.glob(logs_glob)), []
+    all_files = sorted(_default_log_dir().glob(_DEFAULT_GLOB))
+    task_name = _current_task_name()
+    included, excluded = [], []
+    for f in all_files:
+        (excluded if _is_own_live_session_log(f, task_name) else included).append(f)
+    return included, excluded
+
+
 def _default_log_dir() -> Path:
     local = _WORKTREE_ROOT / "src" / "logs" / "dual_log"
     if local.exists():
@@ -92,17 +103,6 @@ def _is_own_live_session_log(path: Path, task_name: str | None) -> bool:
     if task_name is None:
         return False
     return path.name.startswith(_WORKER_LOG_PREFIX) and task_name in path.name
-
-
-def _resolve_log_files(logs_glob: str | None) -> tuple:
-    if logs_glob:
-        return sorted(Path(p) for p in globmod.glob(logs_glob)), []
-    all_files = sorted(_default_log_dir().glob(_DEFAULT_GLOB))
-    task_name = _current_task_name()
-    included, excluded = [], []
-    for f in all_files:
-        (excluded if _is_own_live_session_log(f, task_name) else included).append(f)
-    return included, excluded
 
 
 if __name__ == "__main__":

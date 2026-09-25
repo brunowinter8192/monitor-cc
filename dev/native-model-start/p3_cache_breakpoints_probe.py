@@ -21,66 +21,37 @@ SESSIONS = [
     ('websearch', 'api_requests_opus_websearch_1786052022'),
 ]
 
+
+# ORCHESTRATOR
+
+def main() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    lines = ['# Surface 1 — cache breakpoint placement (issue #63, CC 2.1.223)', '']
+    lines.append('Real `ProxyAddon.request()` replay of all recorded requests, in chronological order, '
+                  'per session. Cache-control positions inspected on the actual bytes about to be sent.')
+    lines.append('')
+
+    all_analyses = {}
+    import tempfile
+    for tag, stem in SESSIONS:
+        with tempfile.TemporaryDirectory() as tmp_root:
+            records = _replay_session(tag, stem, tmp_root)
+        analysis = _analyze(records)
+        busts_detail = _classify_busts(records, analysis['prefix_busts'])
+        all_analyses[tag] = (records, analysis, busts_detail)
+        lines.extend(_session_report_lines(tag, stem, records, analysis, busts_detail))
+
+    stats = _overall_stats(all_analyses)
+    lines.extend(_verdict_report_lines(stats))
+
+    REPORT_PATH.write_text('\n'.join(lines))
+    print(f'Report written: {REPORT_PATH}')
+    print(f"Verdict: {stats['verdict']}  (bootstrap={stats['total_bootstrap']}, tail_edit={stats['total_tail']}, "
+          f"deep_history={stats['total_deep']}, mid_turn_marker={stats['total_marker']}, "
+          f"bp1_missing={stats['total_bp1_missing']}, bp2_missing={stats['total_bp2_missing']})")
+
+
 # FUNCTIONS
-
-class _FakeHeaders(dict):
-    def get(self, k, default=None):
-        return super().get(k.lower(), default) if isinstance(k, str) else default
-
-    def pop(self, k, default=None):
-        return dict.pop(self, k.lower(), default)
-
-
-class _FakeRequest:
-    def __init__(self, payload):
-        self.method = "POST"
-        self.pretty_host = "api.anthropic.com"
-        self.path = "/v1/messages"
-        self.headers = _FakeHeaders()
-        self.content = json.dumps(payload).encode("utf-8")
-
-
-class _FakeFlow:
-    def __init__(self, payload, flow_id):
-        self.request = _FakeRequest(payload)
-        self.metadata = {}
-        self.id = flow_id
-
-
-def _load_session_requests(stem: str) -> list:
-    path = LOG_DIR / f'{stem}_original.jsonl'
-    out = []
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            e = json.loads(line)
-            out.append((e.get('flow_id', ''), e.get('payload', {})))
-    return out
-
-
-def _cc_indices(items) -> list:
-    return [i for i, x in enumerate(items) if isinstance(x, dict) and 'cache_control' in x]
-
-
-def _msg_has_cc(msg: dict) -> bool:
-    content = msg.get('content')
-    if isinstance(content, list):
-        return any(isinstance(b, dict) and 'cache_control' in b for b in content)
-    return False
-
-
-def _msg_content_no_cc(msg: dict):
-    content = msg.get('content')
-    if isinstance(content, list):
-        stripped = [
-            ({k: v for k, v in b.items() if k != 'cache_control'} if isinstance(b, dict) else b)
-            for b in content
-        ]
-        if len(stripped) == 1 and isinstance(stripped[0], dict) \
-                and set(stripped[0].keys()) == {'type', 'text'} and stripped[0]['type'] == 'text':
-            return stripped[0]['text']
-        return stripped
-    return content
-
 
 def _replay_session(tag: str, stem: str, tmp_root: str) -> list:
     from src.proxy.addon import ProxyAddon, _derive_worker_context
@@ -109,6 +80,51 @@ def _replay_session(tag: str, stem: str, tmp_root: str) -> list:
                 'messages': messages,
             })
     return records
+
+
+def _load_session_requests(stem: str) -> list:
+    path = LOG_DIR / f'{stem}_original.jsonl'
+    out = []
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            e = json.loads(line)
+            out.append((e.get('flow_id', ''), e.get('payload', {})))
+    return out
+
+
+class _FakeFlow:
+    def __init__(self, payload, flow_id):
+        self.request = _FakeRequest(payload)
+        self.metadata = {}
+        self.id = flow_id
+
+
+class _FakeRequest:
+    def __init__(self, payload):
+        self.method = "POST"
+        self.pretty_host = "api.anthropic.com"
+        self.path = "/v1/messages"
+        self.headers = _FakeHeaders()
+        self.content = json.dumps(payload).encode("utf-8")
+
+
+class _FakeHeaders(dict):
+    def get(self, k, default=None):
+        return super().get(k.lower(), default) if isinstance(k, str) else default
+
+    def pop(self, k, default=None):
+        return dict.pop(self, k.lower(), default)
+
+
+def _cc_indices(items) -> list:
+    return [i for i, x in enumerate(items) if isinstance(x, dict) and 'cache_control' in x]
+
+
+def _msg_has_cc(msg: dict) -> bool:
+    content = msg.get('content')
+    if isinstance(content, list):
+        return any(isinstance(b, dict) and 'cache_control' in b for b in content)
+    return False
 
 
 def _analyze(records: list) -> dict:
@@ -147,6 +163,20 @@ def _analyze(records: list) -> dict:
         'bp2_missing_seqs': bp2_missing_despite_tools,
         'prefix_busts': prefix_busts,
     }
+
+
+def _msg_content_no_cc(msg: dict):
+    content = msg.get('content')
+    if isinstance(content, list):
+        stripped = [
+            ({k: v for k, v in b.items() if k != 'cache_control'} if isinstance(b, dict) else b)
+            for b in content
+        ]
+        if len(stripped) == 1 and isinstance(stripped[0], dict) \
+                and set(stripped[0].keys()) == {'type', 'text'} and stripped[0]['type'] == 'text':
+            return stripped[0]['text']
+        return stripped
+    return content
 
 
 def _classify_busts(records: list, busts: list) -> list:
@@ -248,34 +278,6 @@ def _verdict_report_lines(stats: dict) -> list:
                  f'**real finding, THE interaction this probe was built to check**')
     lines.append('')
     return lines
-
-
-# ORCHESTRATOR
-def main() -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# Surface 1 — cache breakpoint placement (issue #63, CC 2.1.223)', '']
-    lines.append('Real `ProxyAddon.request()` replay of all recorded requests, in chronological order, '
-                  'per session. Cache-control positions inspected on the actual bytes about to be sent.')
-    lines.append('')
-
-    all_analyses = {}
-    import tempfile
-    for tag, stem in SESSIONS:
-        with tempfile.TemporaryDirectory() as tmp_root:
-            records = _replay_session(tag, stem, tmp_root)
-        analysis = _analyze(records)
-        busts_detail = _classify_busts(records, analysis['prefix_busts'])
-        all_analyses[tag] = (records, analysis, busts_detail)
-        lines.extend(_session_report_lines(tag, stem, records, analysis, busts_detail))
-
-    stats = _overall_stats(all_analyses)
-    lines.extend(_verdict_report_lines(stats))
-
-    REPORT_PATH.write_text('\n'.join(lines))
-    print(f'Report written: {REPORT_PATH}')
-    print(f"Verdict: {stats['verdict']}  (bootstrap={stats['total_bootstrap']}, tail_edit={stats['total_tail']}, "
-          f"deep_history={stats['total_deep']}, mid_turn_marker={stats['total_marker']}, "
-          f"bp1_missing={stats['total_bp1_missing']}, bp2_missing={stats['total_bp2_missing']})")
 
 
 if __name__ == '__main__':

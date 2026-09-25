@@ -10,6 +10,7 @@ _HANDLERS = {
     'handle_cycle_main_thinking': 'cycle_main_thinking', 'handle_cycle_worker_thinking': 'cycle_worker_thinking',
 }
 
+
 # ORCHESTRATOR
 
 def main() -> None:
@@ -22,15 +23,8 @@ def main() -> None:
         failures_logged(cls, mlog)
         flash_defect_visible(mc, cls, mlog)
 
-# FUNCTIONS
 
-class _Fake:
-    def __init__(self, cls):
-        self._pending = mock.MagicMock()
-        self._buttons = mock.MagicMock()
-        self.app = mock.MagicMock()
-        if hasattr(cls, '_guarded_cycle'):
-            self._guarded_cycle = lambda label, fn: cls._guarded_cycle(self, label, fn)
+# FUNCTIONS
 
 def dispatch_and_refresh(cls) -> None:
     for handler, pending_method in _HANDLERS.items():
@@ -43,6 +37,16 @@ def dispatch_and_refresh(cls) -> None:
     cls.handle_apply(fake)
     check('g7.handle_apply.writes_normal', [c[0] for c in fake._pending.method_calls] == ['write'])
 
+
+class _Fake:
+    def __init__(self, cls):
+        self._pending = mock.MagicMock()
+        self._buttons = mock.MagicMock()
+        self.app = mock.MagicMock()
+        if hasattr(cls, '_guarded_cycle'):
+            self._guarded_cycle = lambda label, fn: cls._guarded_cycle(self, label, fn)
+
+
 def failures_logged(cls, mlog) -> None:
     labels = {}
     for handler, pending_method in _HANDLERS.items():
@@ -54,6 +58,7 @@ def failures_logged(cls, mlog) -> None:
     fake._pending.write.side_effect = OSError('disk')
     cls.handle_apply(fake)
     check('g7.handle_apply.failure_logged', 'model selection apply failed: OSError' in log_text(mlog))
+
 
 def flash_defect_visible(mc, cls, mlog) -> None:
     fake = _Fake(cls)

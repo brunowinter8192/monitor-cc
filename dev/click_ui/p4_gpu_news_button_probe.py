@@ -18,56 +18,29 @@ _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
-def check(label, condition):
-    _RESULTS.append((label, bool(condition)))
-    print(f"  {_PASS if condition else _FAIL}  {label}")
-    return condition
+# ORCHESTRATOR
+
+def run_probe_workflow():
+    print("=" * 70)
+    print("gpu + news pane button probe")
+    print("=" * 70)
+    test_gpu_digit_key_covered_by_existing_button()
+    test_gpu_refresh_button()
+    test_gpu_refresh_button_width_sweep()
+    test_news_refresh_button()
+    test_news_refresh_button_width_sweep()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+
+    _write_report(passed, total)
+    return passed == total
 
 
 # FUNCTIONS
-
-def _patch_popen(mod):
-    captured = []
-
-    class _FakePopen:
-        def __init__(self, *args, **kwargs):
-            captured.append((args, kwargs))
-
-    mod.subprocess.Popen = _FakePopen
-    return captured
-
-
-def _make_preset(name, running, healthy, port=None, pid=None):
-    return {
-        'name': name, 'kind': 'preset', 'running': running, 'healthy': healthy,
-        'port': port, 'pid': pid, 'rss_mb': None, 'idle_seconds': None,
-        'idle_state_missing': False, 'model_name': None,
-    }
-
-
-def _dispatch_gpu_click(col, row):
-    for (sc, ec, er), (action, target) in list(mod_gpu._button_regions.items()):
-        if row == er and sc <= col <= ec:
-            if action == 'refresh':
-                return 'refresh'
-            if target not in mod_gpu._toggle_state:
-                mod_gpu._fire_button(action, target)
-                return (action, target)
-            return None
-    return None
-
-
-def _dispatch_news_click(col, row):
-    for (sc, ec, er), (action, target) in list(mod_news._button_regions.items()):
-        if row == er and sc <= col <= ec:
-            if action == 'refresh':
-                return 'refresh'
-            if not mod_news._is_running():
-                mod_news._fire_pipeline()
-                return 'run_pipeline'
-            return None
-    return None
-
 
 def test_gpu_digit_key_covered_by_existing_button():
     orig_names = mod_gpu.PRESET_NAMES
@@ -117,6 +90,43 @@ def test_gpu_digit_key_covered_by_existing_button():
     finally:
         mod_gpu.PRESET_NAMES = orig_names
         mod_gpu._toggle_state.clear()
+
+
+def _make_preset(name, running, healthy, port=None, pid=None):
+    return {
+        'name': name, 'kind': 'preset', 'running': running, 'healthy': healthy,
+        'port': port, 'pid': pid, 'rss_mb': None, 'idle_seconds': None,
+        'idle_state_missing': False, 'model_name': None,
+    }
+
+
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
+
+
+def _patch_popen(mod):
+    captured = []
+
+    class _FakePopen:
+        def __init__(self, *args, **kwargs):
+            captured.append((args, kwargs))
+
+    mod.subprocess.Popen = _FakePopen
+    return captured
+
+
+def _dispatch_gpu_click(col, row):
+    for (sc, ec, er), (action, target) in list(mod_gpu._button_regions.items()):
+        if row == er and sc <= col <= ec:
+            if action == 'refresh':
+                return 'refresh'
+            if target not in mod_gpu._toggle_state:
+                mod_gpu._fire_button(action, target)
+                return (action, target)
+            return None
+    return None
 
 
 def test_gpu_refresh_button():
@@ -205,6 +215,18 @@ def test_news_refresh_button():
           '[refresh]' not in narrow_output.split('\n')[0])
 
 
+def _dispatch_news_click(col, row):
+    for (sc, ec, er), (action, target) in list(mod_news._button_regions.items()):
+        if row == er and sc <= col <= ec:
+            if action == 'refresh':
+                return 'refresh'
+            if not mod_news._is_running():
+                mod_news._fire_pipeline()
+                return 'run_pipeline'
+            return None
+    return None
+
+
 def test_news_refresh_button_width_sweep():
     status = {'doc_count': 5, 'chunk_count': 50, 'last_run_ts': '2026-01-01 00:00:00'}
     no_button_widths = [5, 20, 37]
@@ -225,28 +247,6 @@ def test_news_refresh_button_width_sweep():
         if w < 86:
             check(f"news width={w}: rule shrank below its 52-char cap to make room",
                   0 < rule_chars < 52)
-
-
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("gpu + news pane button probe")
-    print("=" * 70)
-    test_gpu_digit_key_covered_by_existing_button()
-    test_gpu_refresh_button()
-    test_gpu_refresh_button_width_sweep()
-    test_news_refresh_button()
-    test_news_refresh_button_width_sweep()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-
-    _write_report(passed, total)
-    return passed == total
 
 
 def _write_report(passed, total):

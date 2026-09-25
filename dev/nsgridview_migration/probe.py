@@ -37,18 +37,64 @@ _COL3_X = _COL0_W + _COL_SPC + _COL1_W + _COL_SPC + _COL2_W + _COL_SPC
 _MENLO = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
 
 
+# ORCHESTRATOR
+
+def main():
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+
+    app = NSApplication.sharedApplication()
+    app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+
+    ctrl = _ClickController.alloc().init()
+    panel, _grid = _make_panel(ctrl)
+
+    screen = NSScreen.mainScreen()
+    if screen is not None:
+        sf = screen.visibleFrame()
+        px = sf.origin.x + sf.size.width / 2.0 - PANEL_W / 2.0
+        py = sf.origin.y + sf.size.height - PANEL_H - 40
+        panel.setFrame_display_(NSMakeRect(px, py, PANEL_W, PANEL_H), False)
+
+    _print_startup_report()
+
+    panel.orderFront_(None)
+    app.run()
+
+
 # FUNCTIONS
 
+class _ClickController(NSObject):
+    def rowClicked_(self, sender):
+        tag = sender.tag()
+        print(f'row {tag} clicked  (tag={tag})', flush=True)
 
-def _cell_btn(text: str, color=None) -> NSButton:
-    attrs = {NSFontAttributeName: _MENLO()}
-    if color:
-        attrs[NSForegroundColorAttributeName] = color
-    btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 60, ROW_H))
-    btn.setBordered_(False)
-    btn.setButtonType_(7)
-    btn.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(text, attrs))
-    return btn
+
+def _make_panel(controller):
+    panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+        NSMakeRect(0, 0, PANEL_W, PANEL_H),
+        NSWindowStyleMaskNonactivatingPanel, 2, True)
+    panel.setLevel_(NSStatusWindowLevel)
+    panel.setCollectionBehavior_(
+        NSWindowCollectionBehaviorCanJoinAllSpaces |
+        NSWindowCollectionBehaviorIgnoresCycle)
+    panel.setHasShadow_(True)
+    panel.setOpaque_(False)
+    panel.enableCursorRects()
+
+    cv = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_W, PANEL_H))
+    panel.setContentView_(cv)
+
+    grid = _build_grid(controller)
+    grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
+    cv.addSubview_(grid)
+    cv.leadingAnchor().constraintEqualToAnchor_constant_(
+        grid.leadingAnchor(), -GRID_X).setActive_(True)
+    cv.trailingAnchor().constraintEqualToAnchor_constant_(
+        grid.trailingAnchor(), GRID_INSET_R).setActive_(True)
+    grid.topAnchor().constraintEqualToAnchor_constant_(
+        cv.topAnchor(), float(GRID_Y_BTOP)).setActive_(True)
+
+    return panel, grid
 
 
 def _build_grid(controller) -> NSGridView:
@@ -92,32 +138,15 @@ def _build_grid(controller) -> NSGridView:
     return grid
 
 
-def _make_panel(controller):
-    panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-        NSMakeRect(0, 0, PANEL_W, PANEL_H),
-        NSWindowStyleMaskNonactivatingPanel, 2, True)
-    panel.setLevel_(NSStatusWindowLevel)
-    panel.setCollectionBehavior_(
-        NSWindowCollectionBehaviorCanJoinAllSpaces |
-        NSWindowCollectionBehaviorIgnoresCycle)
-    panel.setHasShadow_(True)
-    panel.setOpaque_(False)
-    panel.enableCursorRects()
-
-    cv = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_W, PANEL_H))
-    panel.setContentView_(cv)
-
-    grid = _build_grid(controller)
-    grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
-    cv.addSubview_(grid)
-    cv.leadingAnchor().constraintEqualToAnchor_constant_(
-        grid.leadingAnchor(), -GRID_X).setActive_(True)
-    cv.trailingAnchor().constraintEqualToAnchor_constant_(
-        grid.trailingAnchor(), GRID_INSET_R).setActive_(True)
-    grid.topAnchor().constraintEqualToAnchor_constant_(
-        cv.topAnchor(), float(GRID_Y_BTOP)).setActive_(True)
-
-    return panel, grid
+def _cell_btn(text: str, color=None) -> NSButton:
+    attrs = {NSFontAttributeName: _MENLO()}
+    if color:
+        attrs[NSForegroundColorAttributeName] = color
+    btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 60, ROW_H))
+    btn.setBordered_(False)
+    btn.setButtonType_(7)
+    btn.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(text, attrs))
+    return btn
 
 
 def _print_startup_report() -> None:
@@ -157,35 +186,5 @@ def _print_startup_report() -> None:
     print(flush=True)
 
 
-# ORCHESTRATOR
-
-
-class _ClickController(NSObject):
-    def rowClicked_(self, sender):
-        tag = sender.tag()
-        print(f'row {tag} clicked  (tag={tag})', flush=True)
-
-
-def main():
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
-
-    app = NSApplication.sharedApplication()
-    app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-
-    ctrl = _ClickController.alloc().init()
-    panel, _grid = _make_panel(ctrl)
-
-    screen = NSScreen.mainScreen()
-    if screen is not None:
-        sf = screen.visibleFrame()
-        px = sf.origin.x + sf.size.width / 2.0 - PANEL_W / 2.0
-        py = sf.origin.y + sf.size.height - PANEL_H - 40
-        panel.setFrame_display_(NSMakeRect(px, py, PANEL_W, PANEL_H), False)
-
-    _print_startup_report()
-
-    panel.orderFront_(None)
-    app.run()
-
-
-main()
+if __name__ == '__main__':
+    main()

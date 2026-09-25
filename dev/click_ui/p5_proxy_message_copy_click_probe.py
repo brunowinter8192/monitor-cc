@@ -30,6 +30,7 @@ from proxy_copy_block_probe import (
     test_width_guard_suppresses_block_row_symbol,
 )
 
+
 # ORCHESTRATOR
 
 def run_probe_workflow():
@@ -61,6 +62,8 @@ def run_probe_workflow():
     _write_report(passed, total)
     return passed == total
 
+
+# FUNCTIONS
 
 def _write_report(passed, total):
     md_dir = WORKTREE_ROOT / "dev" / "click_ui" / "md"

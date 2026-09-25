@@ -17,6 +17,7 @@ Usage:
     python3 dev/session_analysis/04_cache_validation.py <proxy_log.jsonl> [--limit N]
 """
 
+
 # ORCHESTRATOR
 
 def main():
@@ -44,6 +45,7 @@ def main():
     print(f"Total requests: {len(entries)}")
     print(f"At risk (mods before BP): {total_at_risk} ({total_at_risk/len(entries)*100:.1f}%)" if entries else "")
 
+
 # FUNCTIONS
 
 def _load_entries(log_path: Path) -> list:
@@ -59,67 +61,6 @@ def _load_entries(log_path: Path) -> list:
                 entries.append(entry)
     return entries
 
-def _find_cc_breakpoints(system: list, tools: list, messages: list) -> list:
-    cc_bps = []
-    for i, b in enumerate(system):
-        if isinstance(b, dict) and b.get("cache_control"):
-            cc_bps.append(f"sys[{i}]")
-    for i, t in enumerate(tools):
-        if isinstance(t, dict) and t.get("cache_control"):
-            cc_bps.append(f"t[{i}]")
-    for i, m in enumerate(messages):
-        if m.get("cache_control"):
-            cc_bps.append(f"m[{i}]top")
-        content = m.get("content", "")
-        if isinstance(content, list):
-            for j, b in enumerate(content):
-                if isinstance(b, dict) and b.get("cache_control"):
-                    cc_bps.append(f"m[{i}]")
-    return cc_bps
-
-def _find_modifiable_indices(messages: list) -> list:
-    mod_indices = []
-    for i, m in enumerate(messages):
-        if m.get("role") != "user":
-            continue
-        content = m.get("content", "")
-        text = ""
-        if isinstance(content, str):
-            text = content
-        elif isinstance(content, list):
-            text = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
-        if "Plan mode is active" in text or "task tools haven" in text or "<task-notification>" in text:
-            mod_indices.append(i)
-    return mod_indices
-
-def analyze_request(entry: dict, prev_entry: dict | None) -> dict:
-    raw = entry.get("raw_payload", {})
-    messages = raw.get("messages", [])
-    system = raw.get("system", [])
-    tools = raw.get("tools", [])
-    mods = entry.get("modifications", [])
-
-    cc_bps = _find_cc_breakpoints(system, tools, messages)
-    mod_indices = _find_modifiable_indices(messages)
-
-    last_msg_bp = None
-    for bp in cc_bps:
-        if bp.startswith("m["):
-            idx = int(bp.split("[")[1].split("]")[0])
-            last_msg_bp = idx
-
-    mods_before_bp = [i for i in mod_indices if last_msg_bp and i < last_msg_bp]
-
-    return {
-        "msg_count": len(messages),
-        "tool_count": len(tools),
-        "cc_breakpoints": cc_bps,
-        "modifications": mods,
-        "mod_indices": mod_indices,
-        "mods_before_bp": mods_before_bp,
-        "last_msg_bp": last_msg_bp,
-        "timestamp": entry.get("timestamp", ""),
-    }
 
 def _print_request_rows(entries: list, limit: int, rebuilds_only: bool) -> int:
     prev = None
@@ -153,6 +94,71 @@ def _print_request_rows(entries: list, limit: int, rebuilds_only: bool) -> int:
         if limit and shown >= limit:
             break
     return total_at_risk
+
+
+def analyze_request(entry: dict, prev_entry: dict | None) -> dict:
+    raw = entry.get("raw_payload", {})
+    messages = raw.get("messages", [])
+    system = raw.get("system", [])
+    tools = raw.get("tools", [])
+    mods = entry.get("modifications", [])
+
+    cc_bps = _find_cc_breakpoints(system, tools, messages)
+    mod_indices = _find_modifiable_indices(messages)
+
+    last_msg_bp = None
+    for bp in cc_bps:
+        if bp.startswith("m["):
+            idx = int(bp.split("[")[1].split("]")[0])
+            last_msg_bp = idx
+
+    mods_before_bp = [i for i in mod_indices if last_msg_bp and i < last_msg_bp]
+
+    return {
+        "msg_count": len(messages),
+        "tool_count": len(tools),
+        "cc_breakpoints": cc_bps,
+        "modifications": mods,
+        "mod_indices": mod_indices,
+        "mods_before_bp": mods_before_bp,
+        "last_msg_bp": last_msg_bp,
+        "timestamp": entry.get("timestamp", ""),
+    }
+
+
+def _find_cc_breakpoints(system: list, tools: list, messages: list) -> list:
+    cc_bps = []
+    for i, b in enumerate(system):
+        if isinstance(b, dict) and b.get("cache_control"):
+            cc_bps.append(f"sys[{i}]")
+    for i, t in enumerate(tools):
+        if isinstance(t, dict) and t.get("cache_control"):
+            cc_bps.append(f"t[{i}]")
+    for i, m in enumerate(messages):
+        if m.get("cache_control"):
+            cc_bps.append(f"m[{i}]top")
+        content = m.get("content", "")
+        if isinstance(content, list):
+            for j, b in enumerate(content):
+                if isinstance(b, dict) and b.get("cache_control"):
+                    cc_bps.append(f"m[{i}]")
+    return cc_bps
+
+
+def _find_modifiable_indices(messages: list) -> list:
+    mod_indices = []
+    for i, m in enumerate(messages):
+        if m.get("role") != "user":
+            continue
+        content = m.get("content", "")
+        text = ""
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+        if "Plan mode is active" in text or "task tools haven" in text or "<task-notification>" in text:
+            mod_indices.append(i)
+    return mod_indices
 
 
 if __name__ == "__main__":
