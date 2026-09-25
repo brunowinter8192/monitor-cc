@@ -23,8 +23,8 @@ and launches `probe_a.py`/`probe_b.py`/`probe_c.py` as concurrent subprocesses w
 timestamp.
 **Reads:** tmux `list-windows` to find the Opus session.
 **Writes:** nothing directly — delegates to the probe scripts.
-**Called by:** none — manual CLI, run via
-`./venv/bin/python dev/worker_status_probes/run_all.py [--duration N]`.
+**Called by:** none — manual CLI, run via the project venv python as
+`dev/worker_status_probes/run_all.py [--duration N]`.
 **Calls out:** `probe_a.py`, `probe_b.py`, `probe_c.py` via subprocess; tmux CLI.
 
 ---

@@ -25,7 +25,7 @@ char-level diff fix against real and synthetic cases.
 **Writes:** `green_overlay_probe_reports/green_overlay_probe.md` (the reports directory stays at
 the area root, `dev/proxy_dual_log/`, not in this subfolder).
 **Called by:** none — manual, one-off bug-repro probe.
-**Calls out:** `green_overlay_probe_diff.py`, `_cases.py`.
+**Calls out:** `green_overlay_probe_diff.py`, `green_overlay_probe_cases.py`.
 
 ---
 
@@ -35,7 +35,7 @@ the area root, `dev/proxy_dual_log/`, not in this subfolder).
 checking, and span formatting helpers.
 **Reads:** nothing — pure text-diff functions.
 **Writes:** nothing.
-**Called by:** `green_overlay_probe.py`, `_cases.py`.
+**Called by:** `green_overlay_probe.py`, `green_overlay_probe_cases.py`.
 **Calls out:** none — self-contained.
 
 ---

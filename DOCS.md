@@ -1,4 +1,4 @@
-# ./ (project root)
+# ./
 
 ## Role
 Entry scripts of the project: the process entry that dispatches monitor modes and pane subprocesses, and the py2app build script that bundles and installs the menubar app. Touch to add a mode or change the bundle contents; all logic lives in `src/`.

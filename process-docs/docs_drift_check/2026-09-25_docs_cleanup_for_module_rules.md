@@ -1,3 +1,14 @@
+# 2026-09-25 - DOCS.md cleanup against the module rules (docs-drift-check rewrite)
+
+The rewritten docs-drift-check (one check per DOCS.md rule) reported 5 DOCS.md pages that describe no module of their own directory, a root title of the wrong form, 7 Purpose texts over 25 words and 6 Called by entries naming files that do not exist. Owner decisions: delete the five pages, fix the rest.
+
+## Salvage: the five deleted DOCS.md pages, verbatim
+
+The pages describe no module. Each is kept below in full so nothing is lost. `dev/DOCS.md` is an area map; the per-area descriptions also live in each area's own DOCS.md where one exists. Other DOCS.md and code do not reference these five files (checked with grep over dev/, src/ and all DOCS.md; only historical process-docs mention them).
+
+### dev/DOCS.md
+
+````markdown
 # dev/
 
 ## Role
@@ -40,3 +51,91 @@ No `.py` files live at this level. The areas below are covered by this map; othe
 
 ## State
 None at this level. State ownership is documented per area.
+````
+
+### dev/cc_internals/DOCS.md
+
+````markdown
+# dev/cc_internals/
+
+## Role
+Research artifacts from Claude Code binary and source analysis: env-var inventories extracted from npm binaries and cross-referenced against community decompile repos. Add a new dated file under `md/` when extracting from a new binary version. No scripts live here.
+
+## Public Interface
+No `__init__.py` and no `.py` files. The directory holds Markdown reports under `md/` only.
+
+## Flow
+A binary version is inspected by hand, the findings are written as one dated report under `md/`, and the report is read by later sessions. No processing chain exists.
+
+## Modules
+None. `md/20260428_env_var_inventory_v2.1.121.md` is a standalone report with no producing script. Sources and method are in the process-docs of this area.
+
+## State
+None.
+````
+
+### dev/pipeline/DOCS.md
+
+````markdown
+# dev/pipeline/
+
+## Role
+Standalone measurement scripts that profiled filesystem call cost and message-type coverage of the core monitor pipeline, feeding early design decisions. Touch only when re-measuring one aspect against a changed pipeline; not a regression suite.
+
+## Public Interface
+No `__init__.py`. Each script is its own entry point: `python3 dev/pipeline/<subdir>/<script>.py`.
+
+## Flow
+Each script scans real session JSONL files under the user's Claude Code projects directory (one measures all files, the others the newest). Each measures one aspect and writes one timestamped Markdown report to a `01_reports/` directory it creates beside itself.
+
+## Sub-directories
+
+- `io_profile/`: Counts filesystem calls per poll cycle of the session finder. See its own `DOCS.md`.
+- `format_stability/`: Scans all session JSONL files for top-level and content-block types outside a known set. See its own `DOCS.md`.
+
+## State
+None. The path-method patching in the poll-cost script is restored before its cycle function returns.
+````
+
+### dev/rag_helpfulness/DOCS.md
+
+````markdown
+# dev/rag_helpfulness/
+
+## Role
+Holds a rag-cli call inventory report over proxy JSONL logs. No producing script remains here; the extraction logic was superseded by a script in `dev/tool_use_analysis/`.
+
+## Public Interface
+No `__init__.py` and no `.py` files. The directory holds one Markdown report under `md/`.
+
+## Flow
+Not applicable. The directory holds one historical report and nothing else.
+
+## Modules
+None. `md/01_inventory.md` is a standalone report with no producing script in this directory.
+
+## State
+None.
+````
+
+### dev/tool_injection/ToolsSystemPrompts/DOCS.md
+
+````markdown
+# dev/tool_injection/ToolsSystemPrompts/
+
+## Role
+Captured reference corpus of Claude Code's built-in tool definitions and one system-prompt segment, snapshotted to size the tool-injection and stripping budget. Reference data, not a script area. Touch when re-measuring against a new CC version.
+
+## Public Interface
+No `__init__.py` and no `.py` files. The directory holds Markdown snapshots only.
+
+## Flow
+Not applicable. Snapshots are captured by hand and read by later sessions.
+
+## Modules
+None. The files are a size index, a strip analysis, one capture per built-in tool, captured MCP tool schemas and the captured system-prompt segment.
+
+## State
+None. Char counts are specific to the CC version of the capture; re-capture rather than trust stale figures.
+````
+

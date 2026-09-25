@@ -63,7 +63,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ### live_log_isolation.py (46 LOC)
 
-**Purpose:** Points the hook firing log, the home directory (optionally with copies of named real files) or the monitor root of the running test process at a temp directory, removed at exit.
+**Purpose:** Points the hook firing log, the home directory or the monitor root of the running test process at a temp directory, removed at exit.
 **Reads:** the named real files under the real home, when given.
 **Writes:** the environment variables `MONITOR_CC_HOOK_FIRING_LOG`, `HOME`, `MONITOR_CC_ROOT` of the calling process; a temp directory.
 **Called by:** dev tests and probes that import `src.proxy`, `src.menubar` or run hook code in-process, before their first `src` import.
@@ -143,7 +143,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ### hook_matrix.py (108 LOC)
 
-**Purpose:** Runs every src/hooks script as registered (python3 with an absolute path, from a cwd holding a decoy src package) over a fixed payload corpus and writes one line per hook and payload.
+**Purpose:** Runs every src/hooks script as registered, from a cwd holding a decoy src package, over a fixed payload corpus, one line per hook and payload.
 **Reads:** the hook scripts of the given root and a snapshot of the hook fire log.
 **Writes:** a report file with return code, stdout, stderr and normalized fire-log records.
 **Called by:** manual, before and after a hook change.
@@ -153,7 +153,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ### orch_diff_cases.py (696 LOC)
 
-**Purpose:** Runs scripted scenarios against refactored orchestrators (strip passes, tool injection, bg escape, discover, ghostty, desktop detection, sweep, skills, hook writer, hook setup, pane loops, gpu status, monitor, launcher, ccwrap) and dumps a JSON result for diffing two roots.
+**Purpose:** Runs scripted scenarios against the refactored orchestrators across src and dumps a JSON result for diffing two roots.
 **Reads:** the given root.
 **Writes:** a JSON result file.
 **Called by:** manual, run once per root and compared with cmp.
@@ -163,7 +163,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ### live_proxy_sandbox.py (93 LOC)
 
-**Purpose:** Starts a real mitmdump on private ports from a hand-built live-copy layout that lacks the repo src/proxy, sends one request through a local upstream and checks the dual-log files.
+**Purpose:** Starts a real mitmdump on private ports from a hand-built live-copy layout lacking the repo src/proxy, sends one request upstream and checks the dual-log files.
 **Reads:** src/proxy_addon.py, constants, monitor_root and the proxy package of this checkout.
 **Writes:** a temp directory only; stdout report.
 **Called by:** manual, after any change to the live-copy layout.
@@ -183,10 +183,10 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ### worker_proxy_sandbox.py (137 LOC)
 
-**Purpose:** Runs the real `_worker_proxy_setup` of a given iterative-dev tree against a temp monitor root, temp marker and private ports and checks the worker proxy forwards a request and writes dual logs.
+**Purpose:** Runs an iterative-dev tree's real worker proxy setup on a temp monitor root, marker and private ports; checks a request is forwarded and dual-logged.
 **Reads:** the iterative-dev tree passed as argument, monitor-cc `src/`.
 **Writes:** a temp directory and a temp `/tmp/.monitor_cc_proxy_<id>` marker, removed at the end; stdout report.
-**Called by:** manual, after any change to the live-copy layout or `worker_proxy.sh`.
+**Called by:** manual, after any change to the live-copy layout or to the iterative-dev worker proxy setup.
 **Calls out:** none
 
 ---

@@ -33,7 +33,7 @@ The identity harness renders over a fixed real or synthetic input, hashes the re
 
 ### test_tiny_pane_viewport.py (61 LOC)
 
-**Purpose:** Three parallel strands proving the tokens viewport renders panes of one row or less without raising, keeps one line there, and is unchanged from two rows up.
+**Purpose:** Strands proving the tokens viewport renders panes of at most one row without raising, keeps one line, and is unchanged from two rows up.
 **Reads:** the rate-limit turn fixture of `render_byte_identity.py`.
 **Writes:** stdout only.
 **Called by:** none; manual test.

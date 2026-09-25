@@ -81,7 +81,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ### proxy_addon.py (36 LOC)
 
-**Purpose:** thin mitmproxy shim that puts the import root (checkout root, or the per-session live directory holding a `src/` copy) on the import path and re-exports the addon.
+**Purpose:** Thin mitmproxy shim that puts the import root (checkout root or per-session live directory) on the import path and re-exports the addon.
 **Reads:** its own file path and the two known layouts (checkout, per-session live copy).
 **Writes:** mutates the import path.
 **Called by:** `claude_proxy_start.sh` (copies it to a per-session live file, then launches mitmproxy with `-s`).
@@ -104,7 +104,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 **Purpose:** Single owner of the proxy live-copy layout: copies the shim and a `src/` mirror (`__init__.py`, `constants.py`, `monitor_root.py`, `proxy/`) to the given targets.
 **Reads:** `proxy_addon.py`, `__init__.py`, `constants.py`, `monitor_root.py`, `proxy/` next to itself.
 **Writes:** the live addon file and the live directory given as arguments.
-**Called by:** `claude_proxy_start.sh`; iterative-dev `src/spawn/worker_proxy.sh` via the monitor root in the proxy marker.
+**Called by:** `claude_proxy_start.sh`; `src/spawn/worker_proxy.sh (Iterative_Dev)` via the monitor root in the proxy marker.
 **Calls out:** none
 
 ---

@@ -40,7 +40,7 @@ Dedicated tmux pane event loops for the token/cache tracker and the warnings pan
 **Purpose:** Finds the token-pane match keys for a query by reusing the real render functions.
 **Reads:** turns, pane width, optional response map (parameters only).
 **Writes:** none (returns keys).
-**Called by:** `token_pane.py`, `workers/worker_search.py`.
+**Called by:** `token_pane.py`, `src/workers/worker_tokens_pane.py`.
 **Calls out:** none
 
 ---
