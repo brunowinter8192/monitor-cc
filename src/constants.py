@@ -12,6 +12,7 @@ PROXY_REPARSE_INTERVAL_SECONDS = 3600
 WORKER_COL_WIDTH = 20
 NO_TIME_PLACEHOLDER = '--:--:--'
 WARNINGS_INITIAL_TAIL_BYTES = 50_000_000
+COPY_FLASH_SYMBOL = 'v'
 
 TOOL_BLOCKLIST = frozenset({
     "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",

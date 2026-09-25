@@ -100,8 +100,8 @@ def test_tokens_pane_copy_click():
     narrow_lines, narrow_keys, _, _, _ = mod_token_format.format_cache_tracker(
         mod_tokens._cache_turns, {}, 50, 10, 0, copy_feedback={}, turn_cache=_token_turn_cache()
     )
-    check("tokens: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
-          not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
+    check("tokens: width guard -- no copy symbol rendered when pane_width=10 (too narrow)",
+          not any(mod_utils.is_copy_row(ln, 10) for ln in narrow_lines))
 
 
 def _patch_clipboard(mod):
@@ -152,8 +152,8 @@ def test_warnings_pane_copy_click():
     narrow_out, narrow_map = mod_warnings_render._format_warnings_pane(
         mod_warnings.tool_errors, {}, None, 0, 50, 10, '', copy_feedback={}, copy_rows_out=set(),
     )
-    check("warnings: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
-          '⎘' not in narrow_out and '✓' not in narrow_out)
+    check("warnings: width guard -- no copy symbol rendered when pane_width=10 (too narrow)",
+          not any(mod_utils.is_copy_row(ln, 10) for ln in narrow_out.split('\n')))
 
 
 def test_worker_tokens_copy_click():
@@ -202,8 +202,8 @@ def test_worker_tokens_copy_click():
     narrow_lines, narrow_keys, _, _, _ = mod_token_format.format_cache_tracker(
         mod_workers._worker_tokens_turns, {}, 50, 10, 0, copy_feedback={}, turn_cache=_token_turn_cache()
     )
-    check("worker-tokens: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
-          not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
+    check("worker-tokens: width guard -- no copy symbol rendered when pane_width=10 (too narrow)",
+          not any(mod_utils.is_copy_row(ln, 10) for ln in narrow_lines))
 
 
 def _write_report(passed, total):

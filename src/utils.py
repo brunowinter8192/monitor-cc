@@ -4,7 +4,7 @@ import re
 import unicodedata
 
 from src.colors import RESET, YELLOW, SOFT_RESET
-from src.constants import NO_TIME_PLACEHOLDER, WORKER_COL_WIDTH
+from src.constants import COPY_FLASH_SYMBOL, NO_TIME_PLACEHOLDER, WORKER_COL_WIDTH
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 _TIME_RIGHT_RESERVE_CELLS = 3
@@ -108,6 +108,13 @@ def right_align_time(line: str, time_str: str, pane_width: int, bg_restore: str 
     restore = bg_restore if bg_restore and bg_restore in line and bg_restore not in content else ''
     pad = max(1, pane_width - _TIME_RIGHT_RESERVE_CELLS - time_cells - visible)
     return f"{content}{SOFT_RESET}{restore}{' ' * pad}{time_str}"
+
+def is_copy_row(line: str, pane_width: int) -> bool:
+    if '⎘' in line:
+        return True
+    stripped = _ANSI_ESCAPE_RE.sub('', line)
+    return stripped.endswith(' ' + COPY_FLASH_SYMBOL) and sum(_cell_width(ch) for ch in stripped) == pane_width
+
 
 def truncate_visible(line: str, pane_width: int) -> str:
     if pane_width <= 0:

@@ -14,7 +14,7 @@ from src.input.click_handler import (
     enable_mouse, disable_mouse, read_mouse_event, resolve_parent_key,
     copy_to_clipboard, wait_for_input,
 )
-from src.utils import truncate_visible, visual_line_count
+from src.utils import is_copy_row, truncate_visible, visual_line_count
 from src.frame_writer import write_frame, hide_cursor, show_cursor
 from src.ram_audit import register_ram_dump
 from src.pane_error_log import log_pane_error
@@ -382,7 +382,7 @@ def _render_worker_tokens_rows(visible_lines: list, visible_keys: list, phys_row
         else:
             chosen_bg = zebra_bg
         line = search_bar.resolve_bg_restore(line, chosen_bg)
-        if key is not None and ('⎘' in line or '✓' in line):
+        if key is not None and is_copy_row(line, pane_width):
             copy_rows.add(phys_row)
         trunc = truncate_visible(line, pane_width)
         result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")

@@ -55,7 +55,7 @@ def _run_all_cases() -> dict:
     results = {}
     for case in (_strip_cases, _bg_escape_cases, _tool_injection_cases, _discover_cases, _ghostty_cases,
                  _desktop_cases, _sweep_cases, _skill_cases, _hook_writer_cases, _hook_setup_cases,
-                 _pane_loop_cases, _gpu_status_cases, _misc_flow_cases):
+                 _pane_loop_cases, _gpu_status_cases, _misc_flow_cases, _flash_cases):
         results.update(_guard(case))
     return results
 
@@ -618,6 +618,75 @@ def _write_results(results: dict, out_path: Path) -> None:
     out_path.write_text(json.dumps(results, indent=1, sort_keys=True, default=repr))
     print(f'cases={len(results)}')
 
+
+def _flash_symbol() -> str:
+    try:
+        return importlib.import_module('src.constants').COPY_FLASH_SYMBOL
+    except AttributeError:
+        return '\u2713'
+
+def _flash_cases() -> dict:
+    results = {}
+    results.update(_flash_row_cases())
+    results.update(_flash_render_cases())
+    return results
+
+def _flash_row_cases() -> dict:
+    utils = importlib.import_module('src.utils')
+    flash = _flash_symbol()
+    results = {}
+    targets = (
+        ('tokens', 'src.panes.token_pane', '_render_tokens_rows', 'rows'),
+        ('worker_tokens', 'src.workers.worker_tokens_pane', '_render_worker_tokens_rows', 'rows'),
+        ('warnings', 'src.panes.warnings_render', '_render_warnings_rows', 'warnings'),
+    )
+    for width in (40, 60, 80):
+        base = 'call Bash ls -la'
+        lines = [
+            base, utils.append_copy_symbol(base, '\u2398', width), utils.append_copy_symbol(base, flash, width),
+            'natural line ending v', 'x' * (width - 2) + ' v', 'y' * (width - 4) + ' v', 'plain \u2398 mid line',
+        ]
+        for label, module_name, fn_name, kind in targets:
+            module = importlib.import_module(module_name)
+            keys = [(0, index) for index in range(len(lines))] if kind == 'rows' else [('error', index) for index in range(len(lines))]
+            copy_rows = set()
+            if kind == 'rows':
+                out = getattr(module, fn_name)(lines, keys, 1, 0, width, None, {}, copy_rows)
+                results[f'flash_rows:{label}:{width}'] = {'out': out, 'copy_rows': sorted(copy_rows)}
+            else:
+                out = getattr(module, fn_name)(lines, keys, 1, 0, width, None, copy_rows)
+                results[f'flash_rows:{label}:{width}'] = {'out': out, 'copy_rows': sorted(copy_rows)}
+    return results
+
+def _flash_render_cases() -> dict:
+    results = {}
+    os.environ.setdefault('RENDER_BYTE_IDENTITY_LOG_DIR', os.environ.get('FLASH_SNAPSHOT_DIR', '/tmp/mcsrc_snap/dual_log'))
+    sys.path.insert(0, str(_ROOT))
+    panes_h = importlib.import_module('dev.panes.render_byte_identity')
+    tracker = importlib.import_module('src.format').format_cache_tracker
+    turns, rid_map = panes_h._make_rate_limit_turns()
+    for width in (40, 100):
+        for active in (False, True):
+            feedback = {(0, 0): 9999999999.0} if active else {}
+            result = tracker(turns, expand_states={(0, 0): True, (0, 1): True}, pane_height=30, pane_width=width, scroll_offset=0,
+                             response_rid_map=rid_map, copy_feedback=feedback, nav_out={}, turn_cache=panes_h._token_turn_cache())
+            results[f'flash_tracker:{width}:{active}'] = result
+    proxy_h = importlib.import_module('dev.proxy_display.render_byte_identity')
+    entries = proxy_h._load_entries(proxy_h._newest_forwarded_log())
+    proxy_h._attach_overlays(entries, proxy_h._newest_forwarded_log())
+    expand_states = proxy_h._grow_expand_states(entries)
+    fmt = importlib.import_module('src.proxy_display.format')
+    turn_cache_cls = importlib.import_module('src.proxy_display.turn_cache').TurnCache
+    for width in (60, 100):
+        positions = {}
+        fmt.format_proxy_block(entries, expand_states, None, None, 50, width, 0, None, positions, turn_cache=turn_cache_cls())
+        feedback = {key: 9999999999.0 for key in positions}
+        for active in (False, True):
+            rows = set()
+            out = fmt.format_proxy_block(entries, expand_states, None, None, 50, width, 0, None, {}, copy_feedback=feedback if active else {},
+                                         copy_rows_out=rows, turn_cache=turn_cache_cls())
+            results[f'flash_proxy:{width}:{active}'] = {'out': out, 'rows': sorted(rows)}
+    return results
 
 if __name__ == '__main__':
     orch_diff_workflow()

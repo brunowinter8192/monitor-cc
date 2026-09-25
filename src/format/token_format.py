@@ -7,6 +7,7 @@ from src.colors import (
     RED, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
+from src.constants import COPY_FLASH_SYMBOL
 from src.utils import append_copy_symbol, highlight_query_in_line, right_align_time
 from src.search_bar import _BG_RESTORE_SENTINEL
 from src.format.turn_cache import sync_document, publish_nav
@@ -151,7 +152,7 @@ def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: boo
         call_line = f"{marker}{call_line}{_BG_RESTORE_SENTINEL}"
     if copy_feedback is not None:
         is_flash = copy_feedback.get(key, 0) > time.time()
-        call_line = append_copy_symbol(call_line, '✓' if is_flash else '⎘', pane_width)
+        call_line = append_copy_symbol(call_line, COPY_FLASH_SYMBOL if is_flash else '⎘', pane_width)
     return call_line, key, marker
 
 def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False, sig_chars: int = 0, time_str: str = '', pane_width: int = 0) -> str:
