@@ -121,5 +121,15 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
+### src_layout_scan.py (168 LOC)
+
+**Purpose:** Scans src and the two root scripts for layout violations: comments, docstrings, relative imports, section order, orchestrator shape and logic, top-level statements, emojis.
+**Reads:** `src/**/*.py`, `workflow.py`, `setup_py2app.py`.
+**Writes:** stdout findings; exit 1 on any hard violation.
+**Called by:** manual, at the end of a layout pass.
+**Calls out:** none
+
+---
+
 ## State
 No state in the modules. `md/` holds dated report files, each written once and never mutated.
