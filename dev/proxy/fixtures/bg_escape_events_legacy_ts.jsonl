@@ -1,0 +1,6 @@
+{"ts": "2026-07-30T16:09:30.317412+00:00Z", "event": "fired", "worker_context": "worker:esc-live", "task_id": "bg_task_alpha", "tmux_session": "worker-ack-escape-esc-live", "send_result": true}
+{"ts": "2026-07-30T16:09:30.317774+00:00Z", "event": "skipped", "worker_context": "worker:esc-live", "task_id": "bg_task_alpha", "tmux_session": "", "reason": "already_escaped"}
+{"ts": "2026-07-30T16:09:30.317844+00:00Z", "event": "skipped", "worker_context": "worker:esc-live", "task_id": "bg_task_alpha", "tmux_session": "", "reason": "already_escaped"}
+{"ts": "2026-07-30T16:09:30.317893+00:00Z", "event": "skipped", "worker_context": "worker:esc-live", "task_id": "bg_task_alpha", "tmux_session": "", "reason": "already_escaped"}
+{"ts": "2026-07-30T16:09:30.317942+00:00Z", "event": "skipped", "worker_context": "worker:esc-live", "task_id": "bg_task_alpha", "tmux_session": "", "reason": "already_escaped"}
+{"ts": "2026-07-30T16:09:30.317985+00:00Z", "event": "skipped", "worker_context": "worker:esc-live", "task_id": "bg_task_alpha", "tmux_session": "", "reason": "already_escaped"}

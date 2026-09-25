@@ -32,7 +32,7 @@ def _write_entry(log_file: Path, entry: dict) -> None:
 def _log_original_request(log_file: Path, flow, payload: dict) -> None:
     try:
         _write_entry(log_file, {
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "flow_id": flow.id,
             "request_id": flow.request.headers.get("x-request-id", ""),
             "model": payload.get("model", ""),

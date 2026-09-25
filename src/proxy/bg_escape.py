@@ -96,7 +96,7 @@ def _send_escape_key(tmux_session: str) -> bool:
 
 def _log_bg_escape_event(event: str, worker_context: str, task_id: str, tmux_session: str, reason: str = "", send_result: bool = None) -> None:
     entry = {
-        "ts": datetime.now(timezone.utc).isoformat() + "Z",
+        "ts": datetime.now(timezone.utc).isoformat(),
         "event": event,
         "worker_context": worker_context,
         "task_id": task_id,

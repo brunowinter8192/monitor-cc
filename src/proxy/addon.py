@@ -299,7 +299,7 @@ def _write_response_entry(flow: http.HTTPFlow, log_file) -> Optional[dict]:
     probe_state = flow.metadata.get("mc_answering_model_state") or {}
     entry = {
         "flow_id": flow.id,
-        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "request_id": flow.response.headers.get("request-id", ""),
         "status_code": flow.response.status_code,
         "headers": _filter_response_headers(flow.response.headers),
