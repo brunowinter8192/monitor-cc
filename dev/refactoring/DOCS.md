@@ -141,7 +141,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### live_proxy_sandbox.py (96 LOC)
+### live_proxy_sandbox.py (92 LOC)
 
 **Purpose:** Starts a real mitmdump on private ports from a hand-built live-copy layout that lacks the repo src/proxy, sends one request through a local upstream and checks the dual-log files.
 **Reads:** src/proxy_addon.py, constants, monitor_root and the proxy package of this checkout.
