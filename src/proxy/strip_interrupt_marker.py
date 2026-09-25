@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from .payload_helpers import _walk_replace_marker_blocks
+from src.proxy.payload_helpers import _walk_replace_marker_blocks
 
 _INTERRUPT_MARKERS = frozenset({
     '[Request interrupted by user]',

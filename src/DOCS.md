@@ -81,7 +81,7 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ### proxy_addon.py (36 LOC)
 
-**Purpose:** thin mitmproxy shim that puts the `proxy/` package and repo root on the import path and re-exports the addon.
+**Purpose:** thin mitmproxy shim that puts the import root (checkout root, or the per-session live directory holding a `src/` copy) on the import path and re-exports the addon.
 **Reads:** its own file path and the two known layouts (checkout, per-session live copy).
 **Writes:** mutates the import path.
 **Called by:** `claude_proxy_start.sh` (copies it to a per-session live file, then launches mitmproxy with `-s`).
@@ -139,11 +139,11 @@ Root-level modules of the Monitor_CC terminal monitor shared by two or more pane
 
 ---
 
-### claude_proxy_start.sh (207 LOC)
+### claude_proxy_start.sh (208 LOC)
 
 **Purpose:** shell entry point that launches mitmproxy plus Claude Code with the proxy environment; orchestrates the sourced janitor and marker libraries.
 **Reads:** the model-selection rules file, existing log files, per-project marker files.
-**Writes:** per-session live proxy-addon copy, marker files, the active-plugins file of the project.
+**Writes:** per-session live proxy-addon copy (shim plus a `src/` mirror with `__init__.py`, `constants.py`, `monitor_root.py`, `proxy/`), marker files, the active-plugins file of the project.
 **Called by:** invoked directly (main session start); the command `ccwrap/wrapper.py` wraps.
 **Calls out:** `mitmproxy`, `jq`, worker-cli (iterative-dev project).
 

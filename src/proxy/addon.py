@@ -10,9 +10,9 @@ from typing import Optional
 
 from mitmproxy import http
 
-from .proxy_error_log import log_proxy_error, log_proxy_error_on_change
-from .addon_state import DualLogPaths, DeltaState, FixationState, SessionIdentity
-from .addon_dual_log import (
+from src.proxy.proxy_error_log import log_proxy_error, log_proxy_error_on_change
+from src.proxy.addon_state import DualLogPaths, DeltaState, FixationState, SessionIdentity
+from src.proxy.addon_dual_log import (
     _resolve_dual_log_file, _write_entry, proxy_log_id, _log_original_request,
     _write_request_dual_logs, _log_4xx_error, _write_stripped_injected,
 )
@@ -28,16 +28,16 @@ class _TrailerCrashFilter(logging.Filter):
 
 
 logging.getLogger("mitmproxy.proxy.server").addFilter(_TrailerCrashFilter())
-from .message_summary import _infer_model_family, _summarize_message
-from .rules import apply_modification_rules, _strip_blocked_tool_references
-from .inject_helpers import _inject_context_management, _inject_model_override, _strip_clear_thinking_edit
-from .content_strip import _strip_tool_descriptions, _strip_sys3
-from .cache import _strip_all_cache_control, _set_cache_breakpoints
-from .tools import _strip_unused_tools, _extract_deferred_tool_names
-from .tool_injection import inject_mcp_tools
-from .fixation import _capture_fixation, _apply_fixation
-from .bg_escape import _trigger_bg_escape
-from .response_model_probe import make_answering_model_probe
+from src.proxy.message_summary import _infer_model_family, _summarize_message
+from src.proxy.rules import apply_modification_rules, _strip_blocked_tool_references
+from src.proxy.inject_helpers import _inject_context_management, _inject_model_override, _strip_clear_thinking_edit
+from src.proxy.content_strip import _strip_tool_descriptions, _strip_sys3
+from src.proxy.cache import _strip_all_cache_control, _set_cache_breakpoints
+from src.proxy.tools import _strip_unused_tools, _extract_deferred_tool_names
+from src.proxy.tool_injection import inject_mcp_tools
+from src.proxy.fixation import _capture_fixation, _apply_fixation
+from src.proxy.bg_escape import _trigger_bg_escape
+from src.proxy.response_model_probe import make_answering_model_probe
 ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 

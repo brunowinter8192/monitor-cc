@@ -67,6 +67,8 @@ def build_root(root: Path, variant: str) -> Path:
     src.mkdir(parents=True)
     shutil.copy(REPO_ROOT / 'src' / 'proxy_addon.py', src / 'proxy_addon.py')
     shutil.copytree(REPO_ROOT / 'src' / 'proxy', src / 'proxy', ignore=shutil.ignore_patterns('__pycache__'))
+    for name in ('__init__.py', 'constants.py', 'monitor_root.py'):
+        shutil.copy(REPO_ROOT / 'src' / name, src / name)
     if variant == 'old':
         text = subprocess.run(['git', '-C', str(REPO_ROOT), 'show', f'{BASE_REF}:src/claude_proxy_start.sh'],
                               capture_output=True, text=True, check=True).stdout

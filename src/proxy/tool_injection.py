@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-from .proxy_error_log import clear_proxy_error, log_proxy_error, log_proxy_error_on_change, proxy_monitor_root
+from src.proxy.proxy_error_log import clear_proxy_error, log_proxy_error, log_proxy_error_on_change, proxy_monitor_root
 
 _SCHEMA_STORE_CACHE = None
 _ACTIVE_PLUGINS_CACHE = None

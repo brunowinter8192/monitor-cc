@@ -1,16 +1,16 @@
 # INFRASTRUCTURE
-from .strip_sr import (
+from src.proxy.strip_sr import (
     _strip_all_system_reminders,
     _strip_system_reminder,
     _strip_user_interrupt_sr,
     _strip_pyright_diagnostics,
     _IMP_LINE_RE,
 )
-from .content_strip import (
+from src.proxy.content_strip import (
     _message_has_rejection,
     _strip_rejection_message,
 )
-from .payload_helpers import (
+from src.proxy.payload_helpers import (
     _find_system_reminder_blocks,
     _find_all_system_reminder_blocks,
     _find_task_notification_blocks,
@@ -20,10 +20,10 @@ from .payload_helpers import (
     _extract_task_notification_task_id,
     _replace_task_notification_tags,
 )
-from .rules_config import _load_config
-from .strip_bg_completed import _WAKEUP_TEXT
-from .rule_ops import _ops_from_content_change
-from .message_passes_wakeup import _unwrap_full_sr_wrapper
+from src.proxy.rules_config import _load_config
+from src.proxy.strip_bg_completed import _WAKEUP_TEXT
+from src.proxy.rule_ops import _ops_from_content_change
+from src.proxy.message_passes_wakeup import _unwrap_full_sr_wrapper
 
 _TRUNCATION_NOTICE_MARKER = "[Truncated:"
 

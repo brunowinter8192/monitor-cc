@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
-from .proxy_error_log import clear_proxy_error, log_proxy_error_on_change
-from .rules_config import _load_config
+from src.proxy.proxy_error_log import clear_proxy_error, log_proxy_error_on_change
+from src.proxy.rules_config import _load_config
 
 _CLEAR_THINKING_EDIT_TYPE = "clear_thinking_20251015"
 _MODEL_OVERRIDE_SOURCE = "inject_helpers.model_override"

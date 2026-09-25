@@ -1,8 +1,8 @@
 # INFRASTRUCTURE
 import re
-from .strip_sn_notice import _strip_sn_notice
-from .strip_bg_completed import _WAKEUP_TEXT
-from .rule_ops import _ops_from_content_change
+from src.proxy.strip_sn_notice import _strip_sn_notice
+from src.proxy.strip_bg_completed import _WAKEUP_TEXT
+from src.proxy.rule_ops import _ops_from_content_change
 
 # FUNCTIONS
 

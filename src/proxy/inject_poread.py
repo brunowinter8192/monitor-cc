@@ -1,8 +1,8 @@
 import hashlib
 import re
 
-from .proxy_error_log import log_proxy_error_on_change
-from .payload_helpers import _walk_replace_marker_blocks
+from src.proxy.proxy_error_log import log_proxy_error_on_change
+from src.proxy.payload_helpers import _walk_replace_marker_blocks
 
 # INFRASTRUCTURE
 

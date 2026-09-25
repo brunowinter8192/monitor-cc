@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from typing import Optional, Union
 
-from .message_summary import _summarize_message
+from src.proxy.message_summary import _summarize_message
 
 # FUNCTIONS
 

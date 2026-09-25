@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from .proxy_error_log import clear_proxy_error, log_proxy_error_on_change
+from src.proxy.proxy_error_log import clear_proxy_error, log_proxy_error_on_change
 
 _SHARED_RULES_DIR = Path.home() / ".claude" / "shared-rules"
 _PROXY_RULES_CONFIG = _SHARED_RULES_DIR / "proxy_rules.json"

@@ -5,9 +5,9 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .proxy_error_log import log_proxy_error, proxy_monitor_root
-from .rules_config import is_main_session
-from .strip_bg_launch_ack import _is_bg_launch_ack, _ACK_ID_RE
+from src.proxy.proxy_error_log import log_proxy_error, proxy_monitor_root
+from src.proxy.rules_config import is_main_session
+from src.proxy.strip_bg_launch_ack import _is_bg_launch_ack, _ACK_ID_RE
 
 _TMUX_TIMEOUT_SECS = 2
 _WORKER_PREFIX = "worker:"

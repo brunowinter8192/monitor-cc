@@ -3,10 +3,10 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Optional
 
-from .diff_engine import _diff_system, _diff_tools, _diff_messages, _diff_top_level_fields, _get_inner_text, compose_block
-from .strip_vocab import attribute_chunk as _attribute_chunk
-from .logging import _strip_cache_control, _normalize_msg_shape_for_hash, _delta_hash
-from .payload_helpers import _top_level_content_contains
+from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages, _diff_top_level_fields, _get_inner_text, compose_block
+from src.proxy.strip_vocab import attribute_chunk as _attribute_chunk
+from src.proxy.logging import _strip_cache_control, _normalize_msg_shape_for_hash, _delta_hash
+from src.proxy.payload_helpers import _top_level_content_contains
 
 _SYS_FN: dict[int, str] = {1: '_apply_system_passes', 2: '_apply_system_passes', 3: '_strip_sys3'}
 _MSG_CODE_TO_FN: dict[str, str] = {

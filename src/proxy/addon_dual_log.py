@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .proxy_error_log import log_proxy_error, proxy_monitor_root
-from .logging import _build_forwarded_delta, _build_errors_entries
-from .strip_inject_delta import _build_stripped_injected_deltas
+from src.proxy.proxy_error_log import log_proxy_error, proxy_monitor_root
+from src.proxy.logging import _build_forwarded_delta, _build_errors_entries
+from src.proxy.strip_inject_delta import _build_stripped_injected_deltas
 
 # FUNCTIONS
 

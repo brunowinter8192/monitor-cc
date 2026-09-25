@@ -1,16 +1,16 @@
 # INFRASTRUCTURE
 import re
 
-from .payload_helpers import _strip_blocked_tool_references
-from .content_strip import _strip_session_guidance, _strip_git_status
-from .rules_config import _load_system2_rules, is_main_session
-from .message_passes import (
+from src.proxy.payload_helpers import _strip_blocked_tool_references
+from src.proxy.content_strip import _strip_session_guidance, _strip_git_status
+from src.proxy.rules_config import _load_system2_rules, is_main_session
+from src.proxy.message_passes import (
     _apply_role_system_strip,
     _apply_first_pass,
     _apply_cumulative_sr_strips,
     _apply_final_sr_pass,
 )
-from .message_passes_simple import (
+from src.proxy.message_passes_simple import (
     _apply_sn_notice_strip,
     _apply_po_preview_strip,
     _apply_bg_exit_strip,
@@ -22,8 +22,8 @@ from .message_passes_simple import (
     _apply_pasted_content_strip,
     _apply_poread_expand_strip,
 )
-from .message_passes_wakeup import _dedup_wakeup_blocks
-from .rule_ops import _merge_ops
+from src.proxy.message_passes_wakeup import _dedup_wakeup_blocks
+from src.proxy.rule_ops import _merge_ops
 
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 

@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
-from .logging import _summarize_message, _compute_diff
-from .message_summary import _has_cache_control
+from src.proxy.logging import _summarize_message, _compute_diff
+from src.proxy.message_summary import _has_cache_control
 
 # FUNCTIONS
 
