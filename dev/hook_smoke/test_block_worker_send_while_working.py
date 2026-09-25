@@ -10,8 +10,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from block_worker_send_while_working import decide
 from case_strands import case_runners, function_runners, report_case, run_case_strands
 from hook_runner import run_hook
+from dev.refactoring.live_log_isolation import isolate_hook_firing_log
 
 HOOK = "src/hooks/block_worker_send_while_working.py"
+
+FIRING_LOG = isolate_hook_firing_log('worker_send_log_')
 
 CASES = [
     (

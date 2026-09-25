@@ -6,6 +6,10 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("test_header_capture_")
+
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
 from src.proxy.addon import _filter_response_headers
 

@@ -11,6 +11,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home("test_abort_stamp_scope_")
+
 
 from dev.refactoring.strand_runner import strand_workflow
 

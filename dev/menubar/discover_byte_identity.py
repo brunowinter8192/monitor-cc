@@ -7,6 +7,10 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home("discover_byte_identity_")
+
 
 _NOW = 1_000_000.0
 

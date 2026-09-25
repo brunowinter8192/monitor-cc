@@ -4,7 +4,11 @@ from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 
-sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+sys.path.insert(0, str(WORKTREE_ROOT))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("p2_model_params_probe_")
+
 from model_override_injection_tests import (
     test_legacy_only_is_ignored,
     test_model_params_hit,

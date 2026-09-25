@@ -21,7 +21,7 @@ Synthetic or throwaway fixtures feed the real janitor and scheduler functions, o
 
 ---
 
-### test_monitor_sweep_scheduler.py (144 LOC)
+### test_monitor_sweep_scheduler.py (148 LOC)
 
 **Purpose:** Gate-only regression test for the scheduler's at-most-once-per-day check, re-entry guard and attempt-timestamp ordering.
 **Reads:** nothing outside its own temp state files.

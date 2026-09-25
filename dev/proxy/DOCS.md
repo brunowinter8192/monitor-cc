@@ -11,7 +11,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ## Modules
 
-### pipeline_byte_identity.py (154 LOC)
+### pipeline_byte_identity.py (158 LOC)
 
 **Purpose:** Verification aid: hashes the full modification pipeline over a bounded prefix of a real original log for both worker contexts.
 **Reads:** the newest original log, or a pinned path via an env var.
@@ -71,7 +71,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_role_keyed_rules.py (204 LOC)
+### test_role_keyed_rules.py (207 LOC)
 
 **Purpose:** Unit tests for role-keyed system2 rule selection: role choice, degraded configs, project exclusion and end-to-end resolution.
 **Reads:** a synthetic shared-rules tree in a temp dir, never the real one.
@@ -81,7 +81,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix.py (209 LOC)
+### test_strip_fix.py (213 LOC)
 
 **Purpose:** Entry point of the largest suite: imports every test from the sibling fixture and case modules and runs each as its own parallel strand.
 **Reads:** nothing external.
@@ -211,7 +211,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### poread_inject_tests.py (320 LOC)
+### poread_inject_tests.py (324 LOC)
 
 **Purpose:** End-to-end regression guard for the poread marker-expansion pass, mint through apply, across expansion, determinism, false-positive and race cases.
 **Reads:** nothing external; writes its own temp files and marker fixtures.

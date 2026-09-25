@@ -11,6 +11,10 @@ from AppKit import NSForegroundColorAttributeName
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home("panel_manager_byte_ident_")
+
 from Foundation import NSObject
 
 _BgInfo = namedtuple('_BgInfo', ['min_remaining', 'sleep_pids'])

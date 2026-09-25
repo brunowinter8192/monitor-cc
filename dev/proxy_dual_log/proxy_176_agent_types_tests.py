@@ -3,6 +3,10 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("proxy_176_agent_types_te_")
+
 
 from src.proxy.message_passes import _apply_cumulative_sr_strips
 from src.proxy.strip_inject_delta import _process_messages_section, _MSG_CODE_TO_FN

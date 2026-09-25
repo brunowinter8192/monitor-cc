@@ -10,6 +10,10 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home("test_open_or_focus_monit_")
+
 
 from dev.refactoring.strand_runner import strand_workflow
 
@@ -114,7 +118,7 @@ def _test_resolve_python3_uses_plist_path_under_bare_environ() -> None:
 def _resolve_under_bare_environ(repo_root: Path, plist: Path) -> tuple:
     r = subprocess.run(
         [sys.executable, '-c', _RESOLVE_SNIPPET, str(plist)],
-        cwd=str(repo_root), env={'PATH': _BARE_PATH}, capture_output=True, text=True, timeout=10)
+        cwd=str(repo_root), env={'PATH': _BARE_PATH, 'HOME': _HOME_SANDBOX}, capture_output=True, text=True, timeout=10)
     return r.stdout.strip(), r.stderr.strip()
 
 def _test_launch_monitor_uses_native_path_only() -> None:

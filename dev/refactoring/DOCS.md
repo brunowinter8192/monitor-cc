@@ -61,6 +61,26 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
+### live_log_isolation.py (46 LOC)
+
+**Purpose:** Points the hook firing log, the home directory (optionally with copies of named real files) or the monitor root of the running test process at a temp directory, removed at exit.
+**Reads:** the named real files under the real home, when given.
+**Writes:** the environment variables `MONITOR_CC_HOOK_FIRING_LOG`, `HOME`, `MONITOR_CC_ROOT` of the calling process; a temp directory.
+**Called by:** dev tests and probes that import `src.proxy`, `src.menubar` or run hook code in-process, before their first `src` import.
+**Calls out:** none.
+
+---
+
+### live_log_writer_scan.py (141 LOC)
+
+**Purpose:** Runs every guarded dev script in a sandbox copy with a temp HOME and reports the ones that change a live log path.
+**Reads:** the tracked dev scripts; sizes and mtimes of the sandbox `src/logs`, the temp HOME, the live `src/logs` and the menubar application support directory.
+**Writes:** `md/live_log_writer_scan_report.md`; a sandbox copy next to the worktree and a temp HOME, both left in place.
+**Called by:** none; manual after adding tests that import `src` modules.
+**Calls out:** `repo_roots.py`.
+
+---
+
 ### repo_roots.py (40 LOC)
 
 **Purpose:** Resolves the main project root and the repo root with logs for dev/ scripts that run from a worktree.
@@ -131,7 +151,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### orch_diff_cases.py (692 LOC)
+### orch_diff_cases.py (696 LOC)
 
 **Purpose:** Runs scripted scenarios against refactored orchestrators (strip passes, tool injection, bg escape, discover, ghostty, desktop detection, sweep, skills, hook writer, hook setup, pane loops, gpu status, monitor, launcher, ccwrap) and dumps a JSON result for diffing two roots.
 **Reads:** the given root.

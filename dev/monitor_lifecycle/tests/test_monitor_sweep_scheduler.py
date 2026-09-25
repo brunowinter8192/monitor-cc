@@ -10,6 +10,10 @@ from unittest.mock import patch
 
 _ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_ROOT))
+from dev.refactoring.live_log_isolation import isolate_home
+
+_HOME_SANDBOX = isolate_home("test_monitor_sweep_sched_")
+
 from dev.refactoring.strand_runner import strand_workflow
 from src.menubar import monitor_sweep_scheduler as sched
 

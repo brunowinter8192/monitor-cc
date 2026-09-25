@@ -7,6 +7,10 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("pipeline_byte_identity_")
+
 from src.proxy.rules import apply_modification_rules
 from src.proxy.cache import _strip_all_cache_control, _set_cache_breakpoints
 from src.proxy.logging import _build_forwarded_delta, _build_errors_entries

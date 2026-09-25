@@ -11,7 +11,7 @@ Streams every recorded request payload from the dual log, threads it through the
 
 ## Modules
 
-### audit_tool_result_sr_strips.py (19 LOC)
+### audit_tool_result_sr_strips.py (28 LOC)
 
 **Purpose:** Entry point wiring corpus scanning and report rendering into one run.
 **Reads:** nothing directly; delegates to the scanner.

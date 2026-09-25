@@ -9,6 +9,10 @@ sys.path.insert(0, str(_HERE))
 _AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 _PROJECT_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
+from dev.refactoring.live_log_isolation import isolate_monitor_root
+
+_ROOT_SANDBOX = isolate_monitor_root("test_composition_invaria_")
+
 
 import composition_probe as _probe
 
