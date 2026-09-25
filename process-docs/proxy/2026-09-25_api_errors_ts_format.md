@@ -32,3 +32,7 @@ All produce `...+00:00Z`.
 Changing the `timestamp` writers would mix two formats inside existing dual-log files that are compared lexically; that needs its own decision.
 
 Related but different: `src/hooks/block_rag_cli_document_repeat.py:139` reads a hook `ts` with `replace('Z','+00:00')`; not one of the proxy writers.
+
+## Review follow-up: frozen fixture
+
+`dev/proxy/test_api_errors_ts.py` first read the live main-checkout `src/logs/api_errors.jsonl`; those lines age out 7 days after the fix is live, which would make the test non-reproducible. The first 5 real lines (ts 2026-05-30, all `+00:00Z`) are frozen in `dev/proxy/fixtures/api_errors_legacy_ts.jsonl` with `request_payload` set to null (the 5 lines were 3.3 MB, the janitor only reads `ts`); all other fields are verbatim. The test reads only that fixture and no longer touches live paths.

@@ -9,7 +9,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
-_MAIN_ERRORS_LOG = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/api_errors.jsonl')
+_FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'api_errors_legacy_ts.jsonl'
 _REAL_LINES = 5
 
 # ORCHESTRATOR
@@ -68,7 +68,7 @@ def _recorder(sink: list):
 
 def _real_lines() -> list:
     lines = []
-    with open(_MAIN_ERRORS_LOG, 'r', encoding='utf-8') as f:
+    with open(_FIXTURE, 'r', encoding='utf-8') as f:
         for raw in f:
             lines.append(raw)
             if len(lines) == _REAL_LINES:
