@@ -71,7 +71,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_role_keyed_rules.py (208 LOC)
+### test_role_keyed_rules.py (207 LOC)
 
 **Purpose:** Unit tests for role-keyed system2 rule selection: role choice, degraded configs, project exclusion and end-to-end resolution.
 **Reads:** a synthetic shared-rules tree in a temp dir, never the real one.

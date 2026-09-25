@@ -61,17 +61,17 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### live_log_isolation.py (36 LOC)
+### live_log_isolation.py (46 LOC)
 
-**Purpose:** Points the hook firing log, the home directory or the monitor root of the running test process at a temp directory, removed at exit.
-**Reads:** nothing.
+**Purpose:** Points the hook firing log, the home directory (optionally with copies of named real files) or the monitor root of the running test process at a temp directory, removed at exit.
+**Reads:** the named real files under the real home, when given.
 **Writes:** the environment variables `MONITOR_CC_HOOK_FIRING_LOG`, `HOME`, `MONITOR_CC_ROOT` of the calling process; a temp directory.
 **Called by:** dev tests and probes that import `src.proxy`, `src.menubar` or run hook code in-process, before their first `src` import.
 **Calls out:** none.
 
 ---
 
-### live_log_writer_scan.py (143 LOC)
+### live_log_writer_scan.py (141 LOC)
 
 **Purpose:** Runs every guarded dev script in a sandbox copy with a temp HOME and reports the ones that change a live log path.
 **Reads:** the tracked dev scripts; sizes and mtimes of the sandbox `src/logs`, the temp HOME, the live `src/logs` and the menubar application support directory.

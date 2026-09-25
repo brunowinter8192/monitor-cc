@@ -21,7 +21,7 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### model_controller_byte_identity.py (173 LOC)
+### model_controller_byte_identity.py (172 LOC)
 
 **Purpose:** Identity harness for the model controller: hashes a sandboxed persistence cycle and a headless UI subview dump.
 **Reads:** the real proxy rules file under the user's shared-rules directory (read-only seed), so a changed file changes the hash.

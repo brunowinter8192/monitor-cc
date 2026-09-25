@@ -13,10 +13,7 @@ from dev.refactoring.repo_roots import resolve_main_project
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SANDBOX_ROOT = PROJECT_ROOT.parent / f'{PROJECT_ROOT.name}_writer_scan'
 REPORT_PATH = Path(__file__).resolve().parent / 'md' / 'live_log_writer_scan_report.md'
-MAIN_PROJECT = Path(resolve_main_project(str(PROJECT_ROOT)))
-LIVE_LOG_DIR = MAIN_PROJECT / 'src' / 'logs'
 LIVE_APP_SUPPORT = Path.home() / 'Library' / 'Application Support' / 'com.brunowinter.monitor-cc-menubar'
-PYTHON = MAIN_PROJECT / 'venv' / 'bin' / 'python'
 RUN_TIMEOUT_SECONDS = 150
 LIVE_HAZARD_DIRS = (
     'dev/desktop_allocation', 'dev/session_launcher', 'dev/menubar_nspanel', 'dev/cursor_edges', 'dev/nsgridview_migration',
@@ -34,9 +31,10 @@ SAFE_EXCEPTIONS = ('dev/monitor_lifecycle/tests/test_monitor_sweep_scheduler.py'
 # ORCHESTRATOR
 
 def writer_scan_workflow() -> int:
+    main_project = Path(resolve_main_project(str(PROJECT_ROOT)))
     fake_home = prepare_sandbox()
     scripts = list_scripts()
-    findings = scan_scripts(scripts, fake_home)
+    findings = scan_scripts(scripts, fake_home, main_project)
     write_report(findings, len(scripts))
     print_summary(findings, len(scripts))
     return exit_code(findings)
@@ -67,20 +65,20 @@ def has_main_guard(path: Path) -> bool:
     return '__name__' in path.read_text(encoding='utf-8') and '__main__' in path.read_text(encoding='utf-8')
 
 
-def scan_scripts(scripts: list, fake_home: Path) -> list:
+def scan_scripts(scripts: list, fake_home: Path, main_project: Path) -> list:
     findings = []
     for rel in scripts:
-        before = snapshot(fake_home)
-        returncode = run_script(rel, fake_home)
-        changed = changed_paths(before, snapshot(fake_home), fake_home)
+        before = snapshot(fake_home, main_project)
+        returncode = run_script(rel, fake_home, main_project)
+        changed = changed_paths(before, snapshot(fake_home, main_project), fake_home)
         if changed:
             findings.append((rel, returncode, changed))
     return findings
 
 
-def snapshot(fake_home: Path) -> dict:
+def snapshot(fake_home: Path, main_project: Path) -> dict:
     found = {}
-    for root, recursive in ((SANDBOX_ROOT / 'src' / 'logs', True), (fake_home, True), (LIVE_LOG_DIR, False), (LIVE_APP_SUPPORT, False)):
+    for root, recursive in ((SANDBOX_ROOT / 'src' / 'logs', True), (fake_home, True), (main_project / 'src' / 'logs', False), (LIVE_APP_SUPPORT, False)):
         found.update(list_files(root, recursive))
     return found
 
@@ -92,12 +90,12 @@ def list_files(root: Path, recursive: bool) -> dict:
     return {str(p): (p.stat().st_size, p.stat().st_mtime_ns) for p in paths if p.is_file() and p.name != '.DS_Store'}
 
 
-def run_script(rel: str, fake_home: Path) -> object:
+def run_script(rel: str, fake_home: Path, main_project: Path) -> object:
     env = dict(os.environ, HOME=str(fake_home), PYTHONDONTWRITEBYTECODE='1')
     env.pop('PROJECT_ROOT', None)
     script = SANDBOX_ROOT / rel
     try:
-        result = subprocess.run([str(PYTHON), str(script)], cwd=script.parent, env=env, capture_output=True, text=True, timeout=RUN_TIMEOUT_SECONDS, stdin=subprocess.DEVNULL)
+        result = subprocess.run([str(main_project / 'venv' / 'bin' / 'python'), str(script)], cwd=script.parent, env=env, capture_output=True, text=True, timeout=RUN_TIMEOUT_SECONDS, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return 'timeout'
     return result.returncode
