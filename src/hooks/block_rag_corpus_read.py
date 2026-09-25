@@ -4,9 +4,9 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._shell_strip import _strip_non_shell_active
+from src.hooks._fire_log import log_fire
 
 _CORPUS_PATH_RE = re.compile(r'(?:^|/)rag-[^/\s]*/data/documents(?=[/\s\'")]|$)')
 _CORPUS_ANCHOR = 'data/documents'
@@ -31,18 +31,22 @@ def block_rag_corpus_read_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
+    if _is_violation(command):
+        _block(command, session_id)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _is_violation(command: str) -> bool:
     if _CORPUS_ANCHOR not in command:
-        sys.exit(0)
+        return False
     stripped = _strip_non_shell_active(command)
     for stripped_seg, original_seg in _split_segments(stripped, command):
         if not _READ_CMD_RE.match(stripped_seg):
             continue
         if _CORPUS_PATH_RE.search(original_seg):
-            _block(command, session_id)
-    sys.exit(0)
-
-
-# FUNCTIONS
+            return True
+    return False
 
 def _parse_command():
     try:

@@ -3,17 +3,9 @@ from typing import Optional
 import hashlib
 import os
 
-from ..pane_error_log import log_pane_error
+from src.pane_error_log import log_pane_error
 
 # FUNCTIONS
-
-def get_selection_file_path(project_filter: Optional[str]) -> str:
-    if project_filter:
-        normalized = os.path.normpath(os.path.expanduser(project_filter))
-        project_hash = hashlib.md5(normalized.encode()).hexdigest()[:8]
-    else:
-        project_hash = 'global'
-    return f"/tmp/monitor_cc_selected_worker_{project_hash}.txt"
 
 def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None:
     path = get_selection_file_path(project_filter)
@@ -25,3 +17,11 @@ def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None
             os.remove(path)
     except OSError:
         log_pane_error('worker_selection')
+
+def get_selection_file_path(project_filter: Optional[str]) -> str:
+    if project_filter:
+        normalized = os.path.normpath(os.path.expanduser(project_filter))
+        project_hash = hashlib.md5(normalized.encode()).hexdigest()[:8]
+    else:
+        project_hash = 'global'
+    return f"/tmp/monitor_cc_selected_worker_{project_hash}.txt"

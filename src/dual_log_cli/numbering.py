@@ -12,24 +12,30 @@ _PATH_BOUNDARIES = "boundaries"
 
 # ORCHESTRATOR
 
-
 def build_session_numbering(session: dict, boundaries: list, continues: list, projects_root: Path = None,
                             messages: list = None) -> dict:
-    main_thread = sorted(boundaries + continues, key=lambda request: request["timestamp"])
+    main_thread = _sorted_main_thread(boundaries, continues)
     _annotate_status(main_thread, session)
     transcript_path, flow_status, reason = resolve_transcript(session, main_thread, projects_root)
     usage = usage_from_transcript(transcript_path, flow_status)
     turns = _transcript_turns(transcript_path)
-    if not any(turn.get("api_calls") for turn in turns):
-        return {"usage": usage, "pane_turns": None, "path": _PATH_BOUNDARIES,
-                "reason": reason or "transcript carries no api calls"}
+    if not _has_api_calls(turns):
+        return _boundaries_result(usage, reason)
     _annotate(main_thread, flow_status, _index_by_request_id(turns))
-    _locate_msgs(main_thread, messages or [])
+    _locate_msgs(main_thread, messages)
     return {"usage": usage, "pane_turns": turns, "path": _PATH_TRANSCRIPT, "requests": main_thread}
-
 
 # FUNCTIONS
 
+def _sorted_main_thread(boundaries: list, continues: list) -> list:
+    return sorted(boundaries + continues, key=lambda request: request["timestamp"])
+
+def _has_api_calls(turns: list) -> bool:
+    return any(turn.get("api_calls") for turn in turns)
+
+def _boundaries_result(usage, reason) -> dict:
+    return {"usage": usage, "pane_turns": None, "path": _PATH_BOUNDARIES,
+            "reason": reason or "transcript carries no api calls"}
 
 def _annotate_status(main_thread: list, session: dict) -> None:
     response_path = (session.get("streams") or {}).get("response")
@@ -56,6 +62,7 @@ def _index_by_request_id(turns: list) -> dict:
 
 
 def _locate_msgs(main_thread: list, messages: list) -> None:
+    messages = messages or []
     assistants = [index for index, message in enumerate(messages) if message.get("role") == "assistant"]
     result_index = _tool_result_index(messages)
     for request in main_thread:

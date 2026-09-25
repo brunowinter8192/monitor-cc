@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 
-from .discovery_worker import get_latest_snapshot
+from src.menubar.discovery_worker import get_latest_snapshot
 
 # FUNCTIONS
 

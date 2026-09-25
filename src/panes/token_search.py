@@ -1,21 +1,10 @@
 # INFRASTRUCTURE
 from typing import List
 
-from ..utils import _ANSI_ESCAPE_RE
-from ..format.token_format import call_numbers, _call_time_str, _format_turn_header_line, _format_cache_call, _call_thinking_meta, _render_expanded_call_lines
+from src.utils import _ANSI_ESCAPE_RE
+from src.format.token_format import call_numbers, _call_time_str, _format_turn_header_line, _format_cache_call, _call_thinking_meta, _render_expanded_call_lines
 
 # FUNCTIONS
-
-def _call_matches_query(call: dict, request_num: int, wide: bool, pane_width: int, response_rid_map: dict, q: str) -> bool:
-    has_thinking, sig_chars = _call_thinking_meta(call)
-    header = _format_cache_call(
-        '▼', call.get('cache_read', 0), call.get('cache_creation', 0), call.get('direct', 0),
-        call.get('output_tokens', 0), wide, request_num, has_thinking, sig_chars, _call_time_str(call), pane_width,
-    )
-    if q in _ANSI_ESCAPE_RE.sub('', header).lower():
-        return True
-    exp_lines, _keys = _render_expanded_call_lines(call, response_rid_map)
-    return any(q in _ANSI_ESCAPE_RE.sub('', line).lower() for line in exp_lines)
 
 def build_token_search_matches(query: str, turns: list, pane_width: int, response_rid_map: dict = None) -> List:
     if not query:
@@ -32,3 +21,14 @@ def build_token_search_matches(query: str, turns: list, pane_width: int, respons
             if _call_matches_query(call, numbers[turn_idx][call_idx], wide, pane_width, response_rid_map, q):
                 matches.append((turn_idx, call_idx))
     return matches
+
+def _call_matches_query(call: dict, request_num: int, wide: bool, pane_width: int, response_rid_map: dict, q: str) -> bool:
+    has_thinking, sig_chars = _call_thinking_meta(call)
+    header = _format_cache_call(
+        '▼', call.get('cache_read', 0), call.get('cache_creation', 0), call.get('direct', 0),
+        call.get('output_tokens', 0), wide, request_num, has_thinking, sig_chars, _call_time_str(call), pane_width,
+    )
+    if q in _ANSI_ESCAPE_RE.sub('', header).lower():
+        return True
+    exp_lines, _keys = _render_expanded_call_lines(call, response_rid_map)
+    return any(q in _ANSI_ESCAPE_RE.sub('', line).lower() for line in exp_lines)

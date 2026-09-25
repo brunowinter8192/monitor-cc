@@ -3,9 +3,9 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _fire_log import log_fire
-from _shell_strip import _strip_non_shell_active
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._fire_log import log_fire
+from src.hooks._shell_strip import _strip_non_shell_active
 
 _SLEEP_ONLY_BG = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$')
 _WAIT_FORM = re.compile(r'^\s*worker-cli\s+wait\b[^;&|\n]*$')

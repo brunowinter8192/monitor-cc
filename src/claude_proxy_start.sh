@@ -145,8 +145,9 @@ _set_live_paths() {
 
 _copy_live_proxy() {
     cp "$SCRIPT_DIR/proxy_addon.py" "$LIVE_ADDON"
-    mkdir -p "$LIVE_DIR"
-    cp -r "$SCRIPT_DIR/proxy" "$LIVE_DIR/"
+    mkdir -p "$LIVE_DIR/src"
+    cp "$SCRIPT_DIR/__init__.py" "$SCRIPT_DIR/constants.py" "$SCRIPT_DIR/monitor_root.py" "$LIVE_DIR/src/"
+    cp -r "$SCRIPT_DIR/proxy" "$LIVE_DIR/src/"
 }
 
 _reset_active_plugins() {

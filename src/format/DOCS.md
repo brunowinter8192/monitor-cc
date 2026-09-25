@@ -34,7 +34,7 @@ Cache-turn lists and pane geometry (from the calling pane) -> `token_format.py` 
 
 ---
 
-### turn_cache.py (160 LOC)
+### turn_cache.py (170 LOC)
 
 **Purpose:** frozen-turn cache for the cache tracker; re-renders only turns whose render inputs changed and republishes the navigation map.
 **Reads:** the cache dict, turns and render-input bundle passed by `token_format.py`.

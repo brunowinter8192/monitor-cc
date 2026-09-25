@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import ctypes
 
-from .menubar_log import log_menubar
+from src.menubar.menubar_log import log_menubar
 
 _OSStatus = ctypes.c_int32
 
@@ -10,6 +10,18 @@ class _EventHotKeyID(ctypes.Structure):
 
 class _EventTypeSpec(ctypes.Structure):
     _fields_ = [('eventClass', ctypes.c_uint32), ('eventKind', ctypes.c_uint32)]
+
+
+_EventHandlerProcPtr = ctypes.CFUNCTYPE(
+    _OSStatus, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+
+_MBAR_SIG            = 0x4D424152
+_HOTKEY_EVENT_SPEC   = _EventTypeSpec(0x6B657962, 6)
+_kEventParamDirect   = 0x2D2D2D2D
+_typeEventHotKeyID   = 0x686B6964
+_eventNotHandledErr  = -9874
+
+# FUNCTIONS
 
 def _load_carbon():
     carbon = ctypes.CDLL('/System/Library/Frameworks/Carbon.framework/Carbon')
@@ -40,17 +52,6 @@ def _load_carbon():
     carbon.GetCurrentEventTime.restype  = ctypes.c_double
     carbon.GetCurrentEventTime.argtypes = []
     return carbon
-
-_EventHandlerProcPtr = ctypes.CFUNCTYPE(
-    _OSStatus, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
-
-_MBAR_SIG            = 0x4D424152
-_HOTKEY_EVENT_SPEC   = _EventTypeSpec(0x6B657962, 6)
-_kEventParamDirect   = 0x2D2D2D2D
-_typeEventHotKeyID   = 0x686B6964
-_eventNotHandledErr  = -9874
-
-# FUNCTIONS
 
 def _log_queue_delay(carbon, event, handler_entry_t: float, hotkey_name: str) -> None:
     event_t = carbon.GetEventTime(event)

@@ -4,8 +4,8 @@ import signal
 import subprocess
 from typing import Dict, List, Tuple
 
-from .proc_cache import _cc_proc_cache, bg_task_holder_pids_snapshot
-from .menubar_log import log_menubar, log_menubar_change
+from src.menubar.proc_cache import _cc_proc_cache, bg_task_holder_pids_snapshot
+from src.menubar.menubar_log import log_menubar, log_menubar_change
 
 _ANCESTRY_MAX_HOPS = 5
 _ORPHAN_SCAN_INTERVAL = 10.0

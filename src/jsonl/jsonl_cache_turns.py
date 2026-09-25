@@ -4,82 +4,25 @@ from typing import Optional
 
 # FUNCTIONS
 
-def _parse_user_message_text(message: dict) -> tuple:
-    content = message.get('message', {}).get('content', '')
-    has_tool_result = False
-    text = ''
-    if isinstance(content, list):
-        has_tool_result = any(
-            isinstance(b, dict) and b.get('type') == 'tool_result'
-            for b in content
-        )
-        text_parts = [
-            b.get('text', '') for b in content
-            if isinstance(b, dict) and b.get('type') == 'text'
-        ]
-        text = '\n'.join(text_parts)
-    elif isinstance(content, str):
-        text = content
-    return has_tool_result, text
+def extract_cache_turns(messages: list) -> list:
+    turns = []
+    current_turn = None
 
-def _extract_content_blocks(content_blocks: list, output_tokens: int) -> list:
-    blocks = []
-    for block in content_blocks:
-        if not isinstance(block, dict):
+    for message in messages:
+        msg_type = message.get('type')
+
+        if msg_type == 'user' and message.get('userType') == 'external':
+            current_turn = _start_turn_from_user(message, current_turn, turns)
             continue
-        bt = block.get('type', '')
-        if bt == 'thinking':
-            think_chars = len(block.get('thinking', ''))
-            sig_chars = len(block.get('signature', ''))
-            blocks.append({'type': 'thinking', 'output_tokens': output_tokens, 'chars': think_chars, 'sig_chars': sig_chars})
-        elif bt == 'tool_use':
-            input_data = block.get('input', {})
-            blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown'), 'preview': input_data})
-        elif bt == 'text':
-            blocks.append({'type': 'text', 'preview': block.get('text', '')})
-    return blocks
 
-def _build_api_call(usage: dict, blocks: list, request_id: str, timestamp: str) -> dict:
-    return {
-        'timestamp':         timestamp,
-        'cache_read':        usage.get('cache_read_input_tokens', 0),
-        'cache_creation':    usage.get('cache_creation_input_tokens', 0),
-        'direct':            usage.get('input_tokens', 0),
-        'output_tokens':     usage.get('output_tokens', 0),
-        'content_blocks':    blocks,
-        'request_id':        request_id,
-        'cache_creation_ttl': usage.get('cache_creation') or {},
-        'server_tool_use':   usage.get('server_tool_use') or {},
-        'service_tier':      usage.get('service_tier', ''),
-        'speed':             usage.get('speed', ''),
-        'inference_geo':     usage.get('inference_geo', ''),
-        'iterations':        usage.get('iterations') or [],
-    }
+        if msg_type == 'assistant' and current_turn is not None:
+            _absorb_assistant_call(message, current_turn)
 
-def _merge_duplicate_call(prev_call: dict, blocks: list, current_turn: dict, output_tokens: int, timestamp: str) -> None:
-    prev_call['output_tokens'] = max(prev_call['output_tokens'], output_tokens)
-    prev_call['timestamp'] = max(prev_call.get('timestamp', ''), timestamp)
-    seen_types = set()
-    for b in prev_call['content_blocks']:
-        if b['type'] == 'tool_use':
-            seen_types.add(('tool_use', b.get('tool_name', '')))
-        elif b['type'] == 'thinking':
-            seen_types.add(('thinking',))
-        elif b['type'] == 'text':
-            seen_types.add(('text', b.get('preview', '')))
-    for b in blocks:
-        if b['type'] == 'tool_use':
-            sig = ('tool_use', b.get('tool_name', ''))
-        elif b['type'] == 'thinking':
-            sig = ('thinking',)
-        else:
-            sig = ('text', b.get('preview', ''))
-        if sig not in seen_types:
-            prev_call['content_blocks'].append(b)
-            seen_types.add(sig)
-            if b['type'] == 'thinking':
-                current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + b.get('chars', 0)
-                current_turn['thinking_sig_chars'] = current_turn.get('thinking_sig_chars', 0) + b.get('sig_chars', 0)
+    for turn in turns:
+        for call in turn.get('api_calls', []):
+            call.pop('_input_key', None)
+
+    return turns
 
 def _start_turn_from_user(message: dict, current_turn: Optional[dict], turns: list) -> Optional[dict]:
     has_tool_result, text = _parse_user_message_text(message)
@@ -110,6 +53,24 @@ def _start_turn_from_user(message: dict, current_turn: Optional[dict], turns: li
     turns.append(new_turn)
     return new_turn
 
+def _parse_user_message_text(message: dict) -> tuple:
+    content = message.get('message', {}).get('content', '')
+    has_tool_result = False
+    text = ''
+    if isinstance(content, list):
+        has_tool_result = any(
+            isinstance(b, dict) and b.get('type') == 'tool_result'
+            for b in content
+        )
+        text_parts = [
+            b.get('text', '') for b in content
+            if isinstance(b, dict) and b.get('type') == 'text'
+        ]
+        text = '\n'.join(text_parts)
+    elif isinstance(content, str):
+        text = content
+    return has_tool_result, text
+
 def _absorb_assistant_call(message: dict, current_turn: dict) -> None:
     usage = message.get('message', {}).get('usage', {})
     cache_read = usage.get('cache_read_input_tokens', 0)
@@ -135,22 +96,61 @@ def _absorb_assistant_call(message: dict, current_turn: dict) -> None:
         current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + sum(b.get('chars', 0) for b in blocks if b['type'] == 'thinking')
         current_turn['thinking_sig_chars'] = current_turn.get('thinking_sig_chars', 0) + sum(b.get('sig_chars', 0) for b in blocks if b['type'] == 'thinking')
 
-def extract_cache_turns(messages: list) -> list:
-    turns = []
-    current_turn = None
-
-    for message in messages:
-        msg_type = message.get('type')
-
-        if msg_type == 'user' and message.get('userType') == 'external':
-            current_turn = _start_turn_from_user(message, current_turn, turns)
+def _extract_content_blocks(content_blocks: list, output_tokens: int) -> list:
+    blocks = []
+    for block in content_blocks:
+        if not isinstance(block, dict):
             continue
+        bt = block.get('type', '')
+        if bt == 'thinking':
+            think_chars = len(block.get('thinking', ''))
+            sig_chars = len(block.get('signature', ''))
+            blocks.append({'type': 'thinking', 'output_tokens': output_tokens, 'chars': think_chars, 'sig_chars': sig_chars})
+        elif bt == 'tool_use':
+            input_data = block.get('input', {})
+            blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown'), 'preview': input_data})
+        elif bt == 'text':
+            blocks.append({'type': 'text', 'preview': block.get('text', '')})
+    return blocks
 
-        if msg_type == 'assistant' and current_turn is not None:
-            _absorb_assistant_call(message, current_turn)
+def _merge_duplicate_call(prev_call: dict, blocks: list, current_turn: dict, output_tokens: int, timestamp: str) -> None:
+    prev_call['output_tokens'] = max(prev_call['output_tokens'], output_tokens)
+    prev_call['timestamp'] = max(prev_call.get('timestamp', ''), timestamp)
+    seen_types = set()
+    for b in prev_call['content_blocks']:
+        if b['type'] == 'tool_use':
+            seen_types.add(('tool_use', b.get('tool_name', '')))
+        elif b['type'] == 'thinking':
+            seen_types.add(('thinking',))
+        elif b['type'] == 'text':
+            seen_types.add(('text', b.get('preview', '')))
+    for b in blocks:
+        if b['type'] == 'tool_use':
+            sig = ('tool_use', b.get('tool_name', ''))
+        elif b['type'] == 'thinking':
+            sig = ('thinking',)
+        else:
+            sig = ('text', b.get('preview', ''))
+        if sig not in seen_types:
+            prev_call['content_blocks'].append(b)
+            seen_types.add(sig)
+            if b['type'] == 'thinking':
+                current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + b.get('chars', 0)
+                current_turn['thinking_sig_chars'] = current_turn.get('thinking_sig_chars', 0) + b.get('sig_chars', 0)
 
-    for turn in turns:
-        for call in turn.get('api_calls', []):
-            call.pop('_input_key', None)
-
-    return turns
+def _build_api_call(usage: dict, blocks: list, request_id: str, timestamp: str) -> dict:
+    return {
+        'timestamp':         timestamp,
+        'cache_read':        usage.get('cache_read_input_tokens', 0),
+        'cache_creation':    usage.get('cache_creation_input_tokens', 0),
+        'direct':            usage.get('input_tokens', 0),
+        'output_tokens':     usage.get('output_tokens', 0),
+        'content_blocks':    blocks,
+        'request_id':        request_id,
+        'cache_creation_ttl': usage.get('cache_creation') or {},
+        'server_tool_use':   usage.get('server_tool_use') or {},
+        'service_tier':      usage.get('service_tier', ''),
+        'speed':             usage.get('speed', ''),
+        'inference_geo':     usage.get('inference_geo', ''),
+        'iterations':        usage.get('iterations') or [],
+    }

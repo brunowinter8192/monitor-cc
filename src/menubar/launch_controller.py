@@ -1,20 +1,17 @@
 # INFRASTRUCTURE
 import threading
 
-from .launch_config import LAUNCH_DESKTOPS, LAUNCH_PROJECTS
-from .launch_panel_ui import (_make_desktop_row, _make_project_button)
-from .menubar_log import log_menubar
-from .panel import (_TOP_BAR_H, _ROW_H, _LABEL_H, _make_line_separator,
+from src.menubar.launch_config import LAUNCH_DESKTOPS, LAUNCH_PROJECTS
+from src.menubar.launch_panel_ui import (_make_desktop_row, _make_project_button)
+from src.menubar.menubar_log import log_menubar
+from src.menubar.panel import (_TOP_BAR_H, _ROW_H, _LABEL_H, _make_line_separator,
                     _make_tab_nspanel, _resize_panel_keep_top)
-from .panel_lifecycle import _close_launch_panel
-from .session_launch import launch_workflow
-from .space_switch import request_post_event_access_if_missing
+from src.menubar.panel_lifecycle import _close_launch_panel
+from src.menubar.session_launch import launch_workflow
+from src.menubar.space_switch import request_post_event_access_if_missing
 
 # FUNCTIONS
 
-def occupied_desktops(sessions) -> frozenset:
-    return frozenset(s.desktop_no for s in sessions
-                     if not s.is_worker and s.desktop_no is not None)
 
 class LaunchController:
     def __init__(self, app) -> None:
@@ -94,3 +91,7 @@ class LaunchController:
             launch_workflow(desktop, project)
         finally:
             self._launch_in_progress = False
+
+def occupied_desktops(sessions) -> frozenset:
+    return frozenset(s.desktop_no for s in sessions
+                     if not s.is_worker and s.desktop_no is not None)

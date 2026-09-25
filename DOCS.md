@@ -11,7 +11,7 @@ No `__init__.py`. Entry paths: `python3 workflow.py --mode <mode>` and `./venv/b
 
 ## Modules
 
-### workflow.py (33 LOC)
+### workflow.py (51 LOC)
 
 **Purpose:** Single process entry point that parses the mode and dispatches to the launcher, a pane package, or the core monitor.
 **Reads:** `sys.argv` via `src/startup.py`.
@@ -21,7 +21,7 @@ No `__init__.py`. Entry paths: `python3 workflow.py --mode <mode>` and `./venv/b
 
 ---
 
-### setup_py2app.py (135 LOC)
+### setup_py2app.py (141 LOC)
 
 **Purpose:** Builds the menubar app bundle with py2app, prunes it, code-signs it, installs it into the user's Applications folder and bootstraps its launch agent.
 **Reads:** `src/menubar/` sources and the launch-agent plist template; the code-signing identities of the keychain.

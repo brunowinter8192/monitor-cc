@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import argparse
 
-from .classifier import ONLY_FORMS
+from src.dual_log_cli.classifier import ONLY_FORMS
 
 _REQS_DESCRIPTION = (
     "Prints, per session, a `session <stem>` line, then every REQ grouped under its own "

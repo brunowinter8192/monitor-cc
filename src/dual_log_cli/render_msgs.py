@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
-from .render_format import _clock
-from .timeline_boundaries import _BILLING_HEADER_SYS_INDEX, _system_block_chars, _tool_chars
-from .timeline_markers import request_markers
+from src.dual_log_cli.render_format import _clock
+from src.dual_log_cli.timeline_boundaries import _BILLING_HEADER_SYS_INDEX, _system_block_chars, _tool_chars
+from src.dual_log_cli.timeline_markers import request_markers
 
 _MSG_PREFIX_WIDTH = 12
 _MSG_LABEL_WIDTH = 20

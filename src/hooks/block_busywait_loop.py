@@ -3,9 +3,9 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._shell_strip import _strip_non_shell_active
+from src.hooks._fire_log import log_fire
 
 _LOOP_RE   = re.compile(r'\b(?:while|until)\b(.*?)\bdo\b(.*?)\bdone\b', re.DOTALL)
 _BODY_SLEEP_ONLY = re.compile(r'^sleep\s+[\d.]+$')
@@ -24,18 +24,25 @@ def block_busywait_loop_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
+    if _is_violation(command):
+        _block(command, session_id)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _is_violation(command: str) -> bool:
     stripped = _strip_non_shell_active(command)
     for m in _LOOP_RE.finditer(stripped):
         cond, body = m.group(1), m.group(2)
         body_clean = body.strip(" \t\r\n;")
         if _BODY_SLEEP_ONLY.match(body_clean) and _COND_STATUS.search(cond):
-            print(_BLOCK_MESSAGE, file=sys.stderr, end="")
-            log_fire("block_busywait_loop", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
-            sys.exit(2)
-    sys.exit(0)
+            return True
+    return False
 
-
-# FUNCTIONS
+def _block(command: str, session_id) -> None:
+    print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+    log_fire("block_busywait_loop", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
+    sys.exit(2)
 
 def _parse_command():
     try:

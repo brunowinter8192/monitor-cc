@@ -3,9 +3,9 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._shell_strip import _strip_non_shell_active
+from src.hooks._fire_log import log_fire
 
 _FIND_GLOBAL_OPTS = frozenset({'-H', '-L', '-P'})
 _GLOBAL_OPT_O_RE  = re.compile(r'^-O\d*$')
@@ -27,20 +27,9 @@ def block_broad_find_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
-    stripped = _strip_non_shell_active(command)
-    segment, after = _find_segment(stripped)
-    if segment is None:
-        sys.exit(0)
-    roots = _extract_roots(segment)
-    if not any(_is_broad_root(r) for r in roots):
-        sys.exit(0)
-    if _has_maxdepth(segment):
-        sys.exit(0)
-    if _is_head_bounded(after):
-        sys.exit(0)
-    print(_BLOCK_MESSAGE, file=sys.stderr, end="")
-    log_fire("block_broad_find", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
-    sys.exit(2)
+    if _is_violation(command):
+        _block(command, session_id)
+    sys.exit(0)
 
 # FUNCTIONS
 
@@ -53,6 +42,17 @@ def _parse_command():
         log_fire("block_broad_find", "trace", "Bash", "", reason=f"parse error: {type(e).__name__}: {e}")
         return None, None
 
+def _is_violation(command: str) -> bool:
+    stripped = _strip_non_shell_active(command)
+    segment, after = _find_segment(stripped)
+    if segment is None:
+        return False
+    if not _has_broad_root(_extract_roots(segment)):
+        return False
+    if _has_maxdepth(segment):
+        return False
+    return not _is_head_bounded(after)
+
 def _find_segment(command: str):
     for m in re.finditer(r'\bfind\b', command):
         segment_str = command[m.start():]
@@ -61,6 +61,24 @@ def _find_segment(command: str):
             return segment_str[:end.start()], command[m.start() + end.start():]
         return segment_str, ""
     return None, None
+
+def _has_broad_root(roots: list) -> bool:
+    return any(_is_broad_root(r) for r in roots)
+
+def _is_broad_root(token: str) -> bool:
+    resolved = _resolve_root(token)
+    if resolved in (_HOME, '/'):
+        return True
+    if resolved == _CLAUDE or resolved.startswith(_CLAUDE + '/'):
+        return True
+    return False
+
+def _resolve_root(token: str) -> str:
+    if token.startswith('${HOME}'):
+        token = '~' + token[7:]
+    elif token.startswith('$HOME'):
+        token = '~' + token[5:]
+    return os.path.normpath(os.path.expanduser(token))
 
 def _extract_roots(segment: str) -> list:
     tokens = segment.split()
@@ -85,27 +103,16 @@ def _extract_roots(segment: str) -> list:
         i += 1
     return roots
 
-def _resolve_root(token: str) -> str:
-    if token.startswith('${HOME}'):
-        token = '~' + token[7:]
-    elif token.startswith('$HOME'):
-        token = '~' + token[5:]
-    return os.path.normpath(os.path.expanduser(token))
-
-def _is_broad_root(token: str) -> bool:
-    resolved = _resolve_root(token)
-    if resolved in (_HOME, '/'):
-        return True
-    if resolved == _CLAUDE or resolved.startswith(_CLAUDE + '/'):
-        return True
-    return False
-
 def _has_maxdepth(segment: str) -> bool:
     return bool(_MAXDEPTH_RE.search(segment))
 
 def _is_head_bounded(after: str) -> bool:
     return bool(_HEAD_PIPE.match(after))
 
+def _block(command: str, session_id) -> None:
+    print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+    log_fire("block_broad_find", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
+    sys.exit(2)
 
 if __name__ == "__main__":
     block_broad_find_workflow()

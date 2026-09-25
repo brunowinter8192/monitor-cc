@@ -5,21 +5,21 @@ import re
 import subprocess
 import time
 
-from ..colors import (
+from src.colors import (
     RESET, GREEN, YELLOW, DIM, CYAN,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..constants import INPUT_POLL_INTERVAL
-from ..input.click_handler import (
+from src.constants import INPUT_POLL_INTERVAL
+from src.input.click_handler import (
     setup_keyboard_input, restore_terminal, read_keypress, wait_for_input,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard,
 )
-from ..utils import compute_header_rule_len, highlight_query_in_line
-from .log_parser import (
+from src.utils import compute_header_rule_len, highlight_query_in_line
+from src.news_pane.log_parser import (
     TARGET_COLLECTION, WEBSEARCH_ROOT, read_last_run_ts,
 )
-from ..pane_error_log import log_pane_error, log_pane_note
-from .. import search_bar
+from src.pane_error_log import log_pane_error, log_pane_note
+from src import search_bar
 
 NEWS_POLL_INTERVAL      = 2.0
 
@@ -36,36 +36,37 @@ _news_search: search_bar.SearchState = search_bar.SearchState()
 # ORCHESTRATOR
 
 def run_news_loop() -> None:
-    global _pipeline_proc
-    last_output       = None
-    last_data_refresh = 0.0
-    status: dict      = {}
+    loop_state = {'last_output': None, 'last_data_refresh': 0.0, 'status': {}}
+    _open_terminal()
+    _loop_until_closed(loop_state)
 
+# FUNCTIONS
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed, force_refresh = _poll_news_input(status)
-
-                now = time.time()
-                if force_refresh or now - last_data_refresh >= NEWS_POLL_INTERVAL:
-                    status = _fetch_news_status()
-                    last_data_refresh = now
-                    input_changed = True
-
-                if input_changed:
-                    last_output = _build_news_output(status, last_output)
-
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('news')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('news')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    input_changed, force_refresh = _poll_news_input(loop_state['status'])
+    input_changed = _refresh_status(loop_state, force_refresh, input_changed)
+    if input_changed:
+        loop_state['last_output'] = _build_news_output(loop_state['status'], loop_state['last_output'])
+    wait_for_input(INPUT_POLL_INTERVAL)
 
 def _poll_news_input(status: dict) -> tuple:
     input_changed = False
@@ -104,7 +105,6 @@ def _poll_news_input(status: dict) -> tuple:
             input_changed = True
     return input_changed, force_refresh
 
-
 def _handle_news_mouse(button: int, col: int, row: int) -> tuple:
     if button == 0:
         if row == 1:
@@ -124,83 +124,8 @@ def _handle_news_mouse(button: int, col: int, row: int) -> tuple:
         return search_bar.handle_search_mouse_motion(_news_search, col, _NEWS_SEARCH_BAR_LABEL), False
     return False, False
 
-
-def _build_news_output(status: dict, last_output):
-    term = os.get_terminal_size()
-    pane_width  = term.columns
-    pane_height = term.lines - 1
-    running = _is_running()
-    current_match_line = (
-        _news_search.matches[_news_search.current_idx]
-        if _news_search.matches and _news_search.current_idx < len(_news_search.matches)
-        else None
-    )
-    body = _render_pane(pane_width, pane_height, status, running,
-                        search_query=_news_search.query,
-                        search_match_line_set=_news_search.match_set,
-                        search_current_line=current_match_line)
-    shifted = {(sc, ec, er + _NEWS_SEARCH_BAR_LINES): v for (sc, ec, er), v in _button_regions.items()}
-    _button_regions.clear()
-    _button_regions.update(shifted)
-    output = _render_news_search_bar(pane_width) + '\n' + body
-    if output != last_output:
-        print('\033[2J\033[3J\033[H', end='', flush=True)
-        print(output, end='', flush=True)
-        return output
-    return last_output
-
-def _fetch_news_status() -> dict:
-    return {
-        'doc_count':   _fetch_doc_count(),
-        'chunk_count': _fetch_chunk_count(),
-        'last_run_ts': read_last_run_ts(),
-    }
-
-
-def _note_fetch_state(kind: str, cause: str | None) -> None:
-    if _fetch_states.get(kind) == cause:
-        return
-    _fetch_states[kind] = cause
-    if cause is not None:
-        log_pane_note('news', f'{kind} unavailable: {cause}')
-
-
-def _fetch_doc_count() -> int | None:
-    try:
-        r = subprocess.run(
-            ['rag-cli', 'list_documents', TARGET_COLLECTION],
-            capture_output=True, text=True, timeout=5,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        _note_fetch_state('doc_count', type(exc).__name__)
-        return None
-    if r.returncode != 0:
-        _note_fetch_state('doc_count', f'rc={r.returncode}')
-        return None
-    _note_fetch_state('doc_count', None)
-    return sum(1 for ln in r.stdout.splitlines() if re.search(r'\.md \(\d+ chunks\)', ln))
-
-
-def _fetch_chunk_count() -> int | None:
-    try:
-        r = subprocess.run(
-            ['rag-cli', 'list_collections', '--json'],
-            capture_output=True, text=True, timeout=5,
-        )
-        entries = json.loads(r.stdout) if r.returncode == 0 else None
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
-        _note_fetch_state('chunk_count', type(exc).__name__)
-        return None
-    if entries is None:
-        _note_fetch_state('chunk_count', f'rc={r.returncode}')
-        return None
-    for entry in entries:
-        if entry.get('collection') == TARGET_COLLECTION:
-            _note_fetch_state('chunk_count', None)
-            return entry.get('chunks')
-    _note_fetch_state('chunk_count', 'collection not listed')
-    return None
-
+def _is_running() -> bool:
+    return _pipeline_proc is not None and _pipeline_proc.poll() is None
 
 def _fire_pipeline() -> None:
     global _pipeline_proc
@@ -210,15 +135,6 @@ def _fire_pipeline() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-
-
-def _is_running() -> bool:
-    return _pipeline_proc is not None and _pipeline_proc.poll() is None
-
-
-def _strip_ansi(s: str) -> str:
-    return _ANSI_RE.sub('', s)
-
 
 def _news_search_on_commit(state: search_bar.SearchState, status: dict) -> None:
     if not state.query:
@@ -232,16 +148,6 @@ def _news_search_on_commit(state: search_bar.SearchState, status: dict) -> None:
     state.matches = matches
     state.match_set = set(matches)
     state.current_idx = 0
-
-def _jump_news_search_match(forward: bool) -> bool:
-    if not _news_search.matches:
-        return False
-    _news_search.current_idx = (_news_search.current_idx + (1 if forward else -1)) % len(_news_search.matches)
-    return True
-
-def _render_news_search_bar(pane_width: int) -> str:
-    return search_bar.render_search_bar(_news_search, pane_width, label=_NEWS_SEARCH_BAR_LABEL)
-
 
 def _render_pane(pane_width: int, pane_height: int, status: dict, running: bool,
                   search_query: str = '', search_match_line_set: set | None = None,
@@ -292,3 +198,96 @@ def _render_pane(pane_width: int, pane_height: int, status: dict, running: bool,
                 lines[idx] = highlight_query_in_line(lines[idx], search_query, marker)
 
     return "\n".join(lines)
+
+def _strip_ansi(s: str) -> str:
+    return _ANSI_RE.sub('', s)
+
+def _jump_news_search_match(forward: bool) -> bool:
+    if not _news_search.matches:
+        return False
+    _news_search.current_idx = (_news_search.current_idx + (1 if forward else -1)) % len(_news_search.matches)
+    return True
+
+def _refresh_status(loop_state: dict, force_refresh: bool, input_changed: bool) -> bool:
+    now = time.time()
+    if force_refresh or now - loop_state['last_data_refresh'] >= NEWS_POLL_INTERVAL:
+        loop_state['status'] = _fetch_news_status()
+        loop_state['last_data_refresh'] = now
+        return True
+    return input_changed
+
+def _fetch_news_status() -> dict:
+    return {
+        'doc_count':   _fetch_doc_count(),
+        'chunk_count': _fetch_chunk_count(),
+        'last_run_ts': read_last_run_ts(),
+    }
+
+def _fetch_doc_count() -> int | None:
+    try:
+        r = subprocess.run(
+            ['rag-cli', 'list_documents', TARGET_COLLECTION],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        _note_fetch_state('doc_count', type(exc).__name__)
+        return None
+    if r.returncode != 0:
+        _note_fetch_state('doc_count', f'rc={r.returncode}')
+        return None
+    _note_fetch_state('doc_count', None)
+    return sum(1 for ln in r.stdout.splitlines() if re.search(r'\.md \(\d+ chunks\)', ln))
+
+def _note_fetch_state(kind: str, cause: str | None) -> None:
+    if _fetch_states.get(kind) == cause:
+        return
+    _fetch_states[kind] = cause
+    if cause is not None:
+        log_pane_note('news', f'{kind} unavailable: {cause}')
+
+def _fetch_chunk_count() -> int | None:
+    try:
+        r = subprocess.run(
+            ['rag-cli', 'list_collections', '--json'],
+            capture_output=True, text=True, timeout=5,
+        )
+        entries = json.loads(r.stdout) if r.returncode == 0 else None
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        _note_fetch_state('chunk_count', type(exc).__name__)
+        return None
+    if entries is None:
+        _note_fetch_state('chunk_count', f'rc={r.returncode}')
+        return None
+    for entry in entries:
+        if entry.get('collection') == TARGET_COLLECTION:
+            _note_fetch_state('chunk_count', None)
+            return entry.get('chunks')
+    _note_fetch_state('chunk_count', 'collection not listed')
+    return None
+
+def _build_news_output(status: dict, last_output):
+    term = os.get_terminal_size()
+    pane_width  = term.columns
+    pane_height = term.lines - 1
+    running = _is_running()
+    current_match_line = (
+        _news_search.matches[_news_search.current_idx]
+        if _news_search.matches and _news_search.current_idx < len(_news_search.matches)
+        else None
+    )
+    body = _render_pane(pane_width, pane_height, status, running,
+                        search_query=_news_search.query,
+                        search_match_line_set=_news_search.match_set,
+                        search_current_line=current_match_line)
+    shifted = {(sc, ec, er + _NEWS_SEARCH_BAR_LINES): v for (sc, ec, er), v in _button_regions.items()}
+    _button_regions.clear()
+    _button_regions.update(shifted)
+    output = _render_news_search_bar(pane_width) + '\n' + body
+    if output != last_output:
+        print('\033[2J\033[3J\033[H', end='', flush=True)
+        print(output, end='', flush=True)
+        return output
+    return last_output
+
+def _render_news_search_bar(pane_width: int) -> str:
+    return search_bar.render_search_bar(_news_search, pane_width, label=_NEWS_SEARCH_BAR_LABEL)

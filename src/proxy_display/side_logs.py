@@ -2,9 +2,9 @@
 from pathlib import Path
 from typing import Optional
 
-from ..pane_error_log import log_pane_error
+from src.pane_error_log import log_pane_error
 from src.jsonl.jsonl_reader import JsonlReader
-from .forwarded_parser import _monitor_root
+from src.proxy_display.forwarded_parser import _monitor_root
 
 # FUNCTIONS
 

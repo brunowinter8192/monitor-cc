@@ -1,10 +1,10 @@
 # INFRASTRUCTURE
 from src.proxy_display.format import _assign_turns_to_entries
 
-from .discovery import stem_identity
-from .reader import local_datetime
-from .render_format import _clock, _fmt_duration, _skipped_lines
-from .timeline_grouping import _group_markers_by_turn, _turn_preview
+from src.dual_log_cli.discovery import stem_identity
+from src.dual_log_cli.reader import local_datetime
+from src.dual_log_cli.render_format import _clock, _fmt_duration, _skipped_lines
+from src.dual_log_cli.timeline_grouping import _group_markers_by_turn, _turn_preview
 
 _REQ_NUMBER_WIDTH = 4
 _PREVIEW_CHARS = 100
@@ -40,50 +40,6 @@ def render_reqs(results: list, skipped: int = 0, turn: int = None, gap_minutes: 
     return "\n".join(lines[:-1] + _skipped_lines(skipped)) + "\n"
 
 
-def render_reqs_merged(results: list, skipped: int = 0, turn: int = None, gap_minutes: int = None,
-                       usage_by_stem: dict = None, rebuild: bool = False, drop: bool = False,
-                       turns_by_stem: dict = None, continues_by_stem: dict = None,
-                       pane_turns_by_stem: dict = None) -> str:
-    if not results:
-        lines = ["no sessions found"]
-        return "\n".join(lines + _skipped_lines(skipped)) + "\n"
-    entries, separators = _merged_entries(results, turns_by_stem, usage_by_stem, continues_by_stem, pane_turns_by_stem)
-    entries = _apply_filters(entries, turn, gap_minutes, rebuild, drop)
-    if not entries:
-        return _no_reqs_output(skipped)
-    lines = [f"merged {len(results)} sessions"]
-    lines.extend(_grouped_lines(entries, separators, merged=True))
-    return "\n".join(lines + _skipped_lines(skipped)) + "\n"
-
-
-def _no_reqs_output(skipped: int) -> str:
-    return "\n".join([_NO_REQS_LINE] + _skipped_lines(skipped)) + "\n"
-
-
-def _req_line(marker: dict, tag: str, usage, cr_width: int) -> str:
-    tag_part = f"  {tag}" if tag else ""
-    number = "?" if marker["number"] is None else marker["number"]
-    status = marker.get("http_status")
-    status_part = f"  {status}" if status not in (None, 200) else ""
-    return (f"REQ {number:<{_REQ_NUMBER_WIDTH}}{_clock(_clock_source(marker))}{tag_part}"
-            f"{status_part}{_usage_part(usage, cr_width)}")
-
-
-def _clock_source(marker: dict) -> str:
-    return marker.get("clock_timestamp") or marker["timestamp"]
-
-
-def _usage_part(usage, cr_width: int) -> str:
-    cr_str = f"{usage[0]:,}" if usage else "?"
-    cc_str = f"{usage[1]:,}" if usage else "?"
-    return f"  CR {cr_str:<{cr_width}}  CC {cc_str}"
-
-
-def _session_tag(session: dict) -> str:
-    identity = stem_identity(session.get("stem", ""))
-    return identity[-1] if identity else session.get("stem", "")
-
-
 def _session_entries_and_separators(boundaries: list, turns: list, usage_map: dict,
                                     stem: str, tag: str = "", continues: list = None,
                                     pane_turns: list = None) -> tuple:
@@ -112,27 +68,6 @@ def _session_entries_and_separators(boundaries: list, turns: list, usage_map: di
     return entries, separators
 
 
-def _require_datetime(timestamp: str, stem: str):
-    dt = local_datetime(timestamp)
-    if dt is None:
-        raise ValueError(f"request in {stem} has no timestamp")
-    return dt
-
-
-def _entries_for_session(markers: dict, usage_map: dict, turn_by_msg_index: dict,
-                         stem: str, tag: str = "") -> list:
-    entries = []
-    prev_usage = None
-    for msg_index in sorted(markers):
-        marker = markers[msg_index]
-        dt = _require_datetime(_clock_source(marker), stem)
-        usage = (usage_map or {}).get(marker.get("flow_id"))
-        turn_number = turn_by_msg_index.get(msg_index)
-        entries.append((dt, stem, marker, tag, turn_number, usage, prev_usage))
-        prev_usage = usage
-    return entries
-
-
 def _pane_entries_and_separators(boundaries: list, continues: list, pane_turns: list,
                                  usage_map: dict, stem: str, tag: str) -> tuple:
     requests = [_request_marker(request) for request in (boundaries or [])]
@@ -140,13 +75,6 @@ def _pane_entries_and_separators(boundaries: list, continues: list, pane_turns: 
     _assign_unmapped_turns(requests, pane_turns)
     entries = _chronological_entries(requests, usage_map, stem, tag)
     return entries, _pane_turn_separators(entries, pane_turns, stem, tag)
-
-
-def _assign_unmapped_turns(requests: list, pane_turns: list) -> None:
-    unmapped = [request for request in requests if request.get("pane_turn") is None]
-    for group in _assign_turns_to_entries(unmapped, pane_turns):
-        for _position, request in group["entry_pairs"]:
-            request["pane_turn"] = group["turn_idx"] + 1
 
 
 def _request_marker(request: dict) -> dict:
@@ -161,6 +89,13 @@ def _request_marker(request: dict) -> dict:
     }
 
 
+def _assign_unmapped_turns(requests: list, pane_turns: list) -> None:
+    unmapped = [request for request in requests if request.get("pane_turn") is None]
+    for group in _assign_turns_to_entries(unmapped, pane_turns):
+        for _position, request in group["entry_pairs"]:
+            request["pane_turn"] = group["turn_idx"] + 1
+
+
 def _chronological_entries(requests: list, usage_map: dict, stem: str, tag: str) -> list:
     dated = [(_require_datetime(_clock_source(request), stem), request) for request in requests]
     dated = sorted(dated, key=lambda pair: pair[0])
@@ -171,6 +106,17 @@ def _chronological_entries(requests: list, usage_map: dict, stem: str, tag: str)
         entries.append((dt, stem, request, tag, request.get("pane_turn"), usage, prev_usage))
         prev_usage = usage
     return entries
+
+
+def _require_datetime(timestamp: str, stem: str):
+    dt = local_datetime(timestamp)
+    if dt is None:
+        raise ValueError(f"request in {stem} has no timestamp")
+    return dt
+
+
+def _clock_source(marker: dict) -> str:
+    return marker.get("clock_timestamp") or marker["timestamp"]
 
 
 def _pane_turn_separators(entries: list, pane_turns: list, stem: str, tag: str) -> dict:
@@ -193,22 +139,29 @@ def _pane_turn_separators(entries: list, pane_turns: list, stem: str, tag: str) 
     return separators
 
 
-def _merged_entries(results: list, turns_by_stem: dict = None, usage_by_stem: dict = None,
-                    continues_by_stem: dict = None, pane_turns_by_stem: dict = None) -> tuple:
+def _entries_for_session(markers: dict, usage_map: dict, turn_by_msg_index: dict,
+                         stem: str, tag: str = "") -> list:
     entries = []
-    separators = {}
-    for session, boundaries in results:
-        stem = session.get("stem", "")
-        tag = _session_tag(session)
-        usage_map = (usage_by_stem or {}).get(stem, {})
-        turns = (turns_by_stem or {}).get(stem, [])
-        session_entries, session_separators = _session_entries_and_separators(
-            boundaries, turns, usage_map, stem, tag, (continues_by_stem or {}).get(stem),
-            (pane_turns_by_stem or {}).get(stem))
-        entries.extend(session_entries)
-        separators.update(session_separators)
-    entries.sort(key=lambda entry: entry[0])
-    return entries, separators
+    prev_usage = None
+    for msg_index in sorted(markers):
+        marker = markers[msg_index]
+        dt = _require_datetime(_clock_source(marker), stem)
+        usage = (usage_map or {}).get(marker.get("flow_id"))
+        turn_number = turn_by_msg_index.get(msg_index)
+        entries.append((dt, stem, marker, tag, turn_number, usage, prev_usage))
+        prev_usage = usage
+    return entries
+
+
+def _apply_filters(entries: list, turn: int, gap_minutes: int, rebuild: bool, drop: bool) -> list:
+    if turn is not None:
+        entries = [entry for entry in entries if entry[4] == turn]
+    if gap_minutes is not None:
+        positions = _bracket_gap_positions(entries, gap_minutes)
+        entries = [entries[i] for i in sorted(positions)]
+    if rebuild or drop:
+        entries = [entry for entry in entries if _rebuild_drop_qualifies(entry[5], entry[6], rebuild, drop)]
+    return entries
 
 
 def _bracket_gap_positions(entries: list, gap_minutes: int) -> dict:
@@ -246,25 +199,6 @@ def _rebuild_drop_qualifies(usage, prev_usage, rebuild: bool, drop: bool) -> boo
     return True
 
 
-def _apply_filters(entries: list, turn: int, gap_minutes: int, rebuild: bool, drop: bool) -> list:
-    if turn is not None:
-        entries = [entry for entry in entries if entry[4] == turn]
-    if gap_minutes is not None:
-        positions = _bracket_gap_positions(entries, gap_minutes)
-        entries = [entries[i] for i in sorted(positions)]
-    if rebuild or drop:
-        entries = [entry for entry in entries if _rebuild_drop_qualifies(entry[5], entry[6], rebuild, drop)]
-    return entries
-
-
-def _cr_width_by_stem(entries: list) -> dict:
-    widths = {}
-    for _dt, stem, _marker, _tag, _turn, usage, _prev_usage in entries:
-        cr_str = f"{usage[0]:,}" if usage else "?"
-        widths[stem] = max(widths.get(stem, 0), len(cr_str))
-    return widths
-
-
 def _grouped_lines(entries: list, separators: dict, merged: bool) -> list:
     cr_width_by_stem = _cr_width_by_stem(entries)
     lines = []
@@ -279,3 +213,69 @@ def _grouped_lines(entries: list, separators: dict, merged: bool) -> list:
         cr_width = cr_width_by_stem.get(stem, 1)
         lines.append(_req_line(marker, tag if merged else "", usage, cr_width))
     return lines
+
+
+def _cr_width_by_stem(entries: list) -> dict:
+    widths = {}
+    for _dt, stem, _marker, _tag, _turn, usage, _prev_usage in entries:
+        cr_str = f"{usage[0]:,}" if usage else "?"
+        widths[stem] = max(widths.get(stem, 0), len(cr_str))
+    return widths
+
+
+def _req_line(marker: dict, tag: str, usage, cr_width: int) -> str:
+    tag_part = f"  {tag}" if tag else ""
+    number = "?" if marker["number"] is None else marker["number"]
+    status = marker.get("http_status")
+    status_part = f"  {status}" if status not in (None, 200) else ""
+    return (f"REQ {number:<{_REQ_NUMBER_WIDTH}}{_clock(_clock_source(marker))}{tag_part}"
+            f"{status_part}{_usage_part(usage, cr_width)}")
+
+
+def _usage_part(usage, cr_width: int) -> str:
+    cr_str = f"{usage[0]:,}" if usage else "?"
+    cc_str = f"{usage[1]:,}" if usage else "?"
+    return f"  CR {cr_str:<{cr_width}}  CC {cc_str}"
+
+
+def _no_reqs_output(skipped: int) -> str:
+    return "\n".join([_NO_REQS_LINE] + _skipped_lines(skipped)) + "\n"
+
+
+def render_reqs_merged(results: list, skipped: int = 0, turn: int = None, gap_minutes: int = None,
+                       usage_by_stem: dict = None, rebuild: bool = False, drop: bool = False,
+                       turns_by_stem: dict = None, continues_by_stem: dict = None,
+                       pane_turns_by_stem: dict = None) -> str:
+    if not results:
+        lines = ["no sessions found"]
+        return "\n".join(lines + _skipped_lines(skipped)) + "\n"
+    entries, separators = _merged_entries(results, turns_by_stem, usage_by_stem, continues_by_stem, pane_turns_by_stem)
+    entries = _apply_filters(entries, turn, gap_minutes, rebuild, drop)
+    if not entries:
+        return _no_reqs_output(skipped)
+    lines = [f"merged {len(results)} sessions"]
+    lines.extend(_grouped_lines(entries, separators, merged=True))
+    return "\n".join(lines + _skipped_lines(skipped)) + "\n"
+
+
+def _merged_entries(results: list, turns_by_stem: dict = None, usage_by_stem: dict = None,
+                    continues_by_stem: dict = None, pane_turns_by_stem: dict = None) -> tuple:
+    entries = []
+    separators = {}
+    for session, boundaries in results:
+        stem = session.get("stem", "")
+        tag = _session_tag(session)
+        usage_map = (usage_by_stem or {}).get(stem, {})
+        turns = (turns_by_stem or {}).get(stem, [])
+        session_entries, session_separators = _session_entries_and_separators(
+            boundaries, turns, usage_map, stem, tag, (continues_by_stem or {}).get(stem),
+            (pane_turns_by_stem or {}).get(stem))
+        entries.extend(session_entries)
+        separators.update(session_separators)
+    entries.sort(key=lambda entry: entry[0])
+    return entries, separators
+
+
+def _session_tag(session: dict) -> str:
+    identity = stem_identity(session.get("stem", ""))
+    return identity[-1] if identity else session.get("stem", "")

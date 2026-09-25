@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from .colors import RESET, RED, GREEN, YELLOW, BLUE
+from src.colors import RESET, RED, GREEN, YELLOW, BLUE
 
 CLAUDE_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 

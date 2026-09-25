@@ -1,6 +1,5 @@
-import re
-
 # INFRASTRUCTURE
+import re
 
 _STANDALONE_SR_RE = re.compile(r'(?m)^<system-reminder>.*?</system-reminder>\n?', re.DOTALL)
 
@@ -61,40 +60,19 @@ _MARKER_TO_TEMPLATE = {
 # ORCHESTRATOR
 
 def _strip_system_reminders(content, enabled_templates=None):
+    return _strip_sr_content(content, enabled_templates)
+
+
+# FUNCTIONS
+
+def _strip_sr_content(content, enabled_templates):
     if enabled_templates is None:
         enabled_templates = _ALL_TEMPLATES
     if isinstance(content, str):
         return _apply_sr_strip(content, enabled_templates) or '.'
     if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict):
-                result.append(block)
-                continue
-            btype = block.get('type')
-            if btype == 'text':
-                new_text = _apply_sr_strip(block.get('text', ''), enabled_templates)
-                result.append({**block, 'text': new_text or '.'})
-            else:
-                result.append(block)
-        return result
+        return [_strip_sr_block(block, enabled_templates) for block in content]
     return content
-
-
-# FUNCTIONS
-
-def _match_template(inner, enabled_templates):
-    for tid in enabled_templates:
-        spec = _SR_TEMPLATES.get(tid)
-        if not spec:
-            continue
-        identifiers = spec[0] if isinstance(spec[0], list) else [spec[0]]
-        required_fragment = spec[2] if len(spec) > 2 else None
-        for identifier in identifiers:
-            if inner.startswith(identifier):
-                if required_fragment is None or required_fragment in inner:
-                    return tid, spec[1]
-    return None, None
 
 
 def _apply_sr_strip(text, enabled_templates):
@@ -121,6 +99,29 @@ def _apply_sr_strip(text, enabled_templates):
         return '<system-reminder>' + cleaned + '</system-reminder>' + trailing_nl
 
     return _STANDALONE_SR_RE.sub(_replace, text)
+
+
+def _match_template(inner, enabled_templates):
+    for tid in enabled_templates:
+        spec = _SR_TEMPLATES.get(tid)
+        if not spec:
+            continue
+        identifiers = spec[0] if isinstance(spec[0], list) else [spec[0]]
+        required_fragment = spec[2] if len(spec) > 2 else None
+        for identifier in identifiers:
+            if inner.startswith(identifier):
+                if required_fragment is None or required_fragment in inner:
+                    return tid, spec[1]
+    return None, None
+
+
+def _strip_sr_block(block, enabled_templates):
+    if not isinstance(block, dict):
+        return block
+    if block.get('type') == 'text':
+        new_text = _apply_sr_strip(block.get('text', ''), enabled_templates)
+        return {**block, 'text': new_text or '.'}
+    return block
 
 
 def _strip_plan_mode_blocks(content):

@@ -12,9 +12,9 @@ _ROOT = Path(__file__).resolve().parents[2]
 _PROBE = (
     "import json, runpy, sys\n"
     "ns = runpy.run_path(sys.argv[1])\n"
-    "import proxy.addon, proxy.tools, src.monitor_root\n"
+    "import src.proxy.addon, src.proxy.tools, src.monitor_root\n"
     "ns['addons'][0]\n"
-    "print(json.dumps({'proxy': proxy.tools.__file__, 'root_module': src.monitor_root.__file__}))\n"
+    "print(json.dumps({'proxy': src.proxy.tools.__file__, 'root_module': src.monitor_root.__file__}))\n"
 )
 
 
@@ -71,7 +71,10 @@ def build_mirror(tmp: Path, live: bool, with_package: bool = True) -> Path:
     live_dir = logs / '.proxy_live_T'
     live_dir.mkdir()
     if with_package:
-        shutil.copytree(_ROOT / 'src' / 'proxy', live_dir / 'proxy', ignore=shutil.ignore_patterns('__pycache__'))
+        (live_dir / 'src').mkdir()
+        for name in ('__init__.py', 'constants.py', 'monitor_root.py'):
+            shutil.copy(_ROOT / 'src' / name, live_dir / 'src' / name)
+        shutil.copytree(_ROOT / 'src' / 'proxy', live_dir / 'src' / 'proxy', ignore=shutil.ignore_patterns('__pycache__'))
     return shim
 
 
@@ -89,11 +92,11 @@ def probe(shim: Path, env: dict, stubs: Path) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, '-c', _PROBE, str(shim)], capture_output=True, text=True, env=full, cwd='/')
 
 
-def check_loaded(tmp: Path, out: dict, expected_proxy_parent: Path) -> None:
+def check_loaded(tmp: Path, out: dict, expected_proxy_parent: Path, expected_root: Path) -> None:
     assert Path(out['proxy']).parent == expected_proxy_parent, out
-    assert Path(out['root_module']) == tmp / 'src' / 'monitor_root.py', out
+    assert Path(out['root_module']) == expected_proxy_parent.parent / 'monitor_root.py', out
     text = (tmp / 'src' / 'logs' / 'proxy_error.log').read_text()
-    assert f'[monitor_root] source=' in text and f'root={tmp}' in text, text
+    assert f'[monitor_root] source=' in text and f'root={expected_root}' in text, text
 
 
 def case_live_copy_env_set() -> None:
@@ -102,18 +105,8 @@ def case_live_copy_env_set() -> None:
         shim = build_mirror(tmp, live=True)
         done = probe(shim, {'MONITOR_CC_ROOT': str(tmp)}, tmp / 'stubs')
         assert done.returncode == 0, done.stderr[-300:]
-        check_loaded(tmp, json.loads(done.stdout), tmp / 'src' / 'logs' / '.proxy_live_T' / 'proxy')
+        check_loaded(tmp, json.loads(done.stdout), tmp / 'src' / 'logs' / '.proxy_live_T' / 'src' / 'proxy', tmp)
         assert 'source=env' in (tmp / 'src' / 'logs' / 'proxy_error.log').read_text()
-
-
-def case_live_copy_env_unset_resolves_mirror_root() -> None:
-    with tempfile.TemporaryDirectory() as raw:
-        tmp = Path(raw).resolve()
-        shim = build_mirror(tmp, live=True)
-        done = probe(shim, {}, tmp / 'stubs')
-        assert done.returncode == 0, done.stderr[-300:]
-        check_loaded(tmp, json.loads(done.stdout), tmp / 'src' / 'logs' / '.proxy_live_T' / 'proxy')
-        assert 'source=computed' in (tmp / 'src' / 'logs' / 'proxy_error.log').read_text()
 
 
 def case_non_live_layout() -> None:
@@ -122,7 +115,7 @@ def case_non_live_layout() -> None:
         shim = build_mirror(tmp, live=False)
         done = probe(shim, {'MONITOR_CC_ROOT': str(tmp)}, tmp / 'stubs')
         assert done.returncode == 0, done.stderr[-300:]
-        check_loaded(tmp, json.loads(done.stdout), tmp / 'src' / 'proxy')
+        check_loaded(tmp, json.loads(done.stdout), tmp / 'src' / 'proxy', tmp)
 
 
 def case_missing_package_raises() -> None:

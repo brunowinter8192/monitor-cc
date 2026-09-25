@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from .reader import local_datetime
+from src.dual_log_cli.reader import local_datetime
 
 # FUNCTIONS
 

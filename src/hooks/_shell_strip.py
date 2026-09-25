@@ -1,8 +1,7 @@
 # INFRASTRUCTURE
-import os
-import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _fire_log import log_fire
+from src.hooks._fire_log import log_fire
+
+_CMD_SUBST = '$('
 
 
 # FUNCTIONS
@@ -11,15 +10,41 @@ class _StripError(Exception):
     pass
 
 
-_CMD_SUBST = '$('
-
-
 def _strip_non_shell_active(command: str) -> str:
     try:
         return _strip_impl(command)
     except _StripError as e:
         log_fire("_shell_strip", "trace", "Bash", command, reason=f"raw-text fallback: {e}")
         return command
+
+
+def _strip_impl(command: str) -> str:
+    out = []
+    i = 0
+    n = len(command)
+    while i < n:
+        if command[i:i+2] == '<<' and command[i:i+3] != '<<<':
+            fragment, i = _scan_heredoc(command, i, n)
+            out.append(fragment)
+        elif command[i:i+2] == "$'":
+            fragment, i = _scan_ansi_c_quote(command, i, n)
+            out.append(fragment)
+        elif command[i:i+2] == _CMD_SUBST:
+            fragment, i = _scan_cmd_subst(command, i, n)
+            out.append(fragment)
+        elif command[i] == '`':
+            fragment, i = _scan_backtick(command, i, n)
+            out.append(fragment)
+        elif command[i] == "'":
+            fragment, i = _scan_single_quote(command, i, n)
+            out.append(fragment)
+        elif command[i] == '"':
+            fragment, i = _scan_double_quote(command, i, n)
+            out.append(fragment)
+        else:
+            out.append(command[i])
+            i += 1
+    return ''.join(out)
 
 
 def _scan_heredoc(command: str, i: int, n: int) -> tuple:
@@ -155,32 +180,3 @@ def _scan_double_quote(command: str, i: int, n: int) -> tuple:
     if not closed:
         raise _StripError("unclosed double quote")
     return ''.join(parts), i
-
-
-def _strip_impl(command: str) -> str:
-    out = []
-    i = 0
-    n = len(command)
-    while i < n:
-        if command[i:i+2] == '<<' and command[i:i+3] != '<<<':
-            fragment, i = _scan_heredoc(command, i, n)
-            out.append(fragment)
-        elif command[i:i+2] == "$'":
-            fragment, i = _scan_ansi_c_quote(command, i, n)
-            out.append(fragment)
-        elif command[i:i+2] == _CMD_SUBST:
-            fragment, i = _scan_cmd_subst(command, i, n)
-            out.append(fragment)
-        elif command[i] == '`':
-            fragment, i = _scan_backtick(command, i, n)
-            out.append(fragment)
-        elif command[i] == "'":
-            fragment, i = _scan_single_quote(command, i, n)
-            out.append(fragment)
-        elif command[i] == '"':
-            fragment, i = _scan_double_quote(command, i, n)
-            out.append(fragment)
-        else:
-            out.append(command[i])
-            i += 1
-    return ''.join(out)

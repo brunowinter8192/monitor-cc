@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from .render_format import _skipped_lines
+from src.dual_log_cli.render_format import _skipped_lines
 
 # FUNCTIONS
 

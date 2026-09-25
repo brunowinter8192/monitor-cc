@@ -45,6 +45,12 @@ class _InterpreterMatch:
 
 # FUNCTIONS
 
+def resolve_cli_segment(segment: str, command_context: str, cwd=None):
+    match = match_known_cli_segment(segment)
+    if match is not None:
+        return match
+    return match_interpreter_cli_segment(segment, command_context, cwd)
+
 def match_known_cli_segment(segment: str):
     return _KNOWN_CLI_RE.match(segment)
 
@@ -62,12 +68,6 @@ def match_interpreter_cli_segment(segment: str, command_context: str, cwd=None):
             tool = _CLI_PY_DIR_TOOL[cwd_matches[-1].group(1)]
             return _InterpreterMatch(tool, match.group('sub'))
     return None
-
-def resolve_cli_segment(segment: str, command_context: str, cwd=None):
-    match = match_known_cli_segment(segment)
-    if match is not None:
-        return match
-    return match_interpreter_cli_segment(segment, command_context, cwd)
 
 def is_protected_segment(match) -> bool:
     if match is None:

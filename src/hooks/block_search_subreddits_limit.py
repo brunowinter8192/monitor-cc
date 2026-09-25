@@ -4,9 +4,9 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._shell_strip import _strip_non_shell_active
+from src.hooks._fire_log import log_fire
 
 _SEARCH_RE = re.compile(r'\b(reddit-cli|cli\.py)\s+search_subreddits\b')
 _LIMIT_RE = re.compile(r'--limit\b')

@@ -11,6 +11,16 @@ Synthetic payloads, temp paths or in-memory fixtures go in. Each script drives r
 
 ## Modules
 
+### verify_apply_flash_layout.py (78 LOC)
+
+**Purpose:** Proves the Apply success flash and revert run without error on a real button inside a stack view, with width following the title.
+**Reads:** nothing persistent; isolated home, offscreen panel.
+**Writes:** `md/verify_apply_flash_layout.md`.
+**Called by:** none; re-run after Apply button or flash changes; needs the project venv (pyobjc).
+**Calls out:** `src/menubar/model_controller.py`, `src/menubar/panel.py`.
+
+---
+
 ### verify_hook_writer_split.py (89 LOC)
 
 **Purpose:** Regression guard for the hook-state half of the menubar hook writer: status transitions and no queue-file side effect.

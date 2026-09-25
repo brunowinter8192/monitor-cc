@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 from pathlib import Path
 
-from .paths import MONITOR_CC_ROOT
+from src.menubar.paths import MONITOR_CC_ROOT
 
 _LABEL           = 'com.brunowinter.monitor-cc-menubar'
 _PLIST_TMPL      = Path(__file__).resolve().parent / f'{_LABEL}.plist'

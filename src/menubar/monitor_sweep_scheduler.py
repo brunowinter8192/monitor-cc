@@ -3,8 +3,8 @@ import json
 import os
 import threading
 
-from .paths import MONITOR_SWEEP_STATE_FILE, MONITOR_CC_ROOT
-from .menubar_log import log_menubar
+from src.menubar.paths import MONITOR_SWEEP_STATE_FILE, MONITOR_CC_ROOT
+from src.menubar.menubar_log import log_menubar
 
 SWEEP_INTERVAL_SECS = 24 * 3600
 
@@ -14,19 +14,26 @@ _sweep_in_progress = False
 # ORCHESTRATOR
 
 def maybe_run_sweep_workflow(now: float) -> None:
-    global _last_sweep_ts, _sweep_in_progress
     if _sweep_in_progress:
         return
-    if _last_sweep_ts is None:
-        _last_sweep_ts = _read_last_sweep_ts()
+    _load_last_sweep_ts()
     if not _is_sweep_due(_last_sweep_ts, now):
         return
+    _start_sweep(now)
+
+# FUNCTIONS
+
+def _load_last_sweep_ts() -> None:
+    global _last_sweep_ts
+    if _last_sweep_ts is None:
+        _last_sweep_ts = _read_last_sweep_ts()
+
+def _start_sweep(now: float) -> None:
+    global _last_sweep_ts, _sweep_in_progress
     _last_sweep_ts = now
     _write_last_sweep_ts(now)
     _sweep_in_progress = True
     threading.Thread(target=_run_sweep, name='monitor-sweep', daemon=True).start()
-
-# FUNCTIONS
 
 def _is_sweep_due(last_ts: float, now: float) -> bool:
     return now - last_ts >= SWEEP_INTERVAL_SECS
@@ -52,7 +59,7 @@ def _run_sweep() -> None:
     global _sweep_in_progress
     try:
         os.environ.setdefault('MONITOR_CC_ROOT', str(MONITOR_CC_ROOT))
-        from ..monitor_janitor import sweep_workflow
+        from src.monitor_janitor import sweep_workflow
         results = sweep_workflow()
         killed = sum(1 for r in results if r['killed'])
         log_menubar('monitor_sweep',

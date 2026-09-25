@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import os
 
-from .tool_injection import _load_active_plugins
+from src.proxy.tool_injection import _load_active_plugins
 
 # FUNCTIONS
 

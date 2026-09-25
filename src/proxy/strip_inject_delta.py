@@ -3,10 +3,10 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Optional
 
-from .diff_engine import _diff_system, _diff_tools, _diff_messages, _diff_top_level_fields, _get_inner_text, compose_block
-from .strip_vocab import attribute_chunk as _attribute_chunk
-from .logging import _strip_cache_control, _normalize_msg_shape_for_hash, _delta_hash
-from .payload_helpers import _top_level_content_contains
+from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages, _diff_top_level_fields, _get_inner_text, compose_block
+from src.proxy.strip_vocab import attribute_chunk as _attribute_chunk
+from src.proxy.logging import _strip_cache_control, _normalize_msg_shape_for_hash, _delta_hash
+from src.proxy.payload_helpers import _top_level_content_contains
 
 _SYS_FN: dict[int, str] = {1: '_apply_system_passes', 2: '_apply_system_passes', 3: '_strip_sys3'}
 _MSG_CODE_TO_FN: dict[str, str] = {
@@ -30,12 +30,59 @@ _MSG_CODE_TO_FN: dict[str, str] = {
 
 # FUNCTIONS
 
-def _hash_spans(texts: list) -> str:
-    return hashlib.md5("|".join(texts).encode("utf-8")).hexdigest()[:10]
+def _build_stripped_injected_deltas(
+    orig_payload: dict,
+    fwd_payload: dict,
+    request_id: str,
+    prev_stripped: Optional[dict],
+    prev_injected: Optional[dict],
+    model: str,
+    all_ops: Optional[dict] = None,
+) -> tuple:
+    sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts = _compute_all_diffs(orig_payload, fwd_payload)
+    is_first = prev_stripped is None
+
+    s_sys, i_sys, s_sys_h, i_sys_h, s_sys_fn, i_sys_fn = _process_system_section(
+        sys_diffs, is_first, prev_stripped, prev_injected)
+    s_tools, i_tools, s_tools_h, i_tools_h, s_tools_fn, i_tools_fn = _process_tools_section(
+        tools_diff, is_first, prev_stripped, prev_injected)
+    s_msgs, i_msgs, s_msgs_h, i_msgs_h, s_msgs_fn, i_msgs_fn = _process_messages_section(
+        msg_diffs, orig_msgs_norm, is_first, prev_stripped, prev_injected, all_ops)
+    s_fields, i_fields, s_fields_h, i_fields_h = _process_fields_section(
+        field_diffs, is_first, prev_stripped, prev_injected)
+
+    new_s = {**s_sys_h, **s_tools_h, **s_msgs_h, **s_fields_h}
+    new_i = {**i_sys_h, **i_tools_h, **i_msgs_h, **i_fields_h}
+    s_fn_map = {**s_sys_fn, **s_tools_fn, **s_msgs_fn}
+    i_fn_map = {**i_sys_fn, **i_tools_fn, **i_msgs_fn}
+
+    now = datetime.now(timezone.utc)
+    timestamp = f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
+
+    stripped_entry = _build_delta_entry("stripped_delta", request_id, timestamp, model, is_first, counts, s_sys, s_tools, s_msgs, s_fields, s_fn_map)
+    injected_entry = _build_delta_entry("injected_delta", request_id, timestamp, model, is_first, counts, i_sys, i_tools, i_msgs, i_fields, i_fn_map)
+    return stripped_entry, injected_entry, new_s, new_i
 
 
-def _hash_span_sequence(spans: list) -> str:
-    return hashlib.md5("|".join(f"{tag}:{text}" for tag, text in spans).encode("utf-8")).hexdigest()[:10]
+def _compute_all_diffs(orig_payload: dict, fwd_payload: dict) -> tuple:
+    orig_norm = _strip_cache_control(orig_payload)
+    fwd_norm = _strip_cache_control(fwd_payload)
+
+    orig_sys = [b for b in (orig_norm.get("system", []) or []) if isinstance(b, dict)]
+    fwd_sys = [b for b in (fwd_norm.get("system", []) or []) if isinstance(b, dict)]
+    orig_tools = orig_norm.get("tools", []) or []
+    fwd_tools = fwd_norm.get("tools", []) or []
+    orig_msgs = orig_norm.get("messages", []) or []
+    fwd_msgs = fwd_norm.get("messages", []) or []
+
+    sys_diffs = _diff_system(orig_sys, fwd_sys)
+    tools_diff = _diff_tools(orig_tools, fwd_tools)
+    orig_msgs_norm = [_normalize_msg_shape_for_hash(m) for m in orig_msgs]
+    fwd_msgs_norm = [_normalize_msg_shape_for_hash(m) for m in fwd_msgs]
+    msg_diffs = _diff_messages(orig_msgs_norm, fwd_msgs_norm)
+    field_diffs = _diff_top_level_fields(orig_norm, fwd_norm)
+    counts = {"system": len(fwd_sys), "tools": len(fwd_tools), "messages": len(fwd_msgs)}
+    return sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts
 
 
 def _process_system_section(sys_diffs, is_first, prev_stripped, prev_injected):
@@ -67,6 +114,14 @@ def _process_system_section(sys_diffs, is_first, prev_stripped, prev_injected):
                 if i_text != ".":
                     i_fn[lk] = _SYS_FN.get(d["idx"], "_apply_system_passes")
     return s_sys, i_sys, s_hashes, i_hashes, s_fn, i_fn
+
+
+def _hash_spans(texts: list) -> str:
+    return hashlib.md5("|".join(texts).encode("utf-8")).hexdigest()[:10]
+
+
+def _hash_span_sequence(spans: list) -> str:
+    return hashlib.md5("|".join(f"{tag}:{text}" for tag, text in spans).encode("utf-8")).hexdigest()[:10]
 
 
 def _process_tools_section(tools_diff, is_first, prev_stripped, prev_injected):
@@ -111,6 +166,41 @@ def _process_tools_section(tools_diff, is_first, prev_stripped, prev_injected):
                 if i_text != ".":
                     i_fn[lk] = "inject_mcp_tools"
     return s_tools, i_tools, s_hashes, i_hashes, s_fn, i_fn
+
+
+def _process_messages_section(msg_diffs, orig_msgs_norm, is_first, prev_stripped, prev_injected, all_ops):
+    s_msgs: dict = {}
+    i_msgs: dict = {}
+    s_hashes: dict = {}
+    i_hashes: dict = {}
+    s_fn: dict = {}
+    i_fn: dict = {}
+    for md in msg_diffs:
+        midx = str(md["idx"])
+        s_blks: dict = {}
+        i_blks: dict = {}
+        om_norm = orig_msgs_norm[md["idx"]] if md["idx"] < len(orig_msgs_norm) else {}
+        o_content_raw = om_norm.get("content", "") if isinstance(om_norm, dict) else ""
+        msg_ops = (all_ops or {}).get(md["idx"], {})
+        for bd in md["block_diffs"]:
+            bidx = str(bd["bidx"])
+            c0_text = _block_c0_text(bd, o_content_raw)
+            block_ops = msg_ops.get(bd["bidx"], [])
+            spans = compose_block(c0_text, block_ops)
+            s_texts = [t for tag, t in spans if tag == "stripped" and t]
+            i_spans = [(tag, t) for tag, t in spans if tag in ("equal", "injected") and t]
+            lk = f"msg.{md['idx']}.{bd['bidx']}"
+            stored_s = _record_stripped_msg_block(lk, s_texts, om_norm, o_content_raw, is_first, prev_stripped, s_hashes, s_fn)
+            if stored_s is not None:
+                s_blks[bidx] = stored_s
+            stored_i = _record_injected_msg_block(lk, i_spans, is_first, prev_injected, i_hashes, i_fn)
+            if stored_i is not None:
+                i_blks[bidx] = stored_i
+        if s_blks:
+            s_msgs[midx] = s_blks
+        if i_blks:
+            i_msgs[midx] = i_blks
+    return s_msgs, i_msgs, s_hashes, i_hashes, s_fn, i_fn
 
 
 def _block_c0_text(bd: dict, o_content_raw) -> str:
@@ -158,41 +248,6 @@ def _record_injected_msg_block(lk: str, i_spans: list, is_first: bool, prev_inje
     return i_spans
 
 
-def _process_messages_section(msg_diffs, orig_msgs_norm, is_first, prev_stripped, prev_injected, all_ops):
-    s_msgs: dict = {}
-    i_msgs: dict = {}
-    s_hashes: dict = {}
-    i_hashes: dict = {}
-    s_fn: dict = {}
-    i_fn: dict = {}
-    for md in msg_diffs:
-        midx = str(md["idx"])
-        s_blks: dict = {}
-        i_blks: dict = {}
-        om_norm = orig_msgs_norm[md["idx"]] if md["idx"] < len(orig_msgs_norm) else {}
-        o_content_raw = om_norm.get("content", "") if isinstance(om_norm, dict) else ""
-        msg_ops = (all_ops or {}).get(md["idx"], {})
-        for bd in md["block_diffs"]:
-            bidx = str(bd["bidx"])
-            c0_text = _block_c0_text(bd, o_content_raw)
-            block_ops = msg_ops.get(bd["bidx"], [])
-            spans = compose_block(c0_text, block_ops)
-            s_texts = [t for tag, t in spans if tag == "stripped" and t]
-            i_spans = [(tag, t) for tag, t in spans if tag in ("equal", "injected") and t]
-            lk = f"msg.{md['idx']}.{bd['bidx']}"
-            stored_s = _record_stripped_msg_block(lk, s_texts, om_norm, o_content_raw, is_first, prev_stripped, s_hashes, s_fn)
-            if stored_s is not None:
-                s_blks[bidx] = stored_s
-            stored_i = _record_injected_msg_block(lk, i_spans, is_first, prev_injected, i_hashes, i_fn)
-            if stored_i is not None:
-                i_blks[bidx] = stored_i
-        if s_blks:
-            s_msgs[midx] = s_blks
-        if i_blks:
-            i_msgs[midx] = i_blks
-    return s_msgs, i_msgs, s_hashes, i_hashes, s_fn, i_fn
-
-
 def _process_fields_section(field_diffs, is_first, prev_stripped, prev_injected):
     s_fields: dict = {}
     i_fields: dict = {}
@@ -214,27 +269,6 @@ def _process_fields_section(field_diffs, is_first, prev_stripped, prev_injected)
     return s_fields, i_fields, s_hashes, i_hashes
 
 
-def _compute_all_diffs(orig_payload: dict, fwd_payload: dict) -> tuple:
-    orig_norm = _strip_cache_control(orig_payload)
-    fwd_norm = _strip_cache_control(fwd_payload)
-
-    orig_sys = [b for b in (orig_norm.get("system", []) or []) if isinstance(b, dict)]
-    fwd_sys = [b for b in (fwd_norm.get("system", []) or []) if isinstance(b, dict)]
-    orig_tools = orig_norm.get("tools", []) or []
-    fwd_tools = fwd_norm.get("tools", []) or []
-    orig_msgs = orig_norm.get("messages", []) or []
-    fwd_msgs = fwd_norm.get("messages", []) or []
-
-    sys_diffs = _diff_system(orig_sys, fwd_sys)
-    tools_diff = _diff_tools(orig_tools, fwd_tools)
-    orig_msgs_norm = [_normalize_msg_shape_for_hash(m) for m in orig_msgs]
-    fwd_msgs_norm = [_normalize_msg_shape_for_hash(m) for m in fwd_msgs]
-    msg_diffs = _diff_messages(orig_msgs_norm, fwd_msgs_norm)
-    field_diffs = _diff_top_level_fields(orig_norm, fwd_norm)
-    counts = {"system": len(fwd_sys), "tools": len(fwd_tools), "messages": len(fwd_msgs)}
-    return sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts
-
-
 def _build_delta_entry(entry_type: str, request_id: str, timestamp: str, model: str, is_first: bool,
                         counts: dict, system_delta: dict, tools_delta: dict, messages_delta: dict,
                         fields_delta: dict, fn_map: dict) -> dict:
@@ -251,37 +285,3 @@ def _build_delta_entry(entry_type: str, request_id: str, timestamp: str, model: 
         "fields_delta": fields_delta,
         "fn_map": fn_map,
     }
-
-
-def _build_stripped_injected_deltas(
-    orig_payload: dict,
-    fwd_payload: dict,
-    request_id: str,
-    prev_stripped: Optional[dict],
-    prev_injected: Optional[dict],
-    model: str,
-    all_ops: Optional[dict] = None,
-) -> tuple:
-    sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts = _compute_all_diffs(orig_payload, fwd_payload)
-    is_first = prev_stripped is None
-
-    s_sys, i_sys, s_sys_h, i_sys_h, s_sys_fn, i_sys_fn = _process_system_section(
-        sys_diffs, is_first, prev_stripped, prev_injected)
-    s_tools, i_tools, s_tools_h, i_tools_h, s_tools_fn, i_tools_fn = _process_tools_section(
-        tools_diff, is_first, prev_stripped, prev_injected)
-    s_msgs, i_msgs, s_msgs_h, i_msgs_h, s_msgs_fn, i_msgs_fn = _process_messages_section(
-        msg_diffs, orig_msgs_norm, is_first, prev_stripped, prev_injected, all_ops)
-    s_fields, i_fields, s_fields_h, i_fields_h = _process_fields_section(
-        field_diffs, is_first, prev_stripped, prev_injected)
-
-    new_s = {**s_sys_h, **s_tools_h, **s_msgs_h, **s_fields_h}
-    new_i = {**i_sys_h, **i_tools_h, **i_msgs_h, **i_fields_h}
-    s_fn_map = {**s_sys_fn, **s_tools_fn, **s_msgs_fn}
-    i_fn_map = {**i_sys_fn, **i_tools_fn, **i_msgs_fn}
-
-    now = datetime.now(timezone.utc)
-    timestamp = f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
-
-    stripped_entry = _build_delta_entry("stripped_delta", request_id, timestamp, model, is_first, counts, s_sys, s_tools, s_msgs, s_fields, s_fn_map)
-    injected_entry = _build_delta_entry("injected_delta", request_id, timestamp, model, is_first, counts, i_sys, i_tools, i_msgs, i_fields, i_fn_map)
-    return stripped_entry, injected_entry, new_s, new_i

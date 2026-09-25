@@ -17,7 +17,7 @@ Entry point: `python3 -m src.ccwrap [--project <path>]`. `__init__.py` is empty;
 
 ## Modules
 
-### __main__.py (34 LOC)
+### __main__.py (38 LOC)
 
 **Purpose:** CLI entry point; parses the project argument, passes remaining args to the start script and invokes the wrapper.
 **Reads:** `sys.argv`.
@@ -27,7 +27,7 @@ Entry point: `python3 -m src.ccwrap [--project <path>]`. `__init__.py` is empty;
 
 ---
 
-### wrapper.py (129 LOC)
+### wrapper.py (138 LOC)
 
 **Purpose:** PTY lifecycle manager: fork, bidirectional I/O, window-resize forwarding, stdin raw-mode handling, exit-code propagation.
 **Reads:** stdin keystrokes (when a tty) and child PTY output.

@@ -2,11 +2,11 @@
 import shlex
 import time
 
-from .launch_config import LAUNCH_DESKTOPS, LAUNCH_PROJECTS
-from .menubar_log import log_menubar
-from .paths import MONITOR_CC_ROOT
-from .space_switch import active_desktop_number, switch_to_desktop_workflow
-from .system import _launch_monitor_ghostty_native
+from src.menubar.launch_config import LAUNCH_DESKTOPS, LAUNCH_PROJECTS
+from src.menubar.menubar_log import log_menubar
+from src.menubar.paths import MONITOR_CC_ROOT
+from src.menubar.space_switch import active_desktop_number, switch_to_desktop_workflow
+from src.menubar.system import _launch_monitor_ghostty_native
 
 _SETTLE_SECONDS = 1.0
 _START_SCRIPT = './src/claude_proxy_start.sh'

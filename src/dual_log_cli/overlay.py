@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
-from ..proxy_display.dual_log_accumulator import accumulate_dual_log
-from .timeline_markers import request_numbers_by_flow
+from src.proxy_display.dual_log_accumulator import accumulate_dual_log
+from src.dual_log_cli.timeline_markers import request_numbers_by_flow
 
 # FUNCTIONS
 
@@ -33,6 +33,14 @@ def build_overlay(session: dict, family: str, boundaries: list) -> dict:
     return overlay
 
 
+def _owners_by_index(fam_stripped: dict, fam_injected: dict) -> dict:
+    owners = _owners_by_flow_key(fam_stripped, fam_injected, "_msg_idx_by_flow_id")
+    for flow_id, indices in (fam_stripped.get("_lag_msg_idx_by_flow_id") or {}).items():
+        for index in indices:
+            owners[index] = flow_id
+    return owners
+
+
 def _owners_by_flow_key(fam_stripped: dict, fam_injected: dict, by_flow_key: str) -> dict:
     owners: dict = {}
     for fam in (fam_stripped, fam_injected):
@@ -42,12 +50,18 @@ def _owners_by_flow_key(fam_stripped: dict, fam_injected: dict, by_flow_key: str
     return owners
 
 
-def _owners_by_index(fam_stripped: dict, fam_injected: dict) -> dict:
-    owners = _owners_by_flow_key(fam_stripped, fam_injected, "_msg_idx_by_flow_id")
-    for flow_id, indices in (fam_stripped.get("_lag_msg_idx_by_flow_id") or {}).items():
-        for index in indices:
-            owners[index] = flow_id
-    return owners
+def _texts(recorded, side: str) -> list:
+    if not isinstance(recorded, list):
+        return []
+    if side == "stripped":
+        return [t for t in recorded if isinstance(t, str) and t]
+    out = []
+    for span in recorded:
+        if isinstance(span, (list, tuple)) and len(span) == 2 and span[0] == "injected" and span[1]:
+            out.append(span[1])
+        elif isinstance(span, str) and span:
+            out.append(span)
+    return out
 
 
 def build_sys_tool_overlay(session: dict, family: str, boundaries: list) -> tuple:
@@ -105,17 +119,3 @@ def _tools_overlay(tools_stripped: dict, tools_injected: dict, owners: dict, num
                 slot["flow_id"] = owner
                 slot["req"] = numbers.get(owner)
     return overlay
-
-
-def _texts(recorded, side: str) -> list:
-    if not isinstance(recorded, list):
-        return []
-    if side == "stripped":
-        return [t for t in recorded if isinstance(t, str) and t]
-    out = []
-    for span in recorded:
-        if isinstance(span, (list, tuple)) and len(span) == 2 and span[0] == "injected" and span[1]:
-            out.append(span[1])
-        elif isinstance(span, str) and span:
-            out.append(span)
-    return out

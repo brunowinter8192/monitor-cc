@@ -3,30 +3,30 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 import time
 
-from ..colors import RESET, YELLOW
-from ..constants import (
+from src.colors import RESET, YELLOW
+from src.constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
-from .parser import find_proxy_log_path, _find_original_log_path, _find_response_log_path
-from .forwarded_parser import parse_proxy_log_forwarded, _infer_model_family
-from .dual_log_accumulator import accumulate_original_tools
-from .proxy_pane_shared import (
+from src.proxy_display.parser import find_proxy_log_path, _find_original_log_path, _find_response_log_path
+from src.proxy_display.forwarded_parser import parse_proxy_log_forwarded, _infer_model_family
+from src.proxy_display.dual_log_accumulator import accumulate_original_tools
+from src.proxy_display.proxy_pane_shared import (
     _entry_idx_from_key, _terminal_size, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body, _accumulate_dual_logs_and_attach,
     _copy_feedback_key, _accumulate_request_ids, _attach_http_status,
 )
-from .format import format_proxy_block
+from src.proxy_display.format import format_proxy_block
 from src.proxy_display.turn_cache import TurnCache
-from ..panes.cache_turns import build_cache_turns
-from ..input.click_handler import (
+from src.panes.cache_turns import build_cache_turns
+from src.input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard, wait_for_input,
 )
-from ..frame_writer import write_frame, hide_cursor, show_cursor
-from ..ram_audit import register_ram_dump
-from ..pane_error_log import log_pane_error
-from .. import search_bar
+from src.frame_writer import write_frame, hide_cursor, show_cursor
+from src.ram_audit import register_ram_dump
+from src.pane_error_log import log_pane_error
+from src import search_bar
 
 _PROXY_HEADER_LINES = 1
 _SEARCH_BAR_LABEL = 'search: '
@@ -69,47 +69,71 @@ _proxy_search: search_bar.SearchState = search_bar.SearchState()
 # ORCHESTRATOR
 
 def run_proxy_loop() -> None:
-    from ..core import monitor as _monitor
-    global _proxy_current_main_session, _proxy_session_start_ts, _copy_feedback_until
-
+    monitor = _load_monitor()
     register_ram_dump('proxy', _proxy_ram_state)
-    _proxy_current_main_session = _monitor._get_newest_main_session()
-    _proxy_session_start_ts = _monitor._get_session_start_ts()
-    last_output = None
-    last_data_refresh = 0.0
+    _init_proxy_session(monitor)
+    loop_state = {'last_output': None, 'last_data_refresh': 0.0, 'monitor': monitor}
+    _open_terminal()
+    _loop_until_closed(loop_state)
+
+# FUNCTIONS
+
+def _load_monitor():
+    from src.core import monitor
+    return monitor
+
+def _proxy_ram_state() -> list:
+    return [
+        ('proxy_entries',         proxy_entries),
+        ('proxy_expand_states',   proxy_expand_states),
+        ('proxy_line_map',        proxy_line_map),
+        ('_proxy_cache_turns',    _proxy_cache_turns),
+        ('_proxy_fwd_pos',        _proxy_fwd_pos),
+        ('_proxy_acc_fwd',        _proxy_acc_fwd),
+        ('proxy_hover_row',       str(proxy_hover_row)),
+        ('proxy_scroll_offset',   proxy_scroll_offset),
+        ('proxy_log_position',    proxy_log_position),
+        ('_proxy_jsonl_position', _proxy_jsonl_position),
+        ('_proxy_search_query',   _proxy_search.query),
+        ('_proxy_search_matches', _proxy_search.matches),
+    ]
+
+def _init_proxy_session(monitor) -> None:
+    global _proxy_current_main_session, _proxy_session_start_ts
+    _proxy_current_main_session = monitor._get_newest_main_session()
+    _proxy_session_start_ts = monitor._get_session_start_ts()
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
     hide_cursor()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed = _poll_proxy_input()
-
-                now = time.time()
-                input_changed, last_data_refresh = _refresh_proxy_data(
-                    now, input_changed, last_data_refresh, _monitor
-                )
-
-                _copy_feedback_until = {k: v for k, v in _copy_feedback_until.items() if v > now}
-                if _copy_feedback_until:
-                    input_changed = True
-
-                if input_changed:
-                    output = _build_proxy_output()
-                    if output != last_output:
-                        write_frame(output)
-                        last_output = output
-
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('proxy')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         show_cursor()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('proxy')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    input_changed = _poll_proxy_input()
+    now = time.time()
+    input_changed, loop_state['last_data_refresh'] = _refresh_proxy_data(
+        now, input_changed, loop_state['last_data_refresh'], loop_state['monitor']
+    )
+    input_changed = _expire_copy_feedback(now, input_changed)
+    if input_changed:
+        _render_if_changed(loop_state)
+    wait_for_input(INPUT_POLL_INTERVAL)
 
 def _poll_proxy_input() -> bool:
     input_changed = False
@@ -142,67 +166,6 @@ def _poll_proxy_input() -> bool:
                 input_changed = True
     return input_changed
 
-def _proxy_ram_state() -> list:
-    return [
-        ('proxy_entries',         proxy_entries),
-        ('proxy_expand_states',   proxy_expand_states),
-        ('proxy_line_map',        proxy_line_map),
-        ('_proxy_cache_turns',    _proxy_cache_turns),
-        ('_proxy_fwd_pos',        _proxy_fwd_pos),
-        ('_proxy_acc_fwd',        _proxy_acc_fwd),
-        ('proxy_hover_row',       str(proxy_hover_row)),
-        ('proxy_scroll_offset',   proxy_scroll_offset),
-        ('proxy_log_position',    proxy_log_position),
-        ('_proxy_jsonl_position', _proxy_jsonl_position),
-        ('_proxy_search_query',   _proxy_search.query),
-        ('_proxy_search_matches', _proxy_search.matches),
-    ]
-
-def _handle_proxy_search_cancel() -> bool:
-    return search_bar.handle_search_cancel(_proxy_search)
-
-def _handle_proxy_search_input(char: str) -> bool:
-    return search_bar.handle_search_input(_proxy_search, char, on_commit=_proxy_search_on_commit)
-
-def _proxy_search_on_commit(state: search_bar.SearchState) -> None:
-    _run_pane_search(state, proxy_entries, proxy_expand_states, _proxy_pane_width, _proxy_log_path, _jump_to_search_match)
-
-def _jump_search_match(forward: bool) -> bool:
-    if not _proxy_search.matches:
-        return False
-    _proxy_search.current_idx = (_proxy_search.current_idx + (1 if forward else -1)) % len(_proxy_search.matches)
-    _jump_to_search_match()
-    return True
-
-def _jump_to_search_match() -> None:
-    global _proxy_just_expanded
-    target_entry_idx = _proxy_search.matches[_proxy_search.current_idx]
-    _proxy_just_expanded = ('req', target_entry_idx)
-
-def _search_col_to_query_index(col: int, query: str) -> int:
-    return search_bar.col_to_query_index(col, query, _SEARCH_BAR_LABEL)
-
-def _handle_proxy_search_release() -> bool:
-    return search_bar.handle_search_mouse_release(_proxy_search, copy_to_clipboard)
-
-def _render_proxy_search_bar(pane_width: int) -> str:
-    return search_bar.render_search_bar(_proxy_search, pane_width, label=_SEARCH_BAR_LABEL)
-
-def _handle_proxy_copy_click(key, entry_idx: Optional[int]) -> None:
-    global _copy_feedback_until
-    copy_to_clipboard(_prepare_copy_text(key, entry_idx, proxy_entries, _proxy_log_path))
-    feedback_key = _copy_feedback_key(key, entry_idx)
-    if feedback_key is not None:
-        _copy_feedback_until[feedback_key] = time.time() + 1.5
-
-def _handle_proxy_expand_click(key, entry_idx: Optional[int]) -> None:
-    global _proxy_just_expanded, _proxy_undo_stack
-    _proxy_undo_stack.append((key, proxy_expand_states.get(key, False)))
-    if len(_proxy_undo_stack) > 200:
-        _proxy_undo_stack.pop(0)
-    if _toggle_expand_and_lazy_load(key, entry_idx, proxy_entries, _proxy_log_path, proxy_expand_states):
-        _proxy_just_expanded = key
-
 def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
     global proxy_scroll_offset, proxy_hover_row
     if button == 0:
@@ -229,6 +192,38 @@ def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
         button, col, row, _proxy_search, _SEARCH_BAR_LABEL, proxy_scroll_offset, proxy_hover_row)
     return handled
 
+def _handle_proxy_copy_click(key, entry_idx: Optional[int]) -> None:
+    global _copy_feedback_until
+    copy_to_clipboard(_prepare_copy_text(key, entry_idx, proxy_entries, _proxy_log_path))
+    feedback_key = _copy_feedback_key(key, entry_idx)
+    if feedback_key is not None:
+        _copy_feedback_until[feedback_key] = time.time() + 1.5
+
+def _handle_proxy_expand_click(key, entry_idx: Optional[int]) -> None:
+    global _proxy_just_expanded, _proxy_undo_stack
+    _proxy_undo_stack.append((key, proxy_expand_states.get(key, False)))
+    if len(_proxy_undo_stack) > 200:
+        _proxy_undo_stack.pop(0)
+    if _toggle_expand_and_lazy_load(key, entry_idx, proxy_entries, _proxy_log_path, proxy_expand_states):
+        _proxy_just_expanded = key
+
+def _handle_proxy_search_release() -> bool:
+    return search_bar.handle_search_mouse_release(_proxy_search, copy_to_clipboard)
+
+def _handle_proxy_search_cancel() -> bool:
+    return search_bar.handle_search_cancel(_proxy_search)
+
+def _handle_proxy_search_input(char: str) -> bool:
+    return search_bar.handle_search_input(_proxy_search, char, on_commit=_proxy_search_on_commit)
+
+def _proxy_search_on_commit(state: search_bar.SearchState) -> None:
+    _run_pane_search(state, proxy_entries, proxy_expand_states, _proxy_pane_width, _proxy_log_path, _jump_to_search_match)
+
+def _jump_to_search_match() -> None:
+    global _proxy_just_expanded
+    target_entry_idx = _proxy_search.matches[_proxy_search.current_idx]
+    _proxy_just_expanded = ('req', target_entry_idx)
+
 def _undo_proxy_expand() -> bool:
     global proxy_expand_states, _proxy_undo_stack
     if not _proxy_undo_stack:
@@ -237,37 +232,12 @@ def _undo_proxy_expand() -> bool:
     proxy_expand_states[key] = prev_state
     return True
 
-def _reset_proxy_positions(now: float) -> None:
-    global proxy_log_position, _proxy_jsonl_position, _proxy_cache_turns, _proxy_fwd_pos
-    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _last_full_parse_ts, _proxy_response_pos
-    proxy_entries.clear()
-    proxy_line_map.clear()
-    _proxy_turn_cache.clear()
-    proxy_log_position = _proxy_jsonl_position = _proxy_fwd_pos = 0
-    _proxy_cache_turns = []
-    _proxy_acc_fwd.clear()
-    _last_full_parse_ts = now
-    _proxy_stripped_pos = _proxy_injected_pos = _proxy_original_pos = 0
-    _proxy_acc_stripped.clear()
-    _proxy_acc_injected.clear()
-    _proxy_acc_original.clear()
-    _proxy_request_id_by_flow.clear()
-    _proxy_status_by_flow.clear()
-    _proxy_response_pos = 0
-
-def _reset_proxy_session_state(monitor, now: float) -> None:
-    global _proxy_session_start_ts, proxy_scroll_offset, proxy_hover_row, _proxy_log_path
-    _proxy_session_start_ts = monitor._get_session_start_ts()
-    _reset_proxy_positions(now)
-    proxy_expand_states.clear()
-    _proxy_undo_stack.clear()
-    proxy_scroll_offset, proxy_hover_row, _proxy_log_path = 0, None, None
-    search_bar.handle_search_cancel(_proxy_search)
-
-def _reset_proxy_reparse_state(now: float) -> None:
-    _reset_proxy_positions(now)
-    proxy_expand_states.clear()
-    _proxy_undo_stack.clear()
+def _jump_search_match(forward: bool) -> bool:
+    if not _proxy_search.matches:
+        return False
+    _proxy_search.current_idx = (_proxy_search.current_idx + (1 if forward else -1)) % len(_proxy_search.matches)
+    _jump_to_search_match()
+    return True
 
 def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global _proxy_fwd_pos, _proxy_acc_fwd, _proxy_log_path, _last_full_parse_ts, _proxy_current_main_session
@@ -310,6 +280,51 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
         )
     return True, now
 
+def _reset_proxy_session_state(monitor, now: float) -> None:
+    global _proxy_session_start_ts, proxy_scroll_offset, proxy_hover_row, _proxy_log_path
+    _proxy_session_start_ts = monitor._get_session_start_ts()
+    _reset_proxy_positions(now)
+    proxy_expand_states.clear()
+    _proxy_undo_stack.clear()
+    proxy_scroll_offset, proxy_hover_row, _proxy_log_path = 0, None, None
+    search_bar.handle_search_cancel(_proxy_search)
+
+def _reset_proxy_positions(now: float) -> None:
+    global proxy_log_position, _proxy_jsonl_position, _proxy_cache_turns, _proxy_fwd_pos
+    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_original_pos, _last_full_parse_ts, _proxy_response_pos
+    proxy_entries.clear()
+    proxy_line_map.clear()
+    _proxy_turn_cache.clear()
+    proxy_log_position = _proxy_jsonl_position = _proxy_fwd_pos = 0
+    _proxy_cache_turns = []
+    _proxy_acc_fwd.clear()
+    _last_full_parse_ts = now
+    _proxy_stripped_pos = _proxy_injected_pos = _proxy_original_pos = 0
+    _proxy_acc_stripped.clear()
+    _proxy_acc_injected.clear()
+    _proxy_acc_original.clear()
+    _proxy_request_id_by_flow.clear()
+    _proxy_status_by_flow.clear()
+    _proxy_response_pos = 0
+
+def _reset_proxy_reparse_state(now: float) -> None:
+    _reset_proxy_positions(now)
+    proxy_expand_states.clear()
+    _proxy_undo_stack.clear()
+
+def _expire_copy_feedback(now: float, input_changed: bool) -> bool:
+    global _copy_feedback_until
+    _copy_feedback_until = {k: v for k, v in _copy_feedback_until.items() if v > now}
+    if _copy_feedback_until:
+        return True
+    return input_changed
+
+def _render_if_changed(loop_state: dict) -> None:
+    output = _build_proxy_output()
+    if output != loop_state['last_output']:
+        write_frame(output)
+        loop_state['last_output'] = output
+
 def _build_proxy_output() -> str:
     global proxy_scroll_offset, _proxy_pane_width, _proxy_copy_rows, _proxy_just_expanded
     pane_height, pane_width = _terminal_size()
@@ -350,3 +365,9 @@ def _build_proxy_output() -> str:
         _render, proxy_line_map, _proxy_copy_rows, _PROXY_HEADER_LINES, _proxy_just_expanded, proxy_scroll_offset, viewport_lines_n)
     _proxy_just_expanded = None
     return header + '\n' + body
+
+def _render_proxy_search_bar(pane_width: int) -> str:
+    return search_bar.render_search_bar(_proxy_search, pane_width, label=_SEARCH_BAR_LABEL)
+
+def _search_col_to_query_index(col: int, query: str) -> int:
+    return search_bar.col_to_query_index(col, query, _SEARCH_BAR_LABEL)

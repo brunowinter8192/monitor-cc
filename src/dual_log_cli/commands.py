@@ -3,9 +3,9 @@ import argparse
 import sys
 from datetime import datetime
 
-from .classifier import BadClassifierError, matches_only, parse_only
-from .diagnostics import report_skip
-from .discovery import (
+from src.dual_log_cli.classifier import BadClassifierError, matches_only, parse_only
+from src.dual_log_cli.diagnostics import report_skip
+from src.dual_log_cli.discovery import (
     AmbiguousSessionError,
     UnknownSessionError,
     build_session,
@@ -15,39 +15,23 @@ from .discovery import (
     list_sessions,
     resolve_stem,
 )
-from .numbering import build_session_numbering
-from .overlay import build_overlay, build_sys_tool_overlay
-from .project_map import build_project_index
-from .render_expand import render_expand_full
-from .render_msgs import render_msgs
-from .render_reqs import render_reqs, render_reqs_merged
-from .render_search import render_search
-from .render_sessions import render_sessions
-from .search import find_matches
-from .timeline import load_timeline
-from .timeline_markers import (
+from src.dual_log_cli.numbering import build_session_numbering
+from src.dual_log_cli.overlay import build_overlay, build_sys_tool_overlay
+from src.dual_log_cli.project_map import build_project_index
+from src.dual_log_cli.render_expand import render_expand_full
+from src.dual_log_cli.render_msgs import render_msgs
+from src.dual_log_cli.render_reqs import render_reqs, render_reqs_merged
+from src.dual_log_cli.render_search import render_search
+from src.dual_log_cli.render_sessions import render_sessions
+from src.dual_log_cli.search import find_matches
+from src.dual_log_cli.timeline import load_timeline
+from src.dual_log_cli.timeline_markers import (
     AmbiguousRequestNumberError, UnknownRequestNumberError, resolve_req_output_range, resolve_req_range,
     resolve_req_range_with_next,
 )
-from .timeline_turns import full_turn
+from src.dual_log_cli.timeline_turns import full_turn
 
 # FUNCTIONS
-
-
-def _valid_day(value: str) -> bool:
-    try:
-        datetime.strptime(value, "%Y-%m-%d")
-    except ValueError:
-        return False
-    return True
-
-
-def _reject_bad_days(args: argparse.Namespace) -> int:
-    for flag, value in (("--since", args.since), ("--until", args.until)):
-        if value and not _valid_day(value):
-            print(f"{flag}: {value!r} is not a valid date, expected YYYY-MM-DD", file=sys.stderr)
-            return 2
-    return 0
 
 
 def _run_sessions(dual_log_dir, args: argparse.Namespace) -> int:
@@ -64,14 +48,20 @@ def _run_sessions(dual_log_dir, args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_for(dual_log_dir, session_arg: str) -> tuple:
+def _reject_bad_days(args: argparse.Namespace) -> int:
+    for flag, value in (("--since", args.since), ("--until", args.until)):
+        if value and not _valid_day(value):
+            print(f"{flag}: {value!r} is not a valid date, expected YYYY-MM-DD", file=sys.stderr)
+            return 2
+    return 0
+
+
+def _valid_day(value: str) -> bool:
     try:
-        stem = resolve_stem(dual_log_dir, session_arg)
-    except (AmbiguousSessionError, UnknownSessionError) as exc:
-        print(str(exc), file=sys.stderr)
-        return None, 2
-    session = build_session(stem, group_streams(dual_log_dir)[stem], build_project_index())
-    return load_timeline(session), 0
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
 
 
 def _run_search(dual_log_dir, args: argparse.Namespace) -> int:
@@ -198,6 +188,16 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
     sys_tool_overlay = build_sys_tool_overlay(data["session"], data["family"], data["requests"])
     sys.stdout.write(render_msgs(data, start, end, usage_by_flow, overlay, sys_tool_overlay))
     return 0
+
+
+def _load_for(dual_log_dir, session_arg: str) -> tuple:
+    try:
+        stem = resolve_stem(dual_log_dir, session_arg)
+    except (AmbiguousSessionError, UnknownSessionError) as exc:
+        print(str(exc), file=sys.stderr)
+        return None, 2
+    session = build_session(stem, group_streams(dual_log_dir)[stem], build_project_index())
+    return load_timeline(session), 0
 
 
 def _numbered_view(data: dict) -> dict:

@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from .proxy_error_log import clear_proxy_error, log_proxy_error_on_change
+from src.proxy.proxy_error_log import clear_proxy_error, log_proxy_error_on_change
 
 _SHARED_RULES_DIR = Path.home() / ".claude" / "shared-rules"
 _PROXY_RULES_CONFIG = _SHARED_RULES_DIR / "proxy_rules.json"
@@ -11,60 +11,6 @@ _file_cache: dict = {}
 _config_cache: list = [None]
 
 # FUNCTIONS
-
-
-def is_main_session(worker_context: str) -> bool:
-    return not (worker_context or "").startswith("worker:")
-
-
-def _load_config() -> dict:
-    try:
-        mtime = _PROXY_RULES_CONFIG.stat().st_mtime
-        cached = _config_cache[0]
-        if cached is not None and cached[0] == mtime:
-            return cached[1]
-        with open(_PROXY_RULES_CONFIG, encoding="utf-8") as f:
-            config = json.load(f)
-        _config_cache[0] = (mtime, config)
-        clear_proxy_error(_CONFIG_SOURCE)
-        return config
-    except Exception as e:
-        log_proxy_error_on_change(_CONFIG_SOURCE, e)
-        return {}
-
-
-def _read_rule_file(rel_path: str) -> str:
-    path = _SHARED_RULES_DIR / rel_path
-    try:
-        mtime = path.stat().st_mtime
-        cached = _file_cache.get(rel_path)
-        if cached is not None and cached[0] == mtime:
-            return cached[1]
-        content = path.read_text(encoding="utf-8")
-        _file_cache[rel_path] = (mtime, content)
-        clear_proxy_error(f"rules_config.rule_file {rel_path}")
-        return content
-    except Exception as e:
-        log_proxy_error_on_change(f"rules_config.rule_file {rel_path}", e)
-        return ""
-
-
-def _resolve_project_rule_files(s2: dict, project_path: str, model_family: str) -> tuple:
-    project_files = []
-    exclusive_files = None
-    if not project_path:
-        return project_files, exclusive_files, False
-    for _name, proj in s2.get("projects", {}).items():
-        path_contains = proj.get("path_contains", "")
-        if path_contains and path_contains in project_path:
-            if proj.get("exclusive"):
-                allowed = proj.get("exclusive_model_families")
-                if allowed is not None and model_family not in allowed:
-                    return [], None, True
-                exclusive_files = list(proj.get("files", []))
-                break
-            project_files.extend(proj.get("files", []))
-    return project_files, exclusive_files, False
 
 
 def _load_system2_rules(model_family: str, project_path: str = "", worker_context: str = "") -> str:
@@ -87,3 +33,57 @@ def _load_system2_rules(model_family: str, project_path: str = "", worker_contex
         all_files = global_files + role_files + project_files
     parts = [c for c in (_read_rule_file(f) for f in all_files) if c]
     return "\n\n".join(parts)
+
+
+def _load_config() -> dict:
+    try:
+        mtime = _PROXY_RULES_CONFIG.stat().st_mtime
+        cached = _config_cache[0]
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+        with open(_PROXY_RULES_CONFIG, encoding="utf-8") as f:
+            config = json.load(f)
+        _config_cache[0] = (mtime, config)
+        clear_proxy_error(_CONFIG_SOURCE)
+        return config
+    except Exception as e:
+        log_proxy_error_on_change(_CONFIG_SOURCE, e)
+        return {}
+
+
+def is_main_session(worker_context: str) -> bool:
+    return not (worker_context or "").startswith("worker:")
+
+
+def _resolve_project_rule_files(s2: dict, project_path: str, model_family: str) -> tuple:
+    project_files = []
+    exclusive_files = None
+    if not project_path:
+        return project_files, exclusive_files, False
+    for _name, proj in s2.get("projects", {}).items():
+        path_contains = proj.get("path_contains", "")
+        if path_contains and path_contains in project_path:
+            if proj.get("exclusive"):
+                allowed = proj.get("exclusive_model_families")
+                if allowed is not None and model_family not in allowed:
+                    return [], None, True
+                exclusive_files = list(proj.get("files", []))
+                break
+            project_files.extend(proj.get("files", []))
+    return project_files, exclusive_files, False
+
+
+def _read_rule_file(rel_path: str) -> str:
+    path = _SHARED_RULES_DIR / rel_path
+    try:
+        mtime = path.stat().st_mtime
+        cached = _file_cache.get(rel_path)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+        content = path.read_text(encoding="utf-8")
+        _file_cache[rel_path] = (mtime, content)
+        clear_proxy_error(f"rules_config.rule_file {rel_path}")
+        return content
+    except Exception as e:
+        log_proxy_error_on_change(f"rules_config.rule_file {rel_path}", e)
+        return ""

@@ -1,16 +1,16 @@
 # INFRASTRUCTURE
 import re
 
-from .payload_helpers import _strip_blocked_tool_references
-from .content_strip import _strip_session_guidance, _strip_git_status
-from .rules_config import _load_system2_rules, is_main_session
-from .message_passes import (
+from src.proxy.payload_helpers import _strip_blocked_tool_references
+from src.proxy.content_strip import _strip_session_guidance, _strip_git_status
+from src.proxy.rules_config import _load_system2_rules, is_main_session
+from src.proxy.message_passes import (
     _apply_role_system_strip,
     _apply_first_pass,
     _apply_cumulative_sr_strips,
     _apply_final_sr_pass,
 )
-from .message_passes_simple import (
+from src.proxy.message_passes_simple import (
     _apply_sn_notice_strip,
     _apply_po_preview_strip,
     _apply_bg_exit_strip,
@@ -22,8 +22,8 @@ from .message_passes_simple import (
     _apply_pasted_content_strip,
     _apply_poread_expand_strip,
 )
-from .message_passes_wakeup import _dedup_wakeup_blocks
-from .rule_ops import _merge_ops
+from src.proxy.message_passes_wakeup import _dedup_wakeup_blocks
+from src.proxy.rule_ops import _merge_ops
 
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
@@ -33,12 +33,27 @@ _SYS1_BOILERPLATE_TEXT = "You are Claude Code, Anthropic's official CLI for Clau
 
 def apply_modification_rules(payload: dict, model_family: str = "opus", project_path: str = "", worker_context: str = "") -> tuple:
     system_rules = _load_system2_rules(model_family, project_path, worker_context)
-    messages_to_process = list(payload.get("messages", []))
+    message_stage = _run_message_stage(payload, worker_context)
+    system_stage = _apply_system_passes(payload.get("system", []), system_rules)
+    return _assemble_result(payload, message_stage, system_stage)
 
+
+# FUNCTIONS
+
+def _run_message_stage(payload: dict, worker_context: str) -> tuple:
+    passes = _build_message_passes(worker_context)
+    (new_messages, modifications, changed, stripped_msg_indices, stripped_msg_originals,
+     stripped_msg_removed, injected_msg_added, _all_ops) = _run_message_passes(list(payload.get("messages", [])), passes)
+    new_messages, _pass_ops = _dedup_wakeup_blocks(new_messages)
+    _merge_ops(_all_ops, _pass_ops)
+    return (new_messages, modifications, changed, stripped_msg_indices, stripped_msg_originals,
+            stripped_msg_removed, injected_msg_added, _all_ops)
+
+
+def _build_message_passes(worker_context: str) -> list:
     is_main = is_main_session(worker_context)
     _bg_launch_ack_pass = lambda msgs: _apply_bg_launch_ack_strip(msgs, is_main=is_main)
-
-    _passes = [
+    return [
         _apply_role_system_strip,
         _apply_sn_notice_strip,
         _apply_first_pass,
@@ -55,28 +70,20 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         _apply_poread_expand_strip,
     ]
 
+
+def _assemble_result(payload: dict, message_stage: tuple, system_stage: tuple) -> tuple:
     (new_messages, modifications, changed, stripped_msg_indices, stripped_msg_originals,
-     stripped_msg_removed, injected_msg_added, _all_ops) = _run_message_passes(messages_to_process, _passes)
-
-    new_messages, _pass_ops = _dedup_wakeup_blocks(new_messages)
-    _merge_ops(_all_ops, _pass_ops)
-
-    new_system, original_system2_text, sys_mods, sys_changed = _apply_system_passes(
-        payload.get("system", []), system_rules
-    )
+     stripped_msg_removed, injected_msg_added, _all_ops) = message_stage
+    new_system, original_system2_text, sys_mods, sys_changed = system_stage
     modifications.extend(sys_mods)
     if sys_changed:
         changed = True
-
     if not changed:
         return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, _all_ops
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
     return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, _all_ops
-
-
-# FUNCTIONS
 
 def _run_message_passes(messages_to_process: list, passes: list) -> tuple:
     modifications = []

@@ -4,9 +4,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..proxy.message_summary import _infer_model_family as infer_family
+from src.proxy.message_summary import _infer_model_family as infer_family
 from src.jsonl.jsonl_reader import JsonlReader
-from .diagnostics import report_skip
+from src.dual_log_cli.diagnostics import report_skip
 
 _MODEL_RE = re.compile(rb'"model"\s*:\s*"([^"]+)"')
 _MODEL_SNIFF_BYTES = 512
@@ -20,6 +20,30 @@ def local_datetime(timestamp: str):
         return None
     aware_utc = datetime.fromisoformat(timestamp.rstrip("Z")).replace(tzinfo=timezone.utc)
     return aware_utc.astimezone()
+
+
+def load_last_request(original_path: Path) -> tuple:
+    skipped = 0
+    with open(original_path, "rb") as fh:
+        for offset, length in iter_line_offsets_reverse(original_path):
+            model = sniff_model(fh, offset)
+            if model and infer_family(model) == "haiku":
+                skipped += 1
+                continue
+            fh.seek(offset)
+            raw = fh.read(length)
+            try:
+                entry = json.loads(raw)
+            except json.JSONDecodeError:
+                report_skip("reader", f"{original_path.name}@{offset}", "malformed line skipped")
+                skipped += 1
+                continue
+            tools = (entry.get("payload") or {}).get("tools") or []
+            if not tools:
+                skipped += 1
+                continue
+            return entry, length, skipped
+    return None, 0, skipped
 
 
 def iter_line_offsets_reverse(path: Path, chunk_bytes: int = _REVERSE_CHUNK_BYTES):
@@ -53,30 +77,6 @@ def sniff_model(fh, offset: int) -> str:
     fh.seek(offset)
     match = _MODEL_RE.search(fh.read(_MODEL_SNIFF_BYTES))
     return match.group(1).decode("utf-8", "replace") if match else ""
-
-
-def load_last_request(original_path: Path) -> tuple:
-    skipped = 0
-    with open(original_path, "rb") as fh:
-        for offset, length in iter_line_offsets_reverse(original_path):
-            model = sniff_model(fh, offset)
-            if model and infer_family(model) == "haiku":
-                skipped += 1
-                continue
-            fh.seek(offset)
-            raw = fh.read(length)
-            try:
-                entry = json.loads(raw)
-            except json.JSONDecodeError:
-                report_skip("reader", f"{original_path.name}@{offset}", "malformed line skipped")
-                skipped += 1
-                continue
-            tools = (entry.get("payload") or {}).get("tools") or []
-            if not tools:
-                skipped += 1
-                continue
-            return entry, length, skipped
-    return None, 0, skipped
 
 
 def iter_jsonl(path: Path):

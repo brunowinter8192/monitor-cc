@@ -1,13 +1,12 @@
 # INFRASTRUCTURE
 from Foundation import NSMakeRect
 
-from .panel import _ROW_H
-from .panel_views import _CursorlessButton
+from src.menubar.panel import _ROW_H
+from src.menubar.panel_views import _CursorlessButton
 
 _APPLY_BTN_W          = 78
 _APPLY_BTN_H          = 22
 _APPLY_SUCCESS_TITLE  = 'Applied successfully'
-_APPLY_SUCCESS_W      = 160
 _APPLY_SUCCESS_DURATION = 1.5
 
 # FUNCTIONS

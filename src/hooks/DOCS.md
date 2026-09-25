@@ -6,7 +6,7 @@ Global Claude Code safety hooks: standalone scripts that intercept Bash, Edit, R
 
 ## Public Interface
 
-No `__init__.py`; this directory is not a Python package. Each script is a standalone entry point invoked by the Claude Code hook system via the user-level settings file. Registration entry point: `hook_setup.py`.
+No `__init__.py`; this directory is imported as an implicit namespace package (`src.hooks`). Each script is a standalone entry point invoked by the Claude Code hook system via the user-level settings file. Registration entry point: `hook_setup.py`. Each script puts the repo root on `sys.path` before importing siblings as `src.hooks.<module>`.
 
 ## Flow
 
@@ -18,7 +18,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ## Modules
 
-### _shell_strip.py (186 LOC)
+### _shell_strip.py (182 LOC)
 
 **Purpose:** position-preserving shell-region stripper that blanks heredocs and quoted strings before pattern matching; a library, not a hook.
 **Reads:** n/a.
@@ -108,7 +108,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_broad_find.py (111 LOC)
+### block_broad_find.py (118 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking find over broad roots with no depth limit or head bound.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -118,7 +118,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_cli_chained.py (173 LOC)
+### block_cli_chained.py (176 LOC)
 
 **Purpose:** PreToolUse Bash hook enforcing piping, redirect and same-call readback rules for the policed CLIs known to `_known_cli.py`.
 **Reads:** stdin (PreToolUse JSON payload). Session working directory as fallback.
@@ -128,7 +128,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_gh_cli_local_path.py (92 LOC)
+### block_gh_cli_local_path.py (101 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking gh-cli file fetches whose repo-path argument is a local absolute or home path.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -138,7 +138,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_rag_cli_index_isolated.py (76 LOC)
+### block_rag_cli_index_isolated.py (79 LOC)
 
 **Purpose:** PreToolUse Bash hook requiring rag-cli index calls to run alone in their Bash invocation, without substitutions.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -148,7 +148,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_rag_docs_layer.py (102 LOC)
+### block_rag_docs_layer.py (106 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking searches on docs collections that lack a process-docs layer filter.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -158,7 +158,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_rag_corpus_read.py (82 LOC)
+### block_rag_corpus_read.py (86 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking raw content reads inside a RAG chunk-store tree; file management stays allowed.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -168,7 +168,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_noop_edit.py (41 LOC)
+### block_noop_edit.py (44 LOC)
 
 **Purpose:** PreToolUse Edit hook blocking edits whose old and new strings are identical.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -188,7 +188,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_cd_drift.py (70 LOC)
+### block_cd_drift.py (75 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking a command that ends with a cd into a worktree path and no cd back.
 **Reads:** stdin (PreToolUse JSON payload). Current working directory.
@@ -208,7 +208,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_except_pass.py (47 LOC)
+### block_except_pass.py (50 LOC)
 
 **Purpose:** PreToolUse Write/Edit hook blocking content with a bare except-pass block.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -228,7 +228,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_git_destructive.py (93 LOC)
+### block_git_destructive.py (97 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking amend, force push, no-verify, empty commits and non-read-only git config.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -238,7 +238,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_path_typo.py (111 LOC)
+### block_path_typo.py (110 LOC)
 
 **Purpose:** PreToolUse Bash/Read/Write/Edit hook auto-rewriting known path typos; name kept for settings matcher continuity although it rewrites.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -288,7 +288,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_worker_kill_while_working.py (94 LOC)
+### block_worker_kill_while_working.py (102 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking a worker kill while a live status check reports the worker as working.
 **Reads:** stdin (PreToolUse JSON payload). Live worker status via subprocess.
@@ -298,7 +298,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_worker_send_while_working.py (94 LOC)
+### block_worker_send_while_working.py (102 LOC)
 
 **Purpose:** PreToolUse Sibling of the kill guard applied to worker sends; deliberately duplicated rather than shared.
 **Reads:** stdin (PreToolUse JSON payload). Live worker status via subprocess.
@@ -318,7 +318,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_po_read.py (93 LOC)
+### block_po_read.py (96 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking shell reads of small persisted-output export files, pointing at the poread tool.
 **Reads:** stdin (PreToolUse JSON payload). Target file size from disk.
@@ -328,7 +328,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_pipe_scraper_isolated.py (80 LOC)
+### block_pipe_scraper_isolated.py (83 LOC)
 
 **Purpose:** PreToolUse Bash hook requiring pipe-scraper calls to run alone in their Bash invocation.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -338,7 +338,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_rag_cli_document_repeat.py (173 LOC)
+### block_rag_cli_document_repeat.py (176 LOC)
 
 **Purpose:** PreToolUse Stateful Bash hook blocking repeated single-document rag-cli index or delete calls within a rolling window.
 **Reads:** stdin (PreToolUse JSON payload). Its own state file under the gitignored logs directory.
@@ -348,7 +348,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### block_busywait_loop.py (51 LOC)
+### block_busywait_loop.py (58 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking while/until polling loops whose body is only a sleep.
 **Reads:** stdin (PreToolUse JSON payload).
@@ -358,7 +358,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ---
 
-### hook_setup.py (207 LOC)
+### hook_setup.py (187 LOC)
 
 **Purpose:** idempotent installer registering every hook script into the user-level Claude Code settings file, sweeping stale entries first.
 **Reads:** the user-level settings file; local main-branch git state; the working tree.

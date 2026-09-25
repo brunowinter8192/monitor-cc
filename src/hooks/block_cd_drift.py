@@ -3,8 +3,8 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._fire_log import log_fire
 
 _CD_TARGET = re.compile(r'\bcd\s+(\S+)')
 _WORKTREE_FRAGMENT = '.claude/worktrees/'
@@ -20,21 +20,26 @@ def block_cd_drift_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
+    if _is_violation(command):
+        _block(command, session_id)
+    sys.exit(0)
+
+# FUNCTIONS
+
+def _is_violation(command: str) -> bool:
     stripped = _strip_quoted(command)
     cd_targets = _CD_TARGET.findall(stripped)
     if not cd_targets:
-        sys.exit(0)
+        return False
     worktree_cds = [t for t in cd_targets if _WORKTREE_FRAGMENT in t]
     if not worktree_cds:
-        sys.exit(0)
-    if _WORKTREE_FRAGMENT in cd_targets[-1]:
-        print(_BLOCK_MESSAGE, file=sys.stderr, end="")
-        log_fire("block_cd_drift", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
-        sys.exit(2)
-    sys.exit(0)
+        return False
+    return _WORKTREE_FRAGMENT in cd_targets[-1]
 
-
-# FUNCTIONS
+def _block(command: str, session_id) -> None:
+    print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+    log_fire("block_cd_drift", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
+    sys.exit(2)
 
 def _parse_command():
     try:
