@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import Optional
 
-from .forwarded_parser import _monitor_root, _proxy_session_id_for_project, _resolve_log_id
+from src.proxy_display.forwarded_parser import _monitor_root, _proxy_session_id_for_project, _resolve_log_id
 
 # FUNCTIONS
 

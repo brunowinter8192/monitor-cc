@@ -1,20 +1,9 @@
 # INFRASTRUCTURE
 import bisect
 
-from .timeline_markers import request_markers
+from src.dual_log_cli.timeline_markers import request_markers
 
 # FUNCTIONS
-
-
-def _is_turn_opener(turn: dict) -> bool:
-    if turn.get("role") != "user":
-        return False
-    types = {block.get("type") for block in turn.get("blocks", [])}
-    return "text" in types and "tool_result" not in types
-
-
-def turn_openers(turns: list) -> list:
-    return [turn["index"] for turn in turns if _is_turn_opener(turn)]
 
 
 def _turn_preview(turn: dict) -> str:
@@ -36,3 +25,14 @@ def _group_markers_by_turn(turns: list, boundaries: list) -> tuple:
             position = max(1, min(position, len(openers))) - 1
             groups[position].append(msg_index)
     return markers, openers, groups
+
+
+def turn_openers(turns: list) -> list:
+    return [turn["index"] for turn in turns if _is_turn_opener(turn)]
+
+
+def _is_turn_opener(turn: dict) -> bool:
+    if turn.get("role") != "user":
+        return False
+    types = {block.get("type") for block in turn.get("blocks", [])}
+    return "text" in types and "tool_result" not in types

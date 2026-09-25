@@ -4,9 +4,9 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._shell_strip import _strip_non_shell_active
+from src.hooks._fire_log import log_fire
 
 _RAG_INDEX_RE = re.compile(r'\brag-cli\s+index\b')
 _ASSIGN_TOKEN = r'[A-Za-z_][A-Za-z0-9_]*=\S*'
@@ -33,27 +33,30 @@ def block_rag_cli_index_isolated_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
-    stripped = _strip_non_shell_active(command)
-    joined = _LINE_CONTINUATION_RE.sub(' ', stripped)
-    if not _RAG_INDEX_RE.search(joined):
-        sys.exit(0)
-    if _SUBSHELL_RE.search(command):
-        _block(command, session_id)
-    segments = [s.strip() for s in _SEPARATOR_RE.split(joined) if s.strip()]
-    index_segments = [s for s in segments if _RAG_INDEX_SEGMENT_RE.match(s)]
-    if not index_segments:
-        sys.exit(0)
-    if len(index_segments) > 1:
-        _block(command, session_id)
-    for seg in segments:
-        if (_RAG_INDEX_SEGMENT_RE.match(seg) or _CD_SEGMENT_RE.match(seg)
-                or _ASSIGNMENT_ONLY_SEGMENT_RE.match(seg)):
-            continue
+    if _is_violation(command):
         _block(command, session_id)
     sys.exit(0)
 
-
 # FUNCTIONS
+
+def _is_violation(command: str) -> bool:
+    stripped = _strip_non_shell_active(command)
+    joined = _LINE_CONTINUATION_RE.sub(' ', stripped)
+    if not _RAG_INDEX_RE.search(joined):
+        return False
+    if _SUBSHELL_RE.search(command):
+        return True
+    segments = [s.strip() for s in _SEPARATOR_RE.split(joined) if s.strip()]
+    index_segments = [s for s in segments if _RAG_INDEX_SEGMENT_RE.match(s)]
+    if not index_segments:
+        return False
+    if len(index_segments) > 1:
+        return True
+    return any(not _is_allowed_segment(seg) for seg in segments)
+
+def _is_allowed_segment(seg: str) -> bool:
+    return bool(_RAG_INDEX_SEGMENT_RE.match(seg) or _CD_SEGMENT_RE.match(seg)
+                or _ASSIGNMENT_ONLY_SEGMENT_RE.match(seg))
 
 def _block(command: str, session_id: str) -> None:
     print(_BLOCK_MESSAGE, file=sys.stderr, end="")

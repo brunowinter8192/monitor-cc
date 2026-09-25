@@ -1,4 +1,6 @@
 # INFRASTRUCTURE
+from src.proxy.payload_helpers import _top_level_content_contains
+
 
 _SN_NOTICE_MARKER = '[SYSTEM NOTIFICATION - NOT USER INPUT]'
 
@@ -14,40 +16,47 @@ _SN_NOTICE_PARAGRAPH = (
 _SN_NOTICE_BLOCK = _SN_NOTICE_PARAGRAPH + '\n\n'
 
 
-def _is_sn_notice(text):
-    return text.lstrip().startswith(_SN_NOTICE_PARAGRAPH)
-
-
 # ORCHESTRATOR
 
 def _strip_sn_notice(content):
     removed = []
-    if isinstance(content, str):
-        if _is_sn_notice(content):
-            removed.append(_SN_NOTICE_PARAGRAPH)
-            return _strip_sn_notice_from_text(content), removed
-        return content, removed
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict) or block.get('type') != 'text':
-                result.append(block)
-                continue
-            text = block.get('text', '')
-            if _is_sn_notice(text):
-                removed.append(_SN_NOTICE_PARAGRAPH)
-                new_text = _strip_sn_notice_from_text(text)
-                result.append({**block, 'text': new_text or '.'})
-            else:
-                result.append(block)
-        return result, removed
-    return content, removed
+    result = _strip_sn_content(content, removed)
+    return result, removed
 
 
 # FUNCTIONS
+
+def _strip_sn_content(content, removed):
+    if isinstance(content, str):
+        return _strip_sn_string(content, removed)
+    if isinstance(content, list):
+        return [_strip_sn_block(block, removed) for block in content]
+    return content
+
+def _strip_sn_string(text, removed):
+    if _is_sn_notice(text):
+        removed.append(_SN_NOTICE_PARAGRAPH)
+        return _strip_sn_notice_from_text(text)
+    return text
+
+def _is_sn_notice(text):
+    return text.lstrip().startswith(_SN_NOTICE_PARAGRAPH)
 
 def _strip_sn_notice_from_text(text):
     for needle in (_SN_NOTICE_BLOCK, _SN_NOTICE_PARAGRAPH):
         if needle in text:
             return text.replace(needle, '', 1)
     return text
+
+def _strip_sn_block(block, removed):
+    if not isinstance(block, dict) or block.get('type') != 'text':
+        return block
+    text = block.get('text', '')
+    if _is_sn_notice(text):
+        removed.append(_SN_NOTICE_PARAGRAPH)
+        new_text = _strip_sn_notice_from_text(text)
+        return {**block, 'text': new_text or '.'}
+    return block
+
+def _sn_notice_skip(role, content) -> bool:
+    return role == "system" and not _top_level_content_contains(content, "<task-notification>")

@@ -54,7 +54,7 @@ tmux session list -> `worker_tmux.py` (discovery, status, JSONL path, incrementa
 
 ---
 
-### worker_tokens_pane.py (370 LOC)
+### worker_tokens_pane.py (392 LOC)
 
 **Purpose:** event loop of the worker-tokens pane: header, input, periodic refresh, viewport rendering and selection-file write on worker switch.
 **Reads:** the selection file, the selected worker's JSONL, every listed worker's JSONL for header liveness, stdin.

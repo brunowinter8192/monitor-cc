@@ -17,9 +17,9 @@ from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSFont,
                     NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSMakeSize, NSRange
 
-from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
-from .panel_tabs import TAB_SEPARATOR, header_pieces
-from .panel_views import _CursorlessButton, _CursorlessLabel, _KeyablePanel, _PanelContentView
+from src.menubar.panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
+from src.menubar.panel_tabs import TAB_SEPARATOR, header_pieces
+from src.menubar.panel_views import _CursorlessButton, _CursorlessLabel, _KeyablePanel, _PanelContentView
 
 _NAME_WIDTH    = 22
 _MENLO         = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
@@ -41,76 +41,13 @@ def _format_bg_badge(remaining) -> str:
     mins, secs = divmod(remaining, 60)
     return f'[B {mins}:{secs:02d}]'
 
-def _make_panel_footer(pw: int):
-    footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, _FOOTER_H))
-    footer.setAutoresizingMask_(2)
-    quit_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - 86, 4, 78, 22))
-    quit_btn.setAutoresizingMask_(1)
-    quit_btn.setTitle_('Restart')
-    quit_btn.setBezelStyle_(1)
-    footer.addSubview_(quit_btn)
-    kill_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - 86 - 78 - 8, 4, 78, 22))
-    kill_btn.setAutoresizingMask_(1)
-    kill_btn.setTitle_('Kill')
-    kill_btn.setBezelStyle_(1)
-    footer.addSubview_(kill_btn)
-    return footer, quit_btn, kill_btn
-
-def _text_width(text: str) -> float:
-    return NSAttributedString.alloc().initWithString_attributes_(
-        text, {NSFontAttributeName: _MENLO()}).size().width
-
-def _make_tab_button(piece: str, tag: int, x: float, width: float, height: float):
-    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(x, 0, width, height))
-    btn.setBordered_(False)
-    btn.setButtonType_(7)
-    btn.setAttributedTitle_(
-        NSAttributedString.alloc().initWithString_attributes_(piece, {NSFontAttributeName: _MENLO()}))
-    btn.setTag_(tag)
-    return btn
-
-def _make_tab_separator(x: float, width: float, height: float):
-    label = _CursorlessLabel.labelWithString_('')
-    label.setFrame_(NSMakeRect(x, 0, width, height))
-    label.setAttributedStringValue_(
-        NSAttributedString.alloc().initWithString_attributes_(
-            TAB_SEPARATOR, {NSFontAttributeName: _MENLO()}))
-    return label
-
-def _make_tab_header(active: str, pw: int):
-    height = _TOP_BAR_H - 1
-    pieces = header_pieces(active)
-    widths = [_text_width(p) for p in pieces]
-    sep_w = _text_width(TAB_SEPARATOR)
-    total = sum(widths) + sep_w * (len(pieces) - 1)
-    strip = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw - 22, height))
-    strip.setAutoresizingMask_(2)
-    header = NSView.alloc().initWithFrame_(NSMakeRect((pw - 22 - total) / 2.0, 0, total, height))
-    header.setAutoresizingMask_(5)
-    x = 0.0
-    for index, (piece, width) in enumerate(zip(pieces, widths)):
-        header.addSubview_(_make_tab_button(piece, index, x, width, height))
-        x += width
-        if index < len(pieces) - 1:
-            header.addSubview_(_make_tab_separator(x, sep_w, height))
-            x += sep_w
-    strip.addSubview_(header)
-    return strip
-
-def _header_buttons(strip) -> list:
-    return [v for v in strip.subviews()[0].subviews() if isinstance(v, NSButton)]
-
 def _wire_header_buttons(strip, target) -> None:
     for btn in _header_buttons(strip):
         btn.setTarget_(target)
         btn.setAction_(b'selectTab:')
 
-def _make_panel_top_bar(active: str, pw: int):
-    top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, pw, _TOP_BAR_H))
-    top_bar.setAutoresizingMask_(10)
-    header = _make_tab_header(active, pw)
-    top_bar.addSubview_(header)
-    return top_bar, header
+def _header_buttons(strip) -> list:
+    return [v for v in strip.subviews()[0].subviews() if isinstance(v, NSButton)]
 
 def _make_nspanel():
     panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
@@ -145,6 +82,69 @@ def _make_nspanel():
             child.bounds(), _TA_CURSOR_OPTS, cv, None)
         child.addTrackingArea_(ta)
     return panel, stack, quit_btn, header_view, kill_btn
+
+def _make_panel_footer(pw: int):
+    footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, _FOOTER_H))
+    footer.setAutoresizingMask_(2)
+    quit_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - 86, 4, 78, 22))
+    quit_btn.setAutoresizingMask_(1)
+    quit_btn.setTitle_('Restart')
+    quit_btn.setBezelStyle_(1)
+    footer.addSubview_(quit_btn)
+    kill_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - 86 - 78 - 8, 4, 78, 22))
+    kill_btn.setAutoresizingMask_(1)
+    kill_btn.setTitle_('Kill')
+    kill_btn.setBezelStyle_(1)
+    footer.addSubview_(kill_btn)
+    return footer, quit_btn, kill_btn
+
+def _make_panel_top_bar(active: str, pw: int):
+    top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, pw, _TOP_BAR_H))
+    top_bar.setAutoresizingMask_(10)
+    header = _make_tab_header(active, pw)
+    top_bar.addSubview_(header)
+    return top_bar, header
+
+def _make_tab_header(active: str, pw: int):
+    height = _TOP_BAR_H - 1
+    pieces = header_pieces(active)
+    widths = [_text_width(p) for p in pieces]
+    sep_w = _text_width(TAB_SEPARATOR)
+    total = sum(widths) + sep_w * (len(pieces) - 1)
+    strip = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw - 22, height))
+    strip.setAutoresizingMask_(2)
+    header = NSView.alloc().initWithFrame_(NSMakeRect((pw - 22 - total) / 2.0, 0, total, height))
+    header.setAutoresizingMask_(5)
+    x = 0.0
+    for index, (piece, width) in enumerate(zip(pieces, widths)):
+        header.addSubview_(_make_tab_button(piece, index, x, width, height))
+        x += width
+        if index < len(pieces) - 1:
+            header.addSubview_(_make_tab_separator(x, sep_w, height))
+            x += sep_w
+    strip.addSubview_(header)
+    return strip
+
+def _text_width(text: str) -> float:
+    return NSAttributedString.alloc().initWithString_attributes_(
+        text, {NSFontAttributeName: _MENLO()}).size().width
+
+def _make_tab_button(piece: str, tag: int, x: float, width: float, height: float):
+    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(x, 0, width, height))
+    btn.setBordered_(False)
+    btn.setButtonType_(7)
+    btn.setAttributedTitle_(
+        NSAttributedString.alloc().initWithString_attributes_(piece, {NSFontAttributeName: _MENLO()}))
+    btn.setTag_(tag)
+    return btn
+
+def _make_tab_separator(x: float, width: float, height: float):
+    label = _CursorlessLabel.labelWithString_('')
+    label.setFrame_(NSMakeRect(x, 0, width, height))
+    label.setAttributedStringValue_(
+        NSAttributedString.alloc().initWithString_attributes_(
+            TAB_SEPARATOR, {NSFontAttributeName: _MENLO()}))
+    return label
 
 def _reposition_panel(panel, nsstatusitem) -> None:
     w  = panel.frame().size.width

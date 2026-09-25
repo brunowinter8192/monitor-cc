@@ -3,17 +3,17 @@ import os
 import subprocess
 import time
 
-from ..constants import INPUT_POLL_INTERVAL
-from ..input.click_handler import (
+from src.constants import INPUT_POLL_INTERVAL
+from src.input.click_handler import (
     setup_keyboard_input, restore_terminal, read_keypress, wait_for_input,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard,
 )
-from .status import all_statuses, get_anomalies, PRESET_NAMES, _fetch_collections
-from .errors import errors_today, errors_today_by_server
-from .gpu_actions import _toggle_state, _expire_toggle_states, _fire_button
-from .gpu_render import _button_regions, _render_pane, _strip_ansi
-from ..pane_error_log import log_pane_error
-from .. import search_bar
+from src.gpu_pane.status import all_statuses, get_anomalies, PRESET_NAMES, _fetch_collections
+from src.gpu_pane.errors import errors_today, errors_today_by_server
+from src.gpu_pane.gpu_actions import _toggle_state, _expire_toggle_states, _fire_button
+from src.gpu_pane.gpu_render import _button_regions, _render_pane, _strip_ansi
+from src.pane_error_log import log_pane_error
+from src import search_bar
 
 GPU_POLL_INTERVAL         = 2.0
 COLLECTIONS_POLL_INTERVAL = 30.0
@@ -26,65 +26,52 @@ _gpu_search: search_bar.SearchState = search_bar.SearchState()
 # ORCHESTRATOR
 
 def run_gpu_loop() -> None:
-    last_output = None
-    last_data_refresh = 0.0
-    last_collections_refresh = 0.0
-    presets: list = []
-    arbitrary: list = []
-    anomalies: list = []
-    today_errors: list = []
-    error_counts: dict = {}
-    collections: list | None = []
+    loop_state = _new_loop_state()
+    _open_terminal()
+    _loop_until_closed(loop_state)
 
+# FUNCTIONS
+
+def _new_loop_state() -> dict:
+    return {
+        'last_output': None,
+        'last_data_refresh': 0.0,
+        'last_collections_refresh': 0.0,
+        'presets': [],
+        'arbitrary': [],
+        'anomalies': [],
+        'today_errors': [],
+        'error_counts': {},
+        'collections': [],
+    }
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed, force_refresh = _poll_gpu_input(
-                    presets, arbitrary, anomalies, today_errors, error_counts, collections)
-
-                now = time.time()
-                (presets, arbitrary, anomalies, today_errors, error_counts, collections,
-                 last_data_refresh, last_collections_refresh, refreshed) = _refresh_gpu_data(
-                    now, force_refresh, last_data_refresh, last_collections_refresh,
-                    presets, arbitrary, anomalies, today_errors, error_counts, collections)
-                input_changed = input_changed or refreshed
-
-                if input_changed:
-                    last_output = _build_gpu_output(
-                        presets, arbitrary, anomalies, today_errors, error_counts, collections,
-                        last_output)
-
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('gpu')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('gpu')
+        wait_for_input(INPUT_POLL_INTERVAL)
 
-def _toggle_server(idx: int, presets: list) -> None:
-    name = PRESET_NAMES[idx]
-    s = next((p for p in presets if p['name'] == name), None)
-    if s is None:
-        return
-    devnull = subprocess.DEVNULL
-    if s['running'] and s['healthy']:
-        subprocess.Popen(["rag-cli", "server", "stop", name],
-                         stdout=devnull, stderr=devnull)
-        _toggle_state[name] = ('stopping', time.time())
-    elif s['running']:
-        subprocess.Popen(["rag-cli", "server", "restart", name],
-                         stdout=devnull, stderr=devnull)
-        _toggle_state[name] = ('starting', time.time())
-    else:
-        subprocess.Popen(["rag-cli", "server", "start", name],
-                         stdout=devnull, stderr=devnull)
-        _toggle_state[name] = ('starting', time.time())
-
+def _run_iteration(loop_state: dict) -> None:
+    input_changed, force_refresh = _poll_gpu_input(
+        loop_state['presets'], loop_state['arbitrary'], loop_state['anomalies'],
+        loop_state['today_errors'], loop_state['error_counts'], loop_state['collections'])
+    input_changed = _refresh_and_merge(loop_state, force_refresh, input_changed)
+    if input_changed:
+        _rebuild_output(loop_state)
+    wait_for_input(INPUT_POLL_INTERVAL)
 
 def _poll_gpu_input(presets: list, arbitrary: list, anomalies: list, today_errors: list,
                      error_counts: dict, collections: list) -> tuple:
@@ -132,7 +119,6 @@ def _poll_gpu_input(presets: list, arbitrary: list, anomalies: list, today_error
             input_changed = True
     return input_changed, force_refresh
 
-
 def _handle_gpu_mouse(button: int, col: int, row: int) -> tuple:
     if button == 0:
         if row == 1:
@@ -151,7 +137,6 @@ def _handle_gpu_mouse(button: int, col: int, row: int) -> tuple:
     if button == 32 and _gpu_search.dragging:
         return search_bar.handle_search_mouse_motion(_gpu_search, col, _GPU_SEARCH_BAR_LABEL), False
     return False, False
-
 
 def _gpu_search_on_commit(state: search_bar.SearchState, presets: list, arbitrary: list,
                            anomalies: list, today_errors: list, error_counts: dict,
@@ -174,9 +159,34 @@ def _jump_gpu_search_match(forward: bool) -> bool:
     _gpu_search.current_idx = (_gpu_search.current_idx + (1 if forward else -1)) % len(_gpu_search.matches)
     return True
 
-def _render_gpu_search_bar(pane_width: int) -> str:
-    return search_bar.render_search_bar(_gpu_search, pane_width, label=_GPU_SEARCH_BAR_LABEL)
+def _toggle_server(idx: int, presets: list) -> None:
+    name = PRESET_NAMES[idx]
+    s = next((p for p in presets if p['name'] == name), None)
+    if s is None:
+        return
+    devnull = subprocess.DEVNULL
+    if s['running'] and s['healthy']:
+        subprocess.Popen(["rag-cli", "server", "stop", name],
+                         stdout=devnull, stderr=devnull)
+        _toggle_state[name] = ('stopping', time.time())
+    elif s['running']:
+        subprocess.Popen(["rag-cli", "server", "restart", name],
+                         stdout=devnull, stderr=devnull)
+        _toggle_state[name] = ('starting', time.time())
+    else:
+        subprocess.Popen(["rag-cli", "server", "start", name],
+                         stdout=devnull, stderr=devnull)
+        _toggle_state[name] = ('starting', time.time())
 
+def _refresh_and_merge(loop_state: dict, force_refresh: bool, input_changed: bool) -> bool:
+    now = time.time()
+    (loop_state['presets'], loop_state['arbitrary'], loop_state['anomalies'],
+     loop_state['today_errors'], loop_state['error_counts'], loop_state['collections'],
+     loop_state['last_data_refresh'], loop_state['last_collections_refresh'], refreshed) = _refresh_gpu_data(
+        now, force_refresh, loop_state['last_data_refresh'], loop_state['last_collections_refresh'],
+        loop_state['presets'], loop_state['arbitrary'], loop_state['anomalies'],
+        loop_state['today_errors'], loop_state['error_counts'], loop_state['collections'])
+    return input_changed or refreshed
 
 def _refresh_gpu_data(now: float, force_refresh: bool, last_data_refresh: float,
                        last_collections_refresh: float, presets: list, arbitrary: list,
@@ -198,6 +208,11 @@ def _refresh_gpu_data(now: float, force_refresh: bool, last_data_refresh: float,
     return (presets, arbitrary, anomalies, today_errors, error_counts, collections,
             last_data_refresh, last_collections_refresh, changed)
 
+def _rebuild_output(loop_state: dict) -> None:
+    loop_state['last_output'] = _build_gpu_output(
+        loop_state['presets'], loop_state['arbitrary'], loop_state['anomalies'],
+        loop_state['today_errors'], loop_state['error_counts'], loop_state['collections'],
+        loop_state['last_output'])
 
 def _build_gpu_output(presets: list, arbitrary: list, anomalies: list, today_errors: list,
                        error_counts: dict, collections: list, last_output) -> str:
@@ -224,3 +239,6 @@ def _build_gpu_output(presets: list, arbitrary: list, anomalies: list, today_err
         print(output, end='', flush=True)
         return output
     return last_output
+
+def _render_gpu_search_bar(pane_width: int) -> str:
+    return search_bar.render_search_bar(_gpu_search, pane_width, label=_GPU_SEARCH_BAR_LABEL)

@@ -1,40 +1,10 @@
 # INFRASTRUCTURE
-from ..proxy.message_summary import _summarize_message
+from src.proxy.message_summary import _summarize_message
 
 PREVIEW_CHARS = 100
 
 
 # FUNCTIONS
-
-
-def _preview(text: str, limit: int = PREVIEW_CHARS) -> str:
-    if not text:
-        return ""
-    line = ""
-    for candidate in text.split("\n"):
-        if candidate.strip():
-            line = " ".join(candidate.split())
-            break
-    if not line:
-        line = " ".join(text.split())
-    return line[:limit] + ("…" if len(line) > limit else "")
-
-
-def _block_label(block: dict) -> str:
-    btype = block.get("type", "text")
-    if btype == "tool_use":
-        return f"tool_use[{block.get('preview', '') or '?'}]"
-    if btype == "tool_result" and block.get("is_error"):
-        return "tool_result!err"
-    return btype
-
-
-def _block_preview(block: dict) -> str:
-    full = block.get("full_text", "") or ""
-    if block.get("type") == "tool_use":
-        _, _, input_json = full.partition("\n")
-        return _preview(input_json or full)
-    return _preview(full)
 
 
 def build_turns(payload: dict) -> list:
@@ -67,6 +37,36 @@ def build_turns(payload: dict) -> list:
             "blocks": blocks,
         })
     return turns
+
+
+def _block_label(block: dict) -> str:
+    btype = block.get("type", "text")
+    if btype == "tool_use":
+        return f"tool_use[{block.get('preview', '') or '?'}]"
+    if btype == "tool_result" and block.get("is_error"):
+        return "tool_result!err"
+    return btype
+
+
+def _block_preview(block: dict) -> str:
+    full = block.get("full_text", "") or ""
+    if block.get("type") == "tool_use":
+        _, _, input_json = full.partition("\n")
+        return _preview(input_json or full)
+    return _preview(full)
+
+
+def _preview(text: str, limit: int = PREVIEW_CHARS) -> str:
+    if not text:
+        return ""
+    line = ""
+    for candidate in text.split("\n"):
+        if candidate.strip():
+            line = " ".join(candidate.split())
+            break
+    if not line:
+        line = " ".join(text.split())
+    return line[:limit] + ("…" if len(line) > limit else "")
 
 
 def iter_block_texts(payload: dict):

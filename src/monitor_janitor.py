@@ -4,8 +4,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .monitor_root import resolve_monitor_cc_root
-from .tmux_launcher import kill_session
+from src.monitor_root import resolve_monitor_cc_root
+from src.tmux_launcher import kill_session
 
 _SESSION_PREFIX  = "monitor_cc_"
 _MAX_AGE_SECONDS = 24 * 3600
@@ -37,6 +37,26 @@ def list_monitor_sessions() -> list:
             sessions.append((name, int(created)))
     return sessions
 
+def _append_log_line(text: str) -> None:
+    log_path = _log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    with log_path.open('a', encoding='utf-8') as f:
+        f.write(f"{ts} {text}\n")
+
+def _log_path() -> Path:
+    return _resolve_monitor_cc_root() / "src" / "logs" / "monitor_sweep.log"
+
+def _resolve_monitor_cc_root() -> Path:
+    return resolve_monitor_cc_root(_report_root)
+
+def _report_root(root: Path, source: str) -> None:
+    log_path = root / "src" / "logs" / "monitor_sweep.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    with log_path.open('a', encoding='utf-8') as f:
+        f.write(f"{ts} ROOT source={source} root={root}\n")
+
 def sweep_sessions(sessions: list, max_age_seconds: int) -> list:
     now = time.time()
     return [sweep_one_session(name, created, now, max_age_seconds) for name, created in sessions]
@@ -49,28 +69,8 @@ def sweep_one_session(name: str, created: int, now: float, max_age_seconds: int)
     log_sweep_line(name, age_seconds, status)
     return {"name": name, "age_seconds": age_seconds, "killed": killed}
 
-def _resolve_monitor_cc_root() -> Path:
-    return resolve_monitor_cc_root(_report_root)
-
-def _report_root(root: Path, source: str) -> None:
-    log_path = root / "src" / "logs" / "monitor_sweep.log"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    with log_path.open('a', encoding='utf-8') as f:
-        f.write(f"{ts} ROOT source={source} root={root}\n")
-
-def _log_path() -> Path:
-    return _resolve_monitor_cc_root() / "src" / "logs" / "monitor_sweep.log"
-
 def log_sweep_line(name: str, age_seconds: float, status: str) -> None:
     _append_log_line(f"{name} age={age_seconds / 3600:.1f}h {status}")
-
-def _append_log_line(text: str) -> None:
-    log_path = _log_path()
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    with log_path.open('a', encoding='utf-8') as f:
-        f.write(f"{ts} {text}\n")
 
 if __name__ == "__main__":
     sweep_workflow()

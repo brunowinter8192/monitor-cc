@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
-from .classifier import matches_only
-from .timeline_turns import iter_block_texts
+from src.dual_log_cli.classifier import matches_only
+from src.dual_log_cli.timeline_turns import iter_block_texts
 
 # FUNCTIONS
 

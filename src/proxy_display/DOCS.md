@@ -20,7 +20,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ## Modules
 
-### pane.py (352 LOC)
+### pane.py (373 LOC)
 
 **Purpose:** Event loop for the main proxy pane: incremental log read, mouse and keyboard input, search, and render on change.
 **Reads:** module state; active project filter from `core/monitor.py`; stdin.
@@ -30,7 +30,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### worker_proxy_pane.py (351 LOC)
+### worker_proxy_pane.py (374 LOC)
 
 **Purpose:** Event loop for the worker proxy pane with worker switching, own header row and the same input handling as the main pane.
 **Reads:** module state; live worker list and selection file from `workers`; stdin.
@@ -50,7 +50,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### format.py (141 LOC)
+### format.py (146 LOC)
 
 **Purpose:** Orchestrates turn grouping and frozen-turn rendering, applies viewport windowing and the row-background priority chain, and identifies standalone entries.
 **Reads:** entries, expand states, line map, hover row, dimensions, scroll offset, turns.
@@ -100,7 +100,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### proxy_badge.py (81 LOC)
+### proxy_badge.py (77 LOC)
 
 **Purpose:** Decides which strip/inject badges a REQ header shows, including the total-tokens nuke text detection.
 **Reads:** entry dicts or raw delta values; parameters only.
@@ -140,7 +140,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### render_sections.py (257 LOC)
+### render_sections.py (255 LOC)
 
 **Purpose:** Renders the tools, fields-delta, beta-flags and directives sections of an expanded request, including expandable whole-stripped tools.
 **Reads:** entry, previous entry, expand states, pane width, modifications.
@@ -160,7 +160,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### render_line_helpers.py (31 LOC)
+### render_line_helpers.py (33 LOC)
 
 **Purpose:** Shared line-emission primitives for the section renderers.
 **Reads:** parameters only.
@@ -170,7 +170,7 @@ Entries outside the keep-last window are replayed lazily from the log on expand 
 
 ---
 
-### render_messages.py (230 LOC)
+### render_messages.py (238 LOC)
 
 **Purpose:** Renders new, modified and removed messages of an expanded request with span overlay, thinking drill-down and copy affordances.
 **Reads:** entry, previous entry, all entries, expand states, pane width.

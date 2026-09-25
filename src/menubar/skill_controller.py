@@ -2,32 +2,14 @@
 from AppKit import NSMenu, NSMenuItem
 from Foundation import NSMakePoint
 
-from .menubar_log import log_menubar
-from .skill_discovery import discover_skills_workflow
-from .skill_insert import insert_skill_workflow
+from src.menubar.menubar_log import log_menubar
+from src.menubar.skill_discovery import discover_skills_workflow
+from src.menubar.skill_insert import insert_skill_workflow
 
 _EMPTY_TITLE = 'no skills'
 
 # FUNCTIONS
 
-def _build_menu(skills, target) -> NSMenu:
-    menu = NSMenu.alloc().initWithTitle_('')
-    menu.setAutoenablesItems_(False)
-    if not skills:
-        empty = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(_EMPTY_TITLE, None, '')
-        empty.setEnabled_(False)
-        menu.addItem_(empty)
-        return menu
-    previous_source = skills[0].source
-    for skill in skills:
-        if skill.source != previous_source:
-            menu.addItem_(NSMenuItem.separatorItem())
-            previous_source = skill.source
-        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(skill.short, 'insertSkill:', '')
-        item.setTarget_(target)
-        item.setRepresentedObject_(skill.full)
-        menu.addItem_(item)
-    return menu
 
 class SkillController:
     def __init__(self, app) -> None:
@@ -50,3 +32,22 @@ class SkillController:
             log_menubar('skill', f'FAILED stage=choice detail=missing_choice skill={full_name} cwd={self._menu_cwd}')
             return
         insert_skill_workflow(self._menu_cwd, str(full_name))
+
+def _build_menu(skills, target) -> NSMenu:
+    menu = NSMenu.alloc().initWithTitle_('')
+    menu.setAutoenablesItems_(False)
+    if not skills:
+        empty = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(_EMPTY_TITLE, None, '')
+        empty.setEnabled_(False)
+        menu.addItem_(empty)
+        return menu
+    previous_source = skills[0].source
+    for skill in skills:
+        if skill.source != previous_source:
+            menu.addItem_(NSMenuItem.separatorItem())
+            previous_source = skill.source
+        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(skill.short, 'insertSkill:', '')
+        item.setTarget_(target)
+        item.setRepresentedObject_(skill.full)
+        menu.addItem_(item)
+    return menu

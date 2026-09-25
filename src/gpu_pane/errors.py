@@ -16,6 +16,14 @@ ERROR_CODES = frozenset({
 
 # FUNCTIONS
 
+def errors_today_by_server() -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for e in errors_today():
+        srv = e.get("server", "unknown")
+        counts[srv] = counts.get(srv, 0) + 1
+    return counts
+
+
 def errors_today() -> list[dict]:
     now_local = datetime.now().astimezone()
     today_start = (now_local
@@ -24,14 +32,6 @@ def errors_today() -> list[dict]:
     return [e for e in _read_all()
             if e.get("code") in ERROR_CODES
             and datetime.fromisoformat(e["ts"]) >= today_start]
-
-
-def errors_today_by_server() -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for e in errors_today():
-        srv = e.get("server", "unknown")
-        counts[srv] = counts.get(srv, 0) + 1
-    return counts
 
 
 def _read_all() -> list[dict]:

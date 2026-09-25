@@ -20,28 +20,6 @@ def render_frozen(entries: list, groups: list, expand_states: dict, pane_width: 
 
 # FUNCTIONS
 
-def assign_groups(entries: list, turns, cache) -> list:
-    if not turns:
-        return [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
-    stamps = [t.get('timestamp', '') for t in turns]
-    if all(stamps[i] <= stamps[i + 1] for i in range(len(stamps) - 1)):
-        _note_assign_path(cache, 'bisect')
-        return _assign_bisect(entries, turns, stamps)
-    _note_assign_path(cache, 'linear (turn timestamps not sorted)')
-    return _assign_turns_to_entries(entries, turns)
-
-def _note_assign_path(cache, path: str) -> None:
-    if cache.assign_path != path:
-        cache.assign_path = path
-        log_pane_note(cache.name, f'turn assignment path: {path}')
-
-def _assign_bisect(entries: list, turns: list, stamps: list) -> list:
-    groups = [{'turn_idx': i, 'timestamp': stamps[i], 'entry_pairs': []} for i in range(len(turns))]
-    for entry_idx, entry in enumerate(entries):
-        turn_idx = max(0, bisect_right(stamps, entry.get('timestamp', '')) - 1)
-        groups[turn_idx]['entry_pairs'].append((entry_idx, entry))
-    return [g for g in groups if g['entry_pairs']]
-
 def _resolve_flow_maps(turns, request_id_by_flow, cache) -> tuple:
     key = tuple(id(t) for t in (turns or []))
     if cache.flow_key != key or cache.flow_maps is None:
@@ -53,22 +31,6 @@ def _resolve_flow_maps(turns, request_id_by_flow, cache) -> tuple:
     number_by_flow = {flow_id: numbers[rid] for flow_id, rid in by_flow.items() if rid in numbers}
     time_by_flow = {flow_id: times[rid] for flow_id, rid in by_flow.items() if rid in times}
     return number_by_flow, time_by_flow
-
-def _key_entry_idx(key) -> int:
-    if isinstance(key, int):
-        return key
-    if isinstance(key, tuple) and len(key) >= 2:
-        if isinstance(key[0], str) and isinstance(key[1], int):
-            return key[1]
-        if isinstance(key[0], int):
-            return key[0]
-    raise ValueError(f'unclassifiable state key: {key!r}')
-
-def _keys_by_entry(keys) -> dict:
-    buckets = {}
-    for key in keys:
-        buckets.setdefault(_key_entry_idx(key), set()).add(key)
-    return {idx: frozenset(ks) for idx, ks in buckets.items()}
 
 def _build_context(expand_states: dict, pane_width: int, copy_feedback, search_match_set, search_current_entry_idx, search_query: str, now: float) -> dict:
     flashing = [k for k, until in (copy_feedback or {}).items() if until > now]
@@ -84,6 +46,36 @@ def _build_context(expand_states: dict, pane_width: int, copy_feedback, search_m
         'epoch': overlay_epoch(),
     }
 
+def _keys_by_entry(keys) -> dict:
+    buckets = {}
+    for key in keys:
+        buckets.setdefault(_key_entry_idx(key), set()).add(key)
+    return {idx: frozenset(ks) for idx, ks in buckets.items()}
+
+def _key_entry_idx(key) -> int:
+    if isinstance(key, int):
+        return key
+    if isinstance(key, tuple) and len(key) >= 2:
+        if isinstance(key[0], str) and isinstance(key[1], int):
+            return key[1]
+        if isinstance(key[0], int):
+            return key[0]
+    raise ValueError(f'unclassifiable state key: {key!r}')
+
+def _resolve_records(groups: list, entries: list, turns, number_by_flow: dict, time_by_flow: dict, ctx: dict, copy_feedback, cache) -> tuple:
+    label_counts = {}
+    opus_labels = []
+    resolved = []
+    for group in groups:
+        labels, time_strs = _label_group(group, number_by_flow, time_by_flow, label_counts, opus_labels)
+        fp = _group_fingerprint(group, labels, time_strs, entries, turns, ctx)
+        record = cache.records.get(group['turn_idx'])
+        if record is None or record['fp'] != fp:
+            record = _render_record(group, fp, labels, entries, turns, number_by_flow, time_by_flow, ctx, copy_feedback)
+        resolved.append((group['turn_idx'], record))
+    cache.records = dict(resolved)
+    return [record for _, record in resolved], opus_labels
+
 def _label_group(group: dict, number_by_flow: dict, time_by_flow: dict, label_counts: dict, opus_labels: list) -> tuple:
     labels = []
     time_strs = []
@@ -96,13 +88,14 @@ def _label_group(group: dict, number_by_flow: dict, time_by_flow: dict, label_co
         time_strs.append(time_by_flow.get(entry.get('flow_id'), '') if label.startswith('REQ #') else '')
     return labels, time_strs
 
-def _messages_signature(entry) -> tuple:
-    messages = entry.get('messages') if entry is not None else None
-    return (id(messages), -1 if messages is None else len(messages))
-
-def _expanded_signature(entry_idx: int, entry: dict, entries: list, ctx: dict) -> tuple:
-    prev_same = _resolve_prev_same_family(entries, entry_idx)
-    return (ctx['epoch'], _messages_signature(entry), _messages_signature(prev_same), id(prev_same))
+def _group_fingerprint(group: dict, labels: list, time_strs: list, entries: list, turns, ctx: dict) -> tuple:
+    turn = turns[group['turn_idx']] if turns else None
+    header_sig = (id(turn), len(turn.get('api_calls', []))) if turn is not None else None
+    entry_sigs = tuple(
+        _entry_fingerprint(entry_idx, entry, label, time_str, entries, ctx)
+        for (entry_idx, entry), label, time_str in zip(group['entry_pairs'], labels, time_strs)
+    )
+    return (group['turn_idx'], ctx['width'], ctx['feedback_off'], header_sig, entry_sigs)
 
 def _entry_fingerprint(entry_idx: int, entry: dict, label: str, time_str: str, entries: list, ctx: dict) -> tuple:
     match_set = ctx['match_set']
@@ -119,14 +112,13 @@ def _entry_fingerprint(entry_idx: int, entry: dict, label: str, time_str: str, e
         return base + _expanded_signature(entry_idx, entry, entries, ctx)
     return base
 
-def _group_fingerprint(group: dict, labels: list, time_strs: list, entries: list, turns, ctx: dict) -> tuple:
-    turn = turns[group['turn_idx']] if turns else None
-    header_sig = (id(turn), len(turn.get('api_calls', []))) if turn is not None else None
-    entry_sigs = tuple(
-        _entry_fingerprint(entry_idx, entry, label, time_str, entries, ctx)
-        for (entry_idx, entry), label, time_str in zip(group['entry_pairs'], labels, time_strs)
-    )
-    return (group['turn_idx'], ctx['width'], ctx['feedback_off'], header_sig, entry_sigs)
+def _expanded_signature(entry_idx: int, entry: dict, entries: list, ctx: dict) -> tuple:
+    prev_same = _resolve_prev_same_family(entries, entry_idx)
+    return (ctx['epoch'], _messages_signature(entry), _messages_signature(prev_same), id(prev_same))
+
+def _messages_signature(entry) -> tuple:
+    messages = entry.get('messages') if entry is not None else None
+    return (id(messages), -1 if messages is None else len(messages))
 
 def _render_record(group: dict, fp: tuple, labels: list, entries: list, turns, number_by_flow: dict, time_by_flow: dict, ctx: dict, copy_feedback) -> dict:
     turn_idx = group['turn_idx']
@@ -148,23 +140,6 @@ def _render_record(group: dict, fp: tuple, labels: list, entries: list, turns, n
     keys.append(None)
     return {'fp': fp, 'lines': lines, 'keys': keys, 'entry_pairs': group['entry_pairs'], 'turn': turns[turn_idx] if turns else None}
 
-def _resolve_records(groups: list, entries: list, turns, number_by_flow: dict, time_by_flow: dict, ctx: dict, copy_feedback, cache) -> tuple:
-    label_counts = {}
-    opus_labels = []
-    resolved = []
-    for group in groups:
-        labels, time_strs = _label_group(group, number_by_flow, time_by_flow, label_counts, opus_labels)
-        fp = _group_fingerprint(group, labels, time_strs, entries, turns, ctx)
-        record = cache.records.get(group['turn_idx'])
-        if record is None or record['fp'] != fp:
-            record = _render_record(group, fp, labels, entries, turns, number_by_flow, time_by_flow, ctx, copy_feedback)
-        resolved.append((group['turn_idx'], record))
-    cache.records = dict(resolved)
-    return [record for _, record in resolved], opus_labels
-
-def _same_records(previous: list, current: list) -> bool:
-    return len(previous) == len(current) and all(a is b for a, b in zip(previous, current))
-
 def _resolve_flat(records: list, opus_labels: list, cache) -> dict:
     if cache.flat is not None and _same_records(cache.flat['records'], records):
         return cache.flat
@@ -183,3 +158,28 @@ def _resolve_flat(records: list, opus_labels: list, cache) -> dict:
         'parent_prefix': parent_prefix, 'collision': _compute_collision_idxs(opus_labels),
     }
     return cache.flat
+
+def _same_records(previous: list, current: list) -> bool:
+    return len(previous) == len(current) and all(a is b for a, b in zip(previous, current))
+
+def assign_groups(entries: list, turns, cache) -> list:
+    if not turns:
+        return [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
+    stamps = [t.get('timestamp', '') for t in turns]
+    if all(stamps[i] <= stamps[i + 1] for i in range(len(stamps) - 1)):
+        _note_assign_path(cache, 'bisect')
+        return _assign_bisect(entries, turns, stamps)
+    _note_assign_path(cache, 'linear (turn timestamps not sorted)')
+    return _assign_turns_to_entries(entries, turns)
+
+def _note_assign_path(cache, path: str) -> None:
+    if cache.assign_path != path:
+        cache.assign_path = path
+        log_pane_note(cache.name, f'turn assignment path: {path}')
+
+def _assign_bisect(entries: list, turns: list, stamps: list) -> list:
+    groups = [{'turn_idx': i, 'timestamp': stamps[i], 'entry_pairs': []} for i in range(len(turns))]
+    for entry_idx, entry in enumerate(entries):
+        turn_idx = max(0, bisect_right(stamps, entry.get('timestamp', '')) - 1)
+        groups[turn_idx]['entry_pairs'].append((entry_idx, entry))
+    return [g for g in groups if g['entry_pairs']]

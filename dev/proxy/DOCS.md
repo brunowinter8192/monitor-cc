@@ -231,7 +231,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_live_copy_bootstrap.py (133 LOC)
+### test_live_copy_bootstrap.py (126 LOC)
 
 **Purpose:** Builds a mirror repo with the launcher's live-copy layout and proves the addon entry resolves the live package and root, raising when missing.
 **Reads:** the repo `src/` (copied into the mirror); a stub mitmproxy module it writes.
@@ -281,7 +281,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### proxy_start_sandbox.py (229 LOC)
+### proxy_start_sandbox.py (231 LOC)
 
 **Purpose:** Shared sandbox builder that runs the base-ref and the working-tree proxy launcher against stubbed mitmdump, claude, lsof and worker-cli in a temp HOME.
 **Reads:** the base-ref launcher via `git show`, the working-tree launcher scripts, `src/proxy_addon.py`, `src/proxy/`.

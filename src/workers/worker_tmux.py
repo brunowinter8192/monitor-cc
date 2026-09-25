@@ -4,44 +4,10 @@ from pathlib import Path
 import subprocess
 import time
 
-from ..session_finder import encode_project_path
-from .worker_format import get_worker_project_name, parse_worker_stats_delta
+from src.session_finder import encode_project_path
+from src.workers.worker_format import get_worker_project_name, parse_worker_stats_delta
 
 # FUNCTIONS
-
-def get_tmux_env(session: str, var: str) -> str:
-    result = subprocess.run(
-        ["tmux", "show-environment", "-t", session, var],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0 and '=' in result.stdout:
-        return result.stdout.strip().split('=', 1)[1]
-    return ''
-
-def detect_worker_status(session: str) -> str:
-    dead = subprocess.run(
-        ["tmux", "display-message", "-t", f"{session}:^", "-p", "#{pane_dead}"],
-        capture_output=True, text=True
-    ).stdout.strip()
-
-    if dead == "1":
-        return "exited"
-    if dead != "0":
-        return "unknown"
-
-    now = int(time.time())
-    activity = subprocess.run(
-        ["tmux", "list-panes", "-t", session, "-F", "#{window_activity}"],
-        capture_output=True, text=True
-    )
-    last_activity = activity.stdout.strip().split('\n')[0]
-    if activity.returncode != 0 or not last_activity:
-        return "unknown"
-    delta = now - int(last_activity)
-
-    if delta > 10:
-        return "idle"
-    return "working"
 
 def list_workers(project_path: str) -> List[dict]:
     project = get_worker_project_name(project_path)
@@ -69,26 +35,39 @@ def list_workers(project_path: str) -> List[dict]:
         })
     return workers
 
-def find_worker_jsonl(session_name: str) -> Optional[Path]:
-    result = subprocess.run(
-        ["tmux", "display-message", "-t", f"{session_name}:^", "-p", "#{pane_current_path}"],
+def detect_worker_status(session: str) -> str:
+    dead = subprocess.run(
+        ["tmux", "display-message", "-t", f"{session}:^", "-p", "#{pane_dead}"],
+        capture_output=True, text=True
+    ).stdout.strip()
+
+    if dead == "1":
+        return "exited"
+    if dead != "0":
+        return "unknown"
+
+    now = int(time.time())
+    activity = subprocess.run(
+        ["tmux", "list-panes", "-t", session, "-F", "#{window_activity}"],
         capture_output=True, text=True
     )
-    if result.returncode != 0 or not result.stdout.strip():
-        return None
+    last_activity = activity.stdout.strip().split('\n')[0]
+    if activity.returncode != 0 or not last_activity:
+        return "unknown"
+    delta = now - int(last_activity)
 
-    working_dir = result.stdout.strip()
-    encoded = encode_project_path(working_dir)
-    project_dir = Path.home() / '.claude' / 'projects' / encoded
+    if delta > 10:
+        return "idle"
+    return "working"
 
-    if not project_dir.exists():
-        return None
-
-    jsonl_files = [f for f in project_dir.glob('*.jsonl') if not f.name.startswith('agent-')]
-    if not jsonl_files:
-        return None
-
-    return max(jsonl_files, key=lambda f: f.stat().st_mtime)
+def get_tmux_env(session: str, var: str) -> str:
+    result = subprocess.run(
+        ["tmux", "show-environment", "-t", session, var],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0 and '=' in result.stdout:
+        return result.stdout.strip().split('=', 1)[1]
+    return ''
 
 def attach_worker_stats(workers: List[dict], cache: dict) -> None:
     for w in workers:
@@ -109,3 +88,24 @@ def attach_worker_stats(workers: List[dict], cache: dict) -> None:
         entry['context_pct'] = context_pct
         w['tokens'] = {'output': total_output}
         w['context_pct'] = context_pct
+
+def find_worker_jsonl(session_name: str) -> Optional[Path]:
+    result = subprocess.run(
+        ["tmux", "display-message", "-t", f"{session_name}:^", "-p", "#{pane_current_path}"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    working_dir = result.stdout.strip()
+    encoded = encode_project_path(working_dir)
+    project_dir = Path.home() / '.claude' / 'projects' / encoded
+
+    if not project_dir.exists():
+        return None
+
+    jsonl_files = [f for f in project_dir.glob('*.jsonl') if not f.name.startswith('agent-')]
+    if not jsonl_files:
+        return None
+
+    return max(jsonl_files, key=lambda f: f.stat().st_mtime)

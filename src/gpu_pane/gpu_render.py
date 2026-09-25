@@ -2,9 +2,9 @@
 import os
 import re
 
-from ..colors import RESET, GREEN, YELLOW, RED, DIM, ORANGE, SEARCH_MATCH_BG, SEARCH_CURRENT_BG
-from ..utils import format_timestamp, compute_header_rule_len, highlight_query_in_line
-from .gpu_actions import _toggle_state
+from src.colors import RESET, GREEN, YELLOW, RED, DIM, ORANGE, SEARCH_MATCH_BG, SEARCH_CURRENT_BG
+from src.utils import format_timestamp, compute_header_rule_len, highlight_query_in_line
+from src.gpu_pane.gpu_actions import _toggle_state
 
 IDLE_TIMEOUT = int(os.getenv("RAG_SERVER_IDLE_TIMEOUT", "3600"))
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')
@@ -13,8 +13,77 @@ _button_regions: dict = {}
 
 # FUNCTIONS
 
+def _render_pane(pane_width: int, pane_height: int,
+                 presets: list, arbitrary: list, anomalies: list,
+                 today_errors: list, error_counts: dict,
+                 collections: list, search_query: str = '',
+                 search_match_line_set: set | None = None,
+                 search_current_line: int | None = None) -> str:
+    _button_regions.clear()
+    lines: list[str] = _render_gpu_header(pane_width)
+    lines.extend(_render_preset_rows(presets, error_counts, pane_width, len(lines) + 1))
+    lines.extend(_render_arbitrary_rows(arbitrary, error_counts, pane_width, len(lines) + 1))
+    lines.extend(_render_collections_block(collections, pane_width))
+    lines.extend(_render_errors_block(today_errors, pane_width))
+    lines.extend(_render_anomalies_line(anomalies))
+    _apply_gpu_search_highlight(lines, search_query, search_match_line_set, search_current_line)
+    return "\n".join(lines)
+
+
+def _render_gpu_header(pane_width: int) -> list:
+    header_prefix = '  GPU Servers'
+    refresh_btn = '[refresh]'
+    rule_len, show_refresh = compute_header_rule_len(header_prefix, refresh_btn, 64, pane_width)
+    header_text = f"{DIM}{'═' * rule_len}{RESET}{header_prefix}"
+    if not show_refresh:
+        return [header_text]
+    header_vis_len = len(_strip_ansi(header_text))
+    header_pad = pane_width - header_vis_len - len(refresh_btn)
+    _button_regions[(header_vis_len + header_pad + 1, header_vis_len + header_pad + len(refresh_btn), 1)] = ('refresh', 'refresh')
+    return [header_text + ' ' * header_pad + refresh_btn]
+
+
 def _strip_ansi(s: str) -> str:
     return _ANSI_RE.sub('', s)
+
+
+def _render_preset_rows(presets: list, error_counts: dict, pane_width: int, start_row: int) -> list:
+    rows = []
+    for i, s in enumerate(presets):
+        btn = _button_label(s)
+        action = ('stop' if s['healthy'] else 'restart') if s['running'] else 'start'
+        rows.append(_build_status_row(s, f"[{i+1}] ", 16, btn, action, s['name'],
+                                       error_counts, pane_width, start_row + i))
+    return rows
+
+
+def _button_label(s: dict) -> str:
+    if s['kind'] == 'arbitrary':
+        return '[stop]'
+    if not s['running']:
+        return '[start]'
+    return '[stop]' if s['healthy'] else '[restart]'
+
+
+def _build_status_row(s: dict, prefix: str, name_width: int, btn: str, action: str, target: str,
+                       error_counts: dict, pane_width: int, phys_row: int) -> str:
+    badge      = _badge(s)
+    status_txt = _status_text(s)
+    countdown  = _format_countdown(s)
+    port_str   = f"port {s['port']}"         if s['port']               else ""
+    pid_str    = f"pid {s['pid']}"           if s['pid']                else ""
+    rss_str    = f"RSS {s['rss_mb']} MB"     if s['rss_mb'] is not None else ""
+    model_str  = (s.get('model_name') or '')[:20]
+    err_n      = error_counts.get(s['name'], 0)
+    err_col    = GREEN if err_n == 0 else ORANGE
+    err_str    = f"errors today: {err_col}{err_n}{RESET}"
+    content    = (f"{prefix}{s['name']:<{name_width}} {badge} {status_txt:<15} "
+                  f"{countdown:<16} {port_str:<14} {pid_str:<13} "
+                  f"{rss_str:<14} {model_str:<20} {err_str}")
+    vis_len    = len(_strip_ansi(content))
+    pad        = max(1, pane_width - vis_len - len(btn))
+    _button_regions[(vis_len + pad + 1, vis_len + pad + len(btn), phys_row)] = (action, target)
+    return content + ' ' * pad + btn
 
 
 def _badge(s: dict) -> str:
@@ -50,58 +119,6 @@ def _format_countdown(s: dict) -> str:
     m = remaining // 60
     sec = remaining % 60
     return f"stops in {m:02d}:{sec:02d}"
-
-
-def _button_label(s: dict) -> str:
-    if s['kind'] == 'arbitrary':
-        return '[stop]'
-    if not s['running']:
-        return '[start]'
-    return '[stop]' if s['healthy'] else '[restart]'
-
-
-def _build_status_row(s: dict, prefix: str, name_width: int, btn: str, action: str, target: str,
-                       error_counts: dict, pane_width: int, phys_row: int) -> str:
-    badge      = _badge(s)
-    status_txt = _status_text(s)
-    countdown  = _format_countdown(s)
-    port_str   = f"port {s['port']}"         if s['port']               else ""
-    pid_str    = f"pid {s['pid']}"           if s['pid']                else ""
-    rss_str    = f"RSS {s['rss_mb']} MB"     if s['rss_mb'] is not None else ""
-    model_str  = (s.get('model_name') or '')[:20]
-    err_n      = error_counts.get(s['name'], 0)
-    err_col    = GREEN if err_n == 0 else ORANGE
-    err_str    = f"errors today: {err_col}{err_n}{RESET}"
-    content    = (f"{prefix}{s['name']:<{name_width}} {badge} {status_txt:<15} "
-                  f"{countdown:<16} {port_str:<14} {pid_str:<13} "
-                  f"{rss_str:<14} {model_str:<20} {err_str}")
-    vis_len    = len(_strip_ansi(content))
-    pad        = max(1, pane_width - vis_len - len(btn))
-    _button_regions[(vis_len + pad + 1, vis_len + pad + len(btn), phys_row)] = (action, target)
-    return content + ' ' * pad + btn
-
-
-def _render_gpu_header(pane_width: int) -> list:
-    header_prefix = '  GPU Servers'
-    refresh_btn = '[refresh]'
-    rule_len, show_refresh = compute_header_rule_len(header_prefix, refresh_btn, 64, pane_width)
-    header_text = f"{DIM}{'═' * rule_len}{RESET}{header_prefix}"
-    if not show_refresh:
-        return [header_text]
-    header_vis_len = len(_strip_ansi(header_text))
-    header_pad = pane_width - header_vis_len - len(refresh_btn)
-    _button_regions[(header_vis_len + header_pad + 1, header_vis_len + header_pad + len(refresh_btn), 1)] = ('refresh', 'refresh')
-    return [header_text + ' ' * header_pad + refresh_btn]
-
-
-def _render_preset_rows(presets: list, error_counts: dict, pane_width: int, start_row: int) -> list:
-    rows = []
-    for i, s in enumerate(presets):
-        btn = _button_label(s)
-        action = ('stop' if s['healthy'] else 'restart') if s['running'] else 'start'
-        rows.append(_build_status_row(s, f"[{i+1}] ", 16, btn, action, s['name'],
-                                       error_counts, pane_width, start_row + i))
-    return rows
 
 
 def _render_arbitrary_rows(arbitrary: list, error_counts: dict, pane_width: int, start_row: int) -> list:
@@ -161,20 +178,3 @@ def _apply_gpu_search_highlight(lines: list, search_query: str, search_match_lin
             if 0 <= idx < len(lines):
                 marker = SEARCH_CURRENT_BG if idx == search_current_line else SEARCH_MATCH_BG
                 lines[idx] = highlight_query_in_line(lines[idx], search_query, marker)
-
-
-def _render_pane(pane_width: int, pane_height: int,
-                 presets: list, arbitrary: list, anomalies: list,
-                 today_errors: list, error_counts: dict,
-                 collections: list, search_query: str = '',
-                 search_match_line_set: set | None = None,
-                 search_current_line: int | None = None) -> str:
-    _button_regions.clear()
-    lines: list[str] = _render_gpu_header(pane_width)
-    lines.extend(_render_preset_rows(presets, error_counts, pane_width, len(lines) + 1))
-    lines.extend(_render_arbitrary_rows(arbitrary, error_counts, pane_width, len(lines) + 1))
-    lines.extend(_render_collections_block(collections, pane_width))
-    lines.extend(_render_errors_block(today_errors, pane_width))
-    lines.extend(_render_anomalies_line(anomalies))
-    _apply_gpu_search_highlight(lines, search_query, search_match_line_set, search_current_line)
-    return "\n".join(lines)

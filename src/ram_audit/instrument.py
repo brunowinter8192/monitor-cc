@@ -11,11 +11,53 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from ..monitor_root import resolve_monitor_cc_root
-from ..pane_error_log import log_pane_note
+from src.monitor_root import resolve_monitor_cc_root
+from src.pane_error_log import log_pane_note
 
 
 # FUNCTIONS
+
+def register_ram_dump(pane_name: str, module_state_provider: Callable[[], list]) -> None:
+    if os.environ.get('MONITOR_CC_RAM_AUDIT') == '1':
+        if not tracemalloc.is_tracing():
+            tracemalloc.start(25)
+
+    pid_file = f'/tmp/.monitor_cc_pid_{pane_name}'
+    with open(pid_file, 'w') as _f:
+        _f.write(str(os.getpid()))
+    atexit.register(lambda: os.path.exists(pid_file) and os.remove(pid_file))
+
+    def _handle_ram_dump(signum, frame) -> None:
+        now = datetime.now()
+        ts = now.strftime('%Y%m%d_%H%M%S')
+        pid = os.getpid()
+        dump_path = _resolve_dump_path(pane_name, ts)
+
+        out = []
+        out.append(f'# {pane_name} RAM dump')
+        out.append(f'timestamp: {now.isoformat()}')
+        out.append(f'pid:       {pid}')
+        out.append(_rss_line())
+        out.append('')
+        out.extend(_gc_top_lines())
+        out.append('')
+        out.extend(_tracemalloc_lines())
+        out.append('')
+        out.append(f'## {pane_name} module state')
+        out.extend(_module_state_lines(module_state_provider))
+
+        dump_path.write_text('\n'.join(out) + '\n', encoding='utf-8')
+        print(f'[ram-dump] wrote {dump_path}', file=sys.stderr, flush=True)
+
+    signal.signal(signal.SIGUSR1, _handle_ram_dump)
+
+def _resolve_dump_path(pane_name: str, ts: str) -> Path:
+    dump_dir = resolve_monitor_cc_root(_report_root) / 'dev' / 'ram_audit' / 'dumps'
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    return dump_dir / f'{ts}_{pane_name}.txt'
+
+def _report_root(root: Path, source: str) -> None:
+    log_pane_note('monitor_root', f'source={source} root={root}')
 
 def _rss_line() -> str:
     pid = os.getpid()
@@ -62,45 +104,3 @@ def _module_state_lines(module_state_provider: Callable[[], list]) -> list:
         else:
             lines.append(f'{name:<40}  {val}')
     return lines
-
-def _report_root(root: Path, source: str) -> None:
-    log_pane_note('monitor_root', f'source={source} root={root}')
-
-def _resolve_dump_path(pane_name: str, ts: str) -> Path:
-    dump_dir = resolve_monitor_cc_root(_report_root) / 'dev' / 'ram_audit' / 'dumps'
-    dump_dir.mkdir(parents=True, exist_ok=True)
-    return dump_dir / f'{ts}_{pane_name}.txt'
-
-def register_ram_dump(pane_name: str, module_state_provider: Callable[[], list]) -> None:
-    if os.environ.get('MONITOR_CC_RAM_AUDIT') == '1':
-        if not tracemalloc.is_tracing():
-            tracemalloc.start(25)
-
-    pid_file = f'/tmp/.monitor_cc_pid_{pane_name}'
-    with open(pid_file, 'w') as _f:
-        _f.write(str(os.getpid()))
-    atexit.register(lambda: os.path.exists(pid_file) and os.remove(pid_file))
-
-    def _handle_ram_dump(signum, frame) -> None:
-        now = datetime.now()
-        ts = now.strftime('%Y%m%d_%H%M%S')
-        pid = os.getpid()
-        dump_path = _resolve_dump_path(pane_name, ts)
-
-        out = []
-        out.append(f'# {pane_name} RAM dump')
-        out.append(f'timestamp: {now.isoformat()}')
-        out.append(f'pid:       {pid}')
-        out.append(_rss_line())
-        out.append('')
-        out.extend(_gc_top_lines())
-        out.append('')
-        out.extend(_tracemalloc_lines())
-        out.append('')
-        out.append(f'## {pane_name} module state')
-        out.extend(_module_state_lines(module_state_provider))
-
-        dump_path.write_text('\n'.join(out) + '\n', encoding='utf-8')
-        print(f'[ram-dump] wrote {dump_path}', file=sys.stderr, flush=True)
-
-    signal.signal(signal.SIGUSR1, _handle_ram_dump)

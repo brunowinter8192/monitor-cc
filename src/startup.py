@@ -4,7 +4,7 @@ import signal
 import sys
 from typing import Optional
 
-from .colors import RESET, GREEN
+from src.colors import RESET, GREEN
 
 # ORCHESTRATOR
 def parse_arguments() -> argparse.Namespace:

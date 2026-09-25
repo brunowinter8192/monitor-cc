@@ -3,8 +3,8 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._fire_log import log_fire
 
 _DEV_PATH = re.compile(r'/dev/')
 _SRC_IMPORT = re.compile(r'^(?:from\s+src\.|import\s+src\.)', re.MULTILINE)

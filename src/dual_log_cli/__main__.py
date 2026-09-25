@@ -3,9 +3,9 @@ import argparse
 import os
 import sys
 
-from .cli_args import _parse_args as _build_args
-from .commands import _run_expand, _run_msgs, _run_reqs, _run_search, _run_sessions
-from .discovery import resolve_dual_log_dir
+from src.dual_log_cli.cli_args import _parse_args as _build_args
+from src.dual_log_cli.commands import _run_expand, _run_msgs, _run_reqs, _run_search, _run_sessions
+from src.dual_log_cli.discovery import resolve_dual_log_dir
 
 _USAGE_EPILOG = """dual_log_cli — read-only inspector for src/logs/dual_log/.
 
@@ -84,13 +84,11 @@ Every access is read-only — nothing under src/logs/dual_log/ is written, creat
 
 # ORCHESTRATOR
 
-
 def main(argv: list) -> int:
     args = _parse_args(argv)
     dual_log_dir = resolve_dual_log_dir()
     if not dual_log_dir.exists():
-        print(f"dual_log directory not found: {dual_log_dir}", file=sys.stderr)
-        return 2
+        return _report_missing_dir(dual_log_dir)
     if args.command == "sessions":
         return _run_sessions(dual_log_dir, args)
     if args.command == "search":
@@ -101,9 +99,11 @@ def main(argv: list) -> int:
         return _run_msgs(dual_log_dir, args)
     return _run_expand(dual_log_dir, args)
 
-
 # FUNCTIONS
 
+def _report_missing_dir(dual_log_dir) -> int:
+    print(f"dual_log directory not found: {dual_log_dir}", file=sys.stderr)
+    return 2
 
 def _parse_args(argv: list) -> argparse.Namespace:
     return _build_args(argv, _USAGE_EPILOG)

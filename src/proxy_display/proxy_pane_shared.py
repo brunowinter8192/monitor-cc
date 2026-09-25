@@ -2,76 +2,59 @@
 import os
 from typing import Optional, Tuple
 
-from ..constants import PROXY_MESSAGES_KEEP_LAST
-from .format import _is_standalone_entry
-from .forwarded_parser import _lazy_load_messages_forwarded, reconstruct_all_messages
-from .parser import _find_dual_log_paths
-from .dual_log_accumulator import accumulate_dual_log
-from .search import build_search_matches
-from .side_logs import read_response_log
-from .. import search_bar
+from src.constants import PROXY_MESSAGES_KEEP_LAST
+from src.proxy_display.format import _is_standalone_entry
+from src.proxy_display.forwarded_parser import _lazy_load_messages_forwarded, reconstruct_all_messages
+from src.proxy_display.parser import _find_dual_log_paths
+from src.proxy_display.dual_log_accumulator import accumulate_dual_log
+from src.proxy_display.search import build_search_matches
+from src.proxy_display.side_logs import read_response_log
+from src import search_bar
 
 # FUNCTIONS
 
-def _entry_idx_from_key(key) -> Optional[int]:
-    if isinstance(key, int):
-        return key
-    if isinstance(key, tuple):
-        if isinstance(key[0], str):
-            return key[1]
-        if isinstance(key[0], int):
-            return key[0]
-    return None
-
-def _resolve_prev_same(entries: list, k: int) -> Optional[int]:
-    for i in range(k - 1, -1, -1):
-        if not _is_standalone_entry(entries[i]):
-            return i
-    return None
-
-def _strip_inactive_messages(entries: list, expand_states: dict) -> None:
-    cutoff = max(0, len(entries) - PROXY_MESSAGES_KEEP_LAST)
-    for i in range(cutoff):
-        e = entries[i]
-        if 'messages' not in e:
-            continue
-        is_active = (
-            expand_states.get(i, False) or
-            expand_states.get(('req', i), False) or
-            expand_states.get((i, 'neg_delta'), False)
-        )
-        if not is_active:
-            del e['messages']
-
-def _serialize_proxy_entry(key, entries: list) -> str:
-    entry_idx = _entry_idx_from_key(key)
-    if entry_idx is None or entry_idx >= len(entries):
-        return ''
-    entry = entries[entry_idx]
-    model = entry.get('model', '?')
-    msg_count = entry.get('message_count', 0)
-    parts = [f"entry_idx={entry_idx}  model={model}  msgs={msg_count}"]
-    prev_same_idx = _resolve_prev_same(entries, entry_idx)
-    start = entries[prev_same_idx].get('message_count', 0) if prev_same_idx is not None else 0
-    for msg_idx, msg in enumerate(entry.get('messages', [])[start:], start=start):
-        role = msg.get('role', '?')
-        msg_type = msg.get('type', '?')
-        blocks = msg.get('blocks', [])
-        if blocks:
-            for blk in blocks:
-                ft = blk.get('full_text', blk.get('preview', ''))
-                if ft:
-                    parts.append(f"\n--- msg[{msg_idx}] {role} {blk.get('type', '?')} ---")
-                    parts.append(ft)
-        else:
-            ct = msg.get('content_tail', '') or msg.get('content_preview', '')
-            if ct:
-                parts.append(f"\n--- msg[{msg_idx}] {role} {msg_type} ---")
-                parts.append(ct)
-    return '\n'.join(parts)
+def _copy_feedback_key(key, entry_idx: Optional[int]):
+    return key if (_is_msg_key(key) or _is_think_key(key) or _is_block_key(key)) else entry_idx
 
 def _is_msg_key(key) -> bool:
     return isinstance(key, tuple) and len(key) == 3 and key[0] == 'msg'
+
+def _is_think_key(key) -> bool:
+    return isinstance(key, tuple) and len(key) == 4 and key[0] == 'think'
+
+def _is_block_key(key) -> bool:
+    return isinstance(key, tuple) and len(key) == 4 and key[0] == 'block'
+
+def _prepare_copy_text(key, entry_idx: Optional[int], entries: list, log_path) -> str:
+    if entry_idx is not None and entry_idx < len(entries) and log_path:
+        e = entries[entry_idx]
+        if 'messages' not in e:
+            fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'
+            _lazy_load_messages_forwarded(e, fwd_path)
+    if _is_think_key(key) or _is_block_key(key):
+        return _serialize_proxy_block(key, entries)
+    if _is_msg_key(key):
+        return _serialize_proxy_message(key, entries)
+    return _serialize_proxy_entry(key, entries)
+
+def _serialize_proxy_block(key, entries: list) -> str:
+    if not (_is_think_key(key) or _is_block_key(key)):
+        return ''
+    _, entry_idx, msg_idx, bidx = key
+    if entry_idx is None or entry_idx >= len(entries):
+        return ''
+    messages = entries[entry_idx].get('messages') or []
+    if msg_idx >= len(messages):
+        return ''
+    blocks = messages[msg_idx].get('blocks', [])
+    if bidx >= len(blocks):
+        return ''
+    blk = blocks[bidx]
+    ft = blk.get('full_text', blk.get('preview', ''))
+    if not ft:
+        return ''
+    role = messages[msg_idx].get('role', '?')
+    return f"--- msg[{msg_idx}] {role} {blk.get('type', '?')} ---\n{ft}"
 
 def _serialize_proxy_message(key, entries: list) -> str:
     if not _is_msg_key(key):
@@ -100,45 +83,48 @@ def _serialize_proxy_message(key, entries: list) -> str:
             parts.append(ct)
     return '\n'.join(parts).lstrip('\n')
 
-def _is_think_key(key) -> bool:
-    return isinstance(key, tuple) and len(key) == 4 and key[0] == 'think'
-
-def _is_block_key(key) -> bool:
-    return isinstance(key, tuple) and len(key) == 4 and key[0] == 'block'
-
-def _serialize_proxy_block(key, entries: list) -> str:
-    if not (_is_think_key(key) or _is_block_key(key)):
-        return ''
-    _, entry_idx, msg_idx, bidx = key
+def _serialize_proxy_entry(key, entries: list) -> str:
+    entry_idx = _entry_idx_from_key(key)
     if entry_idx is None or entry_idx >= len(entries):
         return ''
-    messages = entries[entry_idx].get('messages') or []
-    if msg_idx >= len(messages):
-        return ''
-    blocks = messages[msg_idx].get('blocks', [])
-    if bidx >= len(blocks):
-        return ''
-    blk = blocks[bidx]
-    ft = blk.get('full_text', blk.get('preview', ''))
-    if not ft:
-        return ''
-    role = messages[msg_idx].get('role', '?')
-    return f"--- msg[{msg_idx}] {role} {blk.get('type', '?')} ---\n{ft}"
+    entry = entries[entry_idx]
+    model = entry.get('model', '?')
+    msg_count = entry.get('message_count', 0)
+    parts = [f"entry_idx={entry_idx}  model={model}  msgs={msg_count}"]
+    prev_same_idx = _resolve_prev_same(entries, entry_idx)
+    start = entries[prev_same_idx].get('message_count', 0) if prev_same_idx is not None else 0
+    for msg_idx, msg in enumerate(entry.get('messages', [])[start:], start=start):
+        role = msg.get('role', '?')
+        msg_type = msg.get('type', '?')
+        blocks = msg.get('blocks', [])
+        if blocks:
+            for blk in blocks:
+                ft = blk.get('full_text', blk.get('preview', ''))
+                if ft:
+                    parts.append(f"\n--- msg[{msg_idx}] {role} {blk.get('type', '?')} ---")
+                    parts.append(ft)
+        else:
+            ct = msg.get('content_tail', '') or msg.get('content_preview', '')
+            if ct:
+                parts.append(f"\n--- msg[{msg_idx}] {role} {msg_type} ---")
+                parts.append(ct)
+    return '\n'.join(parts)
 
-def _copy_feedback_key(key, entry_idx: Optional[int]):
-    return key if (_is_msg_key(key) or _is_think_key(key) or _is_block_key(key)) else entry_idx
+def _entry_idx_from_key(key) -> Optional[int]:
+    if isinstance(key, int):
+        return key
+    if isinstance(key, tuple):
+        if isinstance(key[0], str):
+            return key[1]
+        if isinstance(key[0], int):
+            return key[0]
+    return None
 
-def _prepare_copy_text(key, entry_idx: Optional[int], entries: list, log_path) -> str:
-    if entry_idx is not None and entry_idx < len(entries) and log_path:
-        e = entries[entry_idx]
-        if 'messages' not in e:
-            fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'
-            _lazy_load_messages_forwarded(e, fwd_path)
-    if _is_think_key(key) or _is_block_key(key):
-        return _serialize_proxy_block(key, entries)
-    if _is_msg_key(key):
-        return _serialize_proxy_message(key, entries)
-    return _serialize_proxy_entry(key, entries)
+def _resolve_prev_same(entries: list, k: int) -> Optional[int]:
+    for i in range(k - 1, -1, -1):
+        if not _is_standalone_entry(entries[i]):
+            return i
+    return None
 
 def _toggle_expand_and_lazy_load(key, entry_idx: Optional[int], entries: list, log_path,
                                   expand_states: dict) -> bool:
@@ -184,6 +170,20 @@ def _attach_overlay_references(entries: list, acc_stripped: dict, acc_injected: 
         if original_tools_by_family is not None:
             entry['_original_tools_by_name'] = original_tools_by_family.setdefault(family, {})
 
+def _strip_inactive_messages(entries: list, expand_states: dict) -> None:
+    cutoff = max(0, len(entries) - PROXY_MESSAGES_KEEP_LAST)
+    for i in range(cutoff):
+        e = entries[i]
+        if 'messages' not in e:
+            continue
+        is_active = (
+            expand_states.get(i, False) or
+            expand_states.get(('req', i), False) or
+            expand_states.get((i, 'neg_delta'), False)
+        )
+        if not is_active:
+            del e['messages']
+
 def _accumulate_request_ids(response_path, position: int, request_id_by_flow: dict, status_by_flow: dict = None) -> int:
     by_request_id, new_position = read_response_log(response_path, position)
     for request_id, entry in by_request_id.items():
@@ -199,26 +199,6 @@ def _attach_http_status(entries: list, status_by_flow: dict) -> None:
         return
     for entry in entries:
         entry['http_status'] = status_by_flow.get(entry.get('flow_id'))
-
-def _shift_line_map_and_copy_rows(line_map: dict, copy_rows: set, shift: int) -> None:
-    shifted = {r + shift: k for r, k in line_map.items()}
-    line_map.clear()
-    line_map.update(shifted)
-    shifted_copy = {r + shift for r in copy_rows}
-    copy_rows.clear()
-    copy_rows.update(shifted_copy)
-
-def _resolve_just_expanded_scroll(item_positions: dict, just_expanded, scroll_offset: int,
-                                   total_lines: int, viewport_lines: int) -> Optional[int]:
-    if just_expanded is None or just_expanded not in item_positions:
-        return None
-    item_line = item_positions[just_expanded]
-    max_scroll = max(0, total_lines - viewport_lines)
-    clamped = min(scroll_offset, max_scroll)
-    start = max(0, total_lines - viewport_lines - clamped)
-    if item_line < start or item_line >= start + viewport_lines:
-        return max(0, total_lines - viewport_lines - item_line)
-    return None
 
 def _run_pane_search(state: search_bar.SearchState, entries: list, expand_states: dict,
                       pane_width: int, log_path, jump_fn) -> None:
@@ -265,6 +245,26 @@ def _render_and_scroll_body(render_fn, line_map: dict, copy_rows: set, header_sh
         body, total_lines, _ = render_fn(scroll_offset, False)
         _shift_line_map_and_copy_rows(line_map, copy_rows, header_shift)
     return body, scroll_offset
+
+def _shift_line_map_and_copy_rows(line_map: dict, copy_rows: set, shift: int) -> None:
+    shifted = {r + shift: k for r, k in line_map.items()}
+    line_map.clear()
+    line_map.update(shifted)
+    shifted_copy = {r + shift for r in copy_rows}
+    copy_rows.clear()
+    copy_rows.update(shifted_copy)
+
+def _resolve_just_expanded_scroll(item_positions: dict, just_expanded, scroll_offset: int,
+                                   total_lines: int, viewport_lines: int) -> Optional[int]:
+    if just_expanded is None or just_expanded not in item_positions:
+        return None
+    item_line = item_positions[just_expanded]
+    max_scroll = max(0, total_lines - viewport_lines)
+    clamped = min(scroll_offset, max_scroll)
+    start = max(0, total_lines - viewport_lines - clamped)
+    if item_line < start or item_line >= start + viewport_lines:
+        return max(0, total_lines - viewport_lines - item_line)
+    return None
 
 def _terminal_size() -> Tuple[int, int]:
     term = os.get_terminal_size()

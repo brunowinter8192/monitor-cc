@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ..pane_error_log import log_pane_error, log_pane_note
+from src.pane_error_log import log_pane_error, log_pane_note
 
 _RETENTION = 7 * 86400
 _LEGACY_TS_SUFFIX = '+00:00Z'

@@ -5,11 +5,11 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSForegroundColorAttributeName)
 from Foundation import NSOperationQueue
 
-from .menubar_log import log_menubar
-from .panel import (_TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator,
+from src.menubar.menubar_log import log_menubar
+from src.menubar.panel import (_TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator,
                     _make_tab_nspanel, _resize_panel_keep_top)
-from .model_selection import _PendingSelection, _thinking_is_enabled
-from .model_panel_ui import (_make_model_row_btn, _make_apply_btn,
+from src.menubar.model_selection import _PendingSelection, _thinking_is_enabled
+from src.menubar.model_panel_ui import (_make_model_row_btn, _make_apply_btn,
                              _APPLY_SUCCESS_TITLE, _APPLY_SUCCESS_DURATION)
 
 # FUNCTIONS

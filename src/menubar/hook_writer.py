@@ -15,28 +15,37 @@ _IDLE_EVENTS = {"Stop", "StopFailure"}
 
 _PRUNE_AFTER_SECS = 7200
 
+_UNPARSED = object()
+
 # ORCHESTRATOR
 
 def hook_writer_workflow() -> None:
-    try:
-        payload = json.loads(sys.stdin.read())
-    except Exception as exc:
-        _log_failure(f'stdin parse failed err={exc!r}')
+    payload = _read_payload()
+    if payload is _UNPARSED:
         return
-    event = payload.get("hook_event_name", "")
-    if event in _WORKING_EVENTS:
-        status = "working"
-    elif event in _IDLE_EVENTS:
-        status = "idle"
-    else:
+    status = _status_for_event(payload.get("hook_event_name", ""))
+    if status is None:
         return
     session_id = payload.get("session_id", "")
-    cwd        = payload.get("cwd", "")
     if not session_id:
         return
-    _write_state(session_id, status, cwd)
+    _write_state(session_id, status, payload.get("cwd", ""))
 
 # FUNCTIONS
+
+def _read_payload():
+    try:
+        return json.loads(sys.stdin.read())
+    except Exception as exc:
+        _log_failure(f'stdin parse failed err={exc!r}')
+        return _UNPARSED
+
+def _status_for_event(event: str):
+    if event in _WORKING_EVENTS:
+        return "working"
+    if event in _IDLE_EVENTS:
+        return "idle"
+    return None
 
 def _write_state(session_id: str, status: str, cwd: str) -> None:
     now = time.time()

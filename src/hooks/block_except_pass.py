@@ -3,8 +3,8 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._fire_log import log_fire
 
 _EXCEPT_PASS = re.compile(r'except\s*(?:\w+\s*)?:\s*[\r\n]+\s*pass\b', re.MULTILINE)
 
@@ -17,12 +17,15 @@ def block_except_pass_workflow() -> None:
     if content is None:
         sys.exit(0)
     if _EXCEPT_PASS.search(content):
-        print(_BLOCK_MESSAGE, file=sys.stderr, end="")
-        log_fire("block_except_pass", "block", "Write/Edit", file_path or "", reason=_BLOCK_MESSAGE, session_id=session_id)
-        sys.exit(2)
+        _block(file_path, session_id)
     sys.exit(0)
 
 # FUNCTIONS
+
+def _block(file_path, session_id) -> None:
+    print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+    log_fire("block_except_pass", "block", "Write/Edit", file_path or "", reason=_BLOCK_MESSAGE, session_id=session_id)
+    sys.exit(2)
 
 def _parse_content():
     try:

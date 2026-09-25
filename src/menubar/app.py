@@ -13,31 +13,34 @@ from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName, NSFont,
                     NSFontAttributeName)
 from Foundation import NSObject, NSOperationQueue
 
-from .bg_timer import _abort_bg_sleep_timers
-from .discovery_worker import start_discovery_worker
-from .focus_controller import FocusController
-from .hotkey_controller import HotkeyController, register_cmd_l, register_cmd_k
-from .menubar_log import log_menubar, log_menubar_change
-from .bar_icons import ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET
-from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
-from .panel_manager import PanelManager
-from .rag_controller import RagController
-from .model_controller import ModelController
-from .launch_controller import LaunchController
-from .skill_controller import SkillController
-from .monitor_sweep_scheduler import maybe_run_sweep_workflow
-from .system import _focus_session, _focus_worker, _open_or_focus_monitor
-from .sessions_controller import SessionsController
-from .app_settings import _load_settings, _save_settings
-from .panel_lifecycle import (_open_main_panel, _open_tab_name, _close_panel,
+from src.menubar.bg_timer import _abort_bg_sleep_timers
+from src.menubar.discovery_worker import start_discovery_worker
+from src.menubar.focus_controller import FocusController
+from src.menubar.hotkey_controller import HotkeyController, register_cmd_l, register_cmd_k
+from src.menubar.menubar_log import log_menubar, log_menubar_change
+from src.menubar.bar_icons import ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET
+from src.menubar.panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
+from src.menubar.panel_manager import PanelManager
+from src.menubar.rag_controller import RagController
+from src.menubar.model_controller import ModelController
+from src.menubar.launch_controller import LaunchController
+from src.menubar.skill_controller import SkillController
+from src.menubar.monitor_sweep_scheduler import maybe_run_sweep_workflow
+from src.menubar.system import _focus_session, _focus_worker, _open_or_focus_monitor
+from src.menubar.sessions_controller import SessionsController
+from src.menubar.app_settings import _load_settings, _save_settings
+from src.menubar.panel_lifecycle import (_open_main_panel, _open_tab_name, _close_panel,
                                _panel_of, _background_panel, _deferred_close_open)
-from .panel import _wire_header_buttons
-from .panel_tabs import TAB_KEYS
-from .setup_menubar import write_plist, write_plist_py2app
+from src.menubar.panel import _wire_header_buttons
+from src.menubar.panel_tabs import TAB_KEYS
+from src.menubar.setup_menubar import write_plist, write_plist_py2app
 
 BLINK_DURATION = 0.2
 POLL_INTERVAL  = 1.5
 TICK_LATENCY_THRESHOLD_MS = 200
+
+_last_log_cleanup_ts: float = 0.0
+
 
 # FUNCTIONS
 
@@ -183,14 +186,6 @@ class PanelSettings:
         self.panel_width = panel_width
         self.panel_min_height = panel_min_height
 
-_last_log_cleanup_ts: float = 0.0
-
-def _maybe_cleanup_logs(now: float) -> None:
-    global _last_log_cleanup_ts
-    if now - _last_log_cleanup_ts > 86400:
-        from .menubar_log import cleanup_old_lines
-        cleanup_old_lines()
-        _last_log_cleanup_ts = now
 
 class CCMenuBarApp(rumps.App):
     def __init__(self):
@@ -314,6 +309,14 @@ class CCMenuBarApp(rumps.App):
             log_menubar('latency', f'tick total={_tick_total_ms:.0f}ms {breakdown}')
 
 
+def _maybe_cleanup_logs(now: float) -> None:
+    global _last_log_cleanup_ts
+    if now - _last_log_cleanup_ts > 86400:
+        from src.menubar.menubar_log import cleanup_old_lines
+        cleanup_old_lines()
+        _last_log_cleanup_ts = now
+
+
 def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) -> None:
     if os.getenv('MENUBAR_DIAGNOSTICS') != '1':
         return
@@ -322,12 +325,22 @@ def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) ->
             f'displayed={sorted(displayed_items)} action={action}')
     log_menubar('tick', line)
 
+
 def _write_launch_plist(frozen: bool) -> None:
     log_menubar('restart', f'route={"py2app" if frozen else "source"}')
     if frozen:
         write_plist_py2app()
     else:
         write_plist()
+
+
+def _blink(app: 'CCMenuBarApp') -> None:
+    _set_bar_icon(app, ICON_BLINK)
+    def _restore():
+        NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _set_bar_icon(app, ICON_NORMAL))
+    threading.Timer(BLINK_DURATION, _restore).start()
+
 
 def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:
     astr = NSAttributedString.alloc().initWithString_attributes_(
@@ -336,10 +349,3 @@ def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:
             NSBaselineOffsetAttributeName: ICON_BASELINE_OFFSET,
         })
     app._nsapp.nsstatusitem.button().setAttributedTitle_(astr)
-
-def _blink(app: 'CCMenuBarApp') -> None:
-    _set_bar_icon(app, ICON_BLINK)
-    def _restore():
-        NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _set_bar_icon(app, ICON_NORMAL))
-    threading.Timer(BLINK_DURATION, _restore).start()

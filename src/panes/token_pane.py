@@ -4,22 +4,22 @@ from pathlib import Path
 import os
 import time
 
-from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
-from ..colors import RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
-from .cache_turns import build_cache_turns
-from ..input.click_handler import (
+from src.constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
+from src.colors import RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
+from src.panes.cache_turns import build_cache_turns
+from src.input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
     resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
-from ..format.token_format import format_cache_tracker
-from ..format.turn_cache import new_turn_cache
-from ..utils import truncate_visible
-from ..frame_writer import write_frame, hide_cursor, show_cursor
-from ..ram_audit import register_ram_dump
-from ..pane_error_log import log_pane_error
-from .token_search import build_token_search_matches
-from .. import search_bar
+from src.format.token_format import format_cache_tracker
+from src.format.turn_cache import new_turn_cache
+from src.utils import truncate_visible
+from src.frame_writer import write_frame, hide_cursor, show_cursor
+from src.ram_audit import register_ram_dump
+from src.pane_error_log import log_pane_error
+from src.panes.token_search import build_token_search_matches
+from src import search_bar
 
 cache_expand_states: Dict[tuple, bool] = {}
 cache_line_map: Dict[int, tuple] = {}
@@ -45,46 +45,57 @@ _tokens_turn_cache: dict = new_turn_cache()
 # ORCHESTRATOR
 
 def run_tokens_loop() -> None:
-    global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
-    global _cache_jsonl_position, _cache_turns, _cache_current_filepath, _cache_copy_feedback_until
-
     register_ram_dump('tokens', _tokens_ram_state)
-    last_output = None
-    last_data_refresh = 0.0
-    last_janitor_ts = 0.0
+    loop_state = {'last_output': None, 'last_data_refresh': 0.0, 'last_janitor_ts': 0.0}
+    _open_terminal()
+    _loop_until_closed(loop_state)
+
+# FUNCTIONS
+
+def _tokens_ram_state() -> list:
+    return [
+        ('cache_expand_states',     cache_expand_states),
+        ('cache_line_map',          cache_line_map),
+        ('_cache_turns',            _cache_turns),
+        ('cache_scroll_offset',     cache_scroll_offset),
+        ('cache_hover_row',         str(cache_hover_row)),
+        ('_cache_jsonl_position',   _cache_jsonl_position),
+        ('_cache_current_filepath', str(_cache_current_filepath)),
+        ('_tokens_search_query',    _tokens_search.query),
+        ('_tokens_search_matches',  _tokens_search.matches),
+    ]
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
     hide_cursor()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed = _poll_tokens_input()
-
-                now = time.time()
-                input_changed, last_data_refresh, last_janitor_ts = _refresh_tokens_data(
-                    now, input_changed, last_data_refresh, last_janitor_ts
-                )
-
-                _cache_copy_feedback_until = {k: v for k, v in _cache_copy_feedback_until.items() if v > now}
-                if _cache_copy_feedback_until:
-                    input_changed = True
-
-                if input_changed:
-                    output = _build_tokens_output()
-                    if output != last_output:
-                        write_frame(output)
-                        last_output = output
-
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('tokens')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         show_cursor()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('tokens')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    input_changed = _poll_tokens_input()
+    now = time.time()
+    input_changed, loop_state['last_data_refresh'], loop_state['last_janitor_ts'] = _refresh_tokens_data(
+        now, input_changed, loop_state['last_data_refresh'], loop_state['last_janitor_ts']
+    )
+    input_changed = _expire_copy_feedback(now, input_changed)
+    if input_changed:
+        _render_if_changed(loop_state)
+    wait_for_input(INPUT_POLL_INTERVAL)
 
 def _poll_tokens_input() -> bool:
     input_changed = False
@@ -117,45 +128,6 @@ def _poll_tokens_input() -> bool:
                 input_changed = True
     return input_changed
 
-def _serialize_tokens(key: tuple) -> str:
-    import json
-    turn_idx, call_idx = key
-    if turn_idx >= len(_cache_turns):
-        return ''
-    turn = _cache_turns[turn_idx]
-    calls = turn.get('api_calls', [])
-    if call_idx >= len(calls):
-        return ''
-    call = calls[call_idx]
-    parts = [f"Turn {turn_idx + 1}, Call {call_idx + 1}  CR:{call.get('cache_read', 0)}  CC:{call.get('cache_creation', 0)}  D:{call.get('direct', 0)}  out:{call.get('output_tokens', 0)}"]
-    for blk in call.get('content_blocks', []):
-        btype = blk.get('type', '')
-        if btype == 'tool_use':
-            tool_name = blk.get('tool_name', 'Unknown')
-            inp = blk.get('preview', {})
-            parts.append(f"\n--- tool_use: {tool_name} ---")
-            parts.append(json.dumps(inp, ensure_ascii=False, indent=2))
-        elif btype == 'text':
-            text = blk.get('preview', '')
-            parts.append(f"\n--- text ---")
-            parts.append(text)
-        elif btype == 'thinking':
-            parts.append(f"\n--- thinking ({blk.get('chars', 0):,}c) ---")
-    return '\n'.join(parts)
-
-def _tokens_ram_state() -> list:
-    return [
-        ('cache_expand_states',     cache_expand_states),
-        ('cache_line_map',          cache_line_map),
-        ('_cache_turns',            _cache_turns),
-        ('cache_scroll_offset',     cache_scroll_offset),
-        ('cache_hover_row',         str(cache_hover_row)),
-        ('_cache_jsonl_position',   _cache_jsonl_position),
-        ('_cache_current_filepath', str(_cache_current_filepath)),
-        ('_tokens_search_query',    _tokens_search.query),
-        ('_tokens_search_matches',  _tokens_search.matches),
-    ]
-
 def _handle_tokens_mouse(button: int, col: int, row: int) -> bool:
     global cache_hover_row, cache_scroll_offset, cache_expand_states, _cache_copy_feedback_until
     if button == 0:
@@ -185,13 +157,34 @@ def _handle_tokens_mouse(button: int, col: int, row: int) -> bool:
         return True
     return False
 
-def _handle_tokens_key(char: str) -> bool:
-    if char == 'y':
-        key = resolve_parent_key(cache_line_map, cache_hover_row)
-        if key is not None:
-            copy_to_clipboard(_serialize_tokens(key))
-        return False
-    return False
+def _serialize_tokens(key: tuple) -> str:
+    import json
+    turn_idx, call_idx = key
+    if turn_idx >= len(_cache_turns):
+        return ''
+    turn = _cache_turns[turn_idx]
+    calls = turn.get('api_calls', [])
+    if call_idx >= len(calls):
+        return ''
+    call = calls[call_idx]
+    parts = [f"Turn {turn_idx + 1}, Call {call_idx + 1}  CR:{call.get('cache_read', 0)}  CC:{call.get('cache_creation', 0)}  D:{call.get('direct', 0)}  out:{call.get('output_tokens', 0)}"]
+    for blk in call.get('content_blocks', []):
+        btype = blk.get('type', '')
+        if btype == 'tool_use':
+            tool_name = blk.get('tool_name', 'Unknown')
+            inp = blk.get('preview', {})
+            parts.append(f"\n--- tool_use: {tool_name} ---")
+            parts.append(json.dumps(inp, ensure_ascii=False, indent=2))
+        elif btype == 'text':
+            text = blk.get('preview', '')
+            parts.append(f"\n--- text ---")
+            parts.append(text)
+        elif btype == 'thinking':
+            parts.append(f"\n--- thinking ({blk.get('chars', 0):,}c) ---")
+    return '\n'.join(parts)
+
+def _handle_tokens_search_release() -> bool:
+    return search_bar.handle_search_mouse_release(_tokens_search, copy_to_clipboard)
 
 def _handle_tokens_search_cancel() -> bool:
     return search_bar.handle_search_cancel(_tokens_search)
@@ -204,13 +197,6 @@ def _tokens_search_on_commit(state: search_bar.SearchState) -> None:
     state.match_set = set(state.matches)
     state.current_idx = 0
     _ensure_tokens_match_visible()
-
-def _jump_tokens_search_match(forward: bool) -> bool:
-    if not _tokens_search.matches:
-        return False
-    _tokens_search.current_idx = (_tokens_search.current_idx + (1 if forward else -1)) % len(_tokens_search.matches)
-    _ensure_tokens_match_visible()
-    return True
 
 def _ensure_tokens_match_visible() -> None:
     global cache_scroll_offset
@@ -227,16 +213,25 @@ def _ensure_tokens_match_visible() -> None:
     new_start = max(0, target_line - 2)
     cache_scroll_offset = max(0, total_lines - viewport_lines - new_start)
 
-def _handle_tokens_search_release() -> bool:
-    return search_bar.handle_search_mouse_release(_tokens_search, copy_to_clipboard)
+def _jump_tokens_search_match(forward: bool) -> bool:
+    if not _tokens_search.matches:
+        return False
+    _tokens_search.current_idx = (_tokens_search.current_idx + (1 if forward else -1)) % len(_tokens_search.matches)
+    _ensure_tokens_match_visible()
+    return True
 
-def _render_tokens_search_bar(pane_width: int) -> str:
-    return search_bar.render_search_bar(_tokens_search, pane_width, label=_TOKENS_SEARCH_BAR_LABEL)
+def _handle_tokens_key(char: str) -> bool:
+    if char == 'y':
+        key = resolve_parent_key(cache_line_map, cache_hover_row)
+        if key is not None:
+            copy_to_clipboard(_serialize_tokens(key))
+        return False
+    return False
 
 def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: float, last_janitor_ts: float) -> tuple:
-    from ..core import monitor as _monitor
-    from ..proxy_display.parser import find_response_log_path
-    from ..proxy_display.side_logs import read_response_log
+    from src.core import monitor as _monitor
+    from src.proxy_display.parser import find_response_log_path
+    from src.proxy_display.side_logs import read_response_log
     global _cache_current_filepath, _cache_jsonl_position, _cache_turns
     global cache_expand_states, cache_scroll_offset, cache_hover_row
     global _response_log_pos, _response_rid_map
@@ -263,12 +258,25 @@ def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: flo
     new_entries, _response_log_pos = read_response_log(resp_path, _response_log_pos)
     _response_rid_map.update(new_entries)
     if now - last_janitor_ts >= 86400:
-        from .log_janitor import cleanup_old_jsonl, sweep_eligible_specs
+        from src.panes.log_janitor import cleanup_old_jsonl, sweep_eligible_specs
         _logs = Path(__file__).parent.parent / 'logs'
         for _, _path in sweep_eligible_specs(_logs):
             cleanup_old_jsonl(_path)
         last_janitor_ts = now
     return True, now, last_janitor_ts
+
+def _expire_copy_feedback(now: float, input_changed: bool) -> bool:
+    global _cache_copy_feedback_until
+    _cache_copy_feedback_until = {k: v for k, v in _cache_copy_feedback_until.items() if v > now}
+    if _cache_copy_feedback_until:
+        return True
+    return input_changed
+
+def _render_if_changed(loop_state: dict) -> None:
+    output = _build_tokens_output()
+    if output != loop_state['last_output']:
+        write_frame(output)
+        loop_state['last_output'] = output
 
 def _build_tokens_output() -> str:
     global cache_line_map, cache_copy_rows, _cache_pane_width
@@ -301,6 +309,8 @@ def _build_tokens_output() -> str:
     ))
     return '\n'.join(result_lines)
 
+def _render_tokens_search_bar(pane_width: int) -> str:
+    return search_bar.render_search_bar(_tokens_search, pane_width, label=_TOKENS_SEARCH_BAR_LABEL)
 
 def _render_tokens_rows(visible_lines: list, visible_keys: list, phys_row: int, parent_count: int,
                          pane_width: int, hover_row, cache_line_map: dict, cache_copy_rows: set) -> list:

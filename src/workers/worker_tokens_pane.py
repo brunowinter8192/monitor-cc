@@ -3,25 +3,25 @@ from typing import Dict, Optional, Set, Tuple
 import os
 import time
 
-from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
-from ..colors import RESET, YELLOW, DIM, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
-from ..panes.cache_turns import build_cache_turns
-from ..panes.token_search import build_token_search_matches
-from ..format.token_format import format_cache_tracker
-from ..format.turn_cache import new_turn_cache
-from ..input.click_handler import (
+from src.constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
+from src.colors import RESET, YELLOW, DIM, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
+from src.panes.cache_turns import build_cache_turns
+from src.panes.token_search import build_token_search_matches
+from src.format.token_format import format_cache_tracker
+from src.format.turn_cache import new_turn_cache
+from src.input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, resolve_parent_key,
     copy_to_clipboard, wait_for_input,
 )
-from ..utils import truncate_visible, visual_line_count
-from ..frame_writer import write_frame, hide_cursor, show_cursor
-from ..ram_audit import register_ram_dump
-from ..pane_error_log import log_pane_error
-from .. import search_bar
-from .worker_tmux import list_workers, find_worker_jsonl, attach_worker_stats
-from .worker_selection import get_selection_file_path, _write_selection as write_selection
-from .worker_switch_header import format_worker_switch_header
+from src.utils import truncate_visible, visual_line_count
+from src.frame_writer import write_frame, hide_cursor, show_cursor
+from src.ram_audit import register_ram_dump
+from src.pane_error_log import log_pane_error
+from src import search_bar
+from src.workers.worker_tmux import list_workers, find_worker_jsonl, attach_worker_stats
+from src.workers.worker_selection import get_selection_file_path, _write_selection as write_selection
+from src.workers.worker_switch_header import format_worker_switch_header
 
 worker_tokens_expand_states: Dict[tuple, bool] = {}
 worker_tokens_line_map: Dict[int, tuple] = {}
@@ -50,39 +50,61 @@ _worker_tokens_turn_cache: dict = new_turn_cache()
 # ORCHESTRATOR
 
 def run_worker_tokens_loop() -> None:
-    from ..core import monitor as _monitor
-    global _worker_tokens_copy_feedback_until
-
+    monitor = _load_monitor()
     register_ram_dump('worker_tokens', _worker_tokens_ram_state)
-    last_output = None
-    last_data_refresh = 0.0
+    loop_state = {'last_output': None, 'last_data_refresh': 0.0, 'monitor': monitor}
+    _open_terminal()
+    _loop_until_closed(loop_state)
+
+# FUNCTIONS
+
+def _load_monitor():
+    from src.core import monitor
+    return monitor
+
+def _worker_tokens_ram_state() -> list:
+    return [
+        ('worker_tokens_expand_states', worker_tokens_expand_states),
+        ('worker_tokens_line_map',      worker_tokens_line_map),
+        ('_worker_tokens_turns',        _worker_tokens_turns),
+        ('worker_tokens_scroll_offset', worker_tokens_scroll_offset),
+        ('worker_tokens_hover_row',     str(worker_tokens_hover_row)),
+        ('_worker_tokens_jsonl_position', _worker_tokens_jsonl_position),
+        ('_worker_tokens_current_name', str(_worker_tokens_current_name)),
+        ('_worker_tokens_search_query', _worker_tokens_search.query),
+        ('_worker_tokens_search_matches', _worker_tokens_search.matches),
+    ]
+
+def _open_terminal() -> None:
     setup_keyboard_input()
     enable_mouse()
     hide_cursor()
+
+def _loop_until_closed(loop_state: dict) -> None:
     try:
         while True:
-            try:
-                input_changed = _poll_worker_tokens_input(_monitor)
-                now = time.time()
-                input_changed, last_data_refresh = _refresh_worker_tokens_data(now, input_changed, last_data_refresh, _monitor)
-                _worker_tokens_copy_feedback_until = {k: v for k, v in _worker_tokens_copy_feedback_until.items() if v > now}
-                if _worker_tokens_copy_feedback_until:
-                    input_changed = True
-                if input_changed:
-                    output = _build_worker_tokens_output(_monitor)
-                    if output != last_output:
-                        write_frame(output)
-                        last_output = output
-                wait_for_input(INPUT_POLL_INTERVAL)
-            except Exception:
-                log_pane_error('worker_tokens')
-                wait_for_input(INPUT_POLL_INTERVAL)
+            _run_iteration_guarded(loop_state)
     finally:
         disable_mouse()
         show_cursor()
         restore_terminal()
 
-# FUNCTIONS
+def _run_iteration_guarded(loop_state: dict) -> None:
+    try:
+        _run_iteration(loop_state)
+    except Exception:
+        log_pane_error('worker_tokens')
+        wait_for_input(INPUT_POLL_INTERVAL)
+
+def _run_iteration(loop_state: dict) -> None:
+    monitor = loop_state['monitor']
+    input_changed = _poll_worker_tokens_input(monitor)
+    now = time.time()
+    input_changed, loop_state['last_data_refresh'] = _refresh_worker_tokens_data(now, input_changed, loop_state['last_data_refresh'], monitor)
+    input_changed = _expire_copy_feedback(now, input_changed)
+    if input_changed:
+        _render_if_changed(loop_state)
+    wait_for_input(INPUT_POLL_INTERVAL)
 
 def _poll_worker_tokens_input(monitor) -> bool:
     input_changed = False
@@ -114,45 +136,6 @@ def _poll_worker_tokens_input(monitor) -> bool:
             if _handle_worker_tokens_key(char, monitor):
                 input_changed = True
     return input_changed
-
-def _worker_tokens_ram_state() -> list:
-    return [
-        ('worker_tokens_expand_states', worker_tokens_expand_states),
-        ('worker_tokens_line_map',      worker_tokens_line_map),
-        ('_worker_tokens_turns',        _worker_tokens_turns),
-        ('worker_tokens_scroll_offset', worker_tokens_scroll_offset),
-        ('worker_tokens_hover_row',     str(worker_tokens_hover_row)),
-        ('_worker_tokens_jsonl_position', _worker_tokens_jsonl_position),
-        ('_worker_tokens_current_name', str(_worker_tokens_current_name)),
-        ('_worker_tokens_search_query', _worker_tokens_search.query),
-        ('_worker_tokens_search_matches', _worker_tokens_search.matches),
-    ]
-
-def _serialize_worker_tokens(key: tuple) -> str:
-    import json
-    turn_idx, call_idx = key
-    if turn_idx >= len(_worker_tokens_turns):
-        return ''
-    turn = _worker_tokens_turns[turn_idx]
-    calls = turn.get('api_calls', [])
-    if call_idx >= len(calls):
-        return ''
-    call = calls[call_idx]
-    parts = [f"Turn {turn_idx + 1}, Call {call_idx + 1}  CR:{call.get('cache_read', 0)}  CC:{call.get('cache_creation', 0)}  D:{call.get('direct', 0)}  out:{call.get('output_tokens', 0)}"]
-    for blk in call.get('content_blocks', []):
-        btype = blk.get('type', '')
-        if btype == 'tool_use':
-            tool_name = blk.get('tool_name', 'Unknown')
-            inp = blk.get('preview', {})
-            parts.append(f"\n--- tool_use: {tool_name} ---")
-            parts.append(json.dumps(inp, ensure_ascii=False, indent=2))
-        elif btype == 'text':
-            text = blk.get('preview', '')
-            parts.append(f"\n--- text ---")
-            parts.append(text)
-        elif btype == 'thinking':
-            parts.append(f"\n--- thinking ({blk.get('chars', 0):,}c) ---")
-    return '\n'.join(parts)
 
 def _handle_worker_tokens_mouse(button: int, col: int, row: int, monitor) -> bool:
     global worker_tokens_hover_row, worker_tokens_scroll_offset, _worker_tokens_force_reload, _worker_tokens_copy_feedback_until
@@ -189,19 +172,34 @@ def _handle_worker_tokens_mouse(button: int, col: int, row: int, monitor) -> boo
         return True
     return False
 
-def _handle_worker_tokens_key(char: str, monitor) -> bool:
-    global _worker_tokens_force_reload
-    idx = parse_digit_key(char)
-    if idx is not None and _worker_tokens_workers and 1 <= idx <= len(_worker_tokens_workers):
-        write_selection(monitor.active_project_filter, _worker_tokens_workers[idx - 1]['name'])
-        _worker_tokens_force_reload = True
-        return True
-    if char == 'y':
-        key = resolve_parent_key(worker_tokens_line_map, worker_tokens_hover_row)
-        if key is not None:
-            copy_to_clipboard(_serialize_worker_tokens(key))
-        return False
-    return False
+def _serialize_worker_tokens(key: tuple) -> str:
+    import json
+    turn_idx, call_idx = key
+    if turn_idx >= len(_worker_tokens_turns):
+        return ''
+    turn = _worker_tokens_turns[turn_idx]
+    calls = turn.get('api_calls', [])
+    if call_idx >= len(calls):
+        return ''
+    call = calls[call_idx]
+    parts = [f"Turn {turn_idx + 1}, Call {call_idx + 1}  CR:{call.get('cache_read', 0)}  CC:{call.get('cache_creation', 0)}  D:{call.get('direct', 0)}  out:{call.get('output_tokens', 0)}"]
+    for blk in call.get('content_blocks', []):
+        btype = blk.get('type', '')
+        if btype == 'tool_use':
+            tool_name = blk.get('tool_name', 'Unknown')
+            inp = blk.get('preview', {})
+            parts.append(f"\n--- tool_use: {tool_name} ---")
+            parts.append(json.dumps(inp, ensure_ascii=False, indent=2))
+        elif btype == 'text':
+            text = blk.get('preview', '')
+            parts.append(f"\n--- text ---")
+            parts.append(text)
+        elif btype == 'thinking':
+            parts.append(f"\n--- thinking ({blk.get('chars', 0):,}c) ---")
+    return '\n'.join(parts)
+
+def _handle_worker_tokens_search_release() -> bool:
+    return search_bar.handle_search_mouse_release(_worker_tokens_search, copy_to_clipboard)
 
 def _handle_worker_tokens_search_cancel() -> bool:
     return search_bar.handle_search_cancel(_worker_tokens_search)
@@ -214,13 +212,6 @@ def _worker_tokens_search_on_commit(state: search_bar.SearchState) -> None:
     state.match_set = set(state.matches)
     state.current_idx = 0
     _ensure_worker_tokens_match_visible()
-
-def _jump_worker_tokens_search_match(forward: bool) -> bool:
-    if not _worker_tokens_search.matches:
-        return False
-    _worker_tokens_search.current_idx = (_worker_tokens_search.current_idx + (1 if forward else -1)) % len(_worker_tokens_search.matches)
-    _ensure_worker_tokens_match_visible()
-    return True
 
 def _ensure_worker_tokens_match_visible() -> None:
     global worker_tokens_scroll_offset
@@ -237,31 +228,26 @@ def _ensure_worker_tokens_match_visible() -> None:
     new_start = max(0, target_line - 2)
     worker_tokens_scroll_offset = max(0, total_lines - viewport_lines - new_start)
 
-def _handle_worker_tokens_search_release() -> bool:
-    return search_bar.handle_search_mouse_release(_worker_tokens_search, copy_to_clipboard)
+def _jump_worker_tokens_search_match(forward: bool) -> bool:
+    if not _worker_tokens_search.matches:
+        return False
+    _worker_tokens_search.current_idx = (_worker_tokens_search.current_idx + (1 if forward else -1)) % len(_worker_tokens_search.matches)
+    _ensure_worker_tokens_match_visible()
+    return True
 
-def _render_worker_tokens_search_bar(pane_width: int) -> str:
-    return search_bar.render_search_bar(_worker_tokens_search, pane_width, label=_WT_SEARCH_BAR_LABEL)
-
-def _read_selected_worker_name(monitor) -> Optional[str]:
-    sel_path = get_selection_file_path(monitor.active_project_filter)
-    try:
-        with open(sel_path, 'r', encoding='utf-8') as f:
-            return f.read().strip() or None
-    except FileNotFoundError:
-        return None
-
-def _reset_worker_tokens_state(worker_name: Optional[str]) -> None:
-    global _worker_tokens_jsonl_position, _worker_tokens_turns, _worker_tokens_current_name
-    global worker_tokens_scroll_offset, worker_tokens_hover_row
-    worker_tokens_expand_states.clear()
-    _worker_tokens_jsonl_position = 0
-    _worker_tokens_turns = []
-    _worker_tokens_current_name = worker_name
-    worker_tokens_scroll_offset = 0
-    worker_tokens_hover_row = None
-    search_bar.handle_search_cancel(_worker_tokens_search)
-    _worker_tokens_nav.clear()
+def _handle_worker_tokens_key(char: str, monitor) -> bool:
+    global _worker_tokens_force_reload
+    idx = parse_digit_key(char)
+    if idx is not None and _worker_tokens_workers and 1 <= idx <= len(_worker_tokens_workers):
+        write_selection(monitor.active_project_filter, _worker_tokens_workers[idx - 1]['name'])
+        _worker_tokens_force_reload = True
+        return True
+    if char == 'y':
+        key = resolve_parent_key(worker_tokens_line_map, worker_tokens_hover_row)
+        if key is not None:
+            copy_to_clipboard(_serialize_worker_tokens(key))
+        return False
+    return False
 
 def _refresh_worker_tokens_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global _worker_tokens_workers, _worker_tokens_force_reload, _worker_tokens_jsonl_position, _worker_tokens_turns
@@ -287,6 +273,54 @@ def _refresh_worker_tokens_data(now: float, input_changed: bool, last_data_refre
             )
     return True, now
 
+def _read_selected_worker_name(monitor) -> Optional[str]:
+    sel_path = get_selection_file_path(monitor.active_project_filter)
+    try:
+        with open(sel_path, 'r', encoding='utf-8') as f:
+            return f.read().strip() or None
+    except FileNotFoundError:
+        return None
+
+def _reset_worker_tokens_state(worker_name: Optional[str]) -> None:
+    global _worker_tokens_jsonl_position, _worker_tokens_turns, _worker_tokens_current_name
+    global worker_tokens_scroll_offset, worker_tokens_hover_row
+    worker_tokens_expand_states.clear()
+    _worker_tokens_jsonl_position = 0
+    _worker_tokens_turns = []
+    _worker_tokens_current_name = worker_name
+    worker_tokens_scroll_offset = 0
+    worker_tokens_hover_row = None
+    search_bar.handle_search_cancel(_worker_tokens_search)
+    _worker_tokens_nav.clear()
+
+def _expire_copy_feedback(now: float, input_changed: bool) -> bool:
+    global _worker_tokens_copy_feedback_until
+    _worker_tokens_copy_feedback_until = {k: v for k, v in _worker_tokens_copy_feedback_until.items() if v > now}
+    if _worker_tokens_copy_feedback_until:
+        return True
+    return input_changed
+
+def _render_if_changed(loop_state: dict) -> None:
+    output = _build_worker_tokens_output(loop_state['monitor'])
+    if output != loop_state['last_output']:
+        write_frame(output)
+        loop_state['last_output'] = output
+
+def _build_worker_tokens_output(monitor) -> str:
+    global _worker_tokens_pane_width
+    term = os.get_terminal_size()
+    pane_height, pane_width = term.lines - 1, term.columns
+    _worker_tokens_pane_width = pane_width
+    header, total_header_lines, current_worker = _build_worker_tokens_header_block(monitor, pane_width)
+    content_height = max(1, pane_height - total_header_lines)
+    if not current_worker:
+        body = f"{DIM}Select a worker with digit keys 1-9{RESET}"
+    elif not _worker_tokens_turns:
+        body = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No token data yet{RESET}"
+    else:
+        body = _render_worker_tokens_body(pane_width, content_height, total_header_lines)
+    return header + '\n' + body
+
 def _build_worker_tokens_header_block(monitor, pane_width: int) -> tuple:
     global _worker_tokens_header_lines
     current_worker = _read_selected_worker_name(monitor)
@@ -302,31 +336,8 @@ def _build_worker_tokens_header_block(monitor, pane_width: int) -> tuple:
     _worker_tokens_header_lines = total_header_lines
     return search_bar_line + '\n' + worker_header, total_header_lines, current_worker
 
-def _render_worker_tokens_rows(visible_lines: list, visible_keys: list, phys_row: int, parent_count: int,
-                                pane_width: int, hover_row, line_map: dict, copy_rows: set) -> list:
-    result_lines = []
-    for line, key in zip(visible_lines, visible_keys):
-        if key is not None:
-            zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
-            parent_count += 1
-        else:
-            zebra_bg = ZEBRA_BG_A
-        is_hovered = (key is not None and hover_row is not None and phys_row == hover_row)
-        if is_hovered:
-            chosen_bg = HOVER_BG
-        elif LIGHT_RED_BG in line:
-            chosen_bg = LIGHT_RED_BG
-        else:
-            chosen_bg = zebra_bg
-        line = search_bar.resolve_bg_restore(line, chosen_bg)
-        if key is not None and ('⎘' in line or '✓' in line):
-            copy_rows.add(phys_row)
-        trunc = truncate_visible(line, pane_width)
-        result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
-        if key is not None:
-            line_map[phys_row] = key
-        phys_row += 1
-    return result_lines
+def _render_worker_tokens_search_bar(pane_width: int) -> str:
+    return search_bar.render_search_bar(_worker_tokens_search, pane_width, label=_WT_SEARCH_BAR_LABEL)
 
 def _render_worker_tokens_body(pane_width: int, content_height: int, total_header_lines: int) -> str:
     global worker_tokens_line_map, worker_tokens_copy_rows
@@ -354,17 +365,28 @@ def _render_worker_tokens_body(pane_width: int, content_height: int, total_heade
     ))
     return '\n'.join(result_lines)
 
-def _build_worker_tokens_output(monitor) -> str:
-    global _worker_tokens_pane_width
-    term = os.get_terminal_size()
-    pane_height, pane_width = term.lines - 1, term.columns
-    _worker_tokens_pane_width = pane_width
-    header, total_header_lines, current_worker = _build_worker_tokens_header_block(monitor, pane_width)
-    content_height = max(1, pane_height - total_header_lines)
-    if not current_worker:
-        body = f"{DIM}Select a worker with digit keys 1-9{RESET}"
-    elif not _worker_tokens_turns:
-        body = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No token data yet{RESET}"
-    else:
-        body = _render_worker_tokens_body(pane_width, content_height, total_header_lines)
-    return header + '\n' + body
+def _render_worker_tokens_rows(visible_lines: list, visible_keys: list, phys_row: int, parent_count: int,
+                                pane_width: int, hover_row, line_map: dict, copy_rows: set) -> list:
+    result_lines = []
+    for line, key in zip(visible_lines, visible_keys):
+        if key is not None:
+            zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+            parent_count += 1
+        else:
+            zebra_bg = ZEBRA_BG_A
+        is_hovered = (key is not None and hover_row is not None and phys_row == hover_row)
+        if is_hovered:
+            chosen_bg = HOVER_BG
+        elif LIGHT_RED_BG in line:
+            chosen_bg = LIGHT_RED_BG
+        else:
+            chosen_bg = zebra_bg
+        line = search_bar.resolve_bg_restore(line, chosen_bg)
+        if key is not None and ('⎘' in line or '✓' in line):
+            copy_rows.add(phys_row)
+        trunc = truncate_visible(line, pane_width)
+        result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
+        if key is not None:
+            line_map[phys_row] = key
+        phys_row += 1
+    return result_lines

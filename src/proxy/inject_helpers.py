@@ -1,16 +1,12 @@
 # INFRASTRUCTURE
-from .proxy_error_log import clear_proxy_error, log_proxy_error_on_change
-from .rules_config import _load_config
+from src.proxy.proxy_error_log import clear_proxy_error, log_proxy_error_on_change
+from src.proxy.rules_config import _load_config
 
 _CLEAR_THINKING_EDIT_TYPE = "clear_thinking_20251015"
 _MODEL_OVERRIDE_SOURCE = "inject_helpers.model_override"
 _CONTEXT_MANAGEMENT_SOURCE = "inject_helpers.context_management"
 
 # FUNCTIONS
-
-def _model_params_dict_for(model_id: str, entry: dict) -> dict:
-    return {model_id: entry} if entry else {}
-
 
 def _inject_model_override(payload: dict, fixated_model_override: dict = None) -> tuple:
     if fixated_model_override is None:
@@ -45,6 +41,10 @@ def _inject_model_params(payload: dict, model_params: dict) -> tuple:
     if "max_tokens" in params:
         result["max_tokens"] = params["max_tokens"]
     return result, True
+
+
+def _model_params_dict_for(model_id: str, entry: dict) -> dict:
+    return {model_id: entry} if entry else {}
 
 
 def _inject_context_management(payload: dict) -> tuple:
@@ -101,11 +101,6 @@ def _apply_context_management(payload: dict) -> tuple:
     return result, True
 
 
-def _thinking_is_disabled(payload: dict) -> bool:
-    thinking = payload.get("thinking")
-    return isinstance(thinking, dict) and thinking.get("type") == "disabled"
-
-
 def _strip_clear_thinking_edit(payload: dict) -> tuple:
     if not _thinking_is_disabled(payload):
         return payload, False
@@ -125,3 +120,8 @@ def _strip_clear_thinking_edit(payload: dict) -> tuple:
     else:
         del result["context_management"]
     return result, True
+
+
+def _thinking_is_disabled(payload: dict) -> bool:
+    thinking = payload.get("thinking")
+    return isinstance(thinking, dict) and thinking.get("type") == "disabled"

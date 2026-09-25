@@ -4,17 +4,23 @@ import json
 import time
 from typing import List, Optional
 
-from ..colors import (
+from src.colors import (
     YELLOW, RED, DIM, WHITE, RESET, HOVER_BG, ZEBRA_BG_A, ZEBRA_BG_B, SOFT_RESET,
     DIM_YELLOW_BG,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-from ..constants import NO_TIME_PLACEHOLDER, WARNINGS_POLL_INTERVAL
-from ..utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
-from ..format.strip_marker import highlight_stripped
-from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
+from src.constants import NO_TIME_PLACEHOLDER, WARNINGS_POLL_INTERVAL
+from src.utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
+from src.format.strip_marker import highlight_stripped
+from src.search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 
 # FUNCTIONS
+
+def build_warnings_search_matches(query: str, tool_errors: list) -> List[int]:
+    if not query:
+        return []
+    q = query.lower()
+    return [i for i, err in enumerate(tool_errors) if _error_matches_query(err, q)]
 
 def _error_matches_query(err: dict, q: str) -> bool:
     if q in err.get('tool_name', '').lower():
@@ -27,12 +33,6 @@ def _error_matches_query(err: dict, q: str) -> bool:
     if q in (err.get('full_text') or '').lower():
         return True
     return False
-
-def build_warnings_search_matches(query: str, tool_errors: list) -> List[int]:
-    if not query:
-        return []
-    q = query.lower()
-    return [i for i, err in enumerate(tool_errors) if _error_matches_query(err, q)]
 
 def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, regions_out: Optional[dict] = None, notice: str = '') -> str:
     if regions_out is not None:
@@ -54,6 +54,58 @@ def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, region
     regions_out[(start_col + 1, end_col + 1, 1)] = 'refresh'
     return text + '  ' + f"{WHITE}{label}{RESET}"
 
+def _format_warnings_pane(
+    tool_errors: list,
+    error_expand_states: dict,
+    error_hover_row,
+    error_scroll_offset: int,
+    pane_height: int,
+    pane_width: int,
+    header: str,
+    copy_feedback: Optional[dict] = None,
+    copy_rows_out: Optional[set] = None,
+    header_lines: int = 1,
+    search_match_set: Optional[set] = None,
+    search_current_key=None,
+    search_query: str = '',
+) -> tuple:
+    content_height = max(1, pane_height - header_lines)
+    if copy_rows_out is not None:
+        copy_rows_out.clear()
+    all_lines, all_keys = _build_warnings_lines(
+        tool_errors, error_expand_states, copy_feedback, pane_width,
+        search_match_set, search_current_key, search_query,
+    )
+    header_offset = 1 + header_lines
+    visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
+    visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
+    parent_count = sum(1 for k in all_keys[:error_scroll_offset] if k is not None)
+    rendered, new_error_line_map = _render_warnings_rows(
+        visible_lines, visible_keys, header_offset, parent_count, pane_width,
+        error_hover_row, copy_rows_out,
+    )
+    return header + '\n' + '\n'.join(rendered), new_error_line_map
+
+def _build_warnings_lines(tool_errors: list, error_expand_states: dict, copy_feedback: Optional[dict],
+                           pane_width: int, search_match_set: Optional[set], search_current_key,
+                           search_query: str) -> tuple:
+    all_lines: list = []
+    all_keys: list = []
+    if tool_errors:
+        all_lines.append(f"{RED}TOOL ERRORS ({len(tool_errors)}){SOFT_RESET}")
+        all_keys.append(None)
+        for err_idx, err in enumerate(tool_errors):
+            is_expanded = error_expand_states.get(err_idx, False)
+            lines, keys = _build_one_warning_lines(
+                err_idx, err, is_expanded, search_match_set, search_current_key, search_query,
+                copy_feedback, pane_width,
+            )
+            all_lines.extend(lines)
+            all_keys.extend(keys)
+    else:
+        all_lines.append(f"{DIM}No warnings.{SOFT_RESET}")
+        all_keys.append(None)
+    return all_lines, all_keys
 
 def _build_one_warning_lines(err_idx: int, err: dict, is_expanded: bool,
                               search_match_set: Optional[set], search_current_key, search_query: str,
@@ -94,29 +146,6 @@ def _build_one_warning_lines(err_idx: int, err: dict, is_expanded: bool,
             keys.append(None)
     return lines, keys
 
-
-def _build_warnings_lines(tool_errors: list, error_expand_states: dict, copy_feedback: Optional[dict],
-                           pane_width: int, search_match_set: Optional[set], search_current_key,
-                           search_query: str) -> tuple:
-    all_lines: list = []
-    all_keys: list = []
-    if tool_errors:
-        all_lines.append(f"{RED}TOOL ERRORS ({len(tool_errors)}){SOFT_RESET}")
-        all_keys.append(None)
-        for err_idx, err in enumerate(tool_errors):
-            is_expanded = error_expand_states.get(err_idx, False)
-            lines, keys = _build_one_warning_lines(
-                err_idx, err, is_expanded, search_match_set, search_current_key, search_query,
-                copy_feedback, pane_width,
-            )
-            all_lines.extend(lines)
-            all_keys.extend(keys)
-    else:
-        all_lines.append(f"{DIM}No warnings.{SOFT_RESET}")
-        all_keys.append(None)
-    return all_lines, all_keys
-
-
 def _render_warnings_rows(visible_lines: list, visible_keys: list, phys_row: int, parent_count: int,
                            pane_width: int, hover_row, copy_rows_out: Optional[set]) -> tuple:
     new_error_line_map = {}
@@ -144,40 +173,6 @@ def _render_warnings_rows(visible_lines: list, visible_keys: list, phys_row: int
         rendered.append(f"{chosen_bg}{truncate_visible(line, pane_width)}\033[K{RESET}")
         phys_row += 1
     return rendered, new_error_line_map
-
-
-def _format_warnings_pane(
-    tool_errors: list,
-    error_expand_states: dict,
-    error_hover_row,
-    error_scroll_offset: int,
-    pane_height: int,
-    pane_width: int,
-    header: str,
-    copy_feedback: Optional[dict] = None,
-    copy_rows_out: Optional[set] = None,
-    header_lines: int = 1,
-    search_match_set: Optional[set] = None,
-    search_current_key=None,
-    search_query: str = '',
-) -> tuple:
-    content_height = max(1, pane_height - header_lines)
-    if copy_rows_out is not None:
-        copy_rows_out.clear()
-    all_lines, all_keys = _build_warnings_lines(
-        tool_errors, error_expand_states, copy_feedback, pane_width,
-        search_match_set, search_current_key, search_query,
-    )
-    header_offset = 1 + header_lines
-    visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
-    visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
-    parent_count = sum(1 for k in all_keys[:error_scroll_offset] if k is not None)
-    rendered, new_error_line_map = _render_warnings_rows(
-        visible_lines, visible_keys, header_offset, parent_count, pane_width,
-        error_hover_row, copy_rows_out,
-    )
-    return header + '\n' + '\n'.join(rendered), new_error_line_map
-
 
 def _serialize_warnings(key, tool_errors: list) -> str:
     if isinstance(key, int) and 0 <= key < len(tool_errors):

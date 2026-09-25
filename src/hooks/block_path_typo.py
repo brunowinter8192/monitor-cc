@@ -3,8 +3,8 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._fire_log import log_fire
 
 _CLAIRE_PATTERN = re.compile(r'\.claire/')
 _DOTDOT_PATTERN = re.compile(r'(?:^|/|\s|=)\.\.[a-z]')
@@ -49,24 +49,31 @@ def _parse_payload():
         return (tool_name, inp, fp, sid) if isinstance(fp, str) else None
     return None
 
+def _strip_quoted(s: str) -> str:
+    out, i, n = [], 0, len(s)
+    while i < n:
+        c = s[i]
+        if c in ("'", '"'):
+            quote, i = c, i + 1
+            while i < n and s[i] != quote:
+                if s[i] == "\\" and i + 1 < n:
+                    i += 2
+                else:
+                    i += 1
+            if i >= n:
+                log_fire("block_path_typo", "trace", "Bash", s, reason="unterminated quote: remainder dropped")
+            i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
 def _rewrite_typos(s: str, has_claire: bool, has_dotdot: bool) -> str:
     if has_claire:
         s = s.replace('.claire/', '.claude/')
     if has_dotdot:
         s = _DOTDOT_FIX_RE.sub(r'\1\2/\3', s)
     return s
-
-def _build_updated_input(tool_name: str, inp: dict, rewritten: str) -> dict:
-    if tool_name == "Bash":
-        return {"command": rewritten}
-    if tool_name == "Edit":
-        return {
-            "file_path":  rewritten,
-            "old_string":  inp.get("old_string",  ""),
-            "new_string":  inp.get("new_string",  ""),
-            "replace_all": inp.get("replace_all", False),
-        }
-    return {"file_path": rewritten}
 
 def _emit_rewrite(tool_name: str, inp: dict, original: str, rewritten: str,
                   has_claire: bool, has_dotdot: bool) -> dict:
@@ -87,25 +94,17 @@ def _emit_rewrite(tool_name: str, inp: dict, original: str, rewritten: str,
         ),
     }
 
-def _strip_quoted(s: str) -> str:
-    out, i, n = [], 0, len(s)
-    while i < n:
-        c = s[i]
-        if c in ("'", '"'):
-            quote, i = c, i + 1
-            while i < n and s[i] != quote:
-                if s[i] == "\\" and i + 1 < n:
-                    i += 2
-                else:
-                    i += 1
-            if i >= n:
-                log_fire("block_path_typo", "trace", "Bash", s, reason="unterminated quote: remainder dropped")
-            i += 1
-        else:
-            out.append(c)
-            i += 1
-    return "".join(out)
-
+def _build_updated_input(tool_name: str, inp: dict, rewritten: str) -> dict:
+    if tool_name == "Bash":
+        return {"command": rewritten}
+    if tool_name == "Edit":
+        return {
+            "file_path":  rewritten,
+            "old_string":  inp.get("old_string",  ""),
+            "new_string":  inp.get("new_string",  ""),
+            "replace_all": inp.get("replace_all", False),
+        }
+    return {"file_path": rewritten}
 
 if __name__ == "__main__":
     rewrite_path_typo_workflow()

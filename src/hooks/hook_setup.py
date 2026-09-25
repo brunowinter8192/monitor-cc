@@ -1,12 +1,12 @@
 # INFRASTRUCTURE
 import functools
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.claude_settings import guard_not_worktree, load_settings, save_settings
 
-_SETTINGS_FILE = Path("~/.claude/settings.json").expanduser()
 _HOOKS_DIR     = Path(__file__).resolve().parent
 _REPO_ROOT     = _HOOKS_DIR.parent.parent
 _HOOK_TIMEOUT  = 5
@@ -55,102 +55,18 @@ _HOOK_SCRIPTS = [
 # ORCHESTRATOR
 
 def hook_setup_workflow() -> None:
-    _guard_not_worktree()
-    settings = _load_settings()
+    guard_not_worktree(__file__)
+    settings = load_settings()
     swept = _sweep_stale_hooks(settings)
     if swept:
-        _save_settings(settings)
+        save_settings(settings)
     installable, skipped = decide_entries(_HOOK_SCRIPTS, _script_on_main, _script_in_worktree)
     _report_skipped(skipped)
-    hooks = settings.setdefault("hooks", {})
-    installed = 0
-    for script, matcher in installable:
-        command = f"python3 {_HOOKS_DIR / script}"
-        bucket = hooks.setdefault(_EVENT, [])
-        if not _already_installed(bucket, command, matcher):
-            _add_hook(bucket, command, matcher)
-            installed += 1
+    installed = _install_scripts(settings, installable)
     if installed:
-        _save_settings(settings)
+        save_settings(settings)
 
 # FUNCTIONS
-
-def decide_entries(hook_scripts: list, git_query_fn, tree_query_fn) -> tuple:
-    to_install, skipped, cache = [], [], {}
-    for entry in hook_scripts:
-        script, matcher = entry
-        if script not in cache:
-            cache[script] = _script_verdict(script, git_query_fn, tree_query_fn)
-        install, reason = cache[script]
-        if install:
-            to_install.append(entry)
-        else:
-            skipped.append((script, matcher, reason))
-    return to_install, skipped
-
-
-def _script_verdict(script: str, git_query_fn, tree_query_fn) -> tuple:
-    present = git_query_fn(script)
-    if present is False:
-        return False, (
-            f"{script} is not committed on '{_MAIN_BRANCH}' — not registered "
-            f"(would become a dead absolute path once the tree leaves this branch)")
-    if present is None:
-        return False, (
-            f"{script}: could not verify '{_MAIN_BRANCH}'-branch presence (git query failed) "
-            f"— not registered (fail-safe: unverifiable presence is treated as absent)")
-    if not tree_query_fn(script):
-        return False, (
-            f"{script} is committed on '{_MAIN_BRANCH}' but missing from the current working tree "
-            f"— not registered (would be a dead absolute path immediately)")
-    return True, None
-
-def _report_skipped(skipped: list) -> None:
-    seen = set()
-    for script, _matcher, reason in skipped:
-        if script in seen:
-            continue
-        seen.add(script)
-        print(f"SKIPPED: {reason}", file=sys.stderr)
-
-@functools.lru_cache(maxsize=None)
-def _main_branch_resolves() -> bool:
-    try:
-        result = subprocess.run(
-            ['git', '-C', str(_REPO_ROOT), 'rev-parse', '--verify', '--quiet', _MAIN_BRANCH],
-            capture_output=True, timeout=5,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-def _script_on_main(script_filename: str):
-    if not _main_branch_resolves():
-        return None
-    try:
-        result = subprocess.run(
-            ['git', '-C', str(_REPO_ROOT), 'cat-file', '-e',
-             f'{_MAIN_BRANCH}:src/hooks/{script_filename}'],
-            capture_output=True, timeout=5,
-        )
-        return result.returncode == 0
-    except Exception:
-        return None
-
-def _script_in_worktree(script_filename: str) -> bool:
-    return os.path.exists(_HOOKS_DIR / script_filename)
-
-def _guard_not_worktree() -> None:
-    parts = Path(__file__).resolve().parts
-    for i in range(len(parts) - 1):
-        if parts[i] == '.claude' and parts[i + 1] == 'worktrees':
-            print(
-                f"ERROR: This script must be run from the main repo root, not from a worktree at "
-                f"{Path(__file__).resolve()}.\n"
-                "Wechsel in den Main-Repo-Root und rufe das Skript dort auf.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
 
 def _sweep_stale_hooks(settings: dict) -> int:
     hooks = settings.get("hooks", {})
@@ -173,6 +89,85 @@ def _sweep_stale_hooks(settings: dict) -> int:
         hooks[event] = new_groups
     return swept
 
+def decide_entries(hook_scripts: list, git_query_fn, tree_query_fn) -> tuple:
+    to_install, skipped, cache = [], [], {}
+    for entry in hook_scripts:
+        script, matcher = entry
+        if script not in cache:
+            cache[script] = _script_verdict(script, git_query_fn, tree_query_fn)
+        install, reason = cache[script]
+        if install:
+            to_install.append(entry)
+        else:
+            skipped.append((script, matcher, reason))
+    return to_install, skipped
+
+def _script_verdict(script: str, git_query_fn, tree_query_fn) -> tuple:
+    present = git_query_fn(script)
+    if present is False:
+        return False, (
+            f"{script} is not committed on '{_MAIN_BRANCH}' — not registered "
+            f"(would become a dead absolute path once the tree leaves this branch)")
+    if present is None:
+        return False, (
+            f"{script}: could not verify '{_MAIN_BRANCH}'-branch presence (git query failed) "
+            f"— not registered (fail-safe: unverifiable presence is treated as absent)")
+    if not tree_query_fn(script):
+        return False, (
+            f"{script} is committed on '{_MAIN_BRANCH}' but missing from the current working tree "
+            f"— not registered (would be a dead absolute path immediately)")
+    return True, None
+
+def _script_on_main(script_filename: str):
+    if not _main_branch_resolves():
+        return None
+    try:
+        result = subprocess.run(
+            ['git', '-C', str(_REPO_ROOT), 'cat-file', '-e',
+             f'{_MAIN_BRANCH}:src/hooks/{script_filename}'],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return None
+
+@functools.lru_cache(maxsize=None)
+def _main_branch_resolves() -> bool:
+    try:
+        result = subprocess.run(
+            ['git', '-C', str(_REPO_ROOT), 'rev-parse', '--verify', '--quiet', _MAIN_BRANCH],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+def _script_in_worktree(script_filename: str) -> bool:
+    return os.path.exists(_HOOKS_DIR / script_filename)
+
+def _report_skipped(skipped: list) -> None:
+    seen = set()
+    for script, _matcher, reason in skipped:
+        if script in seen:
+            continue
+        seen.add(script)
+        print(f"SKIPPED: {reason}", file=sys.stderr)
+
+def _install_scripts(settings: dict, installable: list) -> int:
+    hooks = settings.setdefault("hooks", {})
+    installed = 0
+    for script, matcher in installable:
+        installed += _install_script(hooks, script, matcher)
+    return installed
+
+def _install_script(hooks: dict, script: str, matcher: str) -> int:
+    command = f"python3 {_HOOKS_DIR / script}"
+    bucket = hooks.setdefault(_EVENT, [])
+    if _already_installed(bucket, command, matcher):
+        return 0
+    _add_hook(bucket, command, matcher)
+    return 1
+
 def _already_installed(pre_tool_use: list, command: str, matcher: str) -> bool:
     for group in pre_tool_use:
         if group.get("matcher") != matcher:
@@ -187,21 +182,6 @@ def _add_hook(pre_tool_use: list, command: str, matcher: str) -> None:
         "matcher": matcher,
         "hooks": [{"type": "command", "command": command, "timeout": _HOOK_TIMEOUT}],
     })
-
-def _load_settings() -> dict:
-    try:
-        return json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError as e:
-        print(f"ERROR: cannot parse {_SETTINGS_FILE}: {e}", file=sys.stderr)
-        sys.exit(1)
-
-def _save_settings(settings: dict) -> None:
-    tmp = _SETTINGS_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    os.replace(tmp, _SETTINGS_FILE)
-
 
 if __name__ == "__main__":
     hook_setup_workflow()
