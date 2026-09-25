@@ -10,6 +10,7 @@ from req_breakdown_rule_edits import compute_rule_edits
 from req_breakdown_report import build_report
 
 REPORTS_DIR = Path(__file__).parent / "04_reports"
+INITIAL_ATTRIBUTION = None
 
 
 # ORCHESTRATOR
@@ -25,7 +26,7 @@ def main():
     cr, cc, d, out = load_session_ground_truth(session_path, req_n)
     sys_rows, tools_rows, msg_rows, estimate = tokenize_segments(target_entry)
 
-    attribution = compute_attribution()
+    attribution = INITIAL_ATTRIBUTION
     if prev_proxy_path and cr > 0:
         attribution = compute_prefix_attribution(target_entry, prev_proxy_path, cr, cc)
 
@@ -55,10 +56,6 @@ def parse_args():
 
 def compute_prev_proxy_path(args):
     return Path(args.prev_proxy_log).expanduser() if args.prev_proxy_log else None
-
-
-def compute_attribution():
-    return None
 
 
 def compute_report_path(ts, req_n):

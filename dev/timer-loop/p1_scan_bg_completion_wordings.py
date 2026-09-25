@@ -13,6 +13,8 @@ from bg_completion_report import _build_report
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 DEFAULT_LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 REPORT_DIR = Path(__file__).resolve().parent / 'md'
+INITIAL_TOTAL_REQUESTS = 0
+INITIAL_TOTAL_PARSE_ERRORS = 0
 
 
 # ORCHESTRATOR
@@ -25,8 +27,8 @@ def main():
     raw_dup_counter = defaultdict(int)
     bare_hits = defaultdict(int)
     session_is_worker = {}
-    total_requests = compute_total_requests()
-    total_parse_errors = compute_total_parse_errors()
+    total_requests = INITIAL_TOTAL_REQUESTS
+    total_parse_errors = INITIAL_TOTAL_PARSE_ERRORS
     total_requests, total_parse_errors = collect_total_requests(corpus_files, findings, cmd_variant_counts, raw_dup_counter, bare_hits, session_is_worker, total_requests, total_parse_errors)
     report = _build_report(findings, cmd_variant_counts, total_requests, total_parse_errors,
                             raw_dup_counter, bare_hits, corpus_files, session_is_worker)
@@ -47,14 +49,6 @@ def compute_corpus_files(log_dir):
             p for p in log_dir.glob('*_original.jsonl')
             if p.name not in EXCLUDED_FILES
         ))
-
-
-def compute_total_requests():
-    return 0
-
-
-def compute_total_parse_errors():
-    return 0
 
 
 def collect_total_requests(corpus_files, findings, cmd_variant_counts, raw_dup_counter, bare_hits, session_is_worker, total_requests, total_parse_errors):

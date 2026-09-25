@@ -18,7 +18,7 @@ invariants. Output is stdout plus a report under `md/`.
 
 ## Modules
 
-### p1_scan_launch_ack_wordings.py (310 LOC)
+### p1_scan_launch_ack_wordings.py (308 LOC)
 
 **Purpose:** Inventories distinct CC background-launch-ack wordings in recorded dual-logs, dedups
 cumulative duplication, and evaluates the 3 recognition mechanisms against each wording.

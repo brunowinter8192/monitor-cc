@@ -58,6 +58,7 @@ def analyze_file(path: Path) -> list:
     found += check_orchestrator(tree, spans)
     found += check_entry(tree, spans, path)
     found += check_stepdown(tree, spans)
+    found += check_constant_helpers(tree)
     found += check_imports(tree)
     found += check_bare_src_imports(tree, path)
     found += check_local_imports(tree, path)
@@ -299,6 +300,14 @@ def signature_expressions(func, include_decorators: bool = True) -> list:
     if func.returns is not None:
         exprs.append(func.returns)
     return exprs
+
+
+def check_constant_helpers(tree) -> list:
+    return [('L9-constant-helper', f.lineno, f'{f.name} only returns a constant') for f in module_functions(tree) if returns_only_constant(f)]
+
+
+def returns_only_constant(func) -> bool:
+    return not func.args.args and len(func.body) == 1 and isinstance(func.body[0], ast.Return) and isinstance(func.body[0].value, ast.Constant)
 
 
 def write_report(report_dir: Path, files: list, findings: list) -> Path:

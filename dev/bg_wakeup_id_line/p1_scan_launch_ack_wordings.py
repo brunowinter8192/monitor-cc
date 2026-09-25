@@ -43,6 +43,7 @@ LIVE_OBSERVED_TEXT = (
 
 _ID_NORM_RE = re.compile(r'with ID:\s*[^.\s]+')
 _PATH_NORM_RE = re.compile(r'Output is being written to:\s*\S+')
+INITIAL_TOTAL_REQUESTS = 0
 
 
 # ORCHESTRATOR
@@ -50,7 +51,7 @@ _PATH_NORM_RE = re.compile(r'Output is being written to:\s*\S+')
 def main():
     findings = {}
     raw_dup_counter = defaultdict(int)
-    total_requests = compute_total_requests()
+    total_requests = INITIAL_TOTAL_REQUESTS
     total_requests = collect_total_requests(total_requests, findings, raw_dup_counter)
     report = _build_report(findings, total_requests, raw_dup_counter)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -60,9 +61,6 @@ def main():
 
 
 # FUNCTIONS
-
-def compute_total_requests():
-    return 0
 
 
 def collect_total_requests(total_requests, findings, raw_dup_counter):

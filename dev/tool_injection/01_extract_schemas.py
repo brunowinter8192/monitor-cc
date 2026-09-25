@@ -50,12 +50,13 @@ for tool in tools:
 
 print(json.dumps(schemas))
 '''
+INITIAL_TOTAL_WRITTEN = 0
 
 
 # ORCHESTRATOR
 
 def extract_schemas_workflow() -> None:
-    total_written = compute_total_written()
+    total_written = INITIAL_TOTAL_WRITTEN
     all_samples = []
 
     total_written = collect_total_written(total_written, all_samples)
@@ -69,9 +70,6 @@ def extract_schemas_workflow() -> None:
 
 
 # FUNCTIONS
-
-def compute_total_written():
-    return 0
 
 
 def collect_total_written(total_written, all_samples):

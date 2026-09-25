@@ -20,13 +20,14 @@ EXCLUDED_FILES = {
     'api_requests_worker_25c51a2e_bg-ack-shapes_1785359201_original.jsonl':
         "this worker's own worktree activity",
 }
+INITIAL_TOTAL_REQUESTS = 0
 
 
 # ORCHESTRATOR
 
 def main():
     records = []
-    total_requests = compute_total_requests()
+    total_requests = INITIAL_TOTAL_REQUESTS
     total_requests = collect_total_requests(total_requests, records)
     report = _build_report(records, total_requests, CORPUS_FILES, EXCLUDED_FILES)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -36,9 +37,6 @@ def main():
 
 
 # FUNCTIONS
-
-def compute_total_requests():
-    return 0
 
 
 def collect_total_requests(total_requests, records):

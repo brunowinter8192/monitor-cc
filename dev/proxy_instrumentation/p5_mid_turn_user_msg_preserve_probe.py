@@ -16,6 +16,7 @@ REPORT_PATH = REPORT_DIR / 'mid_turn_user_msg_preserve_probe_report.md'
 
 POSTS_STEM = 'api_requests_opus_posts_1786051932'
 WEBSEARCH_STEM = 'api_requests_opus_websearch_1786052022'
+INITIAL_ALL_PASS = True
 
 
 # ORCHESTRATOR
@@ -42,7 +43,7 @@ def main() -> None:
     lines.append('')
     lines.append('| case | pass | detail |')
     lines.append('|---|---|---|')
-    all_pass = compute_all_pass()
+    all_pass = INITIAL_ALL_PASS
     all_pass = collect_all_pass(results, all_pass, lines)
     lines.append('')
     append_overall_verdict(lines, all_pass)
@@ -112,10 +113,6 @@ def compute_lines():
 
 def append_session_stems_line(lines):
     lines.append(f'Preserve case session: `{POSTS_STEM}`. Regression-noise session: `{WEBSEARCH_STEM}`.')
-
-
-def compute_all_pass():
-    return True
 
 
 def collect_all_pass(results, all_pass, lines):

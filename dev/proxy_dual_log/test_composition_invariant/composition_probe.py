@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
-import traceback as tb
 import sys
+import traceback as tb
 from datetime import datetime
 from pathlib import Path
 
@@ -9,7 +9,6 @@ sys.path.insert(0, ".")
 from composition_probe_ops import _strip_cache_control, _block_text, compose_block, check_invariants
 from composition_probe_passes import run_passes_and_collect_ops
 from composition_probe_corpus import run_corpus, get_money_shot_case
-from src.proxy.strip_bg_completed import _WAKEUP_TEXT
 
 _AREA_ROOT = next(p for p in Path(__file__).resolve().parents if p.name == 'proxy_dual_log')
 REPORT_DIR = _AREA_ROOT / "01_reports"
@@ -18,6 +17,7 @@ REPORT_DIR = _AREA_ROOT / "01_reports"
 # ORCHESTRATOR
 
 def composition_probe_workflow():
+    _WAKEUP_TEXT = load_imports()
     wakeup_core = _WAKEUP_TEXT.rstrip('\n')
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -39,6 +39,10 @@ def composition_probe_workflow():
 
 
 # FUNCTIONS
+
+def load_imports():
+    from src.proxy.strip_bg_completed import _WAKEUP_TEXT
+    return _WAKEUP_TEXT
 
 
 def compute_report_path(ts):

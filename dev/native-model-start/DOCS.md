@@ -71,7 +71,7 @@ Synthetic argv, mocked config or recorded dual-log payloads go in. Each script d
 
 ---
 
-### p4_dual_log_integrity_probe.py (263 LOC)
+### p4_dual_log_integrity_probe.py (260 LOC)
 
 **Purpose:** Verifies the composition invariant and top-level payload and schema stability on the same two recorded sessions.
 **Reads:** the same two pinned session stems, currently absent.

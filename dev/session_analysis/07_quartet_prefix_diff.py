@@ -13,6 +13,7 @@ from quartet_prefix_diff_diff import analyze_pair
 from quartet_prefix_diff_report import build_report
 
 REPORTS_DIR = Path(__file__).parent / "md"
+INITIAL_ORIG_BY_FLOW = None
 
 
 # ORCHESTRATOR
@@ -33,7 +34,7 @@ def main():
     pairs = merge_pairs(range_pairs, auto_pairs)
     pairs = filter_available_pairs(pairs, mapped)
 
-    orig_by_flow = compute_orig_by_flow()
+    orig_by_flow = INITIAL_ORIG_BY_FLOW
     if original_path:
         target_flow_ids = collect_target_flow_ids(mapped, pairs)
         orig_by_flow = load_original_payloads(original_path, target_flow_ids)
@@ -83,10 +84,6 @@ def merge_pairs(range_pairs, auto_pairs):
 
 def filter_available_pairs(pairs, mapped):
     return [(p1, p2) for p1, p2 in pairs if pair_available(mapped, p1, p2)]
-
-
-def compute_orig_by_flow():
-    return None
 
 
 def compute_pair_results(mapped, orig_by_flow, pairs):

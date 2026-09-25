@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_MUTATIONS = ('os.environ[', 'os.environ.setdefault', 'os.environ.update', 'putenv', 'sys.path.insert', 'sys.path.append', 'sys.modules', 'reload(', 'chdir', 'monkeypatch', 'patch(', 'patch.object')
+RUNTIME_MUTATIONS = ('os.environ[', 'os.environ.setdefault', 'os.environ.update', 'putenv', 'sys.path.insert', 'sys.path.append', 'sys.modules', 'reload(', 'chdir', 'monkeypatch', 'patch(', 'patch.object', 'patch.dict', 'load_root', 'setenv', 'environ.pop')
 PROJECT_PACKAGES = ('src', 'dev')
 
 
@@ -55,18 +55,31 @@ def mutates_at_runtime(tree) -> bool:
     for func in ast.walk(tree):
         if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for stmt in ast.walk(func):
-                if isinstance(stmt, (ast.Assign, ast.Expr, ast.AugAssign)) and any(k in ast.unparse(stmt) for k in RUNTIME_MUTATIONS):
+                if any(k in statement_head(stmt) for k in RUNTIME_MUTATIONS):
                     return True
     return False
 
 
+def statement_head(stmt) -> str:
+    if isinstance(stmt, (ast.With, ast.AsyncWith)):
+        return ' '.join(ast.unparse(item.context_expr) for item in stmt.items)
+    if isinstance(stmt, (ast.Assign, ast.Expr, ast.AugAssign)):
+        return ast.unparse(stmt)
+    return ''
+
+
 def has_path_evidence(tree) -> bool:
     for node in tree.body:
-        if 'sys.path' in ast.unparse(node):
+        if 'sys.path' in ast.unparse(node) and mentions_repo_root(node):
             return True
         if isinstance(node, (ast.Import, ast.ImportFrom)) and imported_module(node).split('.')[0] in PROJECT_PACKAGES:
             return True
     return False
+
+
+def mentions_repo_root(node) -> bool:
+    text = ast.unparse(node)
+    return any(key in text for key in ('parents[', '.parent.parent', 'ROOT', 'WORKTREE', "'..'", 'MONITOR_CC_ROOT'))
 
 
 def imported_module(node) -> str:

@@ -30,6 +30,7 @@ _MSG_HEADER_RE = re.compile(r'^    (?:removed:\s*)?\[\s*(\d+)\] ')
 DIM_YELLOW_BG = '\033[48;2;94;81;47m'
 DIM_GREEN_BG = '\033[48;2;38;74;46m'
 _ACC_KEYS = ('system', 'tools', 'messages', 'fields', '_has_content_by_flow_id', '_msg_idx_by_flow_id')
+INITIAL_ALL_PASS = True
 
 
 # ORCHESTRATOR
@@ -42,7 +43,7 @@ def main() -> None:
     lines.append('are self-contained: there is no pre-change rendering left to diff against, and')
     lines.append('counts are reported rather than asserted so log growth cannot break them.')
     lines.append('')
-    all_pass = compute_all_pass()
+    all_pass = INITIAL_ALL_PASS
     lines, all_pass = collect_lines(stems, lines, all_pass)
     run_append(lines, all_pass)
     write_report_text(lines)
@@ -59,10 +60,6 @@ def compute_stems():
 
 def compute_lines():
     return ['# No-prepend probe — the expanded body is the request payload delta only', '']
-
-
-def compute_all_pass():
-    return True
 
 
 def collect_lines(stems, lines, all_pass):

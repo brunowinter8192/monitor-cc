@@ -26,6 +26,7 @@ KNOWN_PAYLOAD_KEYS = {
     'anthropic_beta', 'context_management', 'diagnostics', 'metadata', 'stream',
     'temperature', 'top_p', 'top_k', 'stop_sequences',
 }
+INITIAL_TOTAL_CHECKS = 0
 
 
 # ORCHESTRATOR
@@ -34,7 +35,7 @@ def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     lines = compute_lines()
 
-    total_checks = compute_total_checks()
+    total_checks = INITIAL_TOTAL_CHECKS
     failures = []
     keys_seen, sys_shapes_seen, block_types_seen = set(), set(), set()
     sample_payload_by_key: dict = {}
@@ -63,10 +64,6 @@ def main() -> None:
 
 def compute_lines():
     return ['# Surface 2 — dual_log integrity + schema drift (issue #63, CC 2.1.223)', '']
-
-
-def compute_total_checks():
-    return 0
 
 
 def collect_total_checks(keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key, lines, total_checks, failures):

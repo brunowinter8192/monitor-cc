@@ -127,7 +127,7 @@ breakpoint positions, modified messages, and stability between requests.
 
 ---
 
-### 05_req_breakdown.py (73 LOC)
+### 05_req_breakdown.py (70 LOC)
 
 **Purpose:** Entry point — forensic per-segment token attribution for one API request, comparing
 `tiktoken` estimates against session-JSONL ground truth.
@@ -229,7 +229,7 @@ drift estimate per request.
 
 ---
 
-### 07_quartet_prefix_diff.py (105 LOC)
+### 07_quartet_prefix_diff.py (102 LOC)
 
 **Purpose:** Entry point — forensic per-segment prefix diff for cache rebuilds: replays the
 `_forwarded` dual-log delta chain and diffs consecutive requests.

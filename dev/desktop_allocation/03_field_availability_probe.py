@@ -27,9 +27,7 @@ def probe_workflow() -> None:
 
     all_keys, field_summary, raw_ptr = _collect_full_cgwindow_data(cid, ghostty_pid)
 
-    assign_values()
-    if ghostty_pid:
-        ghostty_detail = _collect_ghostty_windows_detailed(cid, ghostty_pid, raw_ptr)
+    ghostty_detail = collect_ghostty_detail(cid, ghostty_pid, raw_ptr)
 
     as_props = _collect_ghostty_as_window_properties()
 
@@ -55,8 +53,11 @@ def print_probe_tag(args):
     print(f'[probe03] tag={args.tag} pid={os.getpid()} exe={sys.executable}', flush=True)
 
 
-def assign_values():
+def collect_ghostty_detail(cid, ghostty_pid, raw_ptr):
     ghostty_detail: List[Dict] = []
+    if ghostty_pid:
+        ghostty_detail = _collect_ghostty_windows_detailed(cid, ghostty_pid, raw_ptr)
+    return ghostty_detail
 
 
 def print_probe_report(path):

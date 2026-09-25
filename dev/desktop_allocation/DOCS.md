@@ -113,7 +113,7 @@ aggregation for the comparison report.
 
 ---
 
-### 03_field_availability_probe.py (67 LOC)
+### 03_field_availability_probe.py (68 LOC)
 
 **Purpose:** Orchestrates the full CGWindow field dump across execution contexts; entry point
 only.
