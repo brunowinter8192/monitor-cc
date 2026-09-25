@@ -161,5 +161,15 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
+### worker_proxy_sandbox.py (135 LOC)
+
+**Purpose:** Runs the real `_worker_proxy_setup` of a given iterative-dev tree against a temp monitor root, temp marker and private ports and checks the worker proxy forwards a request and writes dual logs.
+**Reads:** the iterative-dev tree passed as argument, monitor-cc `src/`.
+**Writes:** a temp directory and a temp `/tmp/.monitor_cc_proxy_<id>` marker, removed at the end; stdout report.
+**Called by:** manual, after any change to the live-copy layout or `worker_proxy.sh`.
+**Calls out:** none
+
+---
+
 ## State
 No state in the modules. `md/` holds dated report files, each written once and never mutated.

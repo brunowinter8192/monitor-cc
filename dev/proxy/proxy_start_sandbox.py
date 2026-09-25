@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BASE_REF = '0c837c41'
 TOOLS = ['sed', 'tr', 'head', 'tail', 'basename', 'dirname', 'cat', 'find', 'sort', 'ls', 'grep', 'rm', 'mkdir',
          'cp', 'ps', 'stat', 'date', 'pgrep', 'nohup', 'md5', 'python3', 'sleep', 'touch', 'wc']
-NEW_SCRIPTS = ['claude_proxy_start.sh', 'proxy_start_janitor.sh', 'proxy_start_markers.sh']
+NEW_SCRIPTS = ['claude_proxy_start.sh', 'proxy_start_janitor.sh', 'proxy_start_markers.sh', 'copy_proxy_live.sh']
 RUN_TIMEOUT_SECONDS = 60
 EPOCH_PATTERN = re.compile(r'(?<![0-9])1[0-9]{9}(?![0-9])')
 PLUGINS_JSON = '{"plugins": ["iterative-dev"]}'
