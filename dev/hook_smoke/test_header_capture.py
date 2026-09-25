@@ -7,7 +7,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
-from proxy.addon import _filter_response_headers
+from src.proxy.addon import _filter_response_headers
 
 # FUNCTIONS
 

@@ -6,9 +6,9 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from proxy.rules import apply_modification_rules
-from proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX
-from proxy.strip_vocab import attribute_chunk
+from src.proxy.rules import apply_modification_rules
+from src.proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX
+from src.proxy.strip_vocab import attribute_chunk
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dev.refactoring.strand_runner import strand_workflow
@@ -256,7 +256,7 @@ def test_source_is_read_only_once_per_marker():
         marker = _mint_marker(path)
         payload = _payload_with_marker(marker)
 
-        import proxy.inject_poread as inject_poread_mod
+        from src.proxy import inject_poread as inject_poread_mod
         open_calls = []
         real_open = open
 

@@ -1,19 +1,14 @@
 # INFRASTRUCTURE
-import importlib
 import re
 import statistics
 import sys
 from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
-
-from proxy.diff_engine import compose_block
-
 sys.path.insert(0, str(WORKTREE_ROOT))
-_src_pkg = 'src'
-_render_messages_mod = importlib.import_module(_src_pkg + '.proxy_display.render_messages')
-_render_span_content = _render_messages_mod._render_span_content
+
+from src.proxy.diff_engine import compose_block
+from src.proxy_display.render_messages import _render_span_content
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
 

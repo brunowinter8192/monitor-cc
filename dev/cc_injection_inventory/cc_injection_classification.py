@@ -9,10 +9,10 @@ _WORKTREE_ROOT = _SCRIPT_DIR.parents[1]
 sys.path.insert(0, str(_WORKTREE_ROOT / "src"))
 sys.path.insert(0, str(_WORKTREE_ROOT))
 
-import proxy.rules as rules
-import proxy.strip_vocab as strip_vocab
-import proxy.strip_sr as strip_sr
-import proxy.message_passes as message_passes
+from src.proxy import rules
+from src.proxy import strip_vocab
+from src.proxy import strip_sr
+from src.proxy import message_passes
 
 _UUID_RE = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
 _HEXID_RE = re.compile(r'\b[0-9a-fA-F]{6,}\b')

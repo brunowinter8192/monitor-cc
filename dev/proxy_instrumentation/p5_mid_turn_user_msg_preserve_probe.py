@@ -29,7 +29,7 @@ def _load_messages_for_flow(stem: str, flow_id: str) -> list:
 
 
 def _check_preserve_case() -> dict:
-    from proxy.message_passes import _apply_role_system_strip
+    from src.proxy.message_passes import _apply_role_system_strip
     flow_id = '4b4d396b-a26e-4b44-ac32-144763cc786b'
     msg_idx = 274
     messages = _load_messages_for_flow(POSTS_STEM, flow_id)
@@ -53,7 +53,7 @@ def _check_preserve_case() -> dict:
 
 
 def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected_prefix: str) -> dict:
-    from proxy.message_passes import _apply_role_system_strip
+    from src.proxy.message_passes import _apply_role_system_strip
     messages = _load_messages_for_flow(WEBSEARCH_STEM, flow_id)
     original_content = messages[msg_idx]['content']
     new_messages, mods, _removed, changed_idxs, _injected, _ops = _apply_role_system_strip(messages)

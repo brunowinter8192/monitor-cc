@@ -11,7 +11,7 @@ sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
 
-from proxy.addon import _write_response_entry
+from src.proxy.addon import _write_response_entry
 from dev.refactoring.strand_runner import strand_workflow
 
 _STRAND_NAMES = [

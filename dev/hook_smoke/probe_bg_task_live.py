@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
-from menubar import proc_cache
+from src.menubar import proc_cache
 
 _REPORT_DIR = Path(__file__).parent / 'md'
 _N_SESSIONS_FOR_COST_BENCH = 20

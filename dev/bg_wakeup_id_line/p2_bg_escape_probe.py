@@ -14,11 +14,11 @@ sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 os.environ.setdefault('PROXY_LOG_ID', 'opus_probe_0')
 
-from proxy import bg_escape
-from proxy.bg_escape import (
+from src.proxy import bg_escape
+from src.proxy.bg_escape import (
     _trigger_bg_escape, _extract_task_id, _derive_tmux_session_name, _send_escape_key,
 )
-from proxy.addon import ProxyAddon, _derive_worker_context
+from src.proxy.addon import ProxyAddon, _derive_worker_context
 
 _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"

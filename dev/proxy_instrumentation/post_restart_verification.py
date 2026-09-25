@@ -11,9 +11,9 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-from proxy.strip_bg_launch_ack import _is_bg_auto_timeout_ack, _BG_AUTO_TIMEOUT_MSG, _BG_AUTO_TIMEOUT_MSG_MAIN
-from proxy.message_passes_simple import _apply_bg_launch_ack_strip, _apply_poread_expand_strip
-from proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX
+from src.proxy.strip_bg_launch_ack import _is_bg_auto_timeout_ack, _BG_AUTO_TIMEOUT_MSG, _BG_AUTO_TIMEOUT_MSG_MAIN
+from src.proxy.message_passes_simple import _apply_bg_launch_ack_strip, _apply_poread_expand_strip
+from src.proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX
 
 _ROOT_PKG = 'src'
 _forwarded_parser_mod = importlib.import_module(f'{_ROOT_PKG}.proxy_display.forwarded_parser')

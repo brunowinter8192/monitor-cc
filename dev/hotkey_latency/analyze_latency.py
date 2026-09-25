@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
+sys.path.insert(0, str(WORKTREE_ROOT))
 
-from menubar.menubar_log import MENUBAR_LOG
+from src.menubar.menubar_log import MENUBAR_LOG
 
 REPORT_DIR       = Path(__file__).parent / 'md'
 N_SLOWEST        = 10

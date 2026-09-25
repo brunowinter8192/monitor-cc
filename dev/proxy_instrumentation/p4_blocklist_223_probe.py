@@ -71,8 +71,8 @@ def _forwarded_tool_names(stem: str) -> set:
 
 
 def _run_checks(stem: str) -> list:
-    from proxy.tools import _strip_unused_tools
-    from constants import TOOL_BLOCKLIST
+    from src.proxy.tools import _strip_unused_tools
+    from src.constants import TOOL_BLOCKLIST
 
     payload = _load_original_payload(stem)
     orig_names = {t.get('name') for t in payload.get('tools', [])}

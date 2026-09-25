@@ -10,7 +10,7 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 
-from proxy.strip_bg_launch_ack import (
+from src.proxy.strip_bg_launch_ack import (
     _BG_LAUNCH_ACK_MARKER,
     _BG_LAUNCH_ACK_PREFIX,
     _ACK_ID_RE,

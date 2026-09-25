@@ -60,7 +60,7 @@ directory.
 
 ---
 
-### rs_truncation_preserve_replay.py (97 LOC)
+### rs_truncation_preserve_replay.py (94 LOC)
 
 **Purpose:** Replay-verifies the role=system strip preserve guard — Read-truncation notices pass
 through unchanged, other system noise still reduces to `"."`.
@@ -225,7 +225,7 @@ rate per template per log plus an aggregate.
 
 ---
 
-### strip_audit.py (74 LOC)
+### strip_audit.py (71 LOC)
 
 **Purpose:** CLI entry point — per-REQ strip-delta audit classifying each request into five buckets
 using rule-counter deltas and marker-based attribution.
@@ -234,7 +234,7 @@ using rule-counter deltas and marker-based attribution.
 **Called by:** none — manual CLI.
 **Calls out:** `src.proxy.strip_vocab`, `strip_audit_classify.py`, `strip_audit_report.py`.
 
-### strip_audit_classify.py (201 LOC)
+### strip_audit_classify.py (198 LOC)
 
 **Purpose:** Loads/filters opus entries, delegates per-REQ EFF/INERT/IDX classification, and builds
 LEAK/SUSPECT tag lines via raw-payload SR-block scanning.
@@ -254,7 +254,7 @@ summary.
 
 ---
 
-### sr_session_audit.py (326 LOC)
+### sr_session_audit.py (323 LOC)
 
 **Purpose:** Longitudinal system-reminder audit across all Claude Code sessions, classifying blocks
 against the live strip catalog into known/preserved/unknown buckets.

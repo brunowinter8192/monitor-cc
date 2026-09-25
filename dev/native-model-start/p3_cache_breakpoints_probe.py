@@ -83,7 +83,7 @@ def _msg_content_no_cc(msg: dict):
 
 
 def _replay_session(tag: str, stem: str, tmp_root: str) -> list:
-    from proxy.addon import ProxyAddon, _derive_worker_context
+    from src.proxy.addon import ProxyAddon, _derive_worker_context
     requests = _load_session_requests(stem)
     with mock.patch.dict(os.environ, {
         "PROXY_LOG_ID": f"opus_{tag}_probe",

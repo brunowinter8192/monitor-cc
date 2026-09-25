@@ -14,9 +14,9 @@ os.environ.setdefault('MONITOR_CC_ROOT', str(_ROOT))
 sys.path.insert(0, str(_ROOT / 'src'))
 sys.path.insert(0, str(_ROOT))
 
-from proxy import rules_config
-from proxy.rules_config import _load_system2_rules
-from proxy.rules import apply_modification_rules
+from src.proxy import rules_config
+from src.proxy.rules_config import _load_system2_rules
+from src.proxy.rules import apply_modification_rules
 from dev.refactoring.strand_runner import strand_workflow
 
 _FILES = {

@@ -6,7 +6,7 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-from proxy.response_model_probe import make_answering_model_probe, _MODEL_PROBE_BYTE_BUDGET
+from src.proxy.response_model_probe import make_answering_model_probe, _MODEL_PROBE_BYTE_BUDGET
 from dev.refactoring.strand_runner import strand_workflow
 
 _SSE_MESSAGE_START = (

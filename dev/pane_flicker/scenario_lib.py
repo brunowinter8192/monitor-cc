@@ -37,7 +37,7 @@ class Sim:
         load_root(root)
         from src.proxy_display import proxy_pane_shared as shared
         from src.proxy_display import forwarded_parser, dual_log_accumulator, format as fmt
-        import src.pane_error_log as pane_error_log
+        from src import pane_error_log
         self.shared, self.fwd_mod, self.acc_mod, self.fmt = shared, forwarded_parser, dual_log_accumulator, fmt
         self.tmp = Path(tempfile.mkdtemp(prefix='pane_flicker_'))
         pane_error_log.PANE_ERROR_LOG_PATH = str(self.tmp / 'pane_error.log')

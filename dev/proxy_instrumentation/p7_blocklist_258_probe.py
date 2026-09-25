@@ -75,8 +75,8 @@ def _payload_with_historic_blocked_tool_use(tool_name: str) -> dict:
 
 
 def _check_newly_blocked_extension(newest_log: Path) -> tuple:
-    from proxy.tools import _strip_unused_tools
-    from constants import TOOL_BLOCKLIST
+    from src.proxy.tools import _strip_unused_tools
+    from src.constants import TOOL_BLOCKLIST
 
     payload = _load_original_payload(newest_log)
     orig_names = {t.get('name') for t in payload.get('tools', [])}
@@ -116,8 +116,8 @@ def _check_newly_blocked_extension(newest_log: Path) -> tuple:
 
 
 def _rw_historic_tool_use_result_details() -> list:
-    from proxy.tools import _strip_unused_tools
-    from proxy.payload_helpers import _strip_blocked_tool_references
+    from src.proxy.tools import _strip_unused_tools
+    from src.proxy.payload_helpers import _strip_blocked_tool_references
 
     r8_details = []
     for tool_name in sorted(RW_BLOCKED):
@@ -133,7 +133,7 @@ def _rw_historic_tool_use_result_details() -> list:
 
 
 def _check_rw_extension(modified: dict, removed_names: list) -> list:
-    from constants import TOOL_BLOCKLIST
+    from src.constants import TOOL_BLOCKLIST
 
 
     r5_ok = RW_BLOCKED <= TOOL_BLOCKLIST

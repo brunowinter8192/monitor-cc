@@ -81,7 +81,7 @@ Each script loads recorded dual-log JSONL files (hardcoded stem, mtime-newest gl
 
 ---
 
-### blast_radius_analysis.py (57 LOC)
+### blast_radius_analysis.py (52 LOC)
 
 **Purpose:** Trim, ratio and distribution helpers plus a real compose-and-render comparison for one classified record.
 **Reads:** nothing; pure functions.

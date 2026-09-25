@@ -38,8 +38,8 @@ def _load_session_requests(stem: str) -> list:
 
 
 def _check_composition(payload: dict) -> tuple:
-    from proxy.rules import apply_modification_rules
-    from proxy.diff_engine import compose_block, _get_inner_text
+    from src.proxy.rules import apply_modification_rules
+    from src.proxy.diff_engine import compose_block, _get_inner_text
 
     result = apply_modification_rules(payload, 'opus', '', 'main')
     modified_payload, _mods, _os2, _smi, _smo, _smr, _ima, all_ops = result
@@ -86,7 +86,7 @@ def _scan_schema(payload: dict, keys_seen: set, sys_shapes_seen: set, block_type
 
 
 def _verify_unknown_keys_pass_through(new_keys: set, requests_by_key: dict) -> dict:
-    from proxy.rules import apply_modification_rules
+    from src.proxy.rules import apply_modification_rules
     results = {}
     for key in new_keys:
         payload = requests_by_key.get(key)

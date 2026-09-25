@@ -153,8 +153,8 @@ def _payload_with_user_text(text):
 
 def test_writer_stamps_project_e2e():
     print("\n[Test 5] Writer side — real ProxyAddon.request() stamps project")
-    from proxy.pending_bg_state import _read_state_file, _resolve_pending_bg_state_file
-    from proxy.addon import ProxyAddon, _derive_worker_context
+    from src.proxy.pending_bg_state import _read_state_file, _resolve_pending_bg_state_file
+    from src.proxy.addon import ProxyAddon, _derive_worker_context
 
     with tempfile.TemporaryDirectory() as tmp_root:
         with mock.patch.dict(os.environ, {"PROXY_LOG_ID": "opus_websearch_1786100000",

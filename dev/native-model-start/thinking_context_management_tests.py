@@ -7,10 +7,10 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 sys.path.insert(0, str(WORKTREE_ROOT))
 
-from proxy.inject_helpers import _inject_model_override, _strip_clear_thinking_edit
-from proxy.logging import _build_forwarded_delta
-from proxy import strip_inject_delta
-from proxy.strip_inject_delta import _build_stripped_injected_deltas
+from src.proxy.inject_helpers import _inject_model_override, _strip_clear_thinking_edit
+from src.proxy.logging import _build_forwarded_delta
+from src.proxy import strip_inject_delta
+from src.proxy.strip_inject_delta import _build_stripped_injected_deltas
 
 from model_params_test_infra import check, _with_config
 

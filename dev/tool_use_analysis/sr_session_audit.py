@@ -10,14 +10,11 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-_src_dir = os.path.join(
-    os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent)),
-    'src',
-)
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
+_root_dir = os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent))
+if _root_dir not in sys.path:
+    sys.path.insert(0, _root_dir)
 
-from proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
+from src.proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
 
 _CC_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 

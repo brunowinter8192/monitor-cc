@@ -51,8 +51,8 @@ def _fn_map_census(stem: str) -> dict:
 
 
 def _check_markers_stripped(payload: dict) -> list:
-    from proxy.rules import apply_modification_rules
-    from proxy.payload_helpers import _top_level_content_contains
+    from src.proxy.rules import apply_modification_rules
+    from src.proxy.payload_helpers import _top_level_content_contains
     modified, *_ = apply_modification_rules(payload, 'opus', '', 'main')
     orig_messages = payload.get('messages', [])
     fwd_messages = modified.get('messages', [])
