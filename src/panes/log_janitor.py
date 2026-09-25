@@ -45,6 +45,16 @@ _LOG_REGISTRY: tuple = (
         sweep_eligible=True,
     ),
     LogSpec(
+        name="bg_escape_events",
+        path_pattern="bg_escape_events.jsonl",
+        writer="proxy/bg_escape.py:_log_bg_escape_event",
+        purpose="Background-task escape events fired or skipped by the proxy",
+        fmt="jsonl",
+        retention="7d-ts-records",
+        janitor_trigger="monitor-24h",
+        sweep_eligible=True,
+    ),
+    LogSpec(
         name="api_requests_dual_original",
         path_pattern="dual_log/api_requests_*_original.jsonl",
         writer="proxy/addon.py:_resolve_dual_log_file",

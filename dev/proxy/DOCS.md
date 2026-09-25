@@ -251,6 +251,16 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
+### test_writer_timestamps.py (135 LOC)
+
+**Purpose:** Proves the original, response and bg_escape writers emit fromisoformat-parsable UTC timestamps and the janitor prunes bg_escape_events.jsonl by age.
+**Reads:** `fixtures/bg_escape_events_legacy_ts.jsonl` (6 real legacy-ts lines).
+**Writes:** stdout PASS; temp monitor root only.
+**Called by:** none; run after changes to these writers or the janitor registry; needs the project venv (mitmproxy import).
+**Calls out:** `src/proxy/addon.py`, `src/proxy/addon_dual_log.py`, `src/proxy/bg_escape.py`, `src/panes/log_janitor.py`, `src/dual_log_cli/reader.py`.
+
+---
+
 ### test_api_errors_ts.py (121 LOC)
 
 **Purpose:** Proves the proxy's api_errors ts parses and the janitor prunes legacy and new format lines by age with runtime notes.
