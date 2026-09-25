@@ -17,8 +17,8 @@ _WANTED = ('_prune_bundle_bloat', '_find_signing_identity', '_install_bundle')
 
 def main():
     results = compute_results()
-    ok = collect_ok(results)
-    failed = compute_failed(results, ok)
+    print_results(results)
+    failed = compute_failed(results)
     print_passed(results, failed)
     exit_with_status(failed)
 
@@ -117,13 +117,12 @@ class _PathProxy:
         return self._home
 
 
-def collect_ok(results):
+def print_results(results):
     for name, ok in results:
         print(('PASS: ' if ok else 'FAIL: ') + name)
-    return ok
 
 
-def compute_failed(results, ok):
+def compute_failed(results):
     return [n for n, ok in results if not ok]
 
 

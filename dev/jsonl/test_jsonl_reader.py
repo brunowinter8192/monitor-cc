@@ -18,8 +18,8 @@ def main() -> int:
     if len(sys.argv) > 2 and sys.argv[1] == '--case':
         return run_case(sys.argv[2])
     results = collect_results()
-    code = print_case_verdicts(results)
-    return compute_exit_code(code, results)
+    print_results(results)
+    return compute_exit_code(results)
 
 
 # FUNCTIONS
@@ -42,13 +42,12 @@ def run_strand(case: str) -> tuple:
     return case, proc.returncode, tail
 
 
-def print_case_verdicts(results):
+def print_results(results):
     for case, code, tail in results:
         print(f"{'PASS' if code == 0 else 'FAIL'} {case}" + ('' if code == 0 else f' :: {tail}'))
-    return code
 
 
-def compute_exit_code(code, results):
+def compute_exit_code(results):
     return 0 if all(code == 0 for _, code, _ in results) else 1
 
 

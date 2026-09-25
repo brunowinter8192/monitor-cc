@@ -32,17 +32,6 @@ def strand_fail():
 def strand_raises():
     raise RuntimeError("boom")
 
-
-def run_with_temporarydirectory():
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        passing = write_fake_script(tmp_path, 'pass_case.py', ['strand_ok', 'strand_slow_ok'])
-        failing = write_fake_script(tmp_path, 'fail_case.py', ['strand_ok', 'strand_fail', 'strand_raises', 'strand_slow_ok'])
-        verify_parallel_and_pass(passing, tmp_path)
-        verify_fail_fast_and_siblings_finish(failing, tmp_path)
-        verify_single_strand_entry(failing)
-
-
 if __name__ == "__main__":
     sys.exit(strand_workflow(globals(), __file__, {names!r}, report_path={report!r}, title="fake"))
 '''
@@ -56,6 +45,16 @@ def selftest_workflow() -> None:
 
 
 # FUNCTIONS
+
+def run_with_temporarydirectory():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        passing = write_fake_script(tmp_path, 'pass_case.py', ['strand_ok', 'strand_slow_ok'])
+        failing = write_fake_script(tmp_path, 'fail_case.py', ['strand_ok', 'strand_fail', 'strand_raises', 'strand_slow_ok'])
+        verify_parallel_and_pass(passing, tmp_path)
+        verify_fail_fast_and_siblings_finish(failing, tmp_path)
+        verify_single_strand_entry(failing)
+
 
 def write_fake_script(tmp_path: Path, filename: str, names: list) -> Path:
     path = tmp_path / filename

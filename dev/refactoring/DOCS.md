@@ -31,7 +31,7 @@ A refactor pass reads `src/` or `dev/`, a worker writes its finding list to `md/
 
 ---
 
-### strand_runner_selftest.py (101 LOC)
+### strand_runner_selftest.py (100 LOC)
 
 **Purpose:** Proves the runner's behavior on throwaway strand scripts: parallel execution, fail-fast within a strand, siblings finishing after an abort, report content.
 **Reads:** nothing; writes throwaway scripts to a temp dir.

@@ -11,7 +11,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ## Modules
 
-### test_pd10_lazy_messages.py (119 LOC)
+### test_pd10_lazy_messages.py (118 LOC)
 
 **Purpose:** Four strands proving the lazy-message fix: no error for an expanded entry without messages, unmatched flow raises, failed toggle keeps state, reparse clears expand state.
 **Reads:** synthetic entries and temp files; an env var selects the source tree so the file can run against an older tree.
@@ -21,7 +21,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ---
 
-### test_session_marker_states.py (125 LOC)
+### test_session_marker_states.py (124 LOC)
 
 **Purpose:** Four strands for session-marker states: absent marker is None, worker error scan scope and logging, proxy pane without session start, warnings refresh without marker.
 **Reads:** temp directories via the monitor root env var.
@@ -31,7 +31,7 @@ The identity harness rebuilds entries from a real forwarded dual log, attaches o
 
 ---
 
-### test_forwarded_tripwires.py (109 LOC)
+### test_forwarded_tripwires.py (108 LOC)
 
 **Purpose:** Four strands for forwarded-log tripwires: missing marker noted once, short or empty marker raises, marker log id used, delta request without earlier state raises.
 **Reads:** temp directories only.
