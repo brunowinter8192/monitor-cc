@@ -1,8 +1,8 @@
+# INFRASTRUCTURE
 import re
+from functools import partial
 
 from src.proxy.payload_helpers import _walk_replace_marker_blocks
-
-# INFRASTRUCTURE
 
 _BG_LAUNCH_ACK_MARKER = 'running in background with ID'
 _BG_LAUNCH_ACK_MARKER_2 = 'backgrounded by user with ID'
@@ -56,9 +56,8 @@ def _is_bg_launch_ack_any(text):
 # ORCHESTRATOR
 
 def _strip_bg_launch_ack(content, is_main=False):
-    return _walk_replace_marker_blocks(
-        content, _is_bg_launch_ack_any, lambda text: _build_launch_ack_replacement(text, is_main)
-    )
+    replace_fn = partial(_build_launch_ack_replacement, is_main=is_main)
+    return _walk_replace_marker_blocks(content, _is_bg_launch_ack_any, replace_fn)
 
 
 # FUNCTIONS

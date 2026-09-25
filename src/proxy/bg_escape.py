@@ -18,30 +18,47 @@ _escaped_task_ids: set = set()
 # ORCHESTRATOR
 
 def _trigger_bg_escape(stripped_msg_removed: dict, worker_context: str, project_path: str) -> None:
-    tmux_session = None
-    for chunks in stripped_msg_removed.values():
-        for chunk in chunks:
-            if not isinstance(chunk, str) or not _is_bg_launch_ack(chunk):
-                continue
-            task_id = _extract_task_id(chunk)
-            if not task_id:
-                _log_bg_escape_event("skipped", worker_context, "", "", reason="no_task_id")
-                continue
-            if task_id in _escaped_task_ids:
-                _log_bg_escape_event("skipped", worker_context, task_id, "", reason="already_escaped")
-                continue
-            if tmux_session is None:
-                tmux_session = _derive_tmux_session_name(worker_context, project_path) or ""
-            if not tmux_session:
-                reason = "main_context" if is_main_session(worker_context) else "no_tmux_session"
-                _log_bg_escape_event("skipped", worker_context, task_id, "", reason=reason)
-                continue
-            _escaped_task_ids.add(task_id)
-            sent = _send_escape_key(tmux_session)
-            _log_bg_escape_event("fired", worker_context, task_id, tmux_session, send_result=sent)
+    ack_chunks = _iter_ack_chunks(stripped_msg_removed)
+    _escape_ack_chunks(ack_chunks, worker_context, project_path)
 
 
 # FUNCTIONS
+
+def _iter_ack_chunks(stripped_msg_removed: dict):
+    for chunks in stripped_msg_removed.values():
+        for chunk in chunks:
+            if isinstance(chunk, str) and _is_bg_launch_ack(chunk):
+                yield chunk
+
+
+def _escape_ack_chunks(ack_chunks, worker_context: str, project_path: str) -> None:
+    session_cache = {}
+    for chunk in ack_chunks:
+        _escape_ack_chunk(chunk, worker_context, project_path, session_cache)
+
+
+def _escape_ack_chunk(chunk: str, worker_context: str, project_path: str, session_cache: dict) -> None:
+    task_id = _extract_task_id(chunk)
+    if not task_id:
+        _log_bg_escape_event("skipped", worker_context, "", "", reason="no_task_id")
+        return
+    if task_id in _escaped_task_ids:
+        _log_bg_escape_event("skipped", worker_context, task_id, "", reason="already_escaped")
+        return
+    tmux_session = _cached_tmux_session(session_cache, worker_context, project_path)
+    if not tmux_session:
+        reason = "main_context" if is_main_session(worker_context) else "no_tmux_session"
+        _log_bg_escape_event("skipped", worker_context, task_id, "", reason=reason)
+        return
+    _escaped_task_ids.add(task_id)
+    sent = _send_escape_key(tmux_session)
+    _log_bg_escape_event("fired", worker_context, task_id, tmux_session, send_result=sent)
+
+
+def _cached_tmux_session(session_cache: dict, worker_context: str, project_path: str) -> str:
+    if 'tmux_session' not in session_cache:
+        session_cache['tmux_session'] = _derive_tmux_session_name(worker_context, project_path) or ""
+    return session_cache['tmux_session']
 
 def _extract_task_id(ack_text: str) -> str:
     match = _ACK_ID_RE.search(ack_text)

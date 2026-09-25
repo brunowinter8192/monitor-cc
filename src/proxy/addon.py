@@ -16,6 +16,41 @@ from src.proxy.addon_dual_log import (
     _resolve_dual_log_file, _write_entry, proxy_log_id, _log_original_request,
     _write_request_dual_logs, _log_4xx_error, _write_stripped_injected,
 )
+from src.proxy.message_summary import _infer_model_family, _summarize_message
+from src.proxy.rules import apply_modification_rules, _strip_blocked_tool_references
+from src.proxy.inject_helpers import _inject_context_management, _inject_model_override, _strip_clear_thinking_edit
+from src.proxy.content_strip import _strip_tool_descriptions, _strip_sys3
+from src.proxy.cache import _strip_all_cache_control, _set_cache_breakpoints
+from src.proxy.tools import _strip_unused_tools, _extract_deferred_tool_names
+from src.proxy.tool_injection import inject_mcp_tools
+from src.proxy.fixation import _capture_fixation, _apply_fixation
+from src.proxy.bg_escape import _trigger_bg_escape
+from src.proxy.response_model_probe import make_answering_model_probe
+
+ANTHROPIC_API_HOST = "api.anthropic.com"
+MESSAGES_PATH = "/v1/messages"
+
+
+# FUNCTIONS
+
+class ProxyAddon:
+    def __init__(self):
+        self.paths = _build_dual_log_paths()
+        self.delta = DeltaState()
+        self.fixation = FixationState()
+        self.identity = _build_identity()
+
+    def request(self, flow: http.HTTPFlow) -> None:
+        _guarded("request", _process_request, self, flow)
+
+    def responseheaders(self, flow: http.HTTPFlow) -> None:
+        _guarded("responseheaders", _process_responseheaders, self, flow)
+
+    def response(self, flow: http.HTTPFlow) -> None:
+        _guarded("response", _process_response, self, flow)
+
+    def error(self, flow: http.HTTPFlow) -> None:
+        _guarded("error", _process_error, self, flow)
 
 
 class _TrailerCrashFilter(logging.Filter):
@@ -27,126 +62,124 @@ class _TrailerCrashFilter(logging.Filter):
         return True
 
 
-logging.getLogger("mitmproxy.proxy.server").addFilter(_TrailerCrashFilter())
-from src.proxy.message_summary import _infer_model_family, _summarize_message
-from src.proxy.rules import apply_modification_rules, _strip_blocked_tool_references
-from src.proxy.inject_helpers import _inject_context_management, _inject_model_override, _strip_clear_thinking_edit
-from src.proxy.content_strip import _strip_tool_descriptions, _strip_sys3
-from src.proxy.cache import _strip_all_cache_control, _set_cache_breakpoints
-from src.proxy.tools import _strip_unused_tools, _extract_deferred_tool_names
-from src.proxy.tool_injection import inject_mcp_tools
-from src.proxy.fixation import _capture_fixation, _apply_fixation
-from src.proxy.bg_escape import _trigger_bg_escape
-from src.proxy.response_model_probe import make_answering_model_probe
-ANTHROPIC_API_HOST = "api.anthropic.com"
-MESSAGES_PATH = "/v1/messages"
-
-# ORCHESTRATOR
-
-class ProxyAddon:
-    def __init__(self):
-        self.paths = DualLogPaths(
-            original=_resolve_dual_log_file("original"),
-            forwarded=_resolve_dual_log_file("forwarded"),
-            stripped=_resolve_dual_log_file("stripped"),
-            injected=_resolve_dual_log_file("injected"),
-            errors=_resolve_dual_log_file("errors"),
-            response=_resolve_dual_log_file("response"),
-        )
-        self.delta = DeltaState()
-        self.fixation = FixationState()
-        self.identity = SessionIdentity(
-            session_id=_derive_session_id(),
-            worker_context=_derive_worker_context(),
-        )
-
-    def request(self, flow: http.HTTPFlow) -> None:
-        try:
-            if not _is_messages_request(flow):
-                return
-
-            body = _decode_body(flow.request)
-            if body is None:
-                return
-
-            payload = _parse_payload(body)
-            if payload is None:
-                return
-            flow.metadata["mc_original_payload"] = payload
-
-            model_family = _infer_model_family(payload.get("model", ""))
-            if model_family == "unknown":
-                log_proxy_error_on_change("addon.model_family", f"unknown model family for model {payload.get('model', '')!r}")
-            project_path = os.environ.get("PROXY_PROJECT_PATH", "")
-
-            _log_original_request(self.paths.original, flow, payload)
-
-            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, all_ops = apply_modification_rules(payload, model_family, project_path, self.identity.worker_context)
-            deferred_tool_names = _extract_deferred_tool_names(payload)
-
-            modified_payload = _apply_sys_fixation(self.fixation, model_family, modified_payload, modifications)
-
-            modified_payload, modifications = _run_post_fixation_pipeline(
-                modified_payload, modifications, project_path, self.fixation.model_params_fixated
-            )
-
-            mc_request_id, mc_timestamp = _stamp_request_metadata(flow, stripped_msg_removed, injected_msg_added, all_ops)
-
-            try:
-                _trigger_bg_escape(stripped_msg_removed, self.identity.worker_context, project_path)
-            except Exception as e:
-                log_proxy_error(f"addon.request.bg_escape flow={flow.id}", e)
-
-            modified_payload = _finalize_cache_state(self.delta, model_family, modified_payload)
-            _write_request_dual_logs(flow, payload, modified_payload, model_family, mc_request_id, mc_timestamp, self.paths, self.delta, self.identity)
-
-            flow.metadata["mc_modified_payload"] = modified_payload
-            flow.metadata["mc_model_family"] = model_family
-            flow.request.content = json.dumps(modified_payload).encode("utf-8")
-            flow.request.headers.pop("content-encoding", None)
-            _request_identity_encoding(flow)
-        except Exception as e:
-            log_proxy_error(f"addon.request flow={flow.id}", e)
-
-    def responseheaders(self, flow: http.HTTPFlow) -> None:
-        try:
-            if not _is_messages_request(flow):
-                return
-            if flow.response and 200 <= flow.response.status_code < 300:
-                probe, probe_state = make_answering_model_probe()
-                flow.response.stream = probe
-                flow.metadata["mc_answering_model_state"] = probe_state
-        except Exception as e:
-            log_proxy_error(f"addon.responseheaders flow={flow.id}", e)
-
-    def response(self, flow: http.HTTPFlow) -> None:
-        try:
-            if not _is_messages_request(flow):
-                return
-            if flow.response:
-                _write_response_and_mismatch(flow, self.paths, self.identity)
-            if flow.response and 400 <= flow.response.status_code < 500:
-                _log_4xx_error(flow, self.paths.errors)
-                return
-            if flow.response and flow.response.status_code < 400:
-                try:
-                    _write_stripped_injected(flow, self.delta, self.paths)
-                except Exception as e:
-                    log_proxy_error(f"addon.response.stripped_injected flow={flow.id}", e)
-        except Exception as e:
-            log_proxy_error(f"addon.response flow={flow.id}", e)
-
-    def error(self, flow: http.HTTPFlow) -> None:
-        try:
-            if not _is_messages_request(flow):
-                return
-            if flow.response:
-                _write_response_and_mismatch(flow, self.paths, self.identity)
-        except Exception as e:
-            log_proxy_error(f"addon.error flow={flow.id}", e)
+def _build_dual_log_paths() -> DualLogPaths:
+    return DualLogPaths(
+        original=_resolve_dual_log_file("original"),
+        forwarded=_resolve_dual_log_file("forwarded"),
+        stripped=_resolve_dual_log_file("stripped"),
+        injected=_resolve_dual_log_file("injected"),
+        errors=_resolve_dual_log_file("errors"),
+        response=_resolve_dual_log_file("response"),
+    )
 
 
-# FUNCTIONS
+def _build_identity() -> SessionIdentity:
+    return SessionIdentity(
+        session_id=_derive_session_id(),
+        worker_context=_derive_worker_context(),
+    )
+
+
+def _guarded(name: str, handler, addon: "ProxyAddon", flow: http.HTTPFlow) -> None:
+    try:
+        handler(addon, flow)
+    except Exception as e:
+        log_proxy_error(f"addon.{name} flow={flow.id}", e)
+
+
+def _process_request(addon: "ProxyAddon", flow: http.HTTPFlow) -> None:
+    if not _is_messages_request(flow):
+        return
+    payload = _read_payload(flow)
+    if payload is None:
+        return
+    flow.metadata["mc_original_payload"] = payload
+    model_family = _resolve_model_family(payload)
+    project_path = os.environ.get("PROXY_PROJECT_PATH", "")
+    _log_original_request(addon.paths.original, flow, payload)
+    modified_payload, stripped_msg_removed, injected_msg_added, all_ops, modifications = _rewrite_payload(
+        addon, payload, model_family, project_path
+    )
+    mc_request_id, mc_timestamp = _stamp_request_metadata(flow, stripped_msg_removed, injected_msg_added, all_ops)
+    _escape_background_tasks(flow, stripped_msg_removed, addon.identity.worker_context, project_path)
+    modified_payload = _finalize_cache_state(addon.delta, model_family, modified_payload)
+    _write_request_dual_logs(flow, payload, modified_payload, model_family, mc_request_id, mc_timestamp, addon.paths, addon.delta, addon.identity)
+    _forward_modified_payload(flow, modified_payload, model_family)
+
+
+def _read_payload(flow: http.HTTPFlow) -> Optional[dict]:
+    body = _decode_body(flow.request)
+    if body is None:
+        return None
+    return _parse_payload(body)
+
+
+def _resolve_model_family(payload: dict) -> str:
+    model_family = _infer_model_family(payload.get("model", ""))
+    if model_family == "unknown":
+        log_proxy_error_on_change("addon.model_family", f"unknown model family for model {payload.get('model', '')!r}")
+    return model_family
+
+
+def _rewrite_payload(addon: "ProxyAddon", payload: dict, model_family: str, project_path: str) -> tuple:
+    modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, all_ops = apply_modification_rules(payload, model_family, project_path, addon.identity.worker_context)
+    deferred_tool_names = _extract_deferred_tool_names(payload)
+    modified_payload = _apply_sys_fixation(addon.fixation, model_family, modified_payload, modifications)
+    modified_payload, modifications = _run_post_fixation_pipeline(
+        modified_payload, modifications, project_path, addon.fixation.model_params_fixated
+    )
+    return modified_payload, stripped_msg_removed, injected_msg_added, all_ops, modifications
+
+
+def _escape_background_tasks(flow: http.HTTPFlow, stripped_msg_removed: dict, worker_context: str, project_path: str) -> None:
+    try:
+        _trigger_bg_escape(stripped_msg_removed, worker_context, project_path)
+    except Exception as e:
+        log_proxy_error(f"addon.request.bg_escape flow={flow.id}", e)
+
+
+def _forward_modified_payload(flow: http.HTTPFlow, modified_payload: dict, model_family: str) -> None:
+    flow.metadata["mc_modified_payload"] = modified_payload
+    flow.metadata["mc_model_family"] = model_family
+    flow.request.content = json.dumps(modified_payload).encode("utf-8")
+    flow.request.headers.pop("content-encoding", None)
+    _request_identity_encoding(flow)
+
+
+def _process_responseheaders(addon: "ProxyAddon", flow: http.HTTPFlow) -> None:
+    if not _is_messages_request(flow):
+        return
+    if flow.response and 200 <= flow.response.status_code < 300:
+        probe, probe_state = make_answering_model_probe()
+        flow.response.stream = probe
+        flow.metadata["mc_answering_model_state"] = probe_state
+
+
+def _process_response(addon: "ProxyAddon", flow: http.HTTPFlow) -> None:
+    if not _is_messages_request(flow):
+        return
+    if flow.response:
+        _write_response_and_mismatch(flow, addon.paths, addon.identity)
+    if flow.response and 400 <= flow.response.status_code < 500:
+        _log_4xx_error(flow, addon.paths.errors)
+        return
+    if flow.response and flow.response.status_code < 400:
+        _write_stripped_injected_guarded(flow, addon)
+
+
+def _write_stripped_injected_guarded(flow: http.HTTPFlow, addon: "ProxyAddon") -> None:
+    try:
+        _write_stripped_injected(flow, addon.delta, addon.paths)
+    except Exception as e:
+        log_proxy_error(f"addon.response.stripped_injected flow={flow.id}", e)
+
+
+def _process_error(addon: "ProxyAddon", flow: http.HTTPFlow) -> None:
+    if not _is_messages_request(flow):
+        return
+    if flow.response:
+        _write_response_and_mismatch(flow, addon.paths, addon.identity)
+
 
 def _apply_sys_fixation(fixation_state, model_family: str, modified_payload: dict, modifications: list) -> dict:
     if model_family not in fixation_state.fixated:
@@ -327,5 +360,5 @@ def _derive_worker_context() -> str:
         raise ValueError(f"unparsable worker log id: {log_id!r}")
     return "worker:" + "_".join(parts[2:-1])
 
-
+logging.getLogger("mitmproxy.proxy.server").addFilter(_TrailerCrashFilter())
 addons = [ProxyAddon()]

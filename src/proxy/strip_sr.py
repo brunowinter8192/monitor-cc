@@ -1,6 +1,5 @@
-import re
-
 # INFRASTRUCTURE
+import re
 
 _STANDALONE_SR_RE = re.compile(r'(?m)^<system-reminder>.*?</system-reminder>\n?', re.DOTALL)
 
@@ -61,27 +60,33 @@ _MARKER_TO_TEMPLATE = {
 # ORCHESTRATOR
 
 def _strip_system_reminders(content, enabled_templates=None):
-    if enabled_templates is None:
-        enabled_templates = _ALL_TEMPLATES
-    if isinstance(content, str):
-        return _apply_sr_strip(content, enabled_templates) or '.'
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict):
-                result.append(block)
-                continue
-            btype = block.get('type')
-            if btype == 'text':
-                new_text = _apply_sr_strip(block.get('text', ''), enabled_templates)
-                result.append({**block, 'text': new_text or '.'})
-            else:
-                result.append(block)
-        return result
-    return content
+    templates = _resolve_templates(enabled_templates)
+    return _strip_sr_content(content, templates)
 
 
 # FUNCTIONS
+
+def _resolve_templates(enabled_templates):
+    if enabled_templates is None:
+        return _ALL_TEMPLATES
+    return enabled_templates
+
+
+def _strip_sr_content(content, enabled_templates):
+    if isinstance(content, str):
+        return _apply_sr_strip(content, enabled_templates) or '.'
+    if isinstance(content, list):
+        return [_strip_sr_block(block, enabled_templates) for block in content]
+    return content
+
+
+def _strip_sr_block(block, enabled_templates):
+    if not isinstance(block, dict):
+        return block
+    if block.get('type') == 'text':
+        new_text = _apply_sr_strip(block.get('text', ''), enabled_templates)
+        return {**block, 'text': new_text or '.'}
+    return block
 
 def _match_template(inner, enabled_templates):
     for tid in enabled_templates:

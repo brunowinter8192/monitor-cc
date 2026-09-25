@@ -22,29 +22,36 @@ def _is_sn_notice(text):
 
 def _strip_sn_notice(content):
     removed = []
-    if isinstance(content, str):
-        if _is_sn_notice(content):
-            removed.append(_SN_NOTICE_PARAGRAPH)
-            return _strip_sn_notice_from_text(content), removed
-        return content, removed
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict) or block.get('type') != 'text':
-                result.append(block)
-                continue
-            text = block.get('text', '')
-            if _is_sn_notice(text):
-                removed.append(_SN_NOTICE_PARAGRAPH)
-                new_text = _strip_sn_notice_from_text(text)
-                result.append({**block, 'text': new_text or '.'})
-            else:
-                result.append(block)
-        return result, removed
-    return content, removed
+    result = _strip_sn_content(content, removed)
+    return result, removed
 
 
 # FUNCTIONS
+
+def _strip_sn_content(content, removed):
+    if isinstance(content, str):
+        return _strip_sn_string(content, removed)
+    if isinstance(content, list):
+        return [_strip_sn_block(block, removed) for block in content]
+    return content
+
+
+def _strip_sn_string(text, removed):
+    if _is_sn_notice(text):
+        removed.append(_SN_NOTICE_PARAGRAPH)
+        return _strip_sn_notice_from_text(text)
+    return text
+
+
+def _strip_sn_block(block, removed):
+    if not isinstance(block, dict) or block.get('type') != 'text':
+        return block
+    text = block.get('text', '')
+    if _is_sn_notice(text):
+        removed.append(_SN_NOTICE_PARAGRAPH)
+        new_text = _strip_sn_notice_from_text(text)
+        return {**block, 'text': new_text or '.'}
+    return block
 
 def _strip_sn_notice_from_text(text):
     for needle in (_SN_NOTICE_BLOCK, _SN_NOTICE_PARAGRAPH):

@@ -1,10 +1,10 @@
+# INFRASTRUCTURE
 import hashlib
 import re
+from functools import partial
 
 from src.proxy.proxy_error_log import log_proxy_error_on_change
 from src.proxy.payload_helpers import _walk_replace_marker_blocks
-
-# INFRASTRUCTURE
 
 POREAD_MAX_BYTES = 50_000
 POREAD_HASH_LEN = 16
@@ -26,8 +26,8 @@ _POREAD_MARKER_RE = re.compile(
 
 def _inject_poread_content(content):
     cache: dict = {}
-    predicate = lambda text: _is_poread_marker_valid(text, cache)
-    replace_fn = lambda text: _build_poread_replacement(text, cache)
+    predicate = partial(_is_poread_marker_valid, cache=cache)
+    replace_fn = partial(_build_poread_replacement, cache=cache)
     return _walk_replace_marker_blocks(content, predicate, replace_fn)
 
 

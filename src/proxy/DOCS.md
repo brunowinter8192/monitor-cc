@@ -16,7 +16,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ## Modules
 
-### addon.py (331 LOC)
+### addon.py (364 LOC)
 
 **Purpose:** mitmproxy hook class that orchestrates the request-modification and dual-log pipeline and writes the response record.
 **Reads:** mitmproxy flows; process environment for project and log id.
@@ -66,7 +66,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### bg_escape.py (102 LOC)
+### bg_escape.py (119 LOC)
 
 **Purpose:** Sends a tmux Escape into a worker pane the first time a background-launch acknowledgement is detected.
 **Reads:** stripped-content data and worker context from the addon.
@@ -86,7 +86,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### rules.py (142 LOC)
+### rules.py (149 LOC)
 
 **Purpose:** Runs the message-pass pipeline and the system-block replacement pass, returning the modified payload and its op records.
 **Reads:** raw payload; system2 rule text via `rules_config.py`.
@@ -146,7 +146,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_sr.py (162 LOC)
+### strip_sr.py (167 LOC)
 
 **Purpose:** Strips system-reminder blocks from message content through a catalog of exact-match templates.
 **Reads:** message content; module-local template catalog.
@@ -156,7 +156,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_po.py (63 LOC)
+### strip_po.py (34 LOC)
 
 **Purpose:** Strips the preview section from persisted-output blocks while keeping the wrapper and header line.
 **Reads:** message content.
@@ -166,7 +166,17 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_bg_launch_ack.py (79 LOC)
+### strip_walk.py (44 LOC)
+
+**Purpose:** Shared block walk that applies a text stripper to string content, text blocks and tool-result blocks.
+**Reads:** message content.
+**Writes:** none (appends removed texts to the caller's list).
+**Called by:** `strip_bd_noise.py`, `strip_hook_prefix.py`, `strip_git_lock.py`, `strip_po.py`.
+**Calls out:** none
+
+---
+
+### strip_bg_launch_ack.py (78 LOC)
 
 **Purpose:** Replaces the background-launch acknowledgement wordings with a short hold instruction.
 **Reads:** message content.
@@ -186,7 +196,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_bg_completed.py (55 LOC)
+### strip_bg_completed.py (56 LOC)
 
 **Purpose:** Replaces the first background-Bash kill notification in a message with a wake-up hint and strips later duplicates.
 **Reads:** message content.
@@ -196,7 +206,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_hook_prefix.py (61 LOC)
+### strip_hook_prefix.py (32 LOC)
 
 **Purpose:** Strips the hook-error wrapper prefix from tool results.
 **Reads:** message content.
@@ -206,7 +216,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_git_lock.py (63 LOC)
+### strip_git_lock.py (34 LOC)
 
 **Purpose:** Strips the constant git index-lock advice block from tool results, keeping the variable warning line.
 **Reads:** message content.
@@ -216,7 +226,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_bd_noise.py (71 LOC)
+### strip_bd_noise.py (42 LOC)
 
 **Purpose:** Strips bd auto-import/export status lines from tool results.
 **Reads:** message content.
@@ -226,7 +236,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_interrupt_marker.py (19 LOC)
+### strip_interrupt_marker.py (23 LOC)
 
 **Purpose:** Replaces the interrupt-marker wordings that result from the tmux Escape of `bg_escape.py` with a placeholder.
 **Reads:** message content.
@@ -246,7 +256,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### strip_sn_notice.py (53 LOC)
+### strip_sn_notice.py (60 LOC)
 
 **Purpose:** Strips the system-notification paragraph injected ahead of task-notification tags in wake-up messages.
 **Reads:** message content.
@@ -306,7 +316,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### tool_injection.py (179 LOC)
+### tool_injection.py (188 LOC)
 
 **Purpose:** Appends MCP tool schemas to the payload tool list in a stable order to avoid cache rebuilds.
 **Reads:** the gitignored schema store inside this package; the project's active-plugins file; the rules file's exclude list.

@@ -19,40 +19,49 @@ _EXCLUDE_SOURCE = "tool_injection.exclude_projects"
 def inject_mcp_tools(payload: dict, project_path: str) -> dict:
     if _is_project_excluded(project_path):
         return payload
-
     if not payload.get("tools"):
         return payload
-
     store = _load_schema_store()
     if not store:
         return payload
+    to_append = _collect_schemas_to_append(payload, store, project_path)
+    if not to_append:
+        return payload
+    return _append_tools(payload, to_append)
 
+
+# FUNCTIONS
+
+def _collect_schemas_to_append(payload: dict, store: dict, project_path: str) -> list:
     active_plugins = _load_active_plugins(project_path)
     existing_names = {t.get("name") for t in payload.get("tools", [])}
+    to_append = []
+    for plugin_name in _plugins_to_inject(active_plugins):
+        to_append.extend(_new_schemas_for_plugin(store, plugin_name, existing_names))
+    return to_append
 
+
+def _plugins_to_inject(active_plugins: list) -> list:
     plugins_to_inject = [_ALWAYS_INJECTED_PLUGIN]
     for p in active_plugins:
         if p != _ALWAYS_INJECTED_PLUGIN and p not in plugins_to_inject:
             plugins_to_inject.append(p)
+    return plugins_to_inject
 
-    to_append = []
-    for plugin_name in plugins_to_inject:
-        schemas = store.get(plugin_name, [])
-        new_schemas = [s for s in schemas if s.get("name") not in existing_names]
-        new_schemas_sorted = sorted(new_schemas, key=lambda s: s.get("name", ""))
-        to_append.extend(new_schemas_sorted)
-        for s in new_schemas_sorted:
-            existing_names.add(s.get("name"))
 
-    if not to_append:
-        return payload
+def _new_schemas_for_plugin(store: dict, plugin_name: str, existing_names: set) -> list:
+    schemas = store.get(plugin_name, [])
+    new_schemas = [s for s in schemas if s.get("name") not in existing_names]
+    new_schemas_sorted = sorted(new_schemas, key=lambda s: s.get("name", ""))
+    for s in new_schemas_sorted:
+        existing_names.add(s.get("name"))
+    return new_schemas_sorted
 
+
+def _append_tools(payload: dict, to_append: list) -> dict:
     modified = dict(payload)
     modified["tools"] = list(payload.get("tools", [])) + to_append
     return modified
-
-
-# FUNCTIONS
 
 def _load_schema_store() -> dict:
     global _SCHEMA_STORE_CACHE

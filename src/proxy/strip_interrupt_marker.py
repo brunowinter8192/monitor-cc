@@ -7,13 +7,17 @@ _INTERRUPT_MARKERS = frozenset({
 })
 
 
+# ORCHESTRATOR
+
+def _strip_interrupt_marker(content):
+    return _walk_replace_marker_blocks(content, _is_interrupt_marker, _replace_with_dot)
+
+
 # FUNCTIONS
 
 def _is_interrupt_marker(text):
     return text.strip() in _INTERRUPT_MARKERS
 
 
-# ORCHESTRATOR
-
-def _strip_interrupt_marker(content):
-    return _walk_replace_marker_blocks(content, _is_interrupt_marker, lambda _text: '.')
+def _replace_with_dot(_text):
+    return '.'

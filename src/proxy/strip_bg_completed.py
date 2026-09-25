@@ -1,6 +1,5 @@
-import re
-
 # INFRASTRUCTURE
+import re
 
 _BG_CMD_MARKER = 'Background command "'
 
@@ -17,25 +16,27 @@ _WAKEUP_TEXT = 'background done — check worker or other process\n'
 def _strip_bg_exit_notifications(content):
     removed = []
     injected = [False]
-    if isinstance(content, str):
-        return _strip_bg_from_text(content, removed, injected), removed
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict):
-                result.append(block)
-                continue
-            btype = block.get('type')
-            if btype == 'text':
-                new_text = _strip_bg_from_text(block.get('text', ''), removed, injected)
-                result.append({**block, 'text': new_text or '.'})
-            else:
-                result.append(block)
-        return result, removed
-    return content, removed
+    result = _strip_bg_content(content, removed, injected)
+    return result, removed
 
 
 # FUNCTIONS
+
+def _strip_bg_content(content, removed, injected):
+    if isinstance(content, str):
+        return _strip_bg_from_text(content, removed, injected)
+    if isinstance(content, list):
+        return [_strip_bg_block(block, removed, injected) for block in content]
+    return content
+
+
+def _strip_bg_block(block, removed, injected):
+    if not isinstance(block, dict):
+        return block
+    if block.get('type') == 'text':
+        new_text = _strip_bg_from_text(block.get('text', ''), removed, injected)
+        return {**block, 'text': new_text or '.'}
+    return block
 
 def _strip_bg_from_text(text, out_removed, injected_holder):
     if _BG_CMD_MARKER not in text:
