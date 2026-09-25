@@ -4,9 +4,9 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._shell_strip import _strip_non_shell_active
+from src.hooks._fire_log import log_fire
 
 _RAG_INDEX_RE = re.compile(r'\brag-cli\s+index\b')
 _ASSIGN_TOKEN = r'[A-Za-z_][A-Za-z0-9_]*=\S*'

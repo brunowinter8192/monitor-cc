@@ -59,11 +59,20 @@ def _run_job(job: tuple) -> str:
     hook, index, payload = job
     with tempfile.TemporaryDirectory() as tmp:
         log_path = Path(tmp) / 'fire.jsonl'
+        _write_decoy_src(Path(tmp))
         env = {**os.environ, 'MONITOR_CC_HOOK_FIRING_LOG': str(log_path)}
-        proc = subprocess.run([sys.executable, str(hook)], input=json.dumps(payload), capture_output=True, text=True, cwd=tmp, env=env, timeout=60)
+        proc = subprocess.run([_interpreter(), str(hook)], input=json.dumps(payload), capture_output=True, text=True, cwd=tmp, env=env, timeout=60)
         fired = _normalized_log(log_path)
     record = {'rc': proc.returncode, 'out': proc.stdout, 'err': proc.stderr, 'log': fired}
     return f'{hook.name}\t{index}\t{json.dumps(record, sort_keys=True)}'
+
+def _interpreter() -> str:
+    return os.environ.get('MATRIX_PYTHON', sys.executable)
+
+def _write_decoy_src(cwd: Path) -> None:
+    (cwd / 'src' / 'hooks').mkdir(parents=True)
+    (cwd / 'src' / '__init__.py').write_text('')
+    (cwd / 'src' / 'hooks' / '_fire_log.py').write_text('raise RuntimeError("decoy src imported from cwd")\n')
 
 def _normalized_log(log_path: Path) -> list:
     if not log_path.exists():

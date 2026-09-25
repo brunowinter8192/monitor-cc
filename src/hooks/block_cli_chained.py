@@ -4,10 +4,10 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
-from _fire_log import log_fire
-from _known_cli import resolve_cli_segment, is_protected_segment, tool_sub_name
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._shell_strip import _strip_non_shell_active
+from src.hooks._fire_log import log_fire
+from src.hooks._known_cli import resolve_cli_segment, is_protected_segment, tool_sub_name
 
 _CHAIN_SEPARATOR_RE = re.compile(r'&&|\|\||;|\n|\s&(?=\s|$)')
 _PIPE_SEPARATOR_RE = re.compile(r'\|')

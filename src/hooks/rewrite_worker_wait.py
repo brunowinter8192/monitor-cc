@@ -3,9 +3,9 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._shell_strip import _strip_non_shell_active
+from src.hooks._fire_log import log_fire
 
 _WAIT_MENTION_RE = re.compile(r'\bworker-cli\s+wait\b')
 _WAIT_CANONICAL_RE = re.compile(r'^\s*worker-cli\s+wait\b([^;&|\n]*)$')

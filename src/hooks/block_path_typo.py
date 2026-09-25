@@ -3,8 +3,8 @@ import json
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _fire_log import log_fire
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.hooks._fire_log import log_fire
 
 _CLAIRE_PATTERN = re.compile(r'\.claire/')
 _DOTDOT_PATTERN = re.compile(r'(?:^|/|\s|=)\.\.[a-z]')

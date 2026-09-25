@@ -1,8 +1,5 @@
 # INFRASTRUCTURE
-import os
-import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _fire_log import log_fire
+from src.hooks._fire_log import log_fire
 
 
 # FUNCTIONS

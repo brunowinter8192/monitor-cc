@@ -18,7 +18,7 @@ No `__init__.py`; this directory is not a Python package. Each script is a stand
 
 ## Modules
 
-### _shell_strip.py (186 LOC)
+### _shell_strip.py (183 LOC)
 
 **Purpose:** position-preserving shell-region stripper that blanks heredocs and quoted strings before pattern matching; a library, not a hook.
 **Reads:** n/a.
