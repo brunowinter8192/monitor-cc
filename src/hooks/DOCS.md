@@ -178,6 +178,16 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 ---
 
+### block_rules_skills_edit.py (52 LOC)
+
+**Purpose:** PreToolUse Write/Edit hook blocking any write into the shared-rules directory or into a directory named skills; rules and skills are user-owned.
+**Reads:** stdin (PreToolUse JSON payload).
+**Writes:** stderr block message; exit 2.
+**Called by:** Claude Code hook system, registered by `hook_setup.py`.
+**Calls out:** none.
+
+---
+
 ### block_read_directory.py (38 LOC)
 
 **Purpose:** PreToolUse Read hook blocking reads of a directory path.
@@ -358,7 +368,7 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 ---
 
-### hook_setup.py (187 LOC)
+### hook_setup.py (189 LOC)
 
 **Purpose:** idempotent installer registering every hook script into the user-level Claude Code settings file, sweeping stale entries first.
 **Reads:** the user-level settings file; local main-branch git state; the working tree.

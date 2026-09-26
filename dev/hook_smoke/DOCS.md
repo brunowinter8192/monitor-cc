@@ -31,7 +31,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### run_all.py (76 LOC)
+### run_all.py (77 LOC)
 
 **Purpose:** Runs every test module of this directory as one parallel fail-fast strand and writes a fixed-name report.
 **Reads:** the `test_*.py` modules (executed via `runpy`).
@@ -197,6 +197,16 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 **Reads:** nothing.
 **Writes:** stdout only.
 **Called by:** none; manual CLI.
+**Calls out:** none; drives the hook via `subprocess`.
+
+---
+
+### test_block_rules_skills_edit.py (54 LOC)
+
+**Purpose:** Smoke for the rules/skills ownership hook: Edit and Write blocked under shared-rules and skills directories, ordinary paths and other tools pass.
+**Reads:** nothing.
+**Writes:** stdout only.
+**Called by:** `run_all.py`; manual CLI from the project root.
 **Calls out:** none; drives the hook via `subprocess`.
 
 ---
