@@ -70,6 +70,17 @@ This contradicts the new hook. Proposed replacement:
 No other rule was found that grants rule or skill edits. This proposal was not applied by the
 orchestrator; applying it is the user's step.
 
+### User decision on the proposal (2026-09-26, after live verification)
+
+The user rejected the replacement text. He removes the rule "Docs und Skills darfst du direkt
+editieren" entirely and adds no new rule, because the hook already enforces the behavior and its
+block message names the process-docs route. This follows the same criterion as the
+shared-rules-to-hook pass in the tool_use_safety area: a rule is cut once a hook covers the case.
+
+Side effect of the removal: the explicit permission to edit DOCS.md and process-docs directly
+disappears with it. The rule "Wer den Input hat, schreibt die Dokumentationsdatei" still tells the
+orchestrator to write documentation from the user chat itself, so the permission remains implied.
+
 ## Implementation
 
 Built by a worker on branch `rules-hook` in monitor-cc (hook `block_rules_skills_edit.py`, smoke
