@@ -26,6 +26,7 @@ _MODULES = [
     'test_block_rag_cli_index_isolated',
     'test_block_rag_corpus_read',
     'test_block_rag_docs_layer',
+    'test_block_rules_skills_edit',
     'test_block_unauthorized_background',
     'test_block_worker_kill_while_working',
     'test_block_worker_spawn_placement',

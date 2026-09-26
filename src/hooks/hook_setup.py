@@ -37,6 +37,8 @@ _HOOK_SCRIPTS = [
     ("block_path_typo.py",               "Write"),
     ("block_path_typo.py",               "Edit"),
     ("block_noop_edit.py",               "Edit"),
+    ("block_rules_skills_edit.py",      "Write"),
+    ("block_rules_skills_edit.py",      "Edit"),
     ("block_read_directory.py",          "Read"),
     ("block_worker_spawn_placement.py",  "Bash"),
     ("block_worker_kill_while_working.py", "Bash"),
