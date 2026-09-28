@@ -81,6 +81,27 @@ Side effect of the removal: the explicit permission to edit DOCS.md and process-
 disappears with it. The rule "Wer den Input hat, schreibt die Dokumentationsdatei" still tells the
 orchestrator to write documentation from the user chat itself, so the permission remains implied.
 
+## Direction after this cycle (user, 2026-09-26)
+
+The user's core concern behind all of this is **more agent autonomy**. The rules/skills ownership
+hook is the first step: it lets the user review rules and skills while agents work more freely.
+
+The user names a chicken-and-egg problem:
+
+- More autonomy needs a better RAG, so that agents find the knowledge they need on their own.
+- Optimizing the RAG in turn needs a lot of external resources (documentation, papers, GitHub,
+  forums) gathered and indexed first.
+- Gathering those resources is itself agent work that would profit from the autonomy it is meant
+  to enable.
+
+Decision: break the loop by starting small and concrete in the websearch CLI project
+(`/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch`), the tool through which
+external resources enter the system. No scope for that work was set yet on this date; it starts as
+its own cycle.
+
+Still parked, not decided (see Context above): chained searches with fewer results versus one
+search with 12 results, and search across the reference collections of all projects.
+
 ## Implementation
 
 Built by a worker on branch `rules-hook` in monitor-cc (hook `block_rules_skills_edit.py`, smoke
