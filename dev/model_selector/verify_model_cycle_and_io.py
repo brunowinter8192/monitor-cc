@@ -50,6 +50,7 @@ _STRAND_NAMES = [
     '_strand_proxy_rules_format_fidelity',
     '_strand_proxy_rules_read_modify_write',
     '_strand_proxy_rules_malformed_fallback',
+    '_strand_sonnet55_selection',
 ]
 _TITLE = 'Models tab: cycle and I/O verification'
 
@@ -108,14 +109,20 @@ def _strand_proxy_rules_malformed_fallback() -> None:
         _verify_proxy_rules_malformed_fallback(_load_model_selection_module(), lines, tmp)
     _emit(lines)
 
+def _strand_sonnet55_selection() -> None:
+    lines = []
+    with tempfile.TemporaryDirectory() as tmp:
+        _verify_sonnet55_selection(_load_model_selection_module(), lines, tmp)
+    _emit(lines)
+
 def _load_model_selection_module():
     module_name = '.'.join(['src', 'menubar', 'model_selection'])
     return importlib.import_module(module_name)
 
 def _verify_model_cycle(ms, lines) -> None:
-    lines.append("## 1. Model cycle logic (5 values)")
+    lines.append("## 1. Model cycle logic (6 values)")
     choices = ms._MODEL_CHOICES
-    assert len(choices) == 5, f"expected 5 model choices, got {len(choices)}: {choices}"
+    assert len(choices) == 6, f"expected 6 model choices, got {len(choices)}: {choices}"
     for start in choices:
         nxt = ms._next_model(start)
         expected = choices[(choices.index(start) + 1) % len(choices)]
@@ -313,6 +320,31 @@ def _verify_proxy_rules_malformed_fallback(ms, lines, tmp) -> None:
     tmp_leftover = path.with_name(path.name + ".tmp")
     assert not tmp_leftover.exists()
     lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
+
+def _verify_sonnet55_selection(ms, lines, tmp) -> None:
+    lines.append("")
+    lines.append("## 10. claude-sonnet-5-5 loads from the selection file and is reachable by the cycle")
+    selection_path = Path(tmp) / "model_selection.json"
+    selection_path.write_text(json.dumps({"main": "claude-opus-5-5", "worker": "claude-sonnet-5-5"}), encoding="utf-8")
+    main, worker = ms._load_model_selection(path=selection_path)
+    lines.append(f"Selection file with sonnet-5-5 -> {(main, worker)}")
+    assert (main, worker) == ("claude-opus-5-5", "claude-sonnet-5-5")
+    assert worker in ms._MODEL_CHOICES
+    rules_path = Path(tmp) / "proxy_rules.json"
+    rules_path.write_text(json.dumps({"model_params": {"claude-sonnet-5-5": {
+        "thinking": {"type": "adaptive", "display": "summarized"}, "effort": "medium", "max_tokens": 128000}}}),
+        encoding="utf-8")
+    params = ms._load_model_params_for("claude-sonnet-5-5", path=rules_path)
+    lines.append(f"Params of sonnet-5-5 read from its own rules entry -> {params}")
+    assert params == ("medium", 128000, {"type": "adaptive", "display": "summarized"})
+    reached = ms._next_model("claude-sonnet-5")
+    lines.append(f"claude-sonnet-5 -> {reached}")
+    assert reached == "claude-sonnet-5-5"
+    wrapped = ms._next_model("claude-sonnet-5-5")
+    lines.append(f"claude-sonnet-5-5 -> {wrapped}")
+    assert wrapped == ms._MODEL_CHOICES[0]
+    assert ms._DEFAULT_WORKER == "claude-sonnet-5" and ms._DEFAULT_MAIN == "claude-opus-5-5"
+    lines.append("Defaults unchanged: main claude-opus-5-5, worker claude-sonnet-5")
 
 
 if __name__ == "__main__":

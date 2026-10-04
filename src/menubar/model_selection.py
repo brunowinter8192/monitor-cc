@@ -5,7 +5,7 @@ import os
 from src.menubar.menubar_log import log_menubar
 from src.menubar.paths import MODEL_SELECTION_FILE, PROXY_RULES_FILE
 
-_MODEL_CHOICES = ("claude-opus-5", "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1", "claude-sonnet-5")
+_MODEL_CHOICES = ("claude-opus-5", "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1", "claude-sonnet-5", "claude-sonnet-5-5")
 _DEFAULT_MAIN   = _MODEL_CHOICES[1]
 _DEFAULT_WORKER = _MODEL_CHOICES[4]
 
