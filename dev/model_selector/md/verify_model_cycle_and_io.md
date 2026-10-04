@@ -1,15 +1,16 @@
 # Models tab: cycle and I/O verification
 
-8/8 strands passed
+9/9 strands passed
 
 ## PASS _strand_model_cycle
 
-## 1. Model cycle logic (5 values)
+## 1. Model cycle logic (6 values)
 claude-opus-5 -> claude-opus-5-5
 claude-opus-5-5 -> claude-fable-5
 claude-fable-5 -> claude-fable-5-1
 claude-fable-5-1 -> claude-sonnet-5
-claude-sonnet-5 -> claude-opus-5
+claude-sonnet-5 -> claude-sonnet-5-5
+claude-sonnet-5-5 -> claude-opus-5
 Last value wraps to first: True
 Unrecognized current value starts cycle at first choice: 'claude-opus-5'
 
@@ -81,3 +82,13 @@ No leftover .tmp file: True
 Write from malformed file raised JSONDecodeError: True
 Malformed file left byte-identical on disk: True
 No leftover .tmp file: True
+
+## PASS _strand_sonnet55_selection
+
+
+## 10. claude-sonnet-5-5 loads from the selection file and is reachable by the cycle
+Selection file with sonnet-5-5 -> ('claude-opus-5-5', 'claude-sonnet-5-5')
+Params of sonnet-5-5 read from its own rules entry -> ('medium', 128000, {'type': 'adaptive', 'display': 'summarized'})
+claude-sonnet-5 -> claude-sonnet-5-5
+claude-sonnet-5-5 -> claude-opus-5
+Defaults unchanged: main claude-opus-5-5, worker claude-sonnet-5
