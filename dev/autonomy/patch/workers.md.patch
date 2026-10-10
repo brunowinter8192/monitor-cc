@@ -1,4 +1,4 @@
---- /Users/brunowinter2000/.claude/shared-rules/main/workers.md	2026-10-10 18:12:27
+--- /Users/brunowinter2000/.claude/shared-rules/main/workers.md	2026-10-10 18:38:03
 +++ /tmp/rules-review/workers-soll.md	2026-10-10 18:13:54
 @@ -38,6 +38,16 @@
     - Der Worker macht seine Arbeit dann dort.
@@ -17,69 +17,62 @@
  ### Lebenszyklus eines Workers
  
  **Worker werden für Folgetasks wiederverwendet.**
-@@ -121,7 +131,8 @@
+@@ -120,25 +130,31 @@
+ 
  ## Phase 1
  
- **Die Steps laufen sequenziell mit einem Gate nach Step 1 und Step 2.**
--- Stelle nach jedem Step die Befunde dar und warte auf Anmerkungen, bevor du fortfährst.
+-**Ein 🛑 STOP bezieht den User ein und beendet deinen Turn**
+-- Lege nach Step 1 und Step 2 deine Erkenntnisse dar und warte auf Anmerkungen, bevor du fortfährst.
++**Die Steps laufen sequenziell mit einem Gate nach Step 1 und Step 2.**
 +- Stelle nach Step 1 und Step 2 die Befunde dar und warte auf Anmerkungen, bevor du fortfährst.
 +- Ab Step 3 endet jeder Abschnitt mit einer SELBSTPRÜFUNG statt mit einem Gate.
  
- **Eine SELBSTPRÜFUNG ist eine Liste kritischer Fragen an dich.**
+-**Eine ✅ SELBSTPRÜFUNG ist eine Liste kritischer Fragen an dich.**
++**Eine SELBSTPRÜFUNG ist eine Liste kritischer Fragen an dich.**
  - Jeder Punkt unter einer SELBSTPRÜFUNG ist eine Frage.
-@@ -129,18 +140,20 @@
+-    - Du beantwortest jede Frage gedanklich, bevor du in den nächsten Step gehst. 
++- Du beantwortest jede Frage gedanklich, bevor du weitergehst.
  - Kannst du eine Frage nicht beantworten, spawnst du einen frischen Worker.
      - Du übergibst ihm die vollständige Problematik, inklusive deiner Zweifel.
- - Gibt dir der Worker einen neuen Anstoß, mit dem du die Frage beantworten kannst, gehst du weiter.
--- Gibt er dir keinen, legst du ein Issue nach an.
+-- Gibt dir der Worker einen neuen Anstoß, mit dem du die Frage beantworten kannst, gehst du in den nächsten Step.
+-    - Können du oder der Worker die Problematik nicht auflösen, so legst du ein issue im respektiven Projekt an.
+-    
+-**Der Prompt des Users ist der feste Kontaktpunkt, und keine Arbeit geht über ihn hinaus.**
+-- Ist der Scope dieses Zyklus gesetzt, wird nicht mehr davon abgewichen, es sei denn es ist explizit vom User gewünscht.
+-    - Ein Fund außerhalb des Scopes wird als ein Issue festgehalten und im nächsten Zyklus erledigt
++- Gibt dir der Worker einen neuen Anstoß, mit dem du die Frage beantworten kannst, gehst du weiter.
 +- Gibt er dir keinen, legst du ein Issue nach § Issues an.
  
- **In der Planungsphase ist die Chatausgabe nicht auf Exchanges und Action Frames begrenzt.**
--- Gib aus, was die Vorlage des Steps sagt.
++**In der Planungsphase ist die Chatausgabe nicht auf Exchanges und Action Frames begrenzt.**
 +- Gib aus, was die Vorlage des Steps sagt, damit der User den Lauf im Nachhinein nachvollziehen kann.
- 
++
  ### Step 1 — Zyklus Scope
  
- **Wiederhole in eigenen Worten, was der User will.**
- - Das Erfordernis des Users zieht sich durch den kompletten Zyklus.
+-1. Wiederhole in eigenen Worten, was der User will.
++**Wiederhole in eigenen Worten, was der User will.**
++- Das Erfordernis des Users zieht sich durch den kompletten Zyklus.
  
--**Arbeite extrem eng mit dem User, keine Arbeit geht über seinen Prompt hinaus.**
 +**Der Prompt des Users ist der feste Kontaktpunkt, und keine Arbeit geht über ihn hinaus.**
 +- Der Prompt setzt das Ziel und, falls angegeben, das Zeitbudget.
- - Ist der Scope dieses Zyklus gesetzt, wird nicht mehr davon abgewichen, es sei denn es ist explizit vom User gewünscht.
++- Ist der Scope dieses Zyklus gesetzt, wird nicht mehr davon abgewichen, es sei denn es ist explizit vom User gewünscht.
 +    - Ein Fund außerhalb des Scopes wird ein Issue nach § Issues.
- 
++
  🛑 STOP. An diesem Punkt soll grob umrissen sein was dieser Zyklus erreichen soll.
  
-@@ -217,12 +230,12 @@
- 5. Erstelle eine finale Liste von Lücken
-     - Eine neue Lücke des Workers prüfst du wie in 2 gegen RAG.
-     - Eine finale Lücke ist jede Lücke von dir die der Worker nicht schließen kann und jede Lücke von dir und dem worker die du nicht schließen kannst. 
--5. Benenne gedanklich externe Quellen, um jede finale Lücke zu schließen, zum Beispiel:
-+6. Benenne gedanklich externe Quellen, um jede finale Lücke zu schließen, zum Beispiel:
-     - Papers, Bücher.
+ ### Step 2 — Prozessuntersuchung
+@@ -219,7 +235,7 @@
      - GitHub.
      - Reddit, Stack Overflow.
      - Websites, Dokumentationen.
--6. Schreibe alle finale Lücken in den Chat, in folgendem Format.
+-7. Schreibe alle finale Lücken in den Chat, in folgendem Format.
 +7. Schreibe alle finalen Lücken in den Chat, in folgendem Format.
  
  ```
  Gap 1 — <gap in one line> — gh
-@@ -238,22 +251,24 @@
- - Titel oder Suchbegriff
- ```
- 
--7. Aktiviere nur die Skills, die du für die offenen Lücken wirklich brauchst.
--    - Maßgeblich ist die Quelle, die du in 6 an jede Lücke geschrieben hast.
-+8. Aktiviere nur die Skills, die du für die offenen Lücken wirklich brauchst.
-+    - Maßgeblich ist die Quelle, die du in 7 an jede Lücke geschrieben hast.
-     - Für `web`: Aktiviere den Skill websearch:websearch-web-research.
-     - Für `reddit`: Aktiviere den Skill reddit-cli:reddit-cli-search.
+@@ -242,15 +258,17 @@
      - Für `gh`: Aktiviere den Skill gh-cli:gh-cli-search.
      
--8. Schließe die Lücken selbst, über Web, Reddit, GitHub oder Experimente in dev/.
-+9. Schließe die Lücken selbst, über Web, Reddit, GitHub oder Experimente in dev/.
+ 9. Schließe die Lücken selbst, über Web, Reddit, GitHub oder Experimente in dev/.
 +    - Geht es um das Verhalten fremder Software, ist ihr Quellcode die erste externe Quelle.
 +    - Issues, Discussions und Doku ergänzen den Quellcode, sie ersetzen ihn nicht.
  
@@ -96,16 +89,16 @@
                      
  ---
  
-@@ -336,49 +351,59 @@
+@@ -333,49 +351,59 @@
      - Gitignorierte Dateien und extrahierte Konfigurationen existieren nur im Worktree.
      - `kill` löscht den Worktree, solche Dateien wären also verloren.
  
 +---
  
+-
+-## Session-Recap
 +## Zyklus-Recap
  
--## Session-Recap
--
 -**Der Session-Recap läuft am Ende der Session.**
 -- Nur der User kann entscheiden wann eine Session endet.
 -- Das Ende eines Zyklus ist kein Trigger für einen Session-Recap.
