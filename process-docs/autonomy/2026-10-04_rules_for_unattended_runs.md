@@ -46,15 +46,148 @@ Old:
 ```
 New:
 ```
-**Die Steps laufen sequenziell, und jeder Step endet mit einer Selbstprüfung.**
-- Am Ende eines Steps prüfst du selbst die genannten Bedingungen, du wartest nicht auf den User.
-- Ist eine Bedingung nicht erfüllt, arbeitest du im Step weiter, bis sie erfüllt ist.
-- Ist eine Bedingung aus eigener Kraft nicht erfüllbar, legst du ein Issue nach § Issues an und setzt mit dem Rest des Scopes fort.
+**Die Steps laufen sequenziell, Step 1 und Step 2 enden mit einem STOP, ab Step 3 endet jeder Abschnitt mit einer SELBSTPRÜFUNG.**
+- Bei einem STOP wartest du auf Anmerkungen des Users, bevor du fortfährst.
+
+**Eine SELBSTPRÜFUNG ist eine Liste kritischer Fragen an dich.**
+- Jeder Punkt unter einer SELBSTPRÜFUNG ist eine Frage.
+- Du beantwortest jede Frage gedanklich, bevor du weitergehst.
+- Kannst du eine Frage nicht beantworten, spawnst du einen frischen Worker.
+    - Du übergibst ihm die vollständige Problematik, inklusive deiner Zweifel.
+- Gibt dir der Worker einen neuen Anstoß, mit dem du die Frage beantworten kannst, gehst du weiter.
+- Gibt er dir keinen, legst du ein Issue nach § Issues an.
 
 **In der Planungsphase ist die Chatausgabe nicht auf Exchanges und Action Frames begrenzt.**
 - Gib aus, was die Vorlage des Steps sagt, damit der User den Lauf im Nachhinein nachvollziehen kann.
 ```
-Plus: replace every `🛑 STOP. An diesem Punkt soll` in Phase 1 with `✅ SELBSTPRÜFUNG. An diesem Punkt soll`. The conditions listed under each marker stay unchanged; they are already checkable by the model.
+### P1a — Step 3 Stage 1: STOP becomes SELBSTPRÜFUNG (workers.md, end of "Stage 1 durchsuche die DOCS.md über RAG und lies relevante Module")
+
+Old:
+```
+🛑 STOP. An diesem Punkt soll:
+                    - Grob umrissen sein welches Ziel der Zyklus erreichen soll.
+                    - Der bisherige Prozess im Projekt klar sein, und wie er mit dem was der Zyklus erreichen soll zusammenhängt.
+                    - Der Code vollständig erschlossen sein, sofern er einen Einfluss auf das was der Zyklus erreichen soll hat.
+
+#### Stage 2 Lücken identifizieren.
+```
+New:
+```
+✅ SELBSTPRÜFUNG
+                    - Ist der Code vollständig erschlossen, sofern er Einfluss auf das Ziel des Zyklus hat?
+
+#### Stage 2 Lücken identifizieren.
+```
+
+### P1b — Step 3 Stage 2: STOPs become one SELBSTPRÜFUNG (workers.md, end of "Stage 2 Lücken identifizieren", just before `---` and Phase 2)
+
+This block replaces the numbered list of Stage 2 down to the end of Phase 1. It also contains P3 and the table row of P10; both are done once this block is applied. The explanatory text of Stage 2 above the list ("Eine Lücke ist ein Informationserfordernis." through "das ist IMMER möglich.") stays unchanged.
+
+Old (from `1. Benenne gedanklich die Lücken.` down to the line before `---`):
+````
+1. Benenne gedanklich die Lücken.
+2. Benenne gedanklich externe Quellen, um die Lücke zu schließen, zum Beispiel:
+    - Papers, Bücher.
+    - GitHub.
+    - Reddit, Stack Overflow.
+    - Websites, Dokumentationen.
+3. Schreibe in den Chat die Lücken in folgendem Format.
+
+```
+Gap 1 — <gap in one line> — gh
+- Suchbegriff
+
+Gap 2 — <gap in one line> — web
+- Suchbegriff
+
+Gap 3 — <gap in one line> — reddit
+- Suchbegriff 
+```
+
+4. Prüfe jede Lücke gegen das, was bereits in RAG indexiert ist.
+
+| Inhalt | Collection |
+|---|---|
+| GitHub Issues | `github_issues` |
+| Reddit-Posts | `reddit-cli-posts` |
+| Externes Material des Projekts | `<Project>-reference` |
+
+- Melde anschließend kurz im Chat, welche Lücke sich über RAG schließt und welche offen bleibt.
+- Kein Treffer in RAG heißt nicht, dass die Lücke extern nicht zu schließen ist, es heißt nur, dass das Material noch nicht indexiert ist.
+
+🛑 STOP.
+
+5. Schließe die offen gebliebenen Lücken in Zusammenarbeit mit dem User.
+
+🛑 STOP. An diesem Punkt soll:
+                    - Grob umrissen sein welches Ziel der Zyklus erreichen soll.
+                    - Der bisherige Prozess im Projekt klar sein, und wie er mit dem was der Zyklus erreichen soll zusammenhängt.
+                    - Der Code vollständig erschlossen sein, sofern er einen Einfluss auf das was der Zyklus erreichen soll hat.
+                    - Alle Lücken, die das Erreichen des Ziels des Zyklus erschweren oder verhindern, geschlossen sein.
+````
+New:
+````
+1. Benenne gedanklich die Lücken.
+2. Prüfe jede Lücke gegen das, was bereits in RAG indexiert ist.
+
+| Inhalt | Collection |
+|---|---|
+| GitHub Issues | `github_issues` |
+| Reddit-Posts | `reddit-cli-posts` |
+| Externes Material aller Projekte | jede Collection aus `rag-cli list_collections --filter reference` |
+
+- Melde anschließend kurz im Chat, welche Lücke sich über RAG schließt und welche offen bleibt.
+- Kein Treffer in RAG heißt nicht, dass die Lücke extern nicht zu schließen ist, es heißt nur, dass das Material noch nicht indexiert ist.
+
+3. Spawne einen frischen Worker und übergib ihm deinen kompletten Kenntnisstand.
+    - Dazu gehören das Ziel des Zyklus, der bisherige Prozess, der erschlossene Code und das Ergebnis der RAG-Prüfung.
+    - Frage ihn, welche Lücken er identifiziert.
+    - Gib ihm erst im Anschluss deine eigenen Lücken und frage ihn, was er davon hält.
+4. Hake die Lücken des Workers gegen deine eigenen ab.
+    - Eine neue Lücke des Workers prüfst du wie in 2 gegen RAG.
+    - Eine reale Lücke ist jede, die nach Abgleich und RAG-Prüfung offen bleibt.
+5. Benenne gedanklich externe Quellen, um jede reale Lücke zu schließen, zum Beispiel:
+    - Papers, Bücher.
+    - GitHub.
+    - Reddit, Stack Overflow.
+    - Websites, Dokumentationen.
+6. Schreibe alle realen Lücken kurz in den Chat, in folgendem Format.
+
+```
+Gap 1 — <gap in one line> — gh
+- Suchbegriff
+
+Gap 2 — <gap in one line> — web
+- Suchbegriff
+
+Gap 3 — <gap in one line> — reddit
+- Suchbegriff 
+
+Gap 4 — <gap in one line> — literature
+- Titel oder Suchbegriff
+```
+
+7. Aktiviere nur die Skills, die du für die offenen Lücken wirklich brauchst.
+    - Maßgeblich ist die Quelle, die du in 6 an jede Lücke geschrieben hast.
+    - Für `web`: Aktiviere den Skill websearch:websearch-web-research.
+    - Für `reddit`: Aktiviere den Skill reddit-cli:reddit-cli-search.
+    - Für `gh`: Aktiviere den Skill gh-cli:gh-cli-search.
+    
+8. Schließe die Lücken selbst, über Web, Reddit, GitHub oder Experimente in dev/.
+
+**Eine Lücke, die sich nur über Papers oder Bücher schließen lässt, ist eine Literaturlücke.**
+- Mit PDFs und Büchern kannst du nicht selbst arbeiten.
+- Halte jede Literaturlücke in deiner process-docs-Datei fest.
+- Lege für jede Literaturlücke ein Issue an.
+    - Eine Literaturlücke löst der User.
+
+✅ SELBSTPRÜFUNG
+                    - Ist jede reale Lücke geschlossen oder als Literaturlücke in den process-docs und einem Issue festgehalten?
+````
+
+Step 1 and Step 2 STOPs stay unchanged.
+Each self-check asks only what its own stage produced. Goal and process history are settled with the user at the STOPs of Step 1 and Step 2; the old STOP markers repeated them cumulatively, which made sense while the user re-confirmed everything at each gate, but not for a self-check.
+Revision 2026-10-04, after user feedback: a first draft defined the self-check as "comparing a condition against evidence". The user rejected it: "Bedingung" and "Beleg" are unexplained words, and the points under the marker already say what to check. He defined it himself: the points are critical questions to the model; an unanswerable question goes to a fresh worker with the full problem; a new impulse from the worker means continue, none means issue. Step 1 and Step 2 keep their STOP; the rename applies from Step 3 on.
 
 ### P2 — Scope stays bound to the prompt, out-of-scope becomes an issue (workers.md, Phase 1 Step 1)
 
@@ -72,10 +205,12 @@ New:
 - Ist der Scope dieses Zyklus gesetzt, wird nicht mehr davon abgewichen, es sei denn es ist explizit vom User gewünscht.
     - Ein Fund außerhalb des Scopes wird ein Issue nach § Issues.
 
-✅ SELBSTPRÜFUNG. An diesem Punkt soll grob umrissen sein was dieser Zyklus erreichen soll.
+🛑 STOP. An diesem Punkt soll grob umrissen sein was dieser Zyklus erreichen soll.
 ```
 
 ### P3 — Gaps are closed by the model (workers.md, Phase 1 Step 3 Stage 2)
+
+Merged into P1b. Skip this block if P1b is applied; it stays here only as the original proposal.
 
 Old:
 ```
@@ -155,24 +290,87 @@ New:
 - Nach zwei Fehlschlägen gilt die Lücke als über RAG nicht schließbar, und du gehst zur nächsten externen Quelle über.
 ```
 
-### P6 — The session ends on its own (workers.md, Session-Recap)
+### P6 — Recap runs autonomously after every cycle (workers.md, whole section `## Session-Recap` to the end of the file)
 
-Old:
-```
+Revision 2026-10-04: the user decided the recap runs autonomously after every cycle, not once at the end of the session. This block replaces the earlier P6 draft and also contains the git step of P8.
+
+Old (from `## Session-Recap` to the end of workers.md):
+````
+## Session-Recap
+
 **Der Session-Recap läuft am Ende der Session.**
 - Nur der User kann entscheiden wann eine Session endet.
 - Das Ende eines Zyklus ist kein Trigger für einen Session-Recap.
+
+### Phase 1 — RECAP 🔍
+
+1. Gehe gedanklich alle Issues durch, die in der Session bearbeitet wurden.
+2. Gehe gedanklich alle Arbeitsaufträge des Users durch, die in dieser Session aufkamen.
+3. Gehe gedanklich durch was tatsächlich ausgeführt und abgeschlossen wurde.
+4. Präsentiere den Recap in der folgenden Form:
+
 ```
+**Issues die in der Session bearbeitet wurden**
+- Issue X (kann geschlossen werden)
+- Issue Y (bleibt offen)
+- ...
+
+**Arbeitsaufträge in dieser Session**
+- Arbeitsauftrag X
+- ...
+
+**Tatsächlich ausgeführt und abgeschlossen in dieser Session**
+- ausgeführt und abgeschlossen X
+- ...
+
+**Differenz zwischen Arbeitsaufträgen und Abgeschlossenem**
+- Vorschlag für neue Issue X
+-...
+```
+
+🛑 STOP.
+
+### Phase 2 — IMPROVE+CLOSE 🛠️
+
+1. Aktualisiere alle DOCS.md, bei denen du unsicher bist ob sie formal korrekt und auf dem neuesten Stand sind.
+2. Schreibe für alles tatsächlich Ausgeführte und Abgeschlossene process-docs, sofern nicht schon von Workern erledigt.
+3. Erstelle Issues für die Differenz zwischen Arbeitsaufträgen und Abgeschlossenem.
+4. Aktualisiere die Issue-Bodys bearbeiteter Issues bzw. schließe Issues wenn abgeschlossen.
+5. Synchronisiere die Docs nach RAG mit `[ -f .rag-docs.json ] && rag-cli update_docs .`.
+6. Schließe Git für jedes Repo, das diese Session angefasst hat, einschließlich projektübergreifender Ziele.
+    6.1 Führe pro Repo `git checkout main && git merge integration` aus, dann push.
+    - Prüfe vor dem Push auf `.claude-plugin/plugin.json`. Existiert sie, nutze `plugin-publish`, ansonsten nutze `git push`.
+````
 New:
-```
-**Der Session-Recap läuft am Ende der Session.**
-- Die Session endet, wenn der Scope aus dem Prompt des Users erledigt ist oder das Zeitbudget abgelaufen ist.
-    - Ruft der User das Ende aus, endet die Session ebenfalls.
-- Das Ende eines Zyklus ist kein Trigger für einen Session-Recap, solange der Scope offene Zyklen hat.
+````
+## Zyklus-Recap
+
+**Der Zyklus-Recap läuft autonom am Ende jedes Zyklus.**
+- Ein Zyklus endet, sobald Phase 2 Step 7 für alle Milestones abgeschlossen ist.
+- Du wartest an keiner Stelle des Recaps auf den User.
 - Der Recap ist der Bericht, den der User nach dem Lauf liest.
+
+### Phase 1 — RECAP 🔍
+
+1. Gehe gedanklich alle Issues durch, die im Zyklus bearbeitet wurden.
+2. Gehe gedanklich alle Arbeitsaufträge des Users durch, die zum Zyklus gehören.
+3. Gehe gedanklich durch was tatsächlich ausgeführt und abgeschlossen wurde.
+4. Präsentiere den Recap in der folgenden Form:
+
 ```
-In Phase 1 — RECAP: delete the `🛑 STOP.` after the template, and change the last template block to:
-```
+**Issues die im Zyklus bearbeitet wurden**
+- Issue X (geschlossen)
+- Issue Y (bleibt offen)
+- ...
+
+**Arbeitsaufträge in diesem Zyklus**
+- Arbeitsauftrag X
+- ...
+
+**Tatsächlich ausgeführt und abgeschlossen in diesem Zyklus**
+- ausgeführt und abgeschlossen X
+- ...
+
 **Differenz zwischen Arbeitsaufträgen und Abgeschlossenem**
 - Issue #X angelegt
 -...
@@ -180,6 +378,19 @@ In Phase 1 — RECAP: delete the `🛑 STOP.` after the template, and change the
 **Werkzeug-Repos, die auf den Merge durch den User warten**
 - <repo> auf Branch integration
 ```
+
+### Phase 2 — IMPROVE+CLOSE 🛠️
+
+1. Aktualisiere alle DOCS.md, bei denen du unsicher bist ob sie formal korrekt und auf dem neuesten Stand sind.
+2. Schreibe für alles tatsächlich Ausgeführte und Abgeschlossene process-docs, sofern nicht schon von Workern erledigt.
+3. Lege Issues für die Differenz zwischen Arbeitsaufträgen und Abgeschlossenem an.
+4. Aktualisiere die Issue-Bodys bearbeiteter Issues bzw. schließe Issues wenn abgeschlossen.
+5. Synchronisiere die Docs nach RAG mit `[ -f .rag-docs.json ] && rag-cli update_docs .`.
+6. Schließe Git für jedes Repo, das dieser Zyklus angefasst hat, einschließlich projektübergreifender Ziele, nach seiner Autonomiestufe.
+    6.1 Sandbox-Repo: Führe `git checkout main && git merge integration` aus, dann `git push`.
+    6.2 Werkzeug-Repo: Die Arbeit bleibt auf `integration`, du mergst und pushst nicht.
+````
+The `plugin-publish` line disappears because plugin repos are tool repos by definition and never pushed by the model. Tool repos waiting for the user are named in the recap template.
 
 ### P7 — Issues are created only by the model (issues.md)
 
@@ -211,20 +422,7 @@ New subsection under `## Kernregeln`, before `### Lebenszyklus eines Workers`:
 - Ein Sandbox-Repo ist jedes andere Repo.
     - Ein Fehler bleibt im Projekt, deshalb merged und pusht das Modell selbst.
 ```
-Session-Recap Phase 2, old:
-```
-6. Schließe Git für jedes Repo, das diese Session angefasst hat, einschließlich projektübergreifender Ziele.
-    6.1 Führe pro Repo `git checkout main && git merge integration` aus, dann push.
-    - Prüfe vor dem Push auf `.claude-plugin/plugin.json`. Existiert sie, nutze `plugin-publish`, ansonsten nutze `git push`.
-```
-New:
-```
-6. Schließe Git für jedes Repo, das diese Session angefasst hat, einschließlich projektübergreifender Ziele, nach seiner Autonomiestufe.
-    6.1 Sandbox-Repo: Führe `git checkout main && git merge integration` aus, dann `git push`.
-    6.2 Werkzeug-Repo: Die Arbeit bleibt auf `integration`, du mergst und pushst nicht.
-    - Nenne jedes Werkzeug-Repo im Recap, damit der User den Merge übernimmt.
-```
-The `plugin-publish` line disappears here because plugin repos are tool repos by definition and never pushed by the model.
+The git step of the recap that uses the autonomy level is part of P6.
 
 ### P9 — Send never points at a file (workers.md, Interaktion mit Workern)
 
@@ -265,3 +463,13 @@ Observed trigger, 2026-10-04: the orchestrator first loaded GitHub issues for Gh
 
 - The time budget is named in P2 and P6, but no mechanism measures it. A run started via cron would need the budget in its first prompt, and the orchestrator would need the start time.
 - No unattended run has happened yet. The first real run will show which of these rules still halt or misfire.
+
+## Review format the user can work with (2026-10-04)
+
+The Old/New blocks above were not usable for the user: he could not see where in workers.md a block belongs or what the file looks like afterwards ("so kann ich nicht arbeiten"). What works instead:
+
+- A complete target file (`/tmp/rules-review/workers-soll.md`), built by a script that applies every replacement with an exact-count assertion to a copy of the live file. The user can replace the rule file with it as a whole.
+- A rendered full-file diff as HTML (`/tmp/rules-review/workers-diff.html`, renderer `render_diff.py` in the same folder, `difflib` line opcodes): every line of the file, removed lines on red background, added lines on green, opened in the browser via `open`.
+- Markdown was the user's first wish, but `show` opens `.md` in CotEditor, which renders raw text without background colour; HTML is the only format here that shows red/green highlighting.
+
+Diff base used: the last commit of shared-rules (`git show HEAD:main/workers.md`), so the user's own uncommitted edits of P1, P1a, P1b appear as changes too. While applying P1b the user removed the explanatory text of Step 3 Stage 2 ("Eine Lücke ist ein Informationserfordernis." through "das ist IMMER möglich."); the target file keeps that removal, and the source-code sentence of P10 moved under the gap-closing step.
