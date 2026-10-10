@@ -1,0 +1,178 @@
+--- /Users/brunowinter2000/.claude/shared-rules/main/workers.md	2026-10-10 18:12:27
++++ /tmp/rules-review/workers-soll.md	2026-10-10 18:13:54
+@@ -38,6 +38,16 @@
+    - Der Worker macht seine Arbeit dann dort.
+ - Der Worker spawnt also im aktuellen Projekt und arbeitet im Worktree des Zielprojekts.
+ 
++### Autonomiestufe
++
++**Jedes Repo trägt eine von zwei Autonomiestufen, und sie entscheidet allein über den Abschluss nach `main`.**
++- Alles vor dem Merge nach `main` läuft in beiden Stufen ohne den User.
++- Ein Werkzeug-Repo ist ein Repo, von dem andere Sessions zur Laufzeit abhängen.
++    - Beispiele sind jedes Repo unter `~/Documents/ai/Meta/`, jedes Repo mit `.claude-plugin/plugin.json`, `~/.claude/shared-rules` und `monitor-cc`.
++    - Ein Fehler auf `main` eines Werkzeug-Repos legt alle anderen Sessions lahm, deshalb merged hier der User.
++- Ein Sandbox-Repo ist jedes andere Repo.
++    - Ein Fehler bleibt im Projekt, deshalb merged und pusht das Modell selbst.
++
+ ### Lebenszyklus eines Workers
+ 
+ **Worker werden für Folgetasks wiederverwendet.**
+@@ -121,7 +131,8 @@
+ ## Phase 1
+ 
+ **Die Steps laufen sequenziell mit einem Gate nach Step 1 und Step 2.**
+-- Stelle nach jedem Step die Befunde dar und warte auf Anmerkungen, bevor du fortfährst.
++- Stelle nach Step 1 und Step 2 die Befunde dar und warte auf Anmerkungen, bevor du fortfährst.
++- Ab Step 3 endet jeder Abschnitt mit einer SELBSTPRÜFUNG statt mit einem Gate.
+ 
+ **Eine SELBSTPRÜFUNG ist eine Liste kritischer Fragen an dich.**
+ - Jeder Punkt unter einer SELBSTPRÜFUNG ist eine Frage.
+@@ -129,18 +140,20 @@
+ - Kannst du eine Frage nicht beantworten, spawnst du einen frischen Worker.
+     - Du übergibst ihm die vollständige Problematik, inklusive deiner Zweifel.
+ - Gibt dir der Worker einen neuen Anstoß, mit dem du die Frage beantworten kannst, gehst du weiter.
+-- Gibt er dir keinen, legst du ein Issue nach an.
++- Gibt er dir keinen, legst du ein Issue nach § Issues an.
+ 
+ **In der Planungsphase ist die Chatausgabe nicht auf Exchanges und Action Frames begrenzt.**
+-- Gib aus, was die Vorlage des Steps sagt.
++- Gib aus, was die Vorlage des Steps sagt, damit der User den Lauf im Nachhinein nachvollziehen kann.
+ 
+ ### Step 1 — Zyklus Scope
+ 
+ **Wiederhole in eigenen Worten, was der User will.**
+ - Das Erfordernis des Users zieht sich durch den kompletten Zyklus.
+ 
+-**Arbeite extrem eng mit dem User, keine Arbeit geht über seinen Prompt hinaus.**
++**Der Prompt des Users ist der feste Kontaktpunkt, und keine Arbeit geht über ihn hinaus.**
++- Der Prompt setzt das Ziel und, falls angegeben, das Zeitbudget.
+ - Ist der Scope dieses Zyklus gesetzt, wird nicht mehr davon abgewichen, es sei denn es ist explizit vom User gewünscht.
++    - Ein Fund außerhalb des Scopes wird ein Issue nach § Issues.
+ 
+ 🛑 STOP. An diesem Punkt soll grob umrissen sein was dieser Zyklus erreichen soll.
+ 
+@@ -217,12 +230,12 @@
+ 5. Erstelle eine finale Liste von Lücken
+     - Eine neue Lücke des Workers prüfst du wie in 2 gegen RAG.
+     - Eine finale Lücke ist jede Lücke von dir die der Worker nicht schließen kann und jede Lücke von dir und dem worker die du nicht schließen kannst. 
+-5. Benenne gedanklich externe Quellen, um jede finale Lücke zu schließen, zum Beispiel:
++6. Benenne gedanklich externe Quellen, um jede finale Lücke zu schließen, zum Beispiel:
+     - Papers, Bücher.
+     - GitHub.
+     - Reddit, Stack Overflow.
+     - Websites, Dokumentationen.
+-6. Schreibe alle finale Lücken in den Chat, in folgendem Format.
++7. Schreibe alle finalen Lücken in den Chat, in folgendem Format.
+ 
+ ```
+ Gap 1 — <gap in one line> — gh
+@@ -238,22 +251,24 @@
+ - Titel oder Suchbegriff
+ ```
+ 
+-7. Aktiviere nur die Skills, die du für die offenen Lücken wirklich brauchst.
+-    - Maßgeblich ist die Quelle, die du in 6 an jede Lücke geschrieben hast.
++8. Aktiviere nur die Skills, die du für die offenen Lücken wirklich brauchst.
++    - Maßgeblich ist die Quelle, die du in 7 an jede Lücke geschrieben hast.
+     - Für `web`: Aktiviere den Skill websearch:websearch-web-research.
+     - Für `reddit`: Aktiviere den Skill reddit-cli:reddit-cli-search.
+     - Für `gh`: Aktiviere den Skill gh-cli:gh-cli-search.
+     
+-8. Schließe die Lücken selbst, über Web, Reddit, GitHub oder Experimente in dev/.
++9. Schließe die Lücken selbst, über Web, Reddit, GitHub oder Experimente in dev/.
++    - Geht es um das Verhalten fremder Software, ist ihr Quellcode die erste externe Quelle.
++    - Issues, Discussions und Doku ergänzen den Quellcode, sie ersetzen ihn nicht.
+ 
+ **Eine Lücke, die sich nur über Papers oder Bücher schließen lässt, ist eine Literaturlücke.**
+ - Mit PDFs und Büchern kannst du nicht selbst arbeiten.
+ - Halte jede Literaturlücke in deiner process-docs-Datei fest.
+-- Lege für jede Literaturlücke ein Issue an.
++- Lege für jede Literaturlücke ein Issue nach § Issues an.
+     - Eine Literaturlücke löst der User.
+ 
+ ✅ SELBSTPRÜFUNG
+-                    - Ist jede reale Lücke geschlossen oder als Literaturlücke in den process-docs und einem Issue festgehalten?
++                    - Ist jede finale Lücke geschlossen oder als Literaturlücke in den process-docs und einem Issue festgehalten?
+                     
+ ---
+ 
+@@ -336,49 +351,59 @@
+     - Gitignorierte Dateien und extrahierte Konfigurationen existieren nur im Worktree.
+     - `kill` löscht den Worktree, solche Dateien wären also verloren.
+ 
++---
+ 
++## Zyklus-Recap
+ 
+-## Session-Recap
+-
+-**Der Session-Recap läuft am Ende der Session.**
+-- Nur der User kann entscheiden wann eine Session endet.
+-- Das Ende eines Zyklus ist kein Trigger für einen Session-Recap.
++**Der Zyklus-Recap läuft autonom am Ende jedes Zyklus.**
++- Ein Zyklus endet, sobald Phase 2 Step 7 für alle Milestones abgeschlossen ist.
++- Du wartest an keiner Stelle des Recaps auf den User.
++- Der Recap ist der Bericht, den der User nach dem Lauf liest.
+ 
+ ### Phase 1 — RECAP 🔍
+ 
+-1. Gehe gedanklich alle Issues durch, die in der Session bearbeitet wurden.
+-2. Gehe gedanklich alle Arbeitsaufträge des Users durch, die in dieser Session aufkamen.
++1. Gehe gedanklich alle Issues durch, die im Zyklus bearbeitet wurden.
++2. Gehe gedanklich alle Arbeitsaufträge des Users durch, die zum Zyklus gehören.
+ 3. Gehe gedanklich durch was tatsächlich ausgeführt und abgeschlossen wurde.
+ 4. Präsentiere den Recap in der folgenden Form:
+ 
+ ```
+-**Issues die in der Session bearbeitet wurden**
+-- Issue X (kann geschlossen werden)
++**Issues die im Zyklus bearbeitet wurden**
++- Issue X (geschlossen)
+ - Issue Y (bleibt offen)
+ - ...
+ 
+-**Arbeitsaufträge in dieser Session**
++**Arbeitsaufträge in diesem Zyklus**
+ - Arbeitsauftrag X
+ - ...
+ 
+-**Tatsächlich ausgeführt und abgeschlossen in dieser Session**
++**Tatsächlich ausgeführt und abgeschlossen in diesem Zyklus**
+ - ausgeführt und abgeschlossen X
+ - ...
+ 
+ **Differenz zwischen Arbeitsaufträgen und Abgeschlossenem**
+-- Vorschlag für neue Issue X
++- Issue #X angelegt
+ -...
++
++**Werkzeug-Repos, die auf den Merge durch den User warten**
++- <repo> auf Branch integration
+ ```
+ 
+-🛑 STOP.
+-
+ ### Phase 2 — IMPROVE+CLOSE 🛠️
+ 
+ 1. Aktualisiere alle DOCS.md, bei denen du unsicher bist ob sie formal korrekt und auf dem neuesten Stand sind.
+ 2. Schreibe für alles tatsächlich Ausgeführte und Abgeschlossene process-docs, sofern nicht schon von Workern erledigt.
+-3. Erstelle Issues für die Differenz zwischen Arbeitsaufträgen und Abgeschlossenem.
+-4. Aktualisiere die Issue-Bodys bearbeiteter Issues bzw. schließe Issues wenn abgeschlossen.
+-5. Synchronisiere die Docs nach RAG mit `[ -f .rag-docs.json ] && rag-cli update_docs .`.
+-6. Schließe Git für jedes Repo, das diese Session angefasst hat, einschließlich projektübergreifender Ziele.
+-    6.1 Führe pro Repo `git checkout main && git merge integration` aus, dann push.
+-    - Prüfe vor dem Push auf `.claude-plugin/plugin.json`. Existiert sie, nutze `plugin-publish`, ansonsten nutze `git push`.
++3. Prüfe, ob im Zyklus ein Anlass für eine Änderung an Rules oder Skills aufgetreten ist.
++    - Rules und Skills gehören dem User, du schlägst Änderungen nur vor.
++    - Ein Anlass ist ein beobachtetes Fehlverhalten, das auf einen Regel- oder Skilltext zurückgeht.
++    - Ein Anlass ist auch ein Arbeitsauftrag des Users, der eine Rule oder einen Skill betrifft.
++    - Eine plausible Verbesserung ohne Beobachtung ist kein Anlass, das folgt dem Prinzip YAGNI (Kent Beck, 1999).
++    - Für jeden Anlass legst du einen Patch gegen die aktuelle Datei unter `dev/<area>/patch/` ab.
++    - Die Beobachtung und die Begründung hältst du in deinen process-docs fest.
++    - Für jeden Anlass legst du ein Issue nach § Issues an.
++4. Lege Issues für die Differenz zwischen Arbeitsaufträgen und Abgeschlossenem an.
++5. Aktualisiere die Issue-Bodys bearbeiteter Issues bzw. schließe Issues wenn abgeschlossen.
++6. Synchronisiere die Docs nach RAG mit `[ -f .rag-docs.json ] && rag-cli update_docs .`.
++7. Schließe Git für jedes Repo, das dieser Zyklus angefasst hat, einschließlich projektübergreifender Ziele, nach seiner Autonomiestufe.
++    7.1 Sandbox-Repo: Führe `git checkout main && git merge integration` aus, dann `git push`.
++    7.2 Werkzeug-Repo: Die Arbeit bleibt auf `integration`, du mergst und pushst nicht.

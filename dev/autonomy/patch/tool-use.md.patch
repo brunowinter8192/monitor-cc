@@ -1,0 +1,21 @@
+--- /Users/brunowinter2000/.claude/shared-rules/main/tool-use.md	2026-09-25 16:10:50
++++ /tmp/rules-review/tool-use-soll.md	2026-10-10 18:21:49
+@@ -149,3 +149,18 @@
+ #### Input args
+ 
+ - `<path>` — darf relativ sein oder mit der Tilde beginnen, also `./report.md` oder `~/Desktop/foo.png`.
++
++## patchview
++
++**Nutze den Command nur wenn der User darum bittet einen Vorschlag für Rules oder Skills zu sehen.**
++- Der Command öffnet die Seite immer im Browser.
++
++### Commands
++
++| Vorgang | Command |
++|---|---|
++| Einen Patch als Seite mit rot und grün öffnen | `patchview <patch>` |
++
++#### Input args
++
++- `<patch>` — ein Patch aus `diff -u <aktuelle Datei mit absolutem Pfad> <neue Datei>`.

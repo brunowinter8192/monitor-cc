@@ -473,3 +473,14 @@ The Old/New blocks above were not usable for the user: he could not see where in
 - Markdown was the user's first wish, but `show` opens `.md` in CotEditor, which renders raw text without background colour; HTML is the only format here that shows red/green highlighting.
 
 Diff base used: the last commit of shared-rules (`git show HEAD:main/workers.md`), so the user's own uncommitted edits of P1, P1a, P1b appear as changes too. While applying P1b the user removed the explanatory text of Step 3 Stage 2 ("Eine Lücke ist ein Informationserfordernis." through "das ist IMMER möglich."); the target file keeps that removal, and the source-code sentence of P10 moved under the gap-closing step.
+
+## Proposal stored as patches, viewed with patchview (system date 2026-10-10)
+
+The system clock showed 2026-10-04 at session start and 2026-10-10 later in the same session; dates in this file follow the clock at the time of writing.
+
+- The proposal now lives as plain `diff -u` patches against the live rule files: `dev/autonomy/patch/workers.md.patch` and `dev/autonomy/patch/tool-use.md.patch`. The P-blocks above are the history of how the text came about; where they differ from the patches, the patches are authoritative.
+- `patchview <patch>` (iterative-dev `bin/`, symlinked into `~/.local/bin`; area patchview in iterative-dev) applies the patch to the live file read-only and renders the whole target file, removed lines on red, added on green, no +/- signs so copied text is clean. A patch that no longer matches fails with `STALE PATCH`.
+- Observed stale case: the user deleted the block "Sende per `send` immer den vollständigen Prompt." from workers.md while the patch was being created; patchview refused hunk 2 (P9). P9 was dropped from the proposal because the block it extended no longer exists.
+- workers.md patch also contains a new recap step: rule or skill change proposals are justified by one observed misbehaviour traced to a rule or skill text, or by a user work order touching a rule or skill; they consist of a patch in `dev/<area>/patch/`, process-docs and an issue.
+- tool-use.md patch adds a `patchview` section: run it only when the user asks to see a proposal, because it always opens the browser.
+- The user was disrupted by windows opening unasked (browser opened three times during verification). Verification of a page happens without a window: `python3 <iterative-dev>/src/patchview/__main__.py <patch>` prints the page path and opens nothing.
