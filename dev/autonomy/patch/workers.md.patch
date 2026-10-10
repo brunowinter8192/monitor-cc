@@ -1,0 +1,79 @@
+--- /Users/brunowinter2000/.claude/shared-rules/main/workers.md	2026-10-10 18:58:06
++++ /tmp/rules-review/workers-soll.md	2026-10-10 18:45:58
+@@ -37,6 +37,16 @@
+ - Für Arbeit in einem anderen Projekt erzeugst du den Ziel-Worktree nach dem Spawn.
+    - Der Worker macht seine Arbeit dann dort.
+ - Der Worker spawnt also im aktuellen Projekt und arbeitet im Worktree des Zielprojekts.
++
++### Autonomiestufe
++
++**Jedes Repo trägt eine von zwei Autonomiestufen, und sie entscheidet allein über den Abschluss nach `main`.**
++- Alles vor dem Merge nach `main` läuft in beiden Stufen ohne den User.
++- Ein Werkzeug-Repo ist ein Repo, von dem andere Sessions zur Laufzeit abhängen.
++    - Beispiele sind jedes Repo unter `~/Documents/ai/Meta/`, jedes Repo mit `.claude-plugin/plugin.json`, `~/.claude/shared-rules` und `monitor-cc`.
++    - Ein Fehler auf `main` eines Werkzeug-Repos legt alle anderen Sessions lahm, deshalb merged hier der User.
++- Ein Sandbox-Repo ist jedes andere Repo.
++    - Ein Fehler bleibt im Projekt, deshalb merged und pusht das Modell selbst.
+ 
+ ### Lebenszyklus eines Workers
+ 
+@@ -333,11 +343,14 @@
+     - Gitignorierte Dateien und extrahierte Konfigurationen existieren nur im Worktree.
+     - `kill` löscht den Worktree, solche Dateien wären also verloren.
+ 
++
++
+ ## Zyklus-Recap
+ 
+-**Der Zyklus-Recap läuft am Ende des Zyklus.**
+-- Nur der User kann entscheiden wann eine Session endet.
+-- Das Ende eines Zyklus ist kein Trigger für einen Session-Recap.
++**Der Zyklus-Recap läuft autonom am Ende jedes Zyklus.**
++- Ein Zyklus endet, sobald Phase 2 Step 7 für alle Milestones abgeschlossen ist.
++- Du wartest an keiner Stelle des Recaps auf den User.
++- Der Recap ist der Bericht, den der User nach dem Lauf liest.
+ 
+ ### Phase 1 — RECAP 🔍
+ 
+@@ -356,27 +369,33 @@
+ - Arbeitsauftrag X
+ - ...
+ 
+-**Tatsächlich ausgeführt und abgeschlossen in dieser Zyklus**
++**Tatsächlich ausgeführt und abgeschlossen in diesem Zyklus**
+ - ausgeführt und abgeschlossen X
+ - ...
+ 
+ **Differenz zwischen Arbeitsaufträgen und Abgeschlossenem**
+ - Vorschlag für neue Issue X
+ -...
++
++**Werkzeug-Repos, die auf den Merge durch den User warten**
++- <repo> auf Branch integration
+ ```
++
+ ### Phase 2 — IMPROVE+CLOSE 🛠️
+ 
+ 1. Aktualisiere alle DOCS.md, bei denen du unsicher bist ob sie formal korrekt und auf dem neuesten Stand sind.
+ 2. Schreibe für alles tatsächlich Ausgeführte und Abgeschlossene process-docs, sofern nicht schon von Workern erledigt.
+ 3. Prüfe, ob im Zyklus ein Anlass für eine Änderung an Rules oder Skills aufgetreten ist.
+-    - Anpassungen an Rules und Skills werden nur vom User durchgeführt, du schlägst Änderungen nur vor.
+-    - Ein Anlass  für eine Änderung an Rules oder Skills ist ein beobachtetes Fehlverhalten deinerseits, das auf einen Regel- oder Skilltext zurückgeht.
+-    - Ein Anlass  für eine Änderung an Rules oder Skills ist auch ein Arbeitsauftrag des Users, der eine Rule oder einen Skill betrifft.
+-    - Eine plausible "Verbesserung" ist kein Anlass, das folgt dem Prinzip YAGNI (Kent Beck, 1999).
++    - Rules und Skills gehören dem User, du schlägst Änderungen nur vor.
++    - Ein Anlass ist ein beobachtetes Fehlverhalten, das auf einen Regel- oder Skilltext zurückgeht.
++    - Ein Anlass ist auch ein Arbeitsauftrag des Users, der eine Rule oder einen Skill betrifft.
++    - Eine plausible Verbesserung ohne Beobachtung ist kein Anlass, das folgt dem Prinzip YAGNI (Kent Beck, 1999).
+     - Für jeden Anlass legst du einen Patch gegen die aktuelle Datei unter `dev/<area>/patch/` ab.
+-    - Die Beobachtung und die Begründung für eine Änderung an Rules oder Skills hältst du in deinen process-docs fest.
+-    - Für jeden Anlass legst du ein Issue an.
++    - Die Beobachtung und die Begründung hältst du in deinen process-docs fest.
++    - Für jeden Anlass legst du ein Issue nach § Issues an.
+ 4. Lege Issues für die Differenz zwischen Arbeitsaufträgen und Abgeschlossenem an.
+ 5. Aktualisiere die Issue-Bodys bearbeiteter Issues bzw. schließe Issues wenn abgeschlossen.
+ 6. Synchronisiere die Docs nach RAG mit `[ -f .rag-docs.json ] && rag-cli update_docs .`.
+-7. Schließe Git für jedes Repo, das dieser Zyklus berührt hat.
++7. Schließe Git für jedes Repo, das dieser Zyklus angefasst hat, einschließlich projektübergreifender Ziele, nach seiner Autonomiestufe.
++    7.1 Sandbox-Repo: Führe `git checkout main && git merge integration` aus, dann `git push`.
++    7.2 Werkzeug-Repo: Die Arbeit bleibt auf `integration`, du mergst und pushst nicht.
