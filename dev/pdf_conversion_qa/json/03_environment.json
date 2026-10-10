@@ -1,0 +1,14 @@
+{
+ "machine": "macOS-26.6.2-arm64-arm-64bit",
+ "mac_ver": "26.6.2",
+ "chip": "Apple M4 Pro",
+ "mineru_venv_packages": [
+  "mineru                 2.7.6",
+  "mineru_vl_utils        0.2.8",
+  "mlx                    0.31.2",
+  "mlx-vlm                0.3.12",
+  "pypdfium2              4.30.0",
+  "torch                  2.12.1",
+  "transformers           5.12.1"
+ ]
+}

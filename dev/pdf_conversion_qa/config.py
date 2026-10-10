@@ -11,6 +11,7 @@ MD_DIR = ROOT / "md"
 SAMPLES_DIR = ROOT / "samples"
 RUNS_DIR = ROOT / "runs"
 TRACES_DIR = ROOT / "traces"
+REFERENCE_DIR = ROOT / "reference"
 TESSDATA_DIR = ROOT / "tessdata"
 PATCH_DIR = ROOT / "patch"
 VENV_PYTHON = ROOT / "venv" / "bin" / "python"
@@ -25,6 +26,8 @@ MINERU_LOCK_FILE = Path.home() / ".mineru-locks" / "mineru.flock"
 MANIFEST_FILE = JSON_DIR / "01_build_sample.json"
 RUN_RESULTS_FILE = JSON_DIR / "03_run_candidate.jsonl"
 WHOLE_RESULTS_FILE = JSON_DIR / "06_run_whole_docs.jsonl"
+REFERENCE_SUMMARY_FILE = JSON_DIR / "02_extract_reference.json"
+WHOLE_SAMPLE_PAGES = 5
 
 WATCHDOG_PROC_GB = float(os.environ.get("WATCHDOG_PROC_GB", "30"))
 WATCHDOG_FLOOR_GB = float(os.environ.get("WATCHDOG_FLOOR_GB", "5"))
