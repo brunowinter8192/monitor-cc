@@ -1,0 +1,6 @@
+venv/
+tessdata/
+samples/
+runs/
+traces/
+__pycache__/
