@@ -1,5 +1,5 @@
 --- /Users/brunowinter2000/.claude/shared-rules/main/workers.md	2026-10-10 18:58:06
-+++ /tmp/rules-review/workers-soll.md	2026-10-10 18:59:18
++++ /tmp/rules-review/workers-soll.md	2026-10-10 18:59:46
 @@ -115,6 +115,8 @@
  - `🔨 Phase 2 — Step 5: Review`
  - `🔨 Phase 2 — Step 6: Recap`
@@ -31,3 +31,11 @@
  - ausgeführt und abgeschlossen X
  - ...
  
+@@ -379,4 +381,6 @@
+ 4. Lege Issues für die Differenz zwischen Arbeitsaufträgen und Abgeschlossenem an.
+ 5. Aktualisiere die Issue-Bodys bearbeiteter Issues bzw. schließe Issues wenn abgeschlossen.
+ 6. Synchronisiere die Docs nach RAG mit `[ -f .rag-docs.json ] && rag-cli update_docs .`.
+-7. Schließe Git für jedes Repo, das dieser Zyklus berührt hat.
++7. Schließe Git für jedes Repo, das dieser Zyklus berührt hat, einschließlich projektübergreifender Ziele.
++    7.1 Führe pro Repo `git checkout main && git merge integration` aus, dann push.
++    - Prüfe vor dem Push auf `.claude-plugin/plugin.json`. Existiert sie, nutze `plugin-publish`, ansonsten nutze `git push`.
