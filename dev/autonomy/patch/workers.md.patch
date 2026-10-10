@@ -1,9 +1,10 @@
---- /Users/brunowinter2000/.claude/shared-rules/main/workers.md	2026-10-10 18:38:03
-+++ /tmp/rules-review/workers-soll.md	2026-10-10 18:41:14
-@@ -38,6 +38,16 @@
+--- /Users/brunowinter2000/.claude/shared-rules/main/workers.md	2026-10-10 18:44:34
++++ /tmp/rules-review/workers-soll.md	2026-10-10 18:45:58
+@@ -37,6 +37,16 @@
+ - Für Arbeit in einem anderen Projekt erzeugst du den Ziel-Worktree nach dem Spawn.
     - Der Worker macht seine Arbeit dann dort.
  - Der Worker spawnt also im aktuellen Projekt und arbeitet im Worktree des Zielprojekts.
- 
++
 +### Autonomiestufe
 +
 +**Jedes Repo trägt eine von zwei Autonomiestufen, und sie entscheidet allein über den Abschluss nach `main`.**
@@ -13,11 +14,10 @@
 +    - Ein Fehler auf `main` eines Werkzeug-Repos legt alle anderen Sessions lahm, deshalb merged hier der User.
 +- Ein Sandbox-Repo ist jedes andere Repo.
 +    - Ein Fehler bleibt im Projekt, deshalb merged und pusht das Modell selbst.
-+
+ 
  ### Lebenszyklus eines Workers
  
- **Worker werden für Folgetasks wiederverwendet.**
-@@ -335,47 +345,57 @@
+@@ -335,11 +345,12 @@
  
  
  
@@ -34,42 +34,25 @@
  
  ### Phase 1 — RECAP 🔍
  
--1. Gehe gedanklich alle Issues durch, die in der Session bearbeitet wurden.
--2. Gehe gedanklich alle Arbeitsaufträge des Users durch, die in dieser Session aufkamen.
-+1. Gehe gedanklich alle Issues durch, die im Zyklus bearbeitet wurden.
-+2. Gehe gedanklich alle Arbeitsaufträge des Users durch, die zum Zyklus gehören.
- 3. Gehe gedanklich durch was tatsächlich ausgeführt und abgeschlossen wurde.
- 4. Präsentiere den Recap in der folgenden Form:
- 
- ```
--**Issues die in der Session bearbeitet wurden**
--- Issue X (kann geschlossen werden)
-+**Issues die im Zyklus bearbeitet wurden**
-+- Issue X (geschlossen)
- - Issue Y (bleibt offen)
- - ...
- 
--**Arbeitsaufträge in dieser Session**
-+**Arbeitsaufträge in diesem Zyklus**
+@@ -358,24 +369,33 @@
  - Arbeitsauftrag X
  - ...
  
--**Tatsächlich ausgeführt und abgeschlossen in dieser Session**
+-**Tatsächlich ausgeführt und abgeschlossen in dieser Zyklus**
 +**Tatsächlich ausgeführt und abgeschlossen in diesem Zyklus**
  - ausgeführt und abgeschlossen X
  - ...
  
  **Differenz zwischen Arbeitsaufträgen und Abgeschlossenem**
--- Vorschlag für neue Issue X
-+- Issue #X angelegt
+ - Vorschlag für neue Issue X
  -...
-+
-+**Werkzeug-Repos, die auf den Merge durch den User warten**
-+- <repo> auf Branch integration
- ```
+-```
  
 -🛑 STOP.
--
++**Werkzeug-Repos, die auf den Merge durch den User warten**
++- <repo> auf Branch integration
++```
+ 
  ### Phase 2 — IMPROVE+CLOSE 🛠️
  
  1. Aktualisiere alle DOCS.md, bei denen du unsicher bist ob sie formal korrekt und auf dem neuesten Stand sind.
