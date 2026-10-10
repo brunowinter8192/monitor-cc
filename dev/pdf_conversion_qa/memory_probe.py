@@ -106,7 +106,7 @@ def guard_reason(available_gb: float, tree_gb: Optional[float]) -> Optional[str]
 def kill_group(pgid: int) -> None:
     try:
         os.killpg(pgid, signal.SIGKILL)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         pass
 
 
