@@ -26,6 +26,7 @@ def run_monitored(
     log_path: Path,
     trace_path: Path,
     timeout_s: float,
+    sample_interval_s: float,
     footprint_interval_s: float,
 ) -> dict:
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -35,7 +36,7 @@ def run_monitored(
     with log_path.open("wb") as log:
         proc = subprocess.Popen(cmd, env=env, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         pgid = os.getpgid(proc.pid)
-        probe, stop_event, state = start_probe(proc.pid, pgid, trace_path, footprint_interval_s)
+        probe, stop_event, state = start_probe(proc.pid, pgid, trace_path, sample_interval_s, footprint_interval_s)
         timed_out = wait_with_timeout(proc, pgid, timeout_s)
         wall_s = time.monotonic() - t0
         kill_group(pgid)

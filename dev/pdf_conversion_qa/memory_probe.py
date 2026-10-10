@@ -15,7 +15,6 @@ import psutil
 
 from dev.pdf_conversion_qa.config import (
     FOOTPRINT_TIMEOUT_S,
-    SAMPLE_INTERVAL_S,
     WATCHDOG_FLOOR_GB,
     WATCHDOG_PROC_GB,
 )
@@ -30,6 +29,7 @@ def start_probe(
     root_pid: int,
     pgid: int,
     trace_path: Path,
+    sample_interval_s: float,
     footprint_interval_s: float,
 ) -> tuple[threading.Thread, threading.Event, dict]:
     stop_event = threading.Event()
@@ -42,7 +42,7 @@ def start_probe(
     }
     thread = threading.Thread(
         target=probe_loop,
-        args=(root_pid, pgid, trace_path, footprint_interval_s, stop_event, state),
+        args=(root_pid, pgid, trace_path, sample_interval_s, footprint_interval_s, stop_event, state),
         daemon=True,
         name="memory_probe",
     )
@@ -54,6 +54,7 @@ def probe_loop(
     root_pid: int,
     pgid: int,
     trace_path: Path,
+    sample_interval_s: float,
     footprint_interval_s: float,
     stop_event: threading.Event,
     state: dict,
@@ -62,7 +63,7 @@ def probe_loop(
     last_footprint_t = 0.0
     tree_gb: Optional[float] = None
     with trace_path.open("a") as trace:
-        while not stop_event.wait(SAMPLE_INTERVAL_S):
+        while True:
             available_gb = psutil.virtual_memory().available / 2 ** 30
             now = time.monotonic()
             if now - last_footprint_t >= footprint_interval_s:
@@ -75,6 +76,8 @@ def probe_loop(
             if reason is not None:
                 state["abort_reason"] = reason
                 kill_group(pgid)
+                return
+            if stop_event.wait(sample_interval_s):
                 return
 
 

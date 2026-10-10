@@ -28,7 +28,6 @@ WHOLE_RESULTS_FILE = JSON_DIR / "06_run_whole_docs.jsonl"
 
 WATCHDOG_PROC_GB = float(os.environ.get("WATCHDOG_PROC_GB", "30"))
 WATCHDOG_FLOOR_GB = float(os.environ.get("WATCHDOG_FLOOR_GB", "5"))
-SAMPLE_INTERVAL_S = 1.0
 FOOTPRINT_TIMEOUT_S = 8
 
 MINERU_ENV = {
