@@ -484,3 +484,11 @@ The system clock showed 2026-10-04 at session start and 2026-10-10 later in the 
 - workers.md patch also contains a new recap step: rule or skill change proposals are justified by one observed misbehaviour traced to a rule or skill text, or by a user work order touching a rule or skill; they consist of a patch in `dev/<area>/patch/`, process-docs and an issue.
 - tool-use.md patch adds a `patchview` section: run it only when the user asks to see a proposal, because it always opens the browser.
 - The user was disrupted by windows opening unasked (browser opened three times during verification). Verification of a page happens without a window: `python3 <iterative-dev>/src/patchview/__main__.py <patch>` prints the page path and opens nothing.
+
+## Outcome (system date 2026-10-10)
+
+The user applied the proposal himself, largely but with his own wording:
+- Applied: Phase 1 STOP only after Step 1 and Step 2, SELBSTPRÜFUNG from Step 3 on, gap search with RAG first then a fresh worker, skill activation per needed source, literature gaps as issues, the recap step for rule and skill proposals, issues for the difference, the `patchview` section in main/tool-use.md.
+- Rejected: the autonomy levels (Werkzeug-Repo / Sandbox-Repo). The user called them nonsense. The recap git step now reads only "Schließe Git für jedes Repo, das dieser Zyklus berührt hat." without saying whether to merge to main or push.
+- Kept by the user: the heading and trigger of the recap still say "Session-Recap ... am Ende der Session", "Nur der User kann entscheiden wann eine Session endet", "Das Ende eines Zyklus ist kein Trigger", while the body speaks of the cycle. This contradicts his statement in this session that the recap runs autonomously after every cycle; it was reported to him, not changed.
+- The patches in `dev/autonomy/patch/` were removed after application; git history holds them.
