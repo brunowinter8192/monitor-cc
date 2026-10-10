@@ -492,3 +492,9 @@ The user applied the proposal himself, largely but with his own wording:
 - Rejected: the autonomy levels (Werkzeug-Repo / Sandbox-Repo). The user called them nonsense. The recap git step now reads only "Schließe Git für jedes Repo, das dieser Zyklus berührt hat." without saying whether to merge to main or push.
 - Kept by the user: the heading and trigger of the recap still say "Session-Recap ... am Ende der Session", "Nur der User kann entscheiden wann eine Session endet", "Das Ende eines Zyklus ist kein Trigger", while the body speaks of the cycle. This contradicts his statement in this session that the recap runs autonomously after every cycle; it was reported to him, not changed.
 - The patches in `dev/autonomy/patch/` were removed after application; git history holds them.
+
+## Working agreement for rule edits with the user (system date 2026-10-10)
+
+- Content first, form last. The user settles the content of a rule change in the chat. Formatting and consistency (step list vs headings, numbering, term consistency, grammar) are not checked by a tool; the user rejected a rules lint ("das merke ich mir einfach").
+- When the content is done, the user asks for the complete file: write the full target file to /tmp and open it with `show` (CotEditor), so he can copy-paste it as a whole. Observed cases that this final pass fixes: "Phase 3 — Phase 2" in the step list, duplicate list number 5, "finale" vs "reale Lücke", "Issue nach an" without "§ Issues", "in dieser Zyklus".
+- Final state applied by the user: recap is "Phase 3 — Zyklus-Recap" with "Step 1 — RECAP" and "Step 2 — IMPROVE+CLOSE", step 7 merges to main and pushes, plugin repos via `plugin-publish`. The autonomous trigger sentence ("Phase 3 läuft autonom, sobald Phase 2 Step 7 für alle Milestones abgeschlossen ist.") was in the full file handed over but is not in the live file after the user's paste.
