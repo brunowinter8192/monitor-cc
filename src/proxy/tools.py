@@ -3,6 +3,8 @@ import re
 
 from src.constants import TOOL_BLOCKLIST
 
+_BLOCKED_TOOL_PREFIXES = ("mcp__claude_ai_",)
+
 _DEFERRED_IDENTIFIER = "The following deferred tools are now available via ToolSearch"
 _DEFERRED_SR_RE = re.compile(r'(?m)^<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 
@@ -12,14 +14,19 @@ def _strip_unused_tools(payload: dict) -> tuple:
     tools = payload.get("tools", [])
     if not tools:
         return payload, 0, []
-    kept = [t for t in tools if t.get("name") not in TOOL_BLOCKLIST]
-    removed_names = [t.get("name", "") for t in tools if t.get("name") in TOOL_BLOCKLIST]
+    kept = [t for t in tools if not _is_blocked_tool(t.get("name"))]
+    removed_names = [t.get("name", "") for t in tools if _is_blocked_tool(t.get("name"))]
     removed = len(tools) - len(kept)
     if removed == 0:
         return payload, 0, []
     modified = dict(payload)
     modified["tools"] = kept
     return modified, removed, removed_names
+
+def _is_blocked_tool(name) -> bool:
+    if name in TOOL_BLOCKLIST:
+        return True
+    return isinstance(name, str) and name.startswith(_BLOCKED_TOOL_PREFIXES)
 
 def _extract_deferred_tool_names(payload: dict) -> list:
     messages = payload.get("messages", [])

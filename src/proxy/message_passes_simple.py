@@ -11,6 +11,7 @@ from src.proxy.strip_sn_notice import _strip_sn_notice, _sn_notice_skip, _SN_NOT
 from src.proxy.strip_interrupt_marker import _strip_interrupt_marker, _INTERRUPT_MARKERS
 from src.proxy.strip_pasted_content import _strip_pasted_content_wrapper, _PASTED_CONTENT_OPEN_MARKER
 from src.proxy.inject_poread import _inject_poread_content, POREAD_MARKER_PREFIX
+from src.proxy.strip_total_tokens_tail import _strip_total_tokens_tail, _TOTAL_TOKENS_CLOSE_MARKER
 
 _USER_ROLES = frozenset({"user"})
 
@@ -78,6 +79,13 @@ _PASTED_CONTENT_SPEC = {
     "marker_guard": lambda c: _top_level_content_contains(c, _PASTED_CONTENT_OPEN_MARKER),
     "strip_fn": _strip_pasted_content_wrapper,
     "mod_name": "stripped_pasted_content_wrapper",
+}
+
+_TOTAL_TOKENS_TAIL_SPEC = {
+    "roles": frozenset({"system"}),
+    "marker_guard": lambda c: _top_level_content_contains(c, _TOTAL_TOKENS_CLOSE_MARKER),
+    "strip_fn": _strip_total_tokens_tail,
+    "mod_name": "stripped_total_tokens_tail",
 }
 
 _POREAD_SPEC = {
@@ -161,6 +169,10 @@ def _apply_sn_notice_strip(messages: list) -> tuple:
 
 def _apply_pasted_content_strip(messages: list) -> tuple:
     return _run_simple_pass(messages, _PASTED_CONTENT_SPEC)
+
+
+def _apply_total_tokens_tail_strip(messages: list) -> tuple:
+    return _run_simple_pass(messages, _TOTAL_TOKENS_TAIL_SPEC)
 
 
 def _apply_poread_expand_strip(messages: list) -> tuple:

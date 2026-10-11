@@ -21,6 +21,7 @@ from src.proxy.message_passes_simple import (
     _apply_interrupt_marker_strip,
     _apply_pasted_content_strip,
     _apply_poread_expand_strip,
+    _apply_total_tokens_tail_strip,
 )
 from src.proxy.message_passes_wakeup import _dedup_wakeup_blocks
 from src.proxy.rule_ops import _merge_ops
@@ -57,6 +58,7 @@ def _build_message_passes(worker_context: str) -> list:
         _apply_role_system_strip,
         _apply_sn_notice_strip,
         _apply_first_pass,
+        _apply_total_tokens_tail_strip,
         _apply_cumulative_sr_strips,
         _apply_final_sr_pass,
         _apply_po_preview_strip,

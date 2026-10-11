@@ -81,7 +81,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix.py (213 LOC)
+### test_strip_fix.py (244 LOC)
 
 **Purpose:** Entry point of the largest suite: imports every test from the sibling fixture and case modules and runs each as its own parallel strand.
 **Reads:** nothing external.
@@ -91,7 +91,7 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix_fixtures.py (87 LOC)
+### test_strip_fix_fixtures.py (94 LOC)
 
 **Purpose:** Loads the proxy strip and pass modules under test and builds the shared check helper and content fixtures.
 **Reads:** nothing external.
@@ -164,6 +164,26 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 ### test_strip_fix_cases_pasted_content.py (143 LOC)
 
 **Purpose:** Cases for the pasted-content wrap strip: real wraps stripped, quoted mentions in assistant and tool-result content preserved, pass gating and attribution.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`.
+
+---
+
+### test_strip_fix_cases_claude_ai_tools.py (61 LOC)
+
+**Purpose:** Cases for the claude.ai connector tool prefix rule: the observed Opus tool list, `advisor` and other `mcp__` tools kept, clean lists returned unchanged.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`.
+
+---
+
+### test_strip_fix_cases_total_tokens_tail.py (154 LOC)
+
+**Purpose:** Cases for the trailing total_tokens strip on role-system messages: observed wake-up message shapes, bare-marker and nudge shapes still nuked whole, other roles untouched.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `test_strip_fix.py`.
