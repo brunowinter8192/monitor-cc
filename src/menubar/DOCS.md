@@ -257,11 +257,11 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### system.py (235 LOC)
+### system.py (247 LOC)
 
 **Purpose:** Process entry point, singleton lock and Ghostty click-to-focus and monitor-launch routing for sessions, workers and monitors.
-**Reads:** the lock file; Ghostty terminal-id lookups; process table; the plist template; tmux session state.
-**Writes:** the lock file; focus log; `menubar.log`; new Ghostty window and tmux session on monitor launch; stale-id repair in the Ghostty map.
+**Reads:** the lock file; Ghostty terminal-id and owning-app lookups; process table; the plist template; tmux session state.
+**Writes:** the lock file; focus log; `menubar.log`; new Ghostty window and tmux session on monitor launch; stale-id repair in the Ghostty map; a LaunchServices activation of the worker viewer app on a worker row click.
 **Called by:** `__init__.py`, `workflow.py` (via the package export), `app.py`, `hotkey_controller.py`, `session_launch.py`, `skill_insert.py`.
 **Calls out:** none.
 
@@ -387,11 +387,11 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### ghostty.py (223 LOC)
+### ghostty.py (272 LOC)
 
-**Purpose:** Ghostty terminal UUID mapping via an OSC title-marker probe, plus a scoped single-tty reprobe for repairing one stale entry.
+**Purpose:** Ghostty terminal UUID mapping via an OSC title-marker probe across the main Ghostty and the worker viewer app, plus a scoped single-tty reprobe for repairing one stale entry.
 **Reads:** process table; terminal device files; `osascript` terminal id and name queries.
-**Writes:** terminal device files (probe and cleanup); module-level mapping state; the cwd-to-UUID map file.
+**Writes:** terminal device files (probe and cleanup); module-level mapping state (tty to UUID and tty to owning app); the cwd-to-UUID map file.
 **Called by:** `discover.py`, `system.py`, `skill_insert.py`.
 **Calls out:** `osascript` (subprocess).
 

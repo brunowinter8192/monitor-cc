@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from src.menubar.ghostty import get_ghostty_terminal_id, get_ghostty_terminal_id_for_tty, _reprobe_single_tty
+from src.menubar.ghostty import get_ghostty_app_for_tty, get_ghostty_terminal_id, get_ghostty_terminal_id_for_tty, _reprobe_single_tty
 from src.menubar.menubar_log import log_menubar, log_menubar_change
 from src.menubar.paths import PID_FILE as _LOCK_PATH, MONITOR_CC_ROOT
 from src.tmux_launcher import generate_session_name, check_session_exists, kill_session
@@ -109,7 +109,7 @@ def _focus_worker(tmux_session_name: str) -> None:
         log_menubar('latency', f'focus_worker session={tmux_session_name} tty={tty} lookup_ms={lookup_ms:.1f} '
                                 f'NO-OP reason=tty_unmapped')
         return
-    outcome, osascript_ms = _focus_terminal_by_id(term_id)
+    outcome, osascript_ms = _focus_terminal_by_id(term_id, get_ghostty_app_for_tty(tty))
     log_menubar('latency', f'focus_worker session={tmux_session_name} lookup_ms={lookup_ms:.1f} '
                             f'osascript_ms={osascript_ms:.1f} id={term_id} {outcome} attempt=1')
     if outcome != 'status=OK':
@@ -141,11 +141,11 @@ def _find_worker_viewer_tty(tmux_session_name: str) -> Optional[str]:
             return tty
     return None
 
-def _focus_terminal_by_id(term_id: str):
+def _focus_terminal_by_id(term_id: str, app):
     import time
     safe_id = term_id.replace('"', '\\"')
     script = (
-        'tell application "Ghostty"\n'
+        f'tell {app.applescript_target}\n'
         f'  focus terminal id "{safe_id}"\n'
         '  activate\n'
         'end tell'
@@ -159,7 +159,19 @@ def _focus_terminal_by_id(term_id: str):
     osascript_ms = (time.monotonic() - _t1) * 1000
     if r.returncode != 0:
         return f'status=ERR rc={r.returncode} stderr={r.stderr.strip()}', osascript_ms
+    if app.activate_from_outside:
+        _activate_bundle_from_outside(app.bundle_id)
     return 'status=OK', osascript_ms
+
+def _activate_bundle_from_outside(bundle_id: str) -> None:
+    try:
+        r = subprocess.run(['open', '-b', bundle_id], capture_output=True, text=True,
+                            encoding='utf-8', errors='replace', timeout=3)
+    except Exception as exc:
+        log_menubar('latency', f'activate_from_outside bundle={bundle_id} FAILED err={exc!r}')
+        return
+    if r.returncode != 0:
+        log_menubar('latency', f'activate_from_outside bundle={bundle_id} rc={r.returncode} stderr={r.stderr.strip()}')
 
 def _retry_focus_worker_after_reprobe(tmux_session_name: str, tty: str) -> None:
     import time
@@ -172,7 +184,7 @@ def _retry_focus_worker_after_reprobe(tmux_session_name: str, tty: str) -> None:
         return
     log_menubar('latency', f'focus_worker_reprobe session={tmux_session_name} tty={tty} '
                             f'reprobe_ms={reprobe_ms:.1f} result={fresh_id}')
-    outcome2, osascript_ms2 = _focus_terminal_by_id(fresh_id)
+    outcome2, osascript_ms2 = _focus_terminal_by_id(fresh_id, get_ghostty_app_for_tty(tty))
     log_menubar('latency', f'focus_worker session={tmux_session_name} '
                             f'osascript_ms={osascript_ms2:.1f} id={fresh_id} {outcome2} attempt=2')
 

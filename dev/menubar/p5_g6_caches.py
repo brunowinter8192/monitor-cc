@@ -31,7 +31,7 @@ def main() -> None:
 def ghostty_reads(mlog) -> None:
     g = load('ghostty')
     with mock.patch.object(g.subprocess, 'run', lambda *a, **k: run_result('1 /usr/bin/x\n77 /Applications/Ghostty.app/Contents/MacOS/ghostty\n')):
-        pid = g._ghostty_pid()
+        pid = g._app_pid(g.GHOSTTY_MAIN)
     with mock.patch.object(g.subprocess, 'run', lambda *a, **k: run_result('5 77 ttys001\n6 77 ??\n7 1 ttys009\n')):
         ttys = g._ghostty_child_ttys('77')
     print(f'DIFF ghostty_reads {digest((pid, ttys))}')
@@ -40,24 +40,24 @@ def ghostty_reads(mlog) -> None:
         return
     start = len(log_text(mlog))
     with mock.patch.object(g.subprocess, 'run', boom):
-        r = (g._ghostty_pid(), g._ghostty_child_ttys('77'), g._query_terminal_names(), g._query_single_terminal_id('m'))
+        r = (g._app_pid(g.GHOSTTY_MAIN), g._ghostty_child_ttys('77'), g._query_terminal_names(g.GHOSTTY_MAIN), g._query_single_terminal_id(g.GHOSTTY_MAIN, 'm'))
     t = since(mlog, start)
     check('g6.ghostty.subprocess_failures_logged', r == (None, [], None, None) and all(k in t for k in ('ps failed', 'osascript names failed', 'single id failed')))
     g._ghostty_tty_to_id.clear()
     g._ghostty_tty_last_refresh = 0.0
-    with mock.patch.object(g, '_ghostty_pid', lambda: '50'), mock.patch.object(g, '_ghostty_child_ttys', lambda p: ['ttys1']), \
+    with mock.patch.object(g, '_app_pid', lambda app: '50' if app is g.GHOSTTY_MAIN else None), mock.patch.object(g, '_ghostty_child_ttys', lambda p: ['ttys1']), \
          mock.patch.object(g, '_write_markers', lambda t: [('ttys1', '__GHT_a')]), mock.patch.object(g, '_clear_markers', lambda m: None), \
          mock.patch.object(g.time, 'sleep', lambda s: None), \
-         mock.patch.object(g, '_query_terminal_names', lambda: run_result('ID1|||__GHT_a\n')):
+         mock.patch.object(g, '_query_terminal_names', lambda app: run_result('ID1|||__GHT_a\n')):
         g._refresh_ghostty_tty_to_id(100.0)
     ok = g._ghostty_tty_to_id == {'ttys1': 'ID1'}
     g._ghostty_tty_to_id.clear()
     g._ghostty_tty_last_refresh = 0.0
     start = len(log_text(mlog))
-    with mock.patch.object(g, '_ghostty_pid', lambda: '50'), mock.patch.object(g, '_ghostty_child_ttys', lambda p: ['ttys1']), \
+    with mock.patch.object(g, '_app_pid', lambda app: '50' if app is g.GHOSTTY_MAIN else None), mock.patch.object(g, '_ghostty_child_ttys', lambda p: ['ttys1']), \
          mock.patch.object(g, '_write_markers', lambda t: [('ttys1', '__GHT_a')]), mock.patch.object(g, '_clear_markers', lambda m: None), \
          mock.patch.object(g.time, 'sleep', lambda s: None), \
-         mock.patch.object(g, '_query_terminal_names', lambda: run_result('', 1, 'no permission')):
+         mock.patch.object(g, '_query_terminal_names', lambda app: run_result('', 1, 'no permission')):
         g._refresh_ghostty_tty_to_id(100.0)
     check('g6.ghostty.refresh_flow_and_osascript_rc_logged', ok and 'osascript rc=1' in since(mlog, start))
 
