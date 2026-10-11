@@ -35,8 +35,8 @@ _hook_state_last_read: float = 0.0
 # FUNCTIONS
 
 def _has_active_bg(encoded_dir: str, session_id: str) -> bool:
-    tasks_dir_real = f'{_TASKS_BASE_REAL}/{encoded_dir}/{session_id}/tasks/'
-    return any(p.startswith(tasks_dir_real) for p in _bg_task_open_paths)
+    tasks_dir_real = f'{_TASKS_BASE_REAL}/{encoded_dir}/{session_id}/tasks/'.lower()
+    return any(p.lower().startswith(tasks_dir_real) for p in _bg_task_open_paths)
 
 def _refresh_bg_task_cache(now: float) -> None:
     global _bg_task_open_paths, _bg_task_holder_pids, _bg_task_last_refresh

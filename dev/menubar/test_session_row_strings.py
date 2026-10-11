@@ -24,7 +24,13 @@ _EXPECTED_ROWS_WAIT_300 = [
     [None, None, 'w-plain', '[ ]', None, None, None],
 ]
 
-_EXPECTED_ROWS_NO_WAIT = [
+_EXPECTED_ROWS_NO_WAIT_MAIN_BG = [
+    ['[3]', '*', 'alpha', '[ ]', '[B]', 'mon', 'skill'],
+    [None, None, 'w-bg', '[*]', '[B]', None, None],
+    [None, None, 'w-plain', '[ ]', None, None, None],
+]
+
+_EXPECTED_ROWS_NO_WAIT_NO_MAIN_BG = [
     ['[3]', '*', 'alpha', '[ ]', None, 'mon', 'skill'],
     [None, None, 'w-bg', '[*]', '[B]', None, None],
     [None, None, 'w-plain', '[ ]', None, None, None],
@@ -34,16 +40,20 @@ _EXPECTED_ROWS_NO_WAIT = [
 # ORCHESTRATOR
 
 def main() -> None:
-    check_rows('wait 7200s remaining', 7200, _EXPECTED_ROWS_WAIT_7200)
-    check_rows('wait 300s remaining', 300, _EXPECTED_ROWS_WAIT_300)
-    check_rows('no wait', None, _EXPECTED_ROWS_NO_WAIT)
-    check_worker_bg_change_detection()
+    check_rows('wait 7200s remaining, main has bg', 7200, True, _EXPECTED_ROWS_WAIT_7200)
+    check_rows('wait 300s remaining, main has bg', 300, True, _EXPECTED_ROWS_WAIT_300)
+    check_rows('wait 300s remaining, main without bg', 300, False, _EXPECTED_ROWS_WAIT_300)
+    check_rows('no wait, main has bg', None, True, _EXPECTED_ROWS_NO_WAIT_MAIN_BG)
+    check_rows('no wait, main without bg', None, False, _EXPECTED_ROWS_NO_WAIT_NO_MAIN_BG)
+    check_bg_change_detection()
+    check_main_bg_change_detection()
+    check_active_bg_ignores_path_case()
 
 
 # FUNCTIONS
 
-def check_rows(label: str, remaining, expected_rows: list) -> None:
-    pm = rendered_panel(make_sessions(), bg_by_project(remaining))
+def check_rows(label: str, remaining, main_has_bg: bool, expected_rows: list) -> None:
+    pm = rendered_panel(make_sessions(main_has_bg), bg_by_project(remaining))
     grid = session_grid(pm)
     actual = session_row_titles(grid)
     check(f'{label}: row strings', actual == expected_rows, f'{actual!r}')
@@ -102,20 +112,53 @@ def title_width(view) -> float:
         cell_title(view), {NSFontAttributeName: font}).size().width
 
 
-def check_worker_bg_change_detection() -> None:
-    sessions = make_sessions()
-    pm = rendered_panel(sessions, bg_by_project(300))
-    check('worker bg unchanged after rebuild', not pm.worker_bg_changed(sessions))
+def check_bg_change_detection() -> None:
+    sessions = make_sessions(True)
+    wait = bg_by_project(300)
+    pm = rendered_panel(sessions, wait)
+    check('worker bg unchanged after rebuild', not pm.bg_indicator_changed(sessions, wait))
     gained = [s._replace(has_bg=True) if s.name == 'w-plain' else s for s in sessions]
-    check('worker bg gained is detected', pm.worker_bg_changed(gained))
+    check('worker bg gained is detected', pm.bg_indicator_changed(gained, wait))
     lost = [s._replace(has_bg=False) if s.name == 'w-bg' else s for s in sessions]
-    check('worker bg lost is detected', pm.worker_bg_changed(lost))
+    check('worker bg lost is detected', pm.bg_indicator_changed(lost, wait))
 
 
-def make_sessions() -> list:
+def check_main_bg_change_detection() -> None:
+    idle = bg_by_project(None)
+    with_bg = make_sessions(True)
+    pm = rendered_panel(with_bg, idle)
+    check('main bg unchanged after rebuild', not pm.bg_indicator_changed(with_bg, idle))
+    lost = [s._replace(has_bg=False) if s.name == 'alpha' else s for s in with_bg]
+    check('main bg lost is detected', pm.bg_indicator_changed(lost, idle))
+    without_bg = make_sessions(False)
+    pm = rendered_panel(without_bg, idle)
+    check('main without bg unchanged after rebuild', not pm.bg_indicator_changed(without_bg, idle))
+    check('main bg gained is detected', pm.bg_indicator_changed(with_bg, idle))
+    pm = rendered_panel(without_bg, bg_by_project(300))
+    check('main bg gained under countdown needs no rebuild',
+          not pm.bg_indicator_changed(with_bg, bg_by_project(300)))
+    pm = rendered_panel(with_bg, bg_by_project(300))
+    check('main countdown ending with bg is detected', pm.bg_indicator_changed(with_bg, idle))
+
+
+def check_active_bg_ignores_path_case() -> None:
+    proc_cache = load('proc_cache')
+    saved = proc_cache._bg_task_open_paths
+    try:
+        base = proc_cache._TASKS_BASE_REAL
+        proc_cache._bg_task_open_paths = {f'{base}/-Users-x-ai-monitor-cc/sess1/tasks/a.output'}
+        check('bg detected when project dir name differs only by case',
+              proc_cache._has_active_bg('-Users-x-ai-Monitor-CC', 'sess1'))
+        check('bg not detected for another session in a case-different dir',
+              not proc_cache._has_active_bg('-Users-x-ai-Monitor-CC', 'sess2'))
+    finally:
+        proc_cache._bg_task_open_paths = saved
+
+
+def make_sessions(main_has_bg: bool = True) -> list:
     info = load('discover').SessionInfo
     return [
-        info(name='alpha', status='idle', has_bg=True, encoded_dir='-alpha',
+        info(name='alpha', status='idle', has_bg=main_has_bg, encoded_dir='-alpha',
              project_name='alpha', is_worker=False, cwd='/tmp/alpha', session_id='s1',
              tmux_session_name='', desktop_no=3),
         info(name='w-bg', status='working', has_bg=True, encoded_dir='-alpha-w-bg',
