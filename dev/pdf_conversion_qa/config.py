@@ -11,6 +11,7 @@ MD_DIR = ROOT / "md"
 SAMPLES_DIR = ROOT / "samples"
 RUNS_DIR = ROOT / "runs"
 TRACES_DIR = ROOT / "traces"
+REFERENCE_DIR = ROOT / "reference"
 TESSDATA_DIR = ROOT / "tessdata"
 PATCH_DIR = ROOT / "patch"
 VENV_PYTHON = ROOT / "venv" / "bin" / "python"
@@ -25,10 +26,11 @@ MINERU_LOCK_FILE = Path.home() / ".mineru-locks" / "mineru.flock"
 MANIFEST_FILE = JSON_DIR / "01_build_sample.json"
 RUN_RESULTS_FILE = JSON_DIR / "03_run_candidate.jsonl"
 WHOLE_RESULTS_FILE = JSON_DIR / "06_run_whole_docs.jsonl"
+REFERENCE_SUMMARY_FILE = JSON_DIR / "02_extract_reference.json"
+WHOLE_SAMPLE_PAGES = 5
 
 WATCHDOG_PROC_GB = float(os.environ.get("WATCHDOG_PROC_GB", "30"))
 WATCHDOG_FLOOR_GB = float(os.environ.get("WATCHDOG_FLOOR_GB", "5"))
-SAMPLE_INTERVAL_S = 1.0
 FOOTPRINT_TIMEOUT_S = 8
 
 MINERU_ENV = {
@@ -36,6 +38,7 @@ MINERU_ENV = {
     "MINERU_VIRTUAL_VRAM_SIZE": "24",
     "MINERU_TASK_RESULT_TIMEOUT_SECONDS": "14400",
     "MINERU_PDF_RENDER_THREADS": "1",
+    "HF_HUB_OFFLINE": "1",
 }
 
 MINERU_CANDIDATES = {
@@ -48,3 +51,4 @@ CHEAP_CANDIDATES = ("C4a", "C4b", "C5a", "C5b")
 WINDOW_TIMEOUT_BASE_S = 600
 WINDOW_TIMEOUT_PER_PAGE_S = 60
 WHOLE_TIMEOUT_S = 10800
+CANDIDATE_ORDER_ALL = tuple(MINERU_CANDIDATES) + CHEAP_CANDIDATES

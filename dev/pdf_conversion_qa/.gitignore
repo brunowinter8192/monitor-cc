@@ -4,3 +4,4 @@ samples/
 runs/
 traces/
 __pycache__/
+reference/

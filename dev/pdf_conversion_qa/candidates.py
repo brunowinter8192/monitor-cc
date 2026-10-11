@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 from dev.pdf_conversion_qa.config import (
@@ -23,11 +24,14 @@ from dev.pdf_conversion_qa.runner import mineru_lock, run_monitored, teardown_fa
 ROOT_PACKAGE_DIR = Path(__file__).resolve().parents[2]
 LOG_TAIL_BYTES = 60000
 CHEAP_WINDOW_TIMEOUT_S = 900
+MINERU_SAMPLE_INTERVAL_S = 1.0
 MINERU_FOOTPRINT_INTERVAL_S = 3.0
-CHEAP_FOOTPRINT_INTERVAL_S = 1.0
+CHEAP_SAMPLE_INTERVAL_S = 0.2
+CHEAP_FOOTPRINT_INTERVAL_S = 0.2
 FAILURE_PATTERNS = (
     ("detokenizer_unicode_decode", re.compile(r"UnicodeDecodeError")),
     ("import_error", re.compile(r"ImportError|ModuleNotFoundError")),
+    ("hf_network_unreachable", re.compile(r"ProxyError|huggingface_hub.*(Connect|Offline)|LocalEntryNotFoundError")),
     ("connection_refused", re.compile(r"All connection attempts failed|Connection refused")),
     ("out_of_memory", re.compile(r"out of memory|OutOfMemory|MemoryError", re.IGNORECASE)),
 )
@@ -51,15 +55,18 @@ def run_mineru(candidate: str, window: dict, pdf: Path, run_dir: Path, n_pages: 
     spec = MINERU_CANDIDATES[candidate]
     marker = run_dir / "patch_marker.txt"
     marker.unlink(missing_ok=True)
+    shutil.rmtree(run_dir / "out", ignore_errors=True)
+    (run_dir / "trace.jsonl").unlink(missing_ok=True)
     cmd = [str(MINERU_BIN), "-p", str(pdf.parent), "-o", str(run_dir / "out"), "-b", spec["backend"], "-f", spec["formula"]]
     env = mineru_env(spec["patch"], marker)
     timeout_s = WINDOW_TIMEOUT_BASE_S + WINDOW_TIMEOUT_PER_PAGE_S * n_pages
     with mineru_lock(window["window_id"]):
-        measured = run_monitored(cmd, env, run_dir, run_dir / "run.log", run_dir / "trace.jsonl", timeout_s, MINERU_FOOTPRINT_INTERVAL_S)
+        measured = run_monitored(cmd, env, run_dir, run_dir / "run.log", run_dir / "trace.jsonl", timeout_s, MINERU_SAMPLE_INTERVAL_S, MINERU_FOOTPRINT_INTERVAL_S)
         measured["fast_api_survivors"] = teardown_fast_api()
     measured["md_path"] = locate_md(run_dir / "out", pdf.stem)
     measured["patch_marker_hits"] = len(marker.read_text().split()) if marker.exists() else 0
     measured["worker"] = {}
+    measured["hf_offline"] = True
     return measured
 
 
@@ -88,7 +95,7 @@ def run_cheap(candidate: str, window: dict, pdf: Path, run_dir: Path, n_pages: i
     env["TESSDATA_PREFIX"] = str(TESSDATA_DIR)
     env["PYTHONPATH"] = str(ROOT_PACKAGE_DIR)
     timeout_s = CHEAP_WINDOW_TIMEOUT_S if scope == "windows" else WHOLE_TIMEOUT_S
-    measured = run_monitored(cmd, env, run_dir, run_dir / "run.log", run_dir / "trace.jsonl", timeout_s, CHEAP_FOOTPRINT_INTERVAL_S)
+    measured = run_monitored(cmd, env, run_dir, run_dir / "run.log", run_dir / "trace.jsonl", timeout_s, CHEAP_SAMPLE_INTERVAL_S, CHEAP_FOOTPRINT_INTERVAL_S)
     measured["md_path"] = str(out_md) if out_md.exists() else None
     measured["patch_marker_hits"] = 0
     measured["worker"] = parse_worker_result(run_dir / "run.log")
@@ -172,6 +179,7 @@ def build_row(candidate: str, window: dict, rep: int, scope: str, run_dir: Path,
         "md_sha256_16": md_sha,
         "patch_marker_hits": measured["patch_marker_hits"],
         "fast_api_survivors": measured.get("fast_api_survivors"),
+        "hf_offline": measured.get("hf_offline", False),
         "worker": measured["worker"],
         **log_flags(run_dir),
     }

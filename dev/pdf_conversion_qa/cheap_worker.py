@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import argparse
 import json
+import resource
 import sys
 import time
 from pathlib import Path
@@ -24,6 +25,7 @@ def cheap_worker_workflow() -> None:
         "convert_s": round(t_done - t_loaded, 3),
         "pages_out": len(page_texts),
         "chars_out": sum(len(text) for text in page_texts),
+        **peak_rss_bytes(),
     }))
 
 
@@ -83,6 +85,13 @@ def liteparse_converter(ocr_enabled: bool, tessdata: str):
         return [page.markdown or "" for page in result.pages]
 
     return convert
+
+
+def peak_rss_bytes() -> dict:
+    return {
+        "maxrss_self_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        "maxrss_children_bytes": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,
+    }
 
 
 def write_outputs(page_texts: list[str], out_md: Path, offsets_json: Path) -> None:
