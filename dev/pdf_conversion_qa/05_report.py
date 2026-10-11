@@ -22,6 +22,9 @@ CALIBRATION_PREFIX = "TelekomPib"
 CLASS_COLUMNS = ("A", "B", "C", "F", "G", "H", "I")
 CANDIDATE_ORDER = tuple(MINERU_CANDIDATES) + CHEAP_CANDIDATES
 SHORT_FAILURE_LENGTH = 70
+PARTIAL_CANDIDATES = ("C2",)
+LOW_RECALL = 0.5
+TOP_PEAKS = 3
 
 
 # ORCHESTRATOR
@@ -39,7 +42,9 @@ def report_workflow() -> None:
         section_failures(rows),
         section_quality(metrics, rows, False),
         section_quality(metrics, rows, True),
+        section_silent_loss(metrics),
         section_cleanup(metrics),
+        section_peaks(rows),
         section_group_speed(rows),
         section_stability(rows),
         section_cheap_timing(rows),
@@ -168,7 +173,7 @@ def quality_row(candidate: str, metric_rows: list[dict]) -> list:
 
 def common_windows(metrics: list[dict], formula: bool) -> set:
     per_candidate = []
-    for candidate in CANDIDATE_ORDER:
+    for candidate in (c for c in CANDIDATE_ORDER if c not in PARTIAL_CANDIDATES):
         ids = {r["window_id"] for r in metrics if r["candidate"] == candidate and r["rep"] == "1" and (r["indicative"] == "True") == formula}
         if ids:
             per_candidate.append(ids)
@@ -182,14 +187,32 @@ def section_quality(metrics: list[dict], rows: list[dict], formula: bool) -> str
         selected = [r for r in metrics if r["candidate"] == candidate and r["rep"] == "1" and (r["indicative"] == "True") == formula]
         if selected:
             body_all.append(quality_row(candidate, selected))
-            body_common.append(quality_row(candidate, [r for r in selected if r["window_id"] in common]))
+            if candidate not in PARTIAL_CANDIDATES:
+                body_common.append(quality_row(candidate, [r for r in selected if r["window_id"] in common]))
     headers = ["candidate", "windows", "recall", "recall special", "recall umlaut", "out/ref length", "ref special chars", "ref umlauts"]
     title = "formula windows (indicative only)" if formula else "text windows"
     return (
         f"## Character recall vs pdftotext layer, {title}\n\n"
         "Pooled (sum matched / sum reference) over ok windows of each candidate.\n\n" + md_table(headers, body_all)
-        + f"\nSame, restricted to the {len(common)} windows where every candidate that ran succeeded.\n\n" + md_table(headers, body_common)
+        + f"\nSame, restricted to the {len(common)} windows measured by every candidate except C2 (C2 ran only on the panel).\n\n" + md_table(headers, body_common)
     )
+
+
+def section_silent_loss(metrics: list[dict]) -> str:
+    body = []
+    for candidate in CANDIDATE_ORDER:
+        low = [r for r in metrics if r["candidate"] == candidate and r["rep"] == "1" and to_float(r["recall"]) is not None and to_float(r["recall"]) < LOW_RECALL]
+        if any(r["candidate"] == candidate for r in metrics):
+            body.append([candidate, len(low), "; ".join(f"{r['window_id'][:28]} {to_float(r['recall']):.2f}" for r in low)])
+    return f"## Status ok but recall below {LOW_RECALL} (silent content loss, rep 1, includes formula windows)\n\n" + md_table(["candidate", "windows", "which"], body)
+
+
+def section_peaks(rows: list[dict]) -> str:
+    body = []
+    for candidate in MINERU_CANDIDATES:
+        top = sorted((r for r in rows if r["candidate"] == candidate), key=lambda r: -r["peak_footprint_gb"])[:TOP_PEAKS]
+        body += [[candidate, r["window_id"][:40], r["n_pages"], r["peak_footprint_gb"], r["min_available_gb"], r["wall_s"]] for r in top]
+    return "## Highest process-tree peaks of the MinerU candidates\n\n" + md_table(["candidate", "window", "pages", "peak GB", "min available GB", "wall_s"], body)
 
 
 def section_cleanup(metrics: list[dict]) -> str:

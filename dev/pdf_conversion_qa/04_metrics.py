@@ -14,7 +14,7 @@ from dev.pdf_conversion_qa.config import (
     RUN_RESULTS_FILE,
     WHOLE_RESULTS_FILE,
 )
-from dev.pdf_conversion_qa.text_metrics import ratio_or_none, recall_counts
+from dev.pdf_conversion_qa.text_metrics import output_for_pages, ratio_or_none, recall_counts
 
 WINDOW_METRICS_FILE = CSV_DIR / "04_metrics.csv"
 WHOLE_METRICS_FILE = CSV_DIR / "04_metrics_whole.csv"
@@ -53,16 +53,6 @@ def window_metrics(row: dict, group: str, eligible_pages: list[int]) -> dict:
         **recall_columns(recall_counts(reference_text, output_text)),
         **cleanup_class_counts(md_text),
     }
-
-
-def output_for_pages(row: dict, md_text: str, eligible_pages: list[int]) -> tuple[str, str]:
-    if row["candidate"] not in CHEAP_CANDIDATES:
-        return md_text, "document"
-    offsets_path = Path(row["md_path"]).with_name("offsets.json")
-    offsets = json.loads(offsets_path.read_text())
-    if len(offsets) != row["n_pages"]:
-        return md_text, "offsets_mismatch"
-    return "\n".join(md_text[offsets[page - 1][0]:offsets[page - 1][1]] for page in eligible_pages), "page"
 
 
 def recall_columns(counts: dict) -> dict:

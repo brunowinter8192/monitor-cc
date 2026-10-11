@@ -1,9 +1,12 @@
 # INFRASTRUCTURE
+import json
 import re
 import subprocess
 import unicodedata
 from collections import Counter
 from pathlib import Path
+
+from dev.pdf_conversion_qa.config import CHEAP_CANDIDATES
 
 SPECIAL_CHARS = "§„“”–—€"
 UMLAUT_CHARS = "äöüÄÖÜß"
@@ -61,3 +64,12 @@ def overlap(reference: Counter, output: Counter, subset: str | None) -> int:
 
 def ratio_or_none(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 4) if denominator else None
+
+
+def output_for_pages(row: dict, md_text: str, eligible_pages: list[int]) -> tuple[str, str]:
+    if row["candidate"] not in CHEAP_CANDIDATES:
+        return md_text, "document"
+    offsets = json.loads(Path(row["md_path"]).with_name("offsets.json").read_text())
+    if len(offsets) != row["n_pages"]:
+        return md_text, "offsets_mismatch"
+    return "\n".join(md_text[offsets[page - 1][0]:offsets[page - 1][1]] for page in eligible_pages), "page"

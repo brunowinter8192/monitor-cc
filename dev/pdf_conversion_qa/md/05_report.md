@@ -2,7 +2,7 @@
 
 ## Scope
 
-34 windows, 235 pages. Result rows per candidate: C1 42, C2 12, C3 42, C4a 102, C4b 102, C5a 102, C5b 102. Whole-document rows: 81.
+34 windows, 235 pages. Result rows per candidate: C1 42, C2 12, C3 42, C4a 102, C4b 102, C5a 102, C5b 102. Whole-document rows: 84.
 
 ## Startup floor (1-page PDF, 3 runs)
 
@@ -50,17 +50,16 @@ Pooled (sum matched / sum reference) over ok windows of each candidate.
 | C5a | 31 | 0.971 | 0.0967 | 0.985 | 1.0001 | 941 | 2805 |
 | C5b | 31 | 0.9716 | 0.0978 | 0.985 | 1.0012 | 941 | 2805 |
 
-Same, restricted to the 3 windows where every candidate that ran succeeded.
+Same, restricted to the 31 windows measured by every candidate except C2 (C2 ran only on the panel).
 
 | candidate | windows | recall | recall special | recall umlaut | out/ref length | ref special chars | ref umlauts |
 |---|---|---|---|---|---|---|---|
-| C1 | 3 | 0.9611 | 0.2609 | 0.8738 | 1.0972 | 46 | 206 |
-| C2 | 3 | 0.9611 | 0.2609 | 0.8738 | 1.0972 | 46 | 206 |
-| C3 | 3 | 0.9325 | 0.5435 | 0.9612 | 1.0154 | 46 | 206 |
-| C4a | 3 | 0.97 | 0.9565 | 0.9806 | 1.0334 | 46 | 206 |
-| C4b | 3 | 0.9653 | 0.8696 | 1.0 | 0.9988 | 46 | 206 |
-| C5a | 3 | 0.9745 | 0.0217 | 1.0 | 0.9996 | 46 | 206 |
-| C5b | 3 | 0.9758 | 0.0217 | 1.0 | 0.9961 | 46 | 206 |
+| C1 | 31 | 0.9243 | 0.4293 | 0.8528 | 0.9693 | 941 | 2805 |
+| C3 | 31 | 0.9235 | 0.8523 | 0.9362 | 0.9754 | 941 | 2805 |
+| C4a | 31 | 0.8787 | 0.9129 | 0.8731 | 0.9295 | 941 | 2805 |
+| C4b | 31 | 0.9424 | 0.9862 | 0.9989 | 0.976 | 941 | 2805 |
+| C5a | 31 | 0.971 | 0.0967 | 0.985 | 1.0001 | 941 | 2805 |
+| C5b | 31 | 0.9716 | 0.0978 | 0.985 | 1.0012 | 941 | 2805 |
 
 ## Character recall vs pdftotext layer, formula windows (indicative only)
 
@@ -76,17 +75,28 @@ Pooled (sum matched / sum reference) over ok windows of each candidate.
 | C5a | 3 | 0.974 | 0.0 |  | 1.0143 | 44 | 0 |
 | C5b | 3 | 0.9748 | 0.0 |  | 1.0164 | 44 | 0 |
 
-Same, restricted to the 1 windows where every candidate that ran succeeded.
+Same, restricted to the 3 windows measured by every candidate except C2 (C2 ran only on the panel).
 
 | candidate | windows | recall | recall special | recall umlaut | out/ref length | ref special chars | ref umlauts |
 |---|---|---|---|---|---|---|---|
-| C1 | 1 | 0.9202 | 0.0 |  | 1.7815 | 10 | 0 |
-| C2 | 1 | 0.9202 | 0.0 |  | 1.7815 | 10 | 0 |
-| C3 | 1 | 0.8599 | 1.0 |  | 1.0343 | 10 | 0 |
-| C4a | 1 | 0.971 | 1.0 |  | 2.8203 | 10 | 0 |
-| C4b | 1 | 0.8018 | 1.0 |  | 1.2828 | 10 | 0 |
-| C5a | 1 | 0.9765 | 0.0 |  | 1.0581 | 10 | 0 |
-| C5b | 1 | 0.9765 | 0.0 |  | 1.0581 | 10 | 0 |
+| C1 | 3 | 0.9487 | 0.1818 |  | 1.3534 | 44 | 0 |
+| C3 | 3 | 0.8955 | 1.0 |  | 1.0866 | 44 | 0 |
+| C4a | 3 | 0.556 | 1.0 |  | 0.9707 | 44 | 0 |
+| C4b | 3 | 0.5082 | 1.0 |  | 0.6272 | 44 | 0 |
+| C5a | 3 | 0.974 | 0.0 |  | 1.0143 | 44 | 0 |
+| C5b | 3 | 0.9748 | 0.0 |  | 1.0164 | 44 | 0 |
+
+## Status ok but recall below 0.5 (silent content loss, rep 1, includes formula windows)
+
+| candidate | windows | which |
+|---|---|---|
+| C1 | 1 | CoenenbergKostenrechnungKost 0.45 |
+| C2 | 0 |  |
+| C3 | 1 | CoenenbergKostenrechnungKost 0.46 |
+| C4a | 4 | BoatrightBusinessEthicsMista 0.11; GrundeiZaumseilAufsichtsratC 0.02; GrundeiZaumseilAufsichtsratC 0.02; EfronMorris1975SteinEstimato 0.08 |
+| C4b | 2 | BoatrightBusinessEthicsMista 0.09; EfronMorris1975SteinEstimato 0.06 |
+| C5a | 0 |  |
+| C5b | 0 |  |
 
 ## Cleanup class counts (SKILL regexes, totals over ok windows, rep 1)
 
@@ -99,6 +109,20 @@ Same, restricted to the 1 windows where every candidate that ran succeeded.
 | C4b | 235 | 167 | 19 | 0 | 0 | 0 | 48 | 5 | 167 | 185 | 0 |
 | C5a | 235 | 3 | 18 | 0 | 0 | 30 | 241 | 7 | 3 | 256 | 0 |
 | C5b | 235 | 3 | 18 | 0 | 0 | 30 | 240 | 7 | 3 | 257 | 0 |
+
+## Highest process-tree peaks of the MinerU candidates
+
+| candidate | window | pages | peak GB | min available GB | wall_s |
+|---|---|---|---|---|---|
+| C1 | EfronMorris1975SteinEstimatorDataA_p0001 | 10 | 5.557 | 22.032 | 313.17 |
+| C1 | KeKellyXiu2019PredictingReturnsTex_p0040 | 9 | 5.469 | 21.47 | 157.75 |
+| C1 | KeKellyXiu2019PredictingReturnsTex_p0040 | 9 | 5.437 | 22.499 | 154.34 |
+| C2 | KeKellyXiu2019PredictingReturnsTex_p0040 | 9 | 5.475 | 10.162 | 156.87 |
+| C2 | WelgeEulerichCorporateGovernanceMa_p0021 | 6 | 5.221 | 10.391 | 60.56 |
+| C2 | CoenenbergKostenrechnungKostenanal_p0496 | 6 | 5.22 | 21.546 | 78.05 |
+| C3 | EfronMorris1975SteinEstimatorDataA_p0001 | 10 | 18.009 | 15.379 | 59.98 |
+| C3 | CollinsBusinessEthicsOxymoron_p0001-0008 | 8 | 16.009 | 17.83 | 72.93 |
+| C3 | BoatrightBusinessEthicsMistake_p0001-001 | 10 | 12.009 | 18.058 | 39.63 |
 
 ## Pooled wall seconds per page by window group (ok windows)
 
@@ -157,9 +181,9 @@ Same, restricted to the 1 windows where every candidate that ran succeeded.
 | candidate | ok | pages | wall_s | pages/s | peak GB max | min available GB | recall (5 sampled pages/doc) |
 |---|---|---|---|---|---|---|---|
 | C4a | 21/21 | 5130 | 1718.8 | 2.98 | 0.53 | 25.89 | 0.8835 |
-| C4b | 20/20 | 4946 | 813.6 | 6.08 | 0.95 | 25.86 | 0.9473 |
-| C5a | 20/20 | 4946 | 35.0 | 141.15 | 1.19 | 26.16 | 0.969 |
-| C5b | 20/20 | 4946 | 353.5 | 13.99 | 1.9 | 25.61 | 0.9696 |
+| C4b | 21/21 | 5130 | 832.6 | 6.16 | 0.95 | 25.17 | 0.9492 |
+| C5a | 21/21 | 5130 | 35.6 | 144.3 | 1.19 | 25.97 | 0.9691 |
+| C5b | 21/21 | 5130 | 367.3 | 13.97 | 1.9 | 25.39 | 0.9697 |
 
 ### Per document
 
@@ -246,3 +270,6 @@ Same, restricted to the 1 windows where every candidate that ran succeeded.
 | WhoEnvironmentalNoiseGuidelinesEur | 181 | C5a | ok | 0.52 | 348.077 | 0.114 | 181 | 0.9975 |  |
 | WhoEnvironmentalNoiseGuidelinesEur | 181 | C5b | ok | 5.86 | 30.887 | 0.897 | 181 | 0.9976 |  |
 | WhoNightNoiseGuidelinesEurope2009 | 184 | C4a | ok | 15.99 | 11.507 | 0.173 | 184 | 0.9819 |  |
+| WhoNightNoiseGuidelinesEurope2009 | 184 | C4b | ok | 19.07 | 9.649 | 0.606 | 184 | 0.982 |  |
+| WhoNightNoiseGuidelinesEurope2009 | 184 | C5a | ok | 0.51 | 360.784 | 0.111 | 184 | 0.971 |  |
+| WhoNightNoiseGuidelinesEurope2009 | 184 | C5b | ok | 13.82 | 13.314 | 0.907 | 184 | 0.9719 |  |
