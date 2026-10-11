@@ -31,7 +31,7 @@ class _PanelLookups:
     def __init__(self):
         self.displayed_items = {}
         self.cwd_map = {}
-        self.worker_tag_map = {}
+        self.worker_dir_by_tag = {}
         self.desktop_to_cwd = {}
         self.abort_btns_by_project = {}
         self.abort_project_for_tag = {}
@@ -166,7 +166,7 @@ class PanelManager:
             btn.setTag_(tag)
             btn.setTarget_(self.app._panel_controller)
             btn.setAction_(b'focusWorker:')
-        self._lookups.worker_tag_map[tag] = s.tmux_session_name
+        self._lookups.worker_dir_by_tag[tag] = s.encoded_dir
         if badge_btn is not None:
             self._lookups.static_bg_names.add(s.name)
         grid.addRowWithViews_([empty, empty, name_btn, dot_btn,

@@ -16,6 +16,12 @@ class SessionsController:
         self._last_bg_by_project = snapshot.bg_by_project
         return snapshot.sessions
 
+    def tmux_session_for(self, encoded_dir: str) -> str:
+        for s in self._last_sessions:
+            if s.is_worker and s.encoded_dir == encoded_dir:
+                return s.tmux_session_name
+        return ''
+
     @property
     def data(self) -> list:
         return self._last_sessions

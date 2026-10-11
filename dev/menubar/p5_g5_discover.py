@@ -50,6 +50,7 @@ def worker_and_main_sessions(disc, mlog) -> None:
     disc._tmux_window_activity = lambda s: 0
     w_demote = disc._worker_session_info(_Jsonl('sw', _NOW - 5), _NOW - 5, 'enc-w', 'Proj', 'alpha', 'sw', False, hook, _NOW)
     disc._cwd_from_jsonl = lambda p: None
+    disc._cwd_from_jsonl_wide = lambda p: None
     w_mtime = disc._worker_session_info(_Jsonl('sy', _NOW - 5), _NOW - 5, 'enc-w', 'Proj', 'alpha', 'sy', True, {}, _NOW)
     m_hook = disc._main_session_info('enc-m', 'sm', False, {'sm': {'status': 'idle', 'updated_ts': _NOW - 1}}, _NOW - 500, _NOW)
     m_mtime = disc._main_session_info('enc-m', 'sm2', True, {}, _NOW - 5, _NOW)

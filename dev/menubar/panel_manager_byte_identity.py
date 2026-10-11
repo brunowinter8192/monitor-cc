@@ -161,7 +161,7 @@ def _dump_lookups(pm) -> dict:
     return {
         'displayed_items': sorted(lookups.displayed_items.keys()),
         'cwd_map': dict(sorted(lookups.cwd_map.items())),
-        'worker_tag_map': dict(sorted(lookups.worker_tag_map.items())),
+        'worker_dir_by_tag': dict(sorted(lookups.worker_dir_by_tag.items())),
         'desktop_to_cwd': dict(sorted(lookups.desktop_to_cwd.items())),
         'abort_btns_by_project': sorted(lookups.abort_btns_by_project.keys()),
         'abort_project_for_tag': dict(sorted(lookups.abort_project_for_tag.items())),

@@ -15,7 +15,7 @@ _HOME_SANDBOX = isolate_home("discover_byte_identity_")
 _NOW = 1_000_000.0
 
 _PATCHED_NAMES = [
-    '_newest_jsonl', '_has_active_bg', '_read_hook_state', '_cwd_from_jsonl',
+    '_newest_jsonl', '_has_active_bg', '_read_hook_state', '_cwd_from_jsonl', '_cwd_from_jsonl_wide',
     '_worker_tmux_session', '_tmux_session_exists', '_tmux_window_activity',
     '_proc_cwd_for_encoded_dir', '_proxy_log_newest_mtime',
 ]
@@ -54,6 +54,9 @@ def _install_fakes(discover_mod, scenario: dict) -> dict:
     discover_mod._has_active_bg = lambda encoded_dir, session_id: scenario['has_bg']
     discover_mod._read_hook_state = lambda now: scenario['hook_state']
     discover_mod._cwd_from_jsonl = lambda jsonl: scenario.get('cwd_from_jsonl')
+    discover_mod._cwd_from_jsonl_wide = lambda jsonl: scenario.get('cwd_from_jsonl')
+    discover_mod._worker_identity_cache.clear()
+    discover_mod._wide_scanned_mtime.clear()
     discover_mod._worker_tmux_session = lambda cwd, worker_name: (
         f'worker-fake-{worker_name}' if cwd else None)
     discover_mod._tmux_session_exists = lambda name: scenario.get('tmux_session_exists', False)
