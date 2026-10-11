@@ -86,7 +86,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### rules.py (149 LOC)
+### rules.py (151 LOC)
 
 **Purpose:** Runs the message-pass pipeline and the system-block replacement pass, returning the modified payload and its op records.
 **Reads:** raw payload; system2 rule text via `rules_config.py`.
@@ -116,7 +116,7 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### message_passes_simple.py (167 LOC)
+### message_passes_simple.py (179 LOC)
 
 **Purpose:** Spec-driven pass runner plus the declarative specs for the simple per-block strip rules.
 **Reads:** message list.
@@ -256,6 +256,16 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
+### strip_total_tokens_tail.py (45 LOC)
+
+**Purpose:** Strips the trailing total_tokens line CC appends to the end of a system message that otherwise carries content.
+**Reads:** message content.
+**Writes:** none (returns content and removed texts).
+**Called by:** `message_passes_simple.py`.
+**Calls out:** none
+
+---
+
 ### strip_sn_notice.py (62 LOC)
 
 **Purpose:** Strips the system-notification paragraph injected ahead of task-notification tags in wake-up messages.
@@ -326,9 +336,9 @@ Response side: `response_model_probe.py` inspects the stream; the response and m
 
 ---
 
-### tools.py (45 LOC)
+### tools.py (52 LOC)
 
-**Purpose:** Pipeline helpers that remove blocklisted tools and read the deferred-tool names before their reminder is stripped.
+**Purpose:** Pipeline helpers that remove blocklisted tools (by name or claude.ai connector prefix) and read the deferred-tool names before their reminder is stripped.
 **Reads:** payload with tools and messages.
 **Writes:** none (returns tuples or lists).
 **Called by:** `addon.py`.

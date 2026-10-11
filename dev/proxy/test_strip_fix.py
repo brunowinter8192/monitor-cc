@@ -91,6 +91,18 @@ from test_strip_fix_cases_pasted_content import (
     pc08_real_tool_result_bare_mention_preserved, pc09_real_tool_result_word_mention_preserved,
     pc10_pass_role_gate_and_mod_and_ops, pc11_full_pipeline_attribution_via_strip_vocab,
 )
+from test_strip_fix_cases_claude_ai_tools import (
+    ca01_observed_opus_tool_list_loses_claude_ai_tools, ca02_advisor_entry_survives_unchanged,
+    ca03_other_mcp_tools_untouched, ca04_prefix_covers_unlisted_connector,
+    ca05_clean_list_returns_same_payload_object,
+)
+from test_strip_fix_cases_total_tokens_tail import (
+    tl01_observed_111_list_block_with_cache_control, tl02_observed_113_plain_string,
+    tl03_observed_68_three_notifications_only_tail_removed, tl04_observed_truncated_notice_list_shape_still_nuked_whole,
+    tl05_observed_bare_marker_still_nuked_whole, tl06_observed_nudge_plus_tag_still_nuked_whole,
+    tl07_non_system_roles_untouched, tl08_pass_records_mod_removed_and_second_run_is_noop,
+    tl09_ops_compose_to_stripped_tail_span,
+)
 
 # ORCHESTRATOR
 
@@ -102,7 +114,8 @@ def run_test_strip_fix_workflow() -> int:
 
 def _case_names() -> list:
     groups = [_seq_templates, _seq_env_context, _seq_git_attribution, _seq_wakeup,
-              _seq_launch_ack_interrupt, _seq_wrapped_tn, _seq_badge, _seq_pasted_content]
+              _seq_launch_ack_interrupt, _seq_wrapped_tn, _seq_badge, _seq_pasted_content,
+              _seq_claude_ai_tools, _seq_total_tokens_tail]
     return sorted(fn.__name__ for group in groups for fn in group())
 
 
@@ -206,6 +219,24 @@ def _seq_pasted_content() -> list:
         pc06_real_tool_result_wellformed_pair_preserved, pc07_real_tool_result_malformed_tag_mention_preserved,
         pc08_real_tool_result_bare_mention_preserved, pc09_real_tool_result_word_mention_preserved,
         pc10_pass_role_gate_and_mod_and_ops, pc11_full_pipeline_attribution_via_strip_vocab,
+    ]
+
+
+def _seq_claude_ai_tools() -> list:
+    return [
+        ca01_observed_opus_tool_list_loses_claude_ai_tools, ca02_advisor_entry_survives_unchanged,
+        ca03_other_mcp_tools_untouched, ca04_prefix_covers_unlisted_connector,
+        ca05_clean_list_returns_same_payload_object,
+    ]
+
+
+def _seq_total_tokens_tail() -> list:
+    return [
+        tl01_observed_111_list_block_with_cache_control, tl02_observed_113_plain_string,
+        tl03_observed_68_three_notifications_only_tail_removed, tl04_observed_truncated_notice_list_shape_still_nuked_whole,
+        tl05_observed_bare_marker_still_nuked_whole, tl06_observed_nudge_plus_tag_still_nuked_whole,
+        tl07_non_system_roles_untouched, tl08_pass_records_mod_removed_and_second_run_is_noop,
+        tl09_ops_compose_to_stripped_tail_span,
     ]
 
 
