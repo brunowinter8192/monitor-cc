@@ -35,7 +35,7 @@ class _PanelLookups:
         self.desktop_to_cwd = {}
         self.abort_btns_by_project = {}
         self.abort_project_for_tag = {}
-        self.worker_bg_names = set()
+        self.static_bg_names = set()
 
 
 class PanelManager:
@@ -131,11 +131,14 @@ class PanelManager:
         self._lookups.cwd_map[tag] = s.cwd or ''
         if dno is not None and dno not in conflict_set:
             self._lookups.desktop_to_cwd[dno] = s.cwd or ''
-        if proj_bg is not None:
-            badge_btn = _make_grid_cell_btn(_format_bg_badge(proj_bg.min_remaining), color)
+        badge_text = _main_badge_text(s, proj_bg)
+        if badge_text is not None:
+            badge_btn = _make_grid_cell_btn(badge_text, color)
             badge_btn.setTag_(tag)
             badge_btn.setTarget_(self.app._panel_controller)
             badge_btn.setAction_(b'focusSession:')
+            if proj_bg is None:
+                self._lookups.static_bg_names.add(s.name)
         else:
             badge_btn = None
         monitor_btn = _make_grid_cell_btn('mon', NSColor.systemBlueColor())
@@ -156,7 +159,7 @@ class PanelManager:
         dot = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
         name_btn = _make_grid_cell_btn(s.name)
         dot_btn  = _make_grid_cell_btn(dot)
-        badge_btn = _make_grid_cell_btn(_format_bg_badge(None)) if s.has_bg else None
+        badge_btn = _make_grid_cell_btn(_format_bg_badge(None)) if _has_static_badge(s, None) else None
         for btn in (name_btn, dot_btn, badge_btn):
             if btn is None:
                 continue
@@ -165,14 +168,16 @@ class PanelManager:
             btn.setAction_(b'focusWorker:')
         self._lookups.worker_tag_map[tag] = s.tmux_session_name
         if badge_btn is not None:
-            self._lookups.worker_bg_names.add(s.name)
+            self._lookups.static_bg_names.add(s.name)
         grid.addRowWithViews_([empty, empty, name_btn, dot_btn,
                                badge_btn if badge_btn is not None else empty, empty, empty])
         grid.rowAtIndex_(grid.numberOfRows() - 1).setHeight_(float(_ROW_H - 1))
         self._lookups.displayed_items[s.name] = (dot_btn, badge_btn)
 
-    def worker_bg_changed(self, sessions) -> bool:
-        return {s.name for s in sessions if s.is_worker and s.has_bg} != self._lookups.worker_bg_names
+    def bg_indicator_changed(self, sessions, bg_by_project) -> bool:
+        wanted = {s.name for s in sessions
+                  if _has_static_badge(s, (bg_by_project or {}).get(s.project_name))}
+        return wanted != self._lookups.static_bg_names
 
     def update_inplace(self, sessions, bg_by_project) -> None:
         session_map = {s.name: s for s in sessions}
@@ -193,6 +198,16 @@ class PanelManager:
                         _format_bg_badge(proj_bg.min_remaining),
                         {NSFontAttributeName: _MENLO(),
                          NSForegroundColorAttributeName: NSColor.systemOrangeColor()}))
+
+def _has_static_badge(s, proj_bg) -> bool:
+    return s.has_bg and (s.is_worker or proj_bg is None)
+
+def _main_badge_text(s, proj_bg):
+    if proj_bg is not None:
+        return _format_bg_badge(proj_bg.min_remaining)
+    if s.has_bg:
+        return _format_bg_badge(None)
+    return None
 
 def _make_session_grid() -> NSGridView:
     grid = NSGridView.gridViewWithNumberOfColumns_rows_(7, 0)

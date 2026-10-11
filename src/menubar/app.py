@@ -255,10 +255,10 @@ class CCMenuBarApp(rumps.App):
         new_abort_projs = {p for p in bg_by_project if p != 'unknown'}
         abort_flap = new_abort_projs != set(self.panel._lookups.abort_btns_by_project)
         set_change = session_names != set(self.panel._lookups.displayed_items)
-        worker_bg_change = self.panel.worker_bg_changed(sessions)
-        if abort_flap or set_change or worker_bg_change:
+        bg_change = self.panel.bg_indicator_changed(sessions, bg_by_project)
+        if abort_flap or set_change or bg_change:
             reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change),
-                                              ('worker-bg-change', worker_bg_change)] if v)
+                                              ('bg-change', bg_change)] if v)
             _tick_log(True, sessions, self.panel._lookups.displayed_items, reasons)
             self.panel.rebuild(sessions, bg_by_project)
             self.hotkey.reregister_digits(self.panel._lookups.desktop_to_cwd)

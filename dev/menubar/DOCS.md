@@ -41,9 +41,9 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 
 ---
 
-### test_session_row_strings.py (147 LOC)
+### test_session_row_strings.py (190 LOC)
 
-**Purpose:** Hermetic test pinning the rendered Sessions-tab row strings: main row with wait timer, worker row with background indicator, abort label, badge fit.
+**Purpose:** Hermetic test pinning Sessions-tab row strings (wait timer, own background indicator, badge fit), indicator change detection and case-insensitive background detection.
 **Reads:** nothing external; synthetic sessions and background-timer data, home directory isolated.
 **Writes:** stdout pass/fail lines; exits 1 on the first failure.
 **Called by:** none; run directly with the project venv. Never opens a window.
