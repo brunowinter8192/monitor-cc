@@ -67,9 +67,9 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### panel_manager.py (213 LOC)
+### panel_manager.py (223 LOC)
 
-**Purpose:** Controller of the main sessions panel: panel state plus full-rebuild versus in-place-update rendering.
+**Purpose:** Controller of the main sessions panel: panel state, full-rebuild versus in-place-update rendering, and the worker background-indicator change check.
 **Reads:** panel settings; sessions and background-timer data from callers.
 **Writes:** its lookup state (rebuilt per full rebuild) and the panel frame.
 **Called by:** `app.py`, `panel_lifecycle.py`.
@@ -137,7 +137,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### app.py (351 LOC)
+### app.py (353 LOC)
 
 **Purpose:** The rumps app class: owns the per-concern controllers, the main-thread tick timer and the action target for every button and hotkey.
 **Reads:** the latest discovery snapshot each tick; the settings file on launch.

@@ -4,7 +4,7 @@
 Byte-identity harnesses for `src/menubar/` module splits, plus parallel strands proving the phase 5 fallback and tripwire changes against a pristine source tree for before/after comparison. Add a script here when a menubar refactor needs a proof not covered by sibling dev areas.
 
 ## Public Interface
-No `__init__.py`. Entry paths: the three `*_byte_identity.py` scripts, and `dev/menubar/p5_run_all.py`, which runs all phase 5 strands in parallel.
+No `__init__.py`. Entry paths: the three `*_byte_identity.py` scripts, `test_session_row_strings.py`, and `dev/menubar/p5_run_all.py`, which runs all phase 5 strands in parallel.
 
 ## Flow
 Each identity script imports its `src/menubar/` target via `importlib`, drives it against synthetic or patched-I/O fixtures and hashes the resulting state to one stdout line. Each phase 5 strand asserts its group's behavior and prints pass/fail and digest lines.
@@ -38,6 +38,16 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 **Writes:** stdout only (hash line or a skip line plus a smoke line).
 **Called by:** none; verification aid, run before and after a change.
 **Calls out:** `src.menubar.panel_manager`, `src.menubar.discover`, imported lazily.
+
+---
+
+### test_session_row_strings.py (147 LOC)
+
+**Purpose:** Hermetic test pinning the rendered Sessions-tab row strings: main row with wait timer, worker row with background indicator, abort label, badge fit.
+**Reads:** nothing external; synthetic sessions and background-timer data, home directory isolated.
+**Writes:** stdout pass/fail lines; exits 1 on the first failure.
+**Called by:** none; run directly with the project venv. Never opens a window.
+**Calls out:** `src.menubar.panel_manager`, `src.menubar.discover`, `src.menubar.panel` via `p5_common.load`.
 
 ---
 
