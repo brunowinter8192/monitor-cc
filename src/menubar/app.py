@@ -73,9 +73,13 @@ class _PanelController(NSObject):
             _focus_session(cwd)
 
     def focusWorker_(self, sender):
-        tmux_session_name = self._app.panel._lookups.worker_tag_map.get(sender.tag())
-        if tmux_session_name:
-            _focus_worker(tmux_session_name)
+        tag = sender.tag()
+        encoded_dir = self._app.panel._lookups.worker_dir_by_tag.get(tag)
+        tmux_session_name = self._app.sessions.tmux_session_for(encoded_dir) if encoded_dir else ''
+        if not tmux_session_name:
+            log_menubar('latency', f'focus_worker NO-OP reason=no_tmux_session tag={tag} encoded_dir={encoded_dir}')
+            return
+        _focus_worker(tmux_session_name)
 
     def openMonitor_(self, sender):
         cwd = self._app.panel._lookups.cwd_map.get(sender.tag())

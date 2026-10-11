@@ -71,7 +71,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 **Purpose:** Controller of the main sessions panel: panel state, full-rebuild versus in-place-update rendering, and the background-indicator change check for main and worker rows.
 **Reads:** panel settings; sessions and background-timer data from callers.
-**Writes:** its lookup state (rebuilt per full rebuild) and the panel frame.
+**Writes:** its lookup state (rebuilt per full rebuild; worker rows map a tag to the row's directory identity) and the panel frame.
 **Called by:** `app.py`, `panel_lifecycle.py`.
 **Calls out:** `AppKit`, `Foundation`.
 
@@ -137,10 +137,10 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### app.py (353 LOC)
+### app.py (357 LOC)
 
 **Purpose:** The rumps app class: owns the per-concern controllers, the main-thread tick timer and the action target for every button and hotkey.
-**Reads:** the latest discovery snapshot each tick; the settings file on launch.
+**Reads:** the latest discovery snapshot each tick; the settings file on launch. A worker row click resolves the tmux session from the current snapshot by the row's stable directory identity, never from a value frozen at rebuild.
 **Writes:** bar icon; settings file on resize; `menubar.log`.
 **Called by:** `system.py` (lazy import to break an import cycle).
 **Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`.
@@ -167,9 +167,9 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### sessions_controller.py (25 LOC)
+### sessions_controller.py (31 LOC)
 
-**Purpose:** Main-thread cache of the discovery worker's latest snapshot; does no I/O itself.
+**Purpose:** Main-thread cache of the discovery worker's latest snapshot, with a lookup of a worker's current tmux session by directory identity; does no I/O itself.
 **Reads:** the discovery worker snapshot (lock-protected).
 **Writes:** its last-sessions cache.
 **Called by:** `app.py`, `panel_lifecycle.py`.
@@ -249,7 +249,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ### menubar_log.py (48 LOC)
 
-**Purpose:** Unified append-only log sink for all menubar diagnostic categories with retention cleanup.
+**Purpose:** Unified append-only UTF-8 log sink for all menubar diagnostic categories with retention cleanup.
 **Reads:** `menubar.log` (cleanup only).
 **Writes:** `menubar.log` (append).
 **Called by:** nearly every module in this directory; `dev/hotkey_latency/analyze_latency.py` reads the log file (not an import).
@@ -357,11 +357,11 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### discover.py (246 LOC)
+### discover.py (280 LOC)
 
 **Purpose:** Session discovery: scans project directories and returns live main and worker sessions with status, background flag and desktop number.
-**Reads:** project JSONL mtimes and last lines; delegates process, tmux and hook state to `proc_cache.py`, terminal mapping to `ghostty.py`, desktop numbers to `desktop_detection.py`.
-**Writes:** per-phase timing state (module level).
+**Reads:** project JSONL mtimes and tails (a worker's tmux identity is remembered per session once read, with a wider tail scan on first sighting); delegates process, tmux and hook state to `proc_cache.py`, terminal mapping to `ghostty.py`, desktop numbers to `desktop_detection.py`.
+**Writes:** per-phase timing state and the per-session worker identity cache (module level).
 **Called by:** `discovery_worker.py`; `dev/menubar_nspanel/p1_nspanel_probe.py`; `dev/menubar/discover_byte_identity.py`.
 **Calls out:** none.
 

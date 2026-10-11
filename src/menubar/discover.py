@@ -17,6 +17,10 @@ ALIVE_WINDOW_SECS      = 3600
 WORKING_THRESHOLD_SECS = 10
 THINKING_OVERRIDE_MAX_SECS = 300
 _WORKTREE_MARKER = '--claude-worktrees-'
+_WORKTREE_CWD_MARKER = '/.claude/worktrees/'
+_CWD_TAIL_BYTES = 8192
+_CWD_TAIL_LINES = 10
+_CWD_WIDE_TAIL_BYTES = 1 << 20
 
 class SessionInfo(NamedTuple):
     name: str
@@ -31,6 +35,8 @@ class SessionInfo(NamedTuple):
     desktop_no: Optional[int] = None
 
 _last_timings: Dict[str, float] = {}
+_worker_identity_cache: Dict[str, tuple] = {}
+_wide_scanned_mtime: Dict[str, float] = {}
 
 # ORCHESTRATOR
 
@@ -113,15 +119,12 @@ def _decode_dir_name(name: str) -> str:
 def _worker_session_info(jsonl: Path, mtime: float, encoded_dir: str, project_name: str,
                          worker_name: str, session_id: str, has_bg: bool, hook_state: dict,
                          now: float) -> Optional[SessionInfo]:
-    cwd = _cwd_from_jsonl(jsonl)
+    identity = _resolve_worker_identity(jsonl, session_id, mtime)
     tmux_session = ''
     display_name = worker_name
-    if cwd and '/.claude/worktrees/' in cwd:
-        project_path, _, worktree_rest = cwd.partition('/.claude/worktrees/')
-        display_name = worktree_rest.split('/')[0]
-        project_name = os.path.basename(project_path)
-        tmux_session = _worker_tmux_session(cwd, display_name) or ''
-        if not tmux_session or not _tmux_session_exists(tmux_session):
+    if identity is not None:
+        display_name, project_name, tmux_session = identity
+        if not _tmux_session_exists(tmux_session):
             return None
         alive_route = 'tmux'
     else:
@@ -146,14 +149,45 @@ def _worker_session_info(jsonl: Path, mtime: float, encoded_dir: str, project_na
                        is_worker=True, cwd='', session_id=session_id,
                        tmux_session_name=tmux_session)
 
+def _resolve_worker_identity(jsonl: Path, session_id: str, mtime: float) -> Optional[tuple]:
+    cwd = _cwd_from_jsonl(jsonl)
+    if _is_worktree_cwd(cwd):
+        return _remember_worker_identity(session_id, cwd)
+    cached = _worker_identity_cache.get(session_id)
+    if cached is not None:
+        return cached
+    if _wide_scanned_mtime.get(session_id) == mtime:
+        return None
+    _wide_scanned_mtime[session_id] = mtime
+    wide_cwd = _cwd_from_jsonl_wide(jsonl)
+    if _is_worktree_cwd(wide_cwd):
+        return _remember_worker_identity(session_id, wide_cwd)
+    return None
+
+def _is_worktree_cwd(cwd: Optional[str]) -> bool:
+    return bool(cwd) and _WORKTREE_CWD_MARKER in cwd
+
+def _remember_worker_identity(session_id: str, cwd: str) -> tuple:
+    project_path, _, worktree_rest = cwd.partition(_WORKTREE_CWD_MARKER)
+    display_name = worktree_rest.split('/')[0]
+    identity = (display_name, os.path.basename(project_path), _worker_tmux_session(cwd, display_name))
+    _worker_identity_cache[session_id] = identity
+    return identity
+
 def _cwd_from_jsonl(path: Path) -> Optional[str]:
+    return _scan_tail_for_cwd(path, _CWD_TAIL_BYTES, _CWD_TAIL_LINES)
+
+def _cwd_from_jsonl_wide(path: Path) -> Optional[str]:
+    return _scan_tail_for_cwd(path, _CWD_WIDE_TAIL_BYTES, None)
+
+def _scan_tail_for_cwd(path: Path, tail_bytes: int, max_lines: Optional[int]) -> Optional[str]:
     try:
         with open(path, 'rb') as f:
             f.seek(0, 2)
             size = f.tell()
             if size == 0:
                 return None
-            f.seek(-min(8192, size), 2)
+            f.seek(-min(tail_bytes, size), 2)
             chunk = f.read().decode('utf-8', errors='replace')
         count = 0
         for line in reversed(chunk.split('\n')):
@@ -161,7 +195,7 @@ def _cwd_from_jsonl(path: Path) -> Optional[str]:
             if not line:
                 continue
             count += 1
-            if count > 10:
+            if max_lines is not None and count > max_lines:
                 break
             try:
                 cwd = json.loads(line).get('cwd', '')
