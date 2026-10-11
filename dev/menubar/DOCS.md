@@ -4,7 +4,7 @@
 Byte-identity harnesses for `src/menubar/` module splits, plus parallel strands proving the phase 5 fallback and tripwire changes against a pristine source tree for before/after comparison. Add a script here when a menubar refactor needs a proof not covered by sibling dev areas.
 
 ## Public Interface
-No `__init__.py`. Entry paths: the three `*_byte_identity.py` scripts, `test_session_row_strings.py`, `test_ghostty_viewer_app.py`, and `dev/menubar/p5_run_all.py`, which runs all phase 5 strands in parallel.
+No `__init__.py`. Entry paths: the three `*_byte_identity.py` scripts, `test_session_row_strings.py`, `test_ghostty_viewer_app.py`, the live script `live_viewer_row_click.py`, and `dev/menubar/p5_run_all.py`, which runs all phase 5 strands in parallel.
 
 ## Flow
 Each identity script imports its `src/menubar/` target via `importlib`, drives it against synthetic or patched-I/O fixtures and hashes the resulting state to one stdout line. Each phase 5 strand asserts its group's behavior and prints pass/fail and digest lines.
@@ -58,6 +58,16 @@ Each identity script imports its `src/menubar/` target via `importlib`, drives i
 **Writes:** stdout pass/fail lines; exits 1 on the first failure.
 **Called by:** none; run directly with the project venv from `dev/menubar/`. Never opens a window.
 **Calls out:** `src.menubar.ghostty`, `src.menubar.system` via `p5_common.load`.
+
+---
+
+### live_viewer_row_click.py (107 LOC)
+
+**Purpose:** Live check of the worker row click on a real viewer window: mapping to the viewer app, front app after the click, focused terminal.
+**Reads:** the iterative-dev checkout path (argv), process table, `lsappinfo`, viewer app AppleScript state.
+**Writes:** `md/live_viewer_row_click.md`; opens a viewer window on the live desktop and takes focus on purpose, then removes it.
+**Called by:** Run manually with the project venv: `python dev/menubar/live_viewer_row_click.py <iterative-dev root>`.
+**Calls out:** `src.menubar.ghostty`, `src.menubar.system`, tmux, `open_tmux_viewer` from iterative-dev (bash).
 
 ---
 

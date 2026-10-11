@@ -27,3 +27,7 @@ The multi-app loop in `_refresh_ghostty_tty_to_id` can stay; with one entry in `
 ## Verification
 
 Hermetic: `dev/menubar/test_ghostty_viewer_app.py` (13 checks) and `dev/menubar/p5_run_all.py` (all groups exit 0) on 2026-10-11. The live row-click check (viewer window comes to the front, terminal focused) is a separate live run recorded in the iterative-dev process-docs.
+
+## Recap addendum
+
+The live check is `dev/menubar/live_viewer_row_click.py <iterative-dev root>`; its report `dev/menubar/md/live_viewer_row_click.md` (2026-10-11 15:36:32) shows 4 of 4 checks passing: viewer tty mapped to the viewer app, terminal id present, front app after the click was `com.brunowinter.ghostty-viewer` (before: CotEditor), focused terminal equal to the mapped id. The script loads the modules without the `p5_common` home sandbox on purpose, because the iterative-dev side must build the viewer copy under the real home.
