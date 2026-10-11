@@ -32,3 +32,11 @@ Follows the proposal of the same day in this area. The user replaced "script mar
 ## Skill proposal
 
 The new `websearch-pdf` flow is stored as a patch: `dev/pdf_conversion_qa/patch/websearch-pdf-SKILL.md.patch` (view with `patchview`). It references `workflow.py extract/assemble/stats`, which do not exist yet (rebuild cycle). Open points for the next version: figure descriptions in the worker prompt, the parallel ceiling computed from available RAM instead of a fixed number, batch size (40 pages ≈ 200k tokens would also test `[1m]`).
+
+## State at session end (2026-10-11)
+
+- `CoenenbergKostenrechnungKostenanalyse_2016.md` copied to `rag-cli/data/documents/wise2627-reference/`, not indexed. No figure descriptions (first prompt version). 206 lines over 1 000 characters (longest 2 589), all long paragraphs, no tables, no repeated-character runs; check before indexing.
+- The skill patch `dev/pdf_conversion_qa/patch/websearch-pdf-SKILL.md.patch` now carries the second draft: figure descriptions in the worker prompt, parallel ceiling computed from free RAM by `extract`, all batches spawned at once up to that ceiling, books over 1 000 pages covered. The user saw the full draft and closed the session before deciding on it.
+- The Menubar shows `claude-sonnet-5-5[1m]` correctly in the Models tab; Apply writes the loaded value back unchanged. Only clicking the model name cycles through the fixed list without `[1m]`. (An earlier orchestrator statement that Apply would overwrite it was wrong.)
+- Whether `[1m]` takes effect for Haiku is visible in a worker's tmux pane status line, not by a larger test batch (user correction).
+- Rebuild tracked in issue "Konvertierung" (#147, monitor-cc).

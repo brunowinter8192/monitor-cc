@@ -1,16 +1,13 @@
 --- /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch/skills/websearch-pdf/SKILL.md	2026-09-20 19:15:07
-+++ /tmp/websearch-pdf-SKILL.draft.md	2026-10-11 13:07:21
-@@ -5,102 +5,69 @@
++++ /tmp/websearch-pdf-SKILL.md	2026-10-11 14:25:43
+@@ -5,103 +5,79 @@
  
  # PDF → MD → Index — Skill
  
 -Dieser Ablauf ist interaktiv. Der NUTZER führt das Convert-Command aus, Claude macht NUR Benennung, Cleanup und Index.
 -EIN Command wandelt ALLE PDFs des Batches nacheinander um, jedes als ganzes Dokument,
 -über MinerU mit `vlm-auto-engine` (mlx).
-+Claude führt den ganzen Ablauf selbst aus, der NUTZER muss kein Command mehr ausführen.
-+Der Ablauf hat drei Stufen: LiteParse holt den Text aus dem PDF, Haiku-Worker bauen daraus Seite für Seite sauberes
-+Markdown, eine Inhaltskontrolle vergleicht das Ergebnis mit der Textebene des PDFs.
- 
+-
  ## Pfade
 -- MINERU = `~/Documents/ai/Mineru/venv/bin/python ~/Documents/ai/Mineru/workflow.py`
 +- WORKFLOW = `~/Documents/ai/Mineru/venv/bin/python ~/Documents/ai/Mineru/workflow.py`
@@ -51,20 +48,21 @@
  ```
 -- Die Ausgabe ist eine flache `<OUTPUT_DIR>/<STEM>.md` pro PDF.
 -- Der NUTZER führt den Block aus und meldet, dass er fertig ist.
-+- Das Command teilt das PDF in Stapel zu 20 Seiten.
++- Das Command teilt das PDF in Stapel zu 20 Seiten, auch bei Büchern über 1000 Seiten.
 +- Pro Stapel schreibt es den LiteParse-Text nach `anchor_<von>-<bis>.md` und den fertigen Worker-Prompt nach `prompt_<von>-<bis>.md`.
-+- Die Liste aller Stapel steht in `manifest.json`.
++- Die Liste aller Stapel und die erlaubte Zahl paralleler Worker stehen in `manifest.json`.
++  - Die Zahl berechnet das Command aus dem freien RAM, mit etwa 0,8 GB pro Worker und Reserve für das System.
 +- Ein PDF ohne Textebene bricht hier mit Fehler ab. Melde es dem Nutzer und mach mit dem nächsten PDF weiter.
  
 -## Phase 2 — Cleanup (CLAUDE)
 -Laufe über jede `<OUTPUT_DIR>/<STEM>.md`. Prüfe ZUERST, zieh also Stichproben aus den Treffern, und strippe erst danach.
 +## Phase 2 — Haiku-Worker, ein Worker pro Stapel
-+Spawne für jeden Stapel einen Worker mit dem Haiku-Modell. Nur dieser Ablauf setzt `MODEL_SELECTION_FILE`,
++Spawne alle Stapel auf einmal, bis zur Zahl aus `manifest.json`. Nur dieser Ablauf setzt `MODEL_SELECTION_FILE`,
 +alle anderen Worker bleiben Sonnet.
 +```
 +MODEL_SELECTION_FILE=~/Documents/ai/Mineru/config/pdf_models.json worker-cli spawn pdf-<stem>-<von> /tmp/pdf_<STEM>/prompt_<von>-<bis>.md
 +```
-+- Es laufen höchstens <N> Worker gleichzeitig. Starte den nächsten Stapel, sobald ein Worker fertig ist.
++- Gibt es mehr Stapel als erlaubte Worker, startet der nächste Stapel, sobald ein Worker fertig ist.
 +- Ein Worker ist fertig, wenn `batch_<von>-<bis>.md` existiert und er idle ist. Kille ihn dann mit `worker-cli kill`.
 +- Fehlt die Datei, obwohl der Worker idle ist, spawne den Stapel einmal neu. Scheitert er erneut, melde den Stapel dem Nutzer.
  
@@ -114,6 +112,21 @@
 -  - **echter Fließtext, echte Tabelle oder echte Formel** bleibt stehen.
 -  Scanne erneut und melde die maximale Zeilenlänge und die maximale Blocklänge. Benenne jede verbleibende Passage über
 -  1000 Zeichen als echten Inhalt.
++**Was jeder Haiku-Worker per Prompt bekommt:**
++- Er liest den LiteParse-Text seines Stapels vollständig.
++- Er liest seine Seiten mit dem Read-Tool direkt aus dem PDF, also als Bild.
++- Der LiteParse-Text ist die Quelle für die Zeichen, die Seitenbilder sind die Quelle für die Struktur.
++- Er schreibt jeden Inhalt der Seiten in der Originalsprache ab, ohne zu kürzen, zu übersetzen oder zu ergänzen.
++- Jede Seite beginnt mit `<!-- page N -->`.
++- Überschriften als Markdown-Überschriften, Tabellen als Pipe-Tabellen mit jeder Zelle, Formeln als LaTeX.
++- Typografische Zeichen bleiben wie gedruckt, also „ “, –, §, €.
++- Jede Abbildung bekommt eine Beschreibung in Textform: was dargestellt ist, Beschriftungen, Beziehungen und Zahlen.
++- Kopfzeilen, Fußzeilen, Seitenzahlen und Punktlinien aus Inhaltsverzeichnissen fallen weg.
++- Getrennte Wörter am Zeilenende werden zusammengefügt.
+ 
+-Fließtext-Fenster für jede md: Zieh 1 bis 2 Textzeilen aus dem mittleren Drittel, mit einer Länge über 70, beginnend mit
+-einem Buchstaben, mit mehr als 10 Leerzeichen und einem Alpha-Anteil über 0.78, und LIES sie. Ist der Text kohärent, ist
+-der Test bestanden. Ist er zerschossen, ist es Klasse A und du meldest es als nicht wiederherstellbar.
 +## Phase 3 — Zusammenführen und Inhaltskontrolle
 +```
 +WORKFLOW assemble --batch-dir /tmp/pdf_<STEM>/ --out-dir <OUTPUT_DIR>
@@ -123,30 +136,28 @@
 +- Ein Stapel unter der Schwelle gilt als gescheitert: Das Command nennt ihn, und du spawnst ihn einmal neu.
 +- Jeder Lauf landet in `~/Documents/ai/Mineru/logs/conversions.jsonl`.
  
--Fließtext-Fenster für jede md: Zieh 1 bis 2 Textzeilen aus dem mittleren Drittel, mit einer Länge über 70, beginnend mit
--einem Buchstaben, mit mehr als 10 Leerzeichen und einem Alpha-Anteil über 0.78, und LIES sie. Ist der Text kohärent, ist
--der Test bestanden. Ist er zerschossen, ist es Klasse A und du meldest es als nicht wiederherstellbar.
-+## Phase 4 — Stichprobe (CLAUDE)
-+Zieh aus jeder `<STEM>.md` drei Stellen, je eine aus Anfang, Mitte und Ende, und vergleiche sie mit dem PDF.
-+Achte auf ausgelassene Absätze, erfundenen Text, zerbrochene Tabellen und Formeln.
-+Melde jeden Fund mit Seite an den Nutzer.
- 
 -Skripte pro Problem: je ein `/tmp/fix_<issue>_<STEM>.py`, teste es an der Datei, scanne diese Klasse erneut auf 0 und
 -prüfe stichprobenartig 10 bis 15 Zeilen aus der Mitte. Erhalte den Quellinhalt, überschreibe direkt an Ort und Stelle und
 -sichere vorher nach `/tmp/backup_<STEM>.md`.
++## Phase 4 — Stichprobe (CLAUDE)
++Zieh aus jeder `<STEM>.md` drei Stellen, je eine aus Anfang, Mitte und Ende, und vergleiche sie mit dem PDF.
++Achte auf ausgelassene Absätze, erfundenen Text, zerbrochene Tabellen, Formeln und Abbildungen ohne Beschreibung.
++Melde jeden Fund mit Seite an den Nutzer.
+ 
+-## Phase 3 — Index (CLAUDE)
 +Prüfe zusätzlich übergroße Passagen, weil sie den Embedder zum Absturz bringen:
 +```bash
 +awk '{ if (length($0) > 1000) print NR, length($0) }' "$MD"
 +awk 'BEGIN{RS="\n\n"} { gsub(/\n/," "); if (length($0) > 1000) print NR, length($0) }' "$MD"
-+```
-+Ein Lauf aus wiederholten Zeichen (`(.)\1{39,}`) wird auf 3 Zeichen gekürzt, echter Inhalt bleibt stehen.
- 
--## Phase 3 — Index (CLAUDE)
-+## Phase 5 — Index
  ```
++Ein Lauf aus wiederholten Zeichen (`(.)\1{39,}`) wird auf 3 Zeichen gekürzt, echter Inhalt bleibt stehen.
++
++## Phase 5 — Index
++```
  rag-cli index --collection <COLLECTION>
  ```
-@@ -110,7 +77,13 @@
+ Das läuft inkrementell und überspringt über den Hash. Es muss das EINZIGE Command in seinem Bash-Aufruf sein. Zuweisungen,
+@@ -110,7 +86,13 @@
  Wenn es zurückkommt, LIES DIE AUSGABE VOLLSTÄNDIG, bevor du meldest oder diagnostizierst.
  Der Fehler sitzt in der ERSTEN Zeile. Ein stehender Chunk-Zähler heißt, dass der Lauf BEENDET ist, und niemals dass er langsam ist.
  
