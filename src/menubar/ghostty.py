@@ -3,7 +3,7 @@ import json
 import os
 import subprocess
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, NamedTuple, Optional
 
 from src.menubar.menubar_log import log_menubar, log_menubar_change
 from src.menubar.paths import _APP_SUPPORT
@@ -12,7 +12,22 @@ from src.menubar.proc_cache import _cc_proc_cache, cc_proc_cache_snapshot
 _GHOSTTY_TTY_REFRESH_INTERVAL = 10.0
 _GHOSTTY_MARKER_PREFIX = '__GHT_'
 
+
+class GhosttyApp(NamedTuple):
+    process_marker: str
+    applescript_target: str
+    bundle_id: str
+    activate_from_outside: bool
+
+
+GHOSTTY_MAIN = GhosttyApp('Ghostty.app/Contents/MacOS', 'application "Ghostty"', 'com.mitchellh.ghostty', False)
+GHOSTTY_VIEWER = GhosttyApp('GhosttyViewer.app/Contents/MacOS',
+                            'application id "com.brunowinter.ghostty-viewer"',
+                            'com.brunowinter.ghostty-viewer', True)
+_GHOSTTY_APPS = (GHOSTTY_MAIN, GHOSTTY_VIEWER)
+
 _ghostty_tty_to_id: Dict[str, str] = {}
+_ghostty_tty_to_app: Dict[str, GhosttyApp] = {}
 _ghostty_tty_last_refresh: float = 0.0
 _ghostty_cwd_uuid_last: dict = {}
 
@@ -21,29 +36,27 @@ _ghostty_cwd_uuid_last: dict = {}
 def _refresh_ghostty_tty_to_id(now: float) -> None:
     if _refresh_not_due(now):
         return
-    ghostty_pid = _ghostty_pid()
-    if not ghostty_pid:
+    app_ttys = _running_app_ttys()
+    if not app_ttys:
         return
-    all_ttys = _ghostty_child_ttys(ghostty_pid)
-    _prune_gone_ttys(all_ttys)
-    new_ttys = _unmapped_ttys(all_ttys)
-    if not new_ttys:
+    _prune_gone_ttys(_flatten_ttys(app_ttys))
+    if _probe_apps(app_ttys):
         _mark_refreshed(now)
-        return
-    tty_marker, r3 = _probe_terminal_names(new_ttys)
-    if _query_failed(r3):
-        _log_query_failure(r3)
-        return
-    log_menubar_change('ghostty', 'osascript_names', None)
-    _assign_terminal_ids(tty_marker, _parse_name_to_id(r3.stdout))
-    _mark_refreshed(now)
 
 # FUNCTIONS
 
 def _refresh_not_due(now: float) -> bool:
     return now - _ghostty_tty_last_refresh < _GHOSTTY_TTY_REFRESH_INTERVAL
 
-def _ghostty_pid() -> Optional[str]:
+def _running_app_ttys() -> Dict[GhosttyApp, List[str]]:
+    app_ttys: Dict[GhosttyApp, List[str]] = {}
+    for app in _GHOSTTY_APPS:
+        pid = _app_pid(app)
+        if pid:
+            app_ttys[app] = _ghostty_child_ttys(pid)
+    return app_ttys
+
+def _app_pid(app: GhosttyApp) -> Optional[str]:
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
                            capture_output=True, text=True,
@@ -53,7 +66,7 @@ def _ghostty_pid() -> Optional[str]:
         return None
     log_menubar_change('ghostty', 'ps_pid', None)
     for line in r.stdout.splitlines():
-        if 'Ghostty.app/Contents/MacOS' in line:
+        if app.process_marker in line:
             pid = line.split(None, 1)[0].strip()
             if pid.isdigit():
                 return pid
@@ -75,22 +88,37 @@ def _ghostty_child_ttys(ghostty_pid: str) -> List[str]:
             ttys.append(parts[2])
     return ttys
 
+def _flatten_ttys(app_ttys: Dict[GhosttyApp, List[str]]) -> List[str]:
+    return [tty for ttys in app_ttys.values() for tty in ttys]
+
 def _prune_gone_ttys(all_ttys: List[str]) -> None:
     for tty in list(_ghostty_tty_to_id):
         if tty not in all_ttys:
             del _ghostty_tty_to_id[tty]
+            _ghostty_tty_to_app.pop(tty, None)
+
+def _probe_apps(app_ttys: Dict[GhosttyApp, List[str]]) -> bool:
+    return all([_probe_app(app, ttys) for app, ttys in app_ttys.items()])
+
+def _probe_app(app: GhosttyApp, all_ttys: List[str]) -> bool:
+    new_ttys = _unmapped_ttys(all_ttys)
+    if not new_ttys:
+        return True
+    tty_marker, r3 = _probe_terminal_names(app, new_ttys)
+    if _query_failed(r3):
+        _log_query_failure(app, r3)
+        return False
+    log_menubar_change('ghostty', f'osascript_names {app.bundle_id}', None)
+    _assign_terminal_ids(app, tty_marker, _parse_name_to_id(r3.stdout))
+    return True
 
 def _unmapped_ttys(all_ttys: List[str]) -> List[str]:
     return [t for t in all_ttys if t not in _ghostty_tty_to_id]
 
-def _mark_refreshed(now: float) -> None:
-    global _ghostty_tty_last_refresh
-    _ghostty_tty_last_refresh = now
-
-def _probe_terminal_names(new_ttys: List[str]) -> tuple:
+def _probe_terminal_names(app: GhosttyApp, new_ttys: List[str]) -> tuple:
     tty_marker = _write_markers(new_ttys)
     time.sleep(0.12)
-    r3 = _query_terminal_names()
+    r3 = _query_terminal_names(app)
     _clear_markers(tty_marker)
     return tty_marker, r3
 
@@ -106,9 +134,9 @@ def _write_markers(new_ttys: List[str]) -> List[tuple]:
             log_menubar('ghostty', f'marker write failed tty={tty} err={exc!r}')
     return tty_marker
 
-def _query_terminal_names():
+def _query_terminal_names(app: GhosttyApp):
     osa = (
-        'tell application "Ghostty"\n'
+        f'tell {app.applescript_target}\n'
         '  set pairs to {}\n'
         '  repeat with t in every terminal\n'
         '    set end of pairs to (id of t) & "|||" & (name of t)\n'
@@ -136,14 +164,15 @@ def _clear_markers(tty_marker: List[tuple]) -> None:
 def _query_failed(r3) -> bool:
     return not r3 or r3.returncode != 0
 
-def _log_query_failure(r3) -> None:
+def _log_query_failure(app: GhosttyApp, r3) -> None:
     if r3:
-        log_menubar_change('ghostty', 'osascript_names', f'osascript rc={r3.returncode} stderr={r3.stderr.strip()[:80]!r}')
+        log_menubar_change('ghostty', f'osascript_names {app.bundle_id}', f'osascript rc={r3.returncode} stderr={r3.stderr.strip()[:80]!r}')
 
-def _assign_terminal_ids(tty_marker: List[tuple], name_to_id: Dict[str, str]) -> None:
+def _assign_terminal_ids(app: GhosttyApp, tty_marker: List[tuple], name_to_id: Dict[str, str]) -> None:
     for tty, marker in tty_marker:
         if marker in name_to_id:
             _ghostty_tty_to_id[tty] = name_to_id[marker]
+            _ghostty_tty_to_app[tty] = app
 
 def _parse_name_to_id(stdout: str) -> Dict[str, str]:
     name_to_id: Dict[str, str] = {}
@@ -153,26 +182,43 @@ def _parse_name_to_id(stdout: str) -> Dict[str, str]:
             name_to_id[tname.strip()] = tid.strip()
     return name_to_id
 
+def _mark_refreshed(now: float) -> None:
+    global _ghostty_tty_last_refresh
+    _ghostty_tty_last_refresh = now
+
 def _reprobe_single_tty(tty: str) -> Optional[str]:
     tty_marker = _write_markers([tty])
     marker = tty_marker[0][1]
-    term_id = _extract_term_id(_query_single_terminal_id(marker))
-    if term_id is None:
-        term_id = _extract_term_id(_query_single_terminal_id(marker))
+    found = _find_marked_terminal(_apps_for_tty(tty), marker)
     _clear_markers(tty_marker)
-    if term_id is None:
+    if found is None:
         return None
+    app, term_id = found
     _ghostty_tty_to_id[tty] = term_id
+    _ghostty_tty_to_app[tty] = app
     return term_id
+
+def _apps_for_tty(tty: str) -> tuple:
+    known = _ghostty_tty_to_app.get(tty)
+    return (known,) if known else _GHOSTTY_APPS
+
+def _find_marked_terminal(apps: tuple, marker: str) -> Optional[tuple]:
+    for app in apps:
+        term_id = _extract_term_id(_query_single_terminal_id(app, marker))
+        if term_id is None:
+            term_id = _extract_term_id(_query_single_terminal_id(app, marker))
+        if term_id is not None:
+            return app, term_id
+    return None
 
 def _extract_term_id(r) -> Optional[str]:
     if r is None or r.returncode != 0:
         return None
     return r.stdout.strip() or None
 
-def _query_single_terminal_id(marker: str):
+def _query_single_terminal_id(app: GhosttyApp, marker: str):
     osa = (
-        'tell application "Ghostty"\n'
+        f'tell {app.applescript_target}\n'
         '  try\n'
         f'    return id of (first terminal whose name is "{marker}")\n'
         '  on error\n'
@@ -202,6 +248,9 @@ def _tty_for_cwd(cwd: str) -> Optional[str]:
 
 def get_ghostty_terminal_id_for_tty(tty: str) -> Optional[str]:
     return _ghostty_tty_to_id.get(tty)
+
+def get_ghostty_app_for_tty(tty: str) -> Optional[GhosttyApp]:
+    return _ghostty_tty_to_app.get(tty)
 
 def _write_cwd_uuid_map() -> None:
     global _ghostty_cwd_uuid_last
