@@ -1,4 +1,4 @@
-# canvas added to the Launch tab (2026-09-25)
+# canvas added to the Launch tab (2026-10-12)
 
 Worker on branch `launcher` (based on `integration`), area `session_launcher`. Task: a Launch entry for `/Users/brunowinter2000/Documents/ai/canvas`, behaving like the other projects.
 
@@ -10,9 +10,9 @@ Worker on branch `launcher` (based on `integration`), area `session_launcher`. T
 ## Pitfall for the next entry added to the list
 
 `t2_launch_cases.py:_case_click_handling` used `handle_launch_project(10)` as its "index out of range" probe. With 11 projects index 10 is valid, and the case fails with `assert len(launched) == 1`. The probe is now `handle_launch_project(11)`, and a new assertion launches index 10 on desktop 5 and expects `(5, canvas)`. Whoever adds a 12th project must move the probe to 12.
-Other pinned places: `t2_fixtures._EXPECTED_PROJECTS` (must equal `LAUNCH_PROJECTS`, see `2026-09-24_t2_split_for_loc_limit.md` in this area), `_case_project_rows` (count, tag range, titles), `_case_start_command` result text.
+Other pinned places: `t2_fixtures._EXPECTED_PROJECTS` (must equal `LAUNCH_PROJECTS`; the earlier t2 split entries in this area explain why the list is hardcoded there), `_case_project_rows` (count, tag range, titles), `_case_start_command` result text.
 
-## Test results (2026-09-25, headless, isolated HOME, no screen movement, no Ghostty)
+## Test results (2026-10-12, headless, isolated HOME, no screen movement, no Ghostty)
 
 - `t2_launch_tab`: 11 of 11 cases PASS (project_rows: 11 rows, last `canvas`; start_command: 11 commands; click_handling includes the canvas click).
 - `t1_autojump_removal`: 7 of 7 PASS.
@@ -23,3 +23,9 @@ Other pinned places: `t2_fixtures._EXPECTED_PROJECTS` (must equal `LAUNCH_PROJEC
 ## Verification still open
 
 After the merge the bundle must be rebuilt from the MAIN checkout (area `menubar_build`) and canvas clicked in the real Launch tab. The panel gets one row (21 px) taller; only checked headless.
+
+## Recap notes
+
+- The first version of this file carried the date 2026-09-25, which was wrong; the system date during the session was 2026-10-12. File name and dates were corrected in a later commit (the file was renamed, content otherwise unchanged).
+- Files touched in the branch against `integration`: `src/menubar/launch_config.py`, `src/menubar/DOCS.md` (launch_config LOC 16), `dev/session_launcher/t2_fixtures.py`, `t2_launch_cases.py`, `t2_workflow_cases.py`, `dev/session_launcher/DOCS.md` (LOC 63 / 184 for the first two), `dev/session_launcher/md/t2_launch_tab.md` (regenerated report).
+- `dev/session_launcher/DOCS.md` and `src/menubar/DOCS.md` have no wording about a project count, so only the LOC headings changed.
