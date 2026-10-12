@@ -13,7 +13,7 @@ def _case_start_command() -> str:
                 f'./src/claude_proxy_start.sh --project {project}')
         got = sl._build_start_command(_ROOT_DIR, project)
         assert got == want, f'\nwant {want}\ngot  {got}'
-    return f'10 commands match exactly, e.g. {sl._build_start_command(_ROOT_DIR, _EXPECTED_PROJECTS[0])}'
+    return f'11 commands match exactly, e.g. {sl._build_start_command(_ROOT_DIR, _EXPECTED_PROJECTS[0])}'
 
 def _run_workflow(desktop, project, switch_effect=None, open_result=None):
     sl = _imp('session_launch')

@@ -81,7 +81,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t2_fixtures.py (62 LOC)
+### t2_fixtures.py (63 LOC)
 
 **Purpose:** Shared fakes and constants for the cases — fake app and sessions, session builder, expected project list, header text reader.
 **Reads:** real `src/menubar/discover.py` (via `importlib`).
@@ -91,7 +91,7 @@ No `__init__.py`. Run from the project root as modules, e.g. `venv/bin/python -m
 
 ---
 
-### t2_launch_cases.py (181 LOC)
+### t2_launch_cases.py (184 LOC)
 
 **Purpose:** Seven cases for header texts, occupied-desktop marking, tick and selection, project rows, click handling, the PostEvent request on tab open, and log isolation.
 **Reads:** real `src/menubar` launch, panel, rag and model controllers with fakes and patches.
