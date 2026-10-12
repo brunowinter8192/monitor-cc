@@ -9,7 +9,7 @@ Worker on branch `launcher` (based on `integration`), area `session_launcher`. T
 
 ## Pitfall for the next entry added to the list
 
-`t2_launch_cases.py:_case_click_handling` used `handle_launch_project(10)` as its "index out of range" probe. With 11 projects index 10 is valid, and the case fails with `assert len(launched) == 1`. The probe is now `handle_launch_project(11)` = 11, and a new assertion launches index 10 on desktop 5 and expects `(5, canvas)`. Whoever adds a 12th project must move the probe to 12.
+`t2_launch_cases.py:_case_click_handling` used `handle_launch_project(10)` as its "index out of range" probe. With 11 projects index 10 is valid, and the case fails with `assert len(launched) == 1`. The probe is now `handle_launch_project(11)`, and a new assertion launches index 10 on desktop 5 and expects `(5, canvas)`. Whoever adds a 12th project must move the probe to 12.
 Other pinned places: `t2_fixtures._EXPECTED_PROJECTS` (must equal `LAUNCH_PROJECTS`, see `2026-09-24_t2_split_for_loc_limit.md` in this area), `_case_project_rows` (count, tag range, titles), `_case_start_command` result text.
 
 ## Test results (2026-09-25, headless, isolated HOME, no screen movement, no Ghostty)
