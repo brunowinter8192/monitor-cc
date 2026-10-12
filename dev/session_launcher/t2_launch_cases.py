@@ -90,14 +90,14 @@ def _case_project_rows() -> str:
     ctl.open()
     views = list(ctl._launch_sv.arrangedSubviews())
     buttons = [v for v in views if hasattr(v, 'tag') and hasattr(v, 'attributedTitle')]
-    assert len(buttons) == 10, f'project buttons {len(buttons)}'
-    assert [b.tag() for b in buttons] == list(range(10))
+    assert len(buttons) == 11, f'project buttons {len(buttons)}'
+    assert [b.tag() for b in buttons] == list(range(11))
     titles = [_title(b) for b in buttons]
     want = ['gh-cli', 'reddit-cli', 'websearch', 'rag-cli', 'iterative-dev',
-            'trading', 'trading_ai', 'monitor-cc', 'general', 'wise2627']
+            'trading', 'trading_ai', 'monitor-cc', 'general', 'wise2627', 'canvas']
     assert titles == want, f'titles {titles}'
     assert list(_imp('launch_config').LAUNCH_PROJECTS) == _EXPECTED_PROJECTS
-    return f'10 rows in order: {titles}'
+    return f'11 rows in order: {titles}'
 
 def _case_click_handling() -> str:
     lc = _imp('launch_controller')
@@ -131,7 +131,10 @@ def _case_click_handling() -> str:
         assert ctl._launch_in_progress is False and ctl._selected_desktop is None
         ctl.handle_select_desktop(5)
         ctl.handle_launch_project(10)
-        assert len(launched) == 1 and 'index_out_of_range' in logs[-1], (launched, logs)
+        assert launched[1:] == [(5, _EXPECTED_PROJECTS[10])] and _EXPECTED_PROJECTS[10].endswith('/ai/canvas'), launched
+        ctl.handle_select_desktop(5)
+        ctl.handle_launch_project(11)
+        assert len(launched) == 2 and 'index_out_of_range' in logs[-1], (launched, logs)
     return f'no desktop -> ignored; busy -> ignored; occupied desktop 2 -> launched; free desktop 4 -> launch{launched[0]}, panel closed; bad index ignored'
 
 def _case_request_on_open() -> str:
