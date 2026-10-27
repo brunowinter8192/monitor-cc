@@ -277,7 +277,7 @@ Standalone macOS status-bar application showing every running Claude Code sessio
 
 ---
 
-### launch_config.py (16 LOC)
+### launch_config.py (17 LOC)
 
 **Purpose:** Fixed list of launchable project paths and selectable desktop numbers.
 **Reads:** nothing; module constants only.

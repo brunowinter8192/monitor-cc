@@ -14,6 +14,7 @@ _EXPECTED_PROJECTS = [
     '/Users/brunowinter2000/Documents/general',
     '/Users/brunowinter2000/Documents/wise2627',
     '/Users/brunowinter2000/Documents/ai/canvas',
+    '/Users/brunowinter2000/Documents/wise2627/BOM1',
 ]
 _ROOT_DIR = '/fake/monitor-cc-root'
 

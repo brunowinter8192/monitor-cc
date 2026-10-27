@@ -11,6 +11,7 @@ LAUNCH_PROJECTS = (
     '/Users/brunowinter2000/Documents/general',
     '/Users/brunowinter2000/Documents/wise2627',
     '/Users/brunowinter2000/Documents/ai/canvas',
+    '/Users/brunowinter2000/Documents/wise2627/BOM1',
 )
 
 LAUNCH_DESKTOPS = (1, 2, 3, 4, 5)
