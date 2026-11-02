@@ -31,7 +31,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### run_all.py (78 LOC)
+### run_all.py (79 LOC)
 
 **Purpose:** Runs every test module of this directory as one parallel fail-fast strand and writes a fixed-name report.
 **Reads:** the `test_*.py` modules (executed via `runpy`).
@@ -78,6 +78,16 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 **Writes:** a scratch dir under the temp dir, removed on exit.
 **Called by:** none; manual CLI.
 **Calls out:** `menubar.proc_cache`.
+
+---
+
+### test_block_bom1_worker_sandbox.py (535 LOC)
+
+**Purpose:** Smoke for the BOM1 worker sandbox hook: every allowed form, recorded bypass shapes, tool and path blocks, scope exemptions and fail-closed cases.
+**Reads:** nothing; each case builds its own temp BOM1-worker tree with a policy file.
+**Writes:** stdout only; its own temp dirs, removed per case.
+**Called by:** `run_all.py`; manual CLI from the project root.
+**Calls out:** none; drives the hook via `subprocess`.
 
 ---
 

@@ -6,7 +6,7 @@ Global Claude Code safety hooks: standalone scripts that intercept Bash, Edit, R
 
 ## Public Interface
 
-No `__init__.py`; this directory is imported as an implicit namespace package (`src.hooks`). Each script is a standalone entry point invoked by the Claude Code hook system via the user-level settings file. Registration entry point: `hook_setup.py`. Each script puts the repo root on `sys.path` before importing siblings as `src.hooks.<module>`.
+No `__init__.py`; this directory is imported as an implicit namespace package (`src.hooks`). Each script is a standalone entry point invoked by the Claude Code hook system via the user-level settings file. Registration entry point: `hook_setup.py`, except `block_bom1_worker_sandbox.py`, which is registered project-level in `BOM1-worker/.claude/settings.json`. Each script puts the repo root on `sys.path` before importing siblings as `src.hooks.<module>`.
 
 ## Flow
 
@@ -364,6 +364,26 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 **Reads:** stdin (PreToolUse JSON payload).
 **Writes:** stderr block message; exit 2.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.
+**Calls out:** none.
+
+---
+
+### _bom1_sandbox_bash.py (206 LOC)
+
+**Purpose:** strict lexer and slot grammars deciding whether one Bash call is an allowed command of a BOM1 data-collection worker; a library, not a hook.
+**Reads:** n/a.
+**Writes:** n/a.
+**Called by:** `block_bom1_worker_sandbox.py`.
+**Calls out:** none.
+
+---
+
+### block_bom1_worker_sandbox.py (180 LOC)
+
+**Purpose:** PreToolUse hook for the BOM1-worker project that confines worker worktrees to their own firm's allowed commands, files and skill, failing closed.
+**Reads:** stdin (PreToolUse JSON payload), `CLAUDE_PROJECT_DIR`, the allowed-documents policy file in the BOM1-worker main checkout.
+**Writes:** stderr block message listing the allowed forms; exit 2.
+**Called by:** Claude Code hook system via `BOM1-worker/.claude/settings.json`, not via `hook_setup.py`.
 **Calls out:** none.
 
 ---
