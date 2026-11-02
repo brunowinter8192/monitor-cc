@@ -31,7 +31,7 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### run_all.py (77 LOC)
+### run_all.py (78 LOC)
 
 **Purpose:** Runs every test module of this directory as one parallel fail-fast strand and writes a fixed-name report.
 **Reads:** the `test_*.py` modules (executed via `runpy`).
@@ -58,6 +58,16 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 **Writes:** `md/block_cli_chained_replay_report.md`.
 **Called by:** none; manual CLI.
 **Calls out:** none directly; drives the hook via `subprocess`.
+
+---
+
+### test_ask_rag_storage.py (200 LOC)
+
+**Purpose:** Smoke for the RAG-storage ask hook: observed payloads, symlink and symlink-directory hits, relative and variable paths, file tools and pass-through cases against a temp tree.
+**Reads:** nothing; each case builds its own temp tree and sets the storage roots through the override variable.
+**Writes:** stdout only.
+**Called by:** `run_all.py`; manual CLI from the project root.
+**Calls out:** none; drives the hook via `subprocess`.
 
 ---
 

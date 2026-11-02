@@ -25,7 +25,7 @@ def log_fire(hook_name: str, decision: str, tool_name: str, command: str,
             "command": command or "",
             "session": session_id or "",
         }
-        if decision in ("block", "feedback", "trace"):
+        if decision in ("block", "feedback", "trace", "ask"):
             record["reason"] = reason or ""
         else:
             record["rewritten"] = rewritten or ""

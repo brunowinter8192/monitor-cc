@@ -12,6 +12,7 @@ sys.path.insert(0, str(_AREA_DIR))
 from dev.refactoring.strand_runner import strand_workflow
 
 _MODULES = [
+    'test_ask_rag_storage',
     'test_bg_task_detection',
     'test_block_broad_find',
     'test_block_broad_grep',
