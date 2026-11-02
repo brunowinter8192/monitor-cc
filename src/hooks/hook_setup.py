@@ -52,6 +52,12 @@ _HOOK_SCRIPTS = [
     ("block_po_read.py",                 "Bash"),
     ("block_pipe_scraper_isolated.py",   "Bash"),
     ("block_rag_cli_document_repeat.py", "Bash"),
+    ("ask_rag_storage.py",               "Bash"),
+    ("ask_rag_storage.py",               "Read"),
+    ("ask_rag_storage.py",               "Write"),
+    ("ask_rag_storage.py",               "Edit"),
+    ("ask_rag_storage.py",               "Glob"),
+    ("ask_rag_storage.py",               "Grep"),
 ]
 
 # ORCHESTRATOR

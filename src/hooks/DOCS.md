@@ -2,7 +2,7 @@
 
 ## Role
 
-Global Claude Code safety hooks: standalone scripts that intercept Bash, Edit, Read and Write tool calls and either block a destructive or context-flooding pattern or silently rewrite a correctable input. Registered machine-wide: changes affect every session. Touch for mechanical, unconditionally true command-safety rules; advisory rules belong in skills.
+Global Claude Code safety hooks: standalone scripts that intercept Bash, Edit, Read and Write tool calls and either block a destructive or context-flooding pattern, silently rewrite a correctable input, or hand the decision to the user through the native permission dialog. Registered machine-wide: changes affect every session. Touch for mechanical, unconditionally true command-safety rules; advisory rules belong in skills.
 
 ## Public Interface
 
@@ -12,8 +12,8 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 1. Claude Code writes the pending tool call as JSON to the hook script's stdin.
 2. The script optionally strips shell-inactive regions via `_shell_strip.py` and evaluates one rule.
-3. On violation it writes to stderr and exits 2 (block); a rewrite hook prints updated-input JSON to stdout and exits 0; otherwise it exits 0 silently.
-4. Every block or rewrite decision is appended to the hook fire log via `_fire_log.py`.
+3. On violation it writes to stderr and exits 2 (block); a rewrite hook prints updated-input JSON to stdout and exits 0; the ask hook prints a permission-decision JSON with `ask` to stdout and exits 0; otherwise it exits 0 silently.
+4. Every block, rewrite or ask decision is appended to the hook fire log via `_fire_log.py`.
 5. `hook_setup.py` writes matcher/command entries for each script into the user-level settings file.
 
 ## Modules
@@ -368,7 +368,17 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 ---
 
-### hook_setup.py (189 LOC)
+### ask_rag_storage.py (369 LOC)
+
+**Purpose:** PreToolUse Bash/Read/Write/Edit/Glob/Grep hook that asks the user before any operation on the rag-cli pdf and documents storage, including paths reached through symlinks or directories holding such symlinks.
+**Reads:** stdin (PreToolUse JSON payload). Filesystem (symlink resolution, directory entries, glob expansion). `MONITOR_CC_RAG_STORAGE_ROOTS` (test override of the two storage roots).
+**Writes:** permission-decision JSON with `ask` on stdout, exit 0.
+**Called by:** Claude Code hook system, registered by `hook_setup.py`.
+**Calls out:** none.
+
+---
+
+### hook_setup.py (195 LOC)
 
 **Purpose:** idempotent installer registering every hook script into the user-level Claude Code settings file, sweeping stale entries first.
 **Reads:** the user-level settings file; local main-branch git state; the working tree.
