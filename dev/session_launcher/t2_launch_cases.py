@@ -134,7 +134,7 @@ def _case_click_handling() -> str:
         assert launched[1:] == [(5, _EXPECTED_PROJECTS[10])] and _EXPECTED_PROJECTS[10].endswith('/ai/canvas'), launched
         ctl.handle_select_desktop(5)
         ctl.handle_launch_project(11)
-        assert launched[2:] == [(5, _EXPECTED_PROJECTS[11])] and _EXPECTED_PROJECTS[11].endswith('/wise2627/BOM1'), launched
+        assert launched[2:] == [(5, _EXPECTED_PROJECTS[11])] and _EXPECTED_PROJECTS[11] == '/Users/brunowinter2000/Documents/BOM1', launched
         ctl.handle_select_desktop(5)
         ctl.handle_launch_project(12)
         assert len(launched) == 3 and 'index_out_of_range' in logs[-1], (launched, logs)
