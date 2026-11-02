@@ -69,3 +69,9 @@ Manual check on the real machine (not part of the suite): the hook asked for `pd
 - `shlex` merges adjacent punctuation: `);` arrives as one token. Separator detection therefore tests "all characters in `;&|()`", not equality with a list.
 - Tests with `{T}` placeholders replace inside the JSON string; temp paths contain no JSON special characters.
 - `run_all.py` rewrites the tracked `md/run_all.md` on each run; it was reverted before the commit.
+
+## Recap (2026-11-02)
+
+- Inventory against `integration`: `src/hooks/ask_rag_storage.py` (new), `src/hooks/hook_setup.py`, `src/hooks/_fire_log.py`, `src/hooks/DOCS.md`, `dev/hook_smoke/test_ask_rag_storage.py` (new), `dev/hook_smoke/run_all.py`, `dev/hook_smoke/DOCS.md`, this file.
+- DOCS check: LOC in headings equals `wc -l` (369, 195, 36, 200, 78). `_shell_strip.py` caller list unchanged because the hook does not use the shell stripper (it tokenizes with `shlex`, since quoted content must stay visible).
+- Open at recap time: registration in the user-level settings file (only possible from the main repo root after merge to `main`) and the live check that `ask` overrides the bare allow rules.
