@@ -14,6 +14,7 @@ from dev.refactoring.strand_runner import strand_workflow
 _MODULES = [
     'test_ask_rag_storage',
     'test_bg_task_detection',
+    'test_block_bom1_worker_sandbox',
     'test_block_broad_find',
     'test_block_broad_grep',
     'test_block_cli_chained',
