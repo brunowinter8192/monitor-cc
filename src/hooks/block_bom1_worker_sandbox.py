@@ -6,7 +6,7 @@ import sys
 from typing import NamedTuple
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.hooks._bom1_sandbox_bash import (
-    COLLECTION, COMMIT_COLLECT, COMMIT_FINDINGS, HEREDOC_END, HEREDOC_OPEN, HELPER_PREFIX, UNSET_PREFIX,
+    COLLECTION, COMMIT_COLLECT, COMMIT_COLLECT_KPI, COMMIT_FINDINGS, COMMIT_FINDINGS_KPI, HEREDOC_END, HEREDOC_OPEN, HELPER_PREFIX, UNSET_PREFIX,
     bash_input_violation,
 )
 from src.hooks._fire_log import log_fire
@@ -18,7 +18,7 @@ _EXEMPT_PREFIX = "dev-"
 _POLICY_FILE = "allowed_documents.json"
 _DOCUMENT_RE = re.compile(r"^[A-Za-z0-9_.-]+\.md$")
 _MAX_DOCUMENTS = 5
-_SKILL_NAME = "firm-compensation-collection"
+_SKILL_NAMES = ("firm-compensation-collection", "firm-kpi-collection")
 _FILE_TOOLS = frozenset({"Read", "Write", "Edit"})
 _PLANNING_TOOLS = frozenset({"TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"})
 _BLOCK_EXIT_CODE = 2
@@ -33,12 +33,17 @@ _MESSAGE_FORMS = (
     "        <DOCUMENT> is one of: {documents}\n"
     "  Bash: {helper} read {ticker} Metric_Classification\n"
     "  Bash: {helper} read {ticker} Data_Compensation\n"
+    "  Bash: {helper} read {ticker} Data_KPI\n"
     "  Bash: {helper} read-reference Data_Compensation\n"
+    "  Bash: {helper} read-reference Data_KPI\n"
     "  Bash: {helper} write {ticker} Data_Compensation{heredoc_open}\n"
+    "  Bash: {helper} write {ticker} Data_KPI{heredoc_open}\n"
     "        (JSON list of row objects, then a line {heredoc_end})\n"
     "  Bash: git add excels/{ticker}.xlsx excels/{ticker}.md && git commit -m \"{commit_collect}\"\n"
     "  Bash: git add excels/{ticker}.md && git commit -m \"{commit_findings}\"\n"
-    "  Read, Write, Edit: excels/{ticker}.md only.  Skill: {skill}.\n"
+    "  Bash: git add excels/{ticker}.xlsx excels/{ticker}.md && git commit -m \"{commit_collect_kpi}\"\n"
+    "  Bash: git add excels/{ticker}.md && git commit -m \"{commit_findings_kpi}\"\n"
+    "  Read, Write, Edit: excels/{ticker}.md only.  Skill: {skills}.\n"
     "Queries contain no $, backtick, backslash or double quote. One command per Bash call: no cd, pipes, redirects or chaining.\n"
 )
 _MESSAGE_STOP = (
@@ -135,7 +140,7 @@ def tool_violation(tool_name, tool_input, scope: Scope, documents: list):
     if tool_name in _FILE_TOOLS:
         return own_markdown_violation(tool_name, tool_input, scope)
     if tool_name == "Skill":
-        return None if tool_input.get("skill") == _SKILL_NAME else f"only the skill {_SKILL_NAME} is allowed"
+        return None if tool_input.get("skill") in _SKILL_NAMES else f"only the skills {', '.join(_SKILL_NAMES)} are allowed"
     if tool_name in _PLANNING_TOOLS:
         return None
     return f"the tool {tool_name} is not allowed"
@@ -164,7 +169,8 @@ def build_message(verdict: Verdict, scope: Scope) -> str:
         ticker=scope.name, unset=UNSET_PREFIX, collection=COLLECTION, documents=", ".join(verdict.documents),
         helper=" ".join(HELPER_PREFIX), heredoc_open=HEREDOC_OPEN, heredoc_end=HEREDOC_END,
         commit_collect=COMMIT_COLLECT.format(ticker=scope.name), commit_findings=COMMIT_FINDINGS.format(ticker=scope.name),
-        skill=_SKILL_NAME,
+        commit_collect_kpi=COMMIT_COLLECT_KPI.format(ticker=scope.name), commit_findings_kpi=COMMIT_FINDINGS_KPI.format(ticker=scope.name),
+        skills=" or ".join(_SKILL_NAMES),
     )
     return head + forms + _MESSAGE_STOP
 

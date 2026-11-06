@@ -368,7 +368,7 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 ---
 
-### _bom1_sandbox_bash.py (206 LOC)
+### _bom1_sandbox_bash.py (208 LOC)
 
 **Purpose:** strict lexer and slot grammars deciding whether one Bash call is an allowed command of a BOM1 data-collection worker; a library, not a hook.
 **Reads:** n/a.
@@ -378,9 +378,9 @@ No `__init__.py`; this directory is imported as an implicit namespace package (`
 
 ---
 
-### block_bom1_worker_sandbox.py (180 LOC)
+### block_bom1_worker_sandbox.py (186 LOC)
 
-**Purpose:** PreToolUse hook for the BOM1-worker project that confines worker worktrees to their own firm's allowed commands, files and skill, failing closed.
+**Purpose:** PreToolUse hook for the BOM1-worker project that confines worker worktrees to their own firm's allowed commands, files and the two collection skills, failing closed.
 **Reads:** stdin (PreToolUse JSON payload), `CLAUDE_PROJECT_DIR`, the allowed-documents policy file in the BOM1-worker main checkout.
 **Writes:** stderr block message listing the allowed forms; exit 2.
 **Called by:** Claude Code hook system via `BOM1-worker/.claude/settings.json`, not via `hook_setup.py`.
