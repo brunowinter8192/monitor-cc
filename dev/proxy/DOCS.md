@@ -171,9 +171,9 @@ Each script builds synthetic fixtures in-process or replays a recorded dual-log 
 
 ---
 
-### test_strip_fix_cases_claude_ai_tools.py (61 LOC)
+### test_strip_fix_cases_claude_ai_tools.py (73 LOC)
 
-**Purpose:** Cases for the claude.ai connector tool prefix rule: the observed Opus tool list, `advisor` and other `mcp__` tools kept, clean lists returned unchanged.
+**Purpose:** Cases for the claude.ai connector prefix rule and the `advisor` strip: observed Opus tool list, `advisor` tool and `tool_reference` removed, other `mcp__` tools kept.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `test_strip_fix.py`.
