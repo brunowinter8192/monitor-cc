@@ -81,9 +81,9 @@ A JSON PreToolUse-shaped payload (or a direct call for stub-based scripts) goes 
 
 ---
 
-### test_block_bom1_worker_sandbox.py (535 LOC)
+### test_block_bom1_worker_sandbox.py (570 LOC)
 
-**Purpose:** Smoke for the BOM1 worker sandbox hook: every allowed form, recorded bypass shapes, tool and path blocks, scope exemptions and fail-closed cases.
+**Purpose:** Smoke for the BOM1 worker sandbox hook: every allowed form (compensation and KPI), recorded bypass shapes, tool and path blocks, scope exemptions and fail-closed cases.
 **Reads:** nothing; each case builds its own temp BOM1-worker tree with a policy file.
 **Writes:** stdout only; its own temp dirs, removed per case.
 **Called by:** `run_all.py`; manual CLI from the project root.

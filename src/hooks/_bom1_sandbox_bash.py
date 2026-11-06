@@ -11,15 +11,17 @@ HEREDOC_OPEN = " <<'ROWS'"
 HEREDOC_END = "ROWS"
 COMMIT_COLLECT = "feat: collect {ticker} compensation data"
 COMMIT_FINDINGS = "docs: record {ticker} findings"
+COMMIT_COLLECT_KPI = "feat: collect {ticker} kpi data"
+COMMIT_FINDINGS_KPI = "docs: record {ticker} kpi findings"
 
 _MAX_COMMAND_BYTES = 300000
 _QUERY_MAX_CHARS = 300
 _QUERY_FORBIDDEN = frozenset("$`\\")
 _ALLOWED_INPUT_KEYS = frozenset({"command", "description", "timeout"})
 _FALSE_ONLY_KEYS = frozenset({"run_in_background", "dangerouslyDisableSandbox"})
-_OWN_READ_SHEETS = ("Metric_Classification", "Data_Compensation")
-_WRITE_SHEET = "Data_Compensation"
-_REFERENCE_SHEET = "Data_Compensation"
+_OWN_READ_SHEETS = ("Metric_Classification", "Data_Compensation", "Data_KPI")
+_WRITE_SHEETS = ("Data_Compensation", "Data_KPI")
+_REFERENCE_SHEETS = ("Data_Compensation", "Data_KPI")
 _INTEGER_RE = re.compile(r"^[0-9]{1,4}$")
 _EXPAND_FLAGS = ("--before", "--after")
 _TOKEN_RE = re.compile(
@@ -179,11 +181,11 @@ def helper_violation(words: list, has_body: bool, ticker: str):
     if words[:len(HELPER_PREFIX)] != HELPER_PREFIX:
         return "the env/uv form is not the workbook helper form"
     rest = words[len(HELPER_PREFIX):]
-    if rest == ["write", ticker, _WRITE_SHEET]:
+    if rest in [["write", ticker, sheet] for sheet in _WRITE_SHEETS]:
         return None if has_body else "the write form needs the JSON heredoc"
     if has_body:
         return "a heredoc is only allowed with the write form"
-    reads = [["read", ticker, sheet] for sheet in _OWN_READ_SHEETS] + [["read-reference", _REFERENCE_SHEET]]
+    reads = [["read", ticker, sheet] for sheet in _OWN_READ_SHEETS] + [["read-reference", sheet] for sheet in _REFERENCE_SHEETS]
     return None if rest in reads else "the workbook helper form is not allowed"
 
 
@@ -200,7 +202,7 @@ def git_kind(words: list, ticker: str):
     workbook, findings = f"excels/{ticker}.xlsx", f"excels/{ticker}.md"
     if words in (["git", "add", workbook, findings], ["git", "add", findings], ["git", "add", workbook]):
         return "add"
-    messages = (COMMIT_COLLECT.format(ticker=ticker), COMMIT_FINDINGS.format(ticker=ticker))
+    messages = tuple(template.format(ticker=ticker) for template in (COMMIT_COLLECT, COMMIT_FINDINGS, COMMIT_COLLECT_KPI, COMMIT_FINDINGS_KPI))
     if len(words) == 4 and words[:3] == ["git", "commit", "-m"] and words[3] in messages:
         return "commit"
     return None
