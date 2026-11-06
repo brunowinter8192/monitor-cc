@@ -28,6 +28,7 @@ TOOL_BLOCKLIST = frozenset({
     "Workflow",
     "Artifact", "ReportFindings", "DeferredToolPlaceholder",
     "SendFeedback", "ListAgents",
+    "advisor",
 })
 
 BASH_MOD_EDIT = "edit"
