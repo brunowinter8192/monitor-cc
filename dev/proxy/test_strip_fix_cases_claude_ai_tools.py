@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from test_strip_fix_fixtures import check, _strip_unused_tools
+from test_strip_fix_fixtures import check, _strip_unused_tools, _ph_mod
 
 _OBSERVED_TOOL_NAMES = [
     'Agent', 'Artifact', 'AskUserQuestion', 'Bash', 'Edit', 'ListAgents', 'Read', 'ReportFindings',
@@ -26,17 +26,19 @@ def ca01_observed_opus_tool_list_loses_claude_ai_tools():
     payload = {'tools': _observed_tools()}
     modified, removed_count, removed_names = _strip_unused_tools(payload)
     kept = [t['name'] for t in modified['tools']]
-    check('CA01_kept_exact', kept == ['Bash', 'Edit', 'Read', 'Skill', 'Write', 'advisor'], kept)
-    check('CA01_removed_count', removed_count == 13, removed_count)
+    check('CA01_kept_exact', kept == ['Bash', 'Edit', 'Read', 'Skill', 'Write'], kept)
+    check('CA01_removed_count', removed_count == 14, removed_count)
+    check('CA01_advisor_reported', 'advisor' in removed_names, removed_names)
     check('CA01_claude_ai_names_reported', set(_CLAUDE_AI_NAMES) <= set(removed_names), removed_names)
     check('CA01_no_claude_ai_left', not any(n.startswith('mcp__claude_ai_') for n in kept), kept)
 
 
-def ca02_advisor_entry_survives_unchanged():
+def ca02_advisor_entry_removed():
     payload = {'tools': _observed_tools()}
-    modified, _count, _names = _strip_unused_tools(payload)
-    advisor = [t for t in modified['tools'] if t['name'] == 'advisor']
-    check('CA02_advisor_kept_identical', advisor == [_ADVISOR_TOOL], advisor)
+    modified, _count, removed_names = _strip_unused_tools(payload)
+    check('CA02_advisor_gone', not any(t['name'] == 'advisor' for t in modified['tools']), modified['tools'])
+    check('CA02_advisor_in_removed_names', removed_names.count('advisor') == 1, removed_names)
+    check('CA02_input_payload_untouched', payload['tools'][-1] == _ADVISOR_TOOL, payload['tools'][-1])
 
 
 def ca03_other_mcp_tools_untouched():
@@ -55,7 +57,17 @@ def ca04_prefix_covers_unlisted_connector():
 
 
 def ca05_clean_list_returns_same_payload_object():
-    payload = {'tools': [{'name': 'Bash'}, {'name': 'Read'}, _ADVISOR_TOOL]}
+    payload = {'tools': [{'name': 'Bash'}, {'name': 'Read'}]}
     modified, removed_count, removed_names = _strip_unused_tools(payload)
     check('CA05_same_object', modified is payload)
     check('CA05_nothing_removed', (removed_count, removed_names) == (0, []))
+
+
+def ca06_advisor_tool_reference_removed_others_kept():
+    ref = lambda n: {'type': 'tool_reference', 'tool_name': n}
+    result = {'type': 'tool_result', 'tool_use_id': 't1', 'content': [ref('advisor'), ref('Bash'), {'type': 'text', 'text': 'x'}]}
+    payload = {'messages': [{'role': 'user', 'content': [result]}]}
+    modified = _ph_mod._strip_blocked_tool_references(payload)
+    inner = modified['messages'][0]['content'][0]['content']
+    check('CA06_advisor_reference_removed', inner == [ref('Bash'), {'type': 'text', 'text': 'x'}], inner)
+    check('CA06_input_payload_untouched', len(result['content']) == 3, result['content'])

@@ -92,9 +92,9 @@ from test_strip_fix_cases_pasted_content import (
     pc10_pass_role_gate_and_mod_and_ops, pc11_full_pipeline_attribution_via_strip_vocab,
 )
 from test_strip_fix_cases_claude_ai_tools import (
-    ca01_observed_opus_tool_list_loses_claude_ai_tools, ca02_advisor_entry_survives_unchanged,
+    ca01_observed_opus_tool_list_loses_claude_ai_tools, ca02_advisor_entry_removed,
     ca03_other_mcp_tools_untouched, ca04_prefix_covers_unlisted_connector,
-    ca05_clean_list_returns_same_payload_object,
+    ca05_clean_list_returns_same_payload_object, ca06_advisor_tool_reference_removed_others_kept,
 )
 from test_strip_fix_cases_total_tokens_tail import (
     tl01_observed_111_list_block_with_cache_control, tl02_observed_113_plain_string,
@@ -224,9 +224,9 @@ def _seq_pasted_content() -> list:
 
 def _seq_claude_ai_tools() -> list:
     return [
-        ca01_observed_opus_tool_list_loses_claude_ai_tools, ca02_advisor_entry_survives_unchanged,
+        ca01_observed_opus_tool_list_loses_claude_ai_tools, ca02_advisor_entry_removed,
         ca03_other_mcp_tools_untouched, ca04_prefix_covers_unlisted_connector,
-        ca05_clean_list_returns_same_payload_object,
+        ca05_clean_list_returns_same_payload_object, ca06_advisor_tool_reference_removed_others_kept,
     ]
 
 
