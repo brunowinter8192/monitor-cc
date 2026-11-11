@@ -22,3 +22,15 @@ Pin bumped in the three places established by the bump procedure in this area:
 ## Lesson for the next bump
 
 Installing a new wrapper and deleting the old one must happen in the same step as the pin bump in both repos. Otherwise every launch dies until the pin follows. A quick check before deleting an old wrapper: `awk '/claude-2/' src/claude_proxy_start.sh <iterative-dev>/src/spawn/tmux_spawn.sh`.
+
+## Same day: claude-fable-5-2 is unknown to CC 2.1.290, 1M window forced via env
+
+`strings` on the 2.1.290 binary: the built-in model list ends at `claude-fable-5-1` (plus `claude-mythos-5` and `claude-mythos-5-1`); `claude-fable-5-2` has zero hits. CC treats it as an unknown model and, since 2.1.223, auto-compacts inside an assumed window below 1M. The binary's own notice for this case names two remedies: append `[1m]` to the model name, or set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the real window.
+
+Decision: `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000` in the environment of every launched Claude.
+- monitor-cc `src/claude_proxy_start.sh`, `_launch_claude`, next to `HTTPS_PROXY`.
+- iterative-dev `src/spawn/config.sh`, `_WORKER_ENV_PREFIX`, so every worker runner inherits it.
+
+The `[1m]` suffix was rejected because the proxy forwards the model string verbatim; on 2026-07-20 `claude-sonnet-5[1m]` produced a 404 from the API (see the 176 -> 205 entry in this area). The env var leaves the model id untouched and is a no-op for models CC already knows.
+
+Not verified live in this session: that a fresh fable-5-2 session reports a 1M window. Hypothesis until the user starts one. If auto-compact still triggers early, check whether the notice "the context window it assumes" still appears at startup.

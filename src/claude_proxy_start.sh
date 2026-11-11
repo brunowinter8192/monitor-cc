@@ -195,6 +195,7 @@ _enter_project() {
 }
 
 _launch_claude() {
+    CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000 \
     HTTPS_PROXY="http://localhost:$PROXY_PORT" \
     NODE_EXTRA_CA_CERTS="$MITMPROXY_CA" \
     SSL_CERT_FILE="$COMBINED_CA" \
