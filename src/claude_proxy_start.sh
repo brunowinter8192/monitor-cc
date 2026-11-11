@@ -182,7 +182,7 @@ _announce_proxy() {
 }
 
 _resolve_claude_bin() {
-    CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude-280}"
+    CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude-290}"
     if [ ! -x "$CLAUDE_BIN" ]; then
         echo "ERROR: $CLAUDE_BIN not found or not executable" >&2
         exit 1
