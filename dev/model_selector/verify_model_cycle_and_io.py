@@ -120,9 +120,11 @@ def _load_model_selection_module():
     return importlib.import_module(module_name)
 
 def _verify_model_cycle(ms, lines) -> None:
-    lines.append("## 1. Model cycle logic (6 values)")
+    lines.append("## 1. Model cycle logic (7 values)")
     choices = ms._MODEL_CHOICES
-    assert len(choices) == 6, f"expected 6 model choices, got {len(choices)}: {choices}"
+    assert len(choices) == 7, f"expected 7 model choices, got {len(choices)}: {choices}"
+    assert "claude-fable-5-2" in choices, f"claude-fable-5-2 missing from choices: {choices}"
+    assert ms._DEFAULT_WORKER == "claude-sonnet-5", f"default worker moved: {ms._DEFAULT_WORKER}"
     for start in choices:
         nxt = ms._next_model(start)
         expected = choices[(choices.index(start) + 1) % len(choices)]

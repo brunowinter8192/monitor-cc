@@ -4,11 +4,12 @@
 
 ## PASS _strand_model_cycle
 
-## 1. Model cycle logic (6 values)
+## 1. Model cycle logic (7 values)
 claude-opus-5 -> claude-opus-5-5
 claude-opus-5-5 -> claude-fable-5
 claude-fable-5 -> claude-fable-5-1
-claude-fable-5-1 -> claude-sonnet-5
+claude-fable-5-1 -> claude-fable-5-2
+claude-fable-5-2 -> claude-sonnet-5
 claude-sonnet-5 -> claude-sonnet-5-5
 claude-sonnet-5-5 -> claude-opus-5
 Last value wraps to first: True
