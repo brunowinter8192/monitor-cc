@@ -34,3 +34,14 @@ Decision: `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000` in the environment of every l
 The `[1m]` suffix was rejected because the proxy forwards the model string verbatim; on 2026-07-20 `claude-sonnet-5[1m]` produced a 404 from the API (see the 176 -> 205 entry in this area). The env var leaves the model id untouched and is a no-op for models CC already knows.
 
 Not verified live in this session: that a fresh fable-5-2 session reports a 1M window. Hypothesis until the user starts one. If auto-compact still triggers early, check whether the notice "the context window it assumes" still appears at startup.
+
+## Correction the same day: the env var does not apply to claude-* ids, the [1m] suffix does
+
+The user reported the window still capped after `CLAUDE_CODE_MAX_CONTEXT_TOKENS`. Reading the 2.1.290 resolver: the env var is only honored when the model id does not start with `claude-` (or is an alias that maps elsewhere). For `claude-fable-5-2` it is ignored and the startup notice offers only "append [1m] to the model name".
+
+Applied the pattern already used for Haiku workers (see `process-docs/pdf_conversion_qa/`): the model id carries the suffix.
+- `model_selection.json` main -> `claude-fable-5-2[1m]`.
+- `proxy_rules.json` `model_params` got an exact-key entry `claude-fable-5-2[1m]` (the proxy matches exact strings, no suffix normalization).
+- `src/menubar/model_selection.py` choice `claude-fable-5-2` -> `claude-fable-5-2[1m]` so the Models tab does not write the bare id back; `dev/model_selector/verify_model_cycle_and_io.py` adjusted, 9/9; bundle rebuilt with `setup_py2app.py py2app`.
+
+The env var lines from the previous section were left in place; they are a no-op for claude-* ids and harmless. Not verified live: a fresh session on `claude-fable-5-2[1m]` reporting 1M. Hypothesis until the user launches one.
